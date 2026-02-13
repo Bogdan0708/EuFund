@@ -1,0 +1,129 @@
+{
+  "common": {
+    "save": "Salvează",
+    "cancel": "Anulează",
+    "delete": "Șterge",
+    "edit": "Editează",
+    "loading": "Se încarcă...",
+    "error": "A apărut o eroare",
+    "confirm": "Confirmă",
+    "back": "Înapoi",
+    "next": "Următorul",
+    "search": "Caută",
+    "filter": "Filtrează",
+    "export": "Exportă",
+    "download": "Descarcă",
+    "create": "Creează",
+    "submit": "Trimite",
+    "close": "Închide"
+  },
+  "auth": {
+    "login": "Autentificare",
+    "register": "Înregistrare",
+    "logout": "Deconectare",
+    "forgotPassword": "Am uitat parola",
+    "email": "Adresă de email",
+    "password": "Parolă",
+    "confirmPassword": "Confirmă parola",
+    "fullName": "Nume complet",
+    "phone": "Telefon",
+    "ageConfirmation": "Confirm că am cel puțin 16 ani",
+    "privacyConsent": "Am citit și accept Politica de confidențialitate",
+    "termsConsent": "Am citit și accept Termenii și condițiile",
+    "gdprConsent": "Sunt de acord cu prelucrarea datelor personale conform GDPR și Legii 190/2018",
+    "invalidCredentials": "Email sau parolă incorectă",
+    "accountCreated": "Contul a fost creat cu succes",
+    "ageRestriction": "Trebuie să aveți cel puțin 16 ani pentru a utiliza această platformă"
+  },
+  "nav": {
+    "dashboard": "Panou de control",
+    "projects": "Proiecte",
+    "grants": "Finanțări",
+    "documents": "Documente",
+    "legislation": "Legislație",
+    "organization": "Organizație",
+    "settings": "Setări"
+  },
+  "project": {
+    "new": "Proiect Nou",
+    "title": "Titlul Proiectului",
+    "acronym": "Acronim",
+    "list": "Lista Proiectelor",
+    "create": "Creează Proiect",
+    "status": {
+      "ciorna": "Ciornă",
+      "in_lucru": "În lucru",
+      "verificare": "În verificare",
+      "finalizat": "Finalizat",
+      "depus": "Depus",
+      "aprobat": "Aprobat",
+      "respins": "Respins"
+    },
+    "sections": {
+      "summary": "Rezumat",
+      "context": "Context și Justificare",
+      "objectives": "Obiective",
+      "methodology": "Metodologie",
+      "budget": "Buget",
+      "indicators": "Indicatori",
+      "sustainability": "Sustenabilitate",
+      "partnership": "Parteneriat",
+      "risks": "Riscuri",
+      "annexes": "Anexe"
+    }
+  },
+  "compliance": {
+    "check": "Verifică Conformitatea",
+    "score": "Scor de conformitate",
+    "conform": "Conform",
+    "warning": "Atenție",
+    "nonConform": "Neconform",
+    "disclaimer": "Verificare generată automat. Consultați ghidul oficial al solicitantului."
+  },
+  "grants": {
+    "available": "Finanțări Disponibile",
+    "matchScore": "Scor de potrivire",
+    "deadline": "Termen limită",
+    "budget": "Buget disponibil",
+    "startProject": "Începe Proiect",
+    "program": "Program",
+    "status": "Stare"
+  },
+  "organization": {
+    "name": "Denumire organizație",
+    "cui": "Cod Unic de Înregistrare (CUI)",
+    "regCom": "Nr. Registrul Comerțului",
+    "type": "Tip organizație",
+    "size": "Mărime",
+    "caen": "Cod CAEN principal",
+    "address": "Adresă",
+    "county": "Județ",
+    "region": "Regiune"
+  },
+  "validation": {
+    "required": "Câmpul «{field}» este obligatoriu.",
+    "minLength": "Câmpul «{field}» trebuie să aibă minimum {min} caractere.",
+    "maxLength": "Câmpul «{field}» poate avea maximum {max} caractere.",
+    "invalidEmail": "Adresa de email nu este validă.",
+    "invalidCUI": "CUI-ul introdus nu este valid.",
+    "invalidCAEN": "Codul CAEN nu este valid.",
+    "invalidPhone": "Numărul de telefon nu este valid.",
+    "passwordTooShort": "Parola trebuie să aibă cel puțin 8 caractere.",
+    "passwordMismatch": "Parolele nu coincid."
+  },
+  "legal": {
+    "privacyPolicy": "Politica de Confidențialitate",
+    "termsOfService": "Termeni și Condiții",
+    "gdprRights": "Drepturile dumneavoastră conform GDPR",
+    "dataProcessing": "Prelucrarea datelor personale",
+    "dpia": "Evaluarea Impactului asupra Protecției Datelor"
+  },
+  "errors": {
+    "notFound": "Resursa nu a fost găsită.",
+    "unauthorized": "Nu sunteți autorizat să accesați această resursă.",
+    "forbidden": "Acces interzis.",
+    "serverError": "A apărut o eroare internă. Vă rugăm să încercați din nou.",
+    "networkError": "Eroare de conexiune. Verificați conexiunea la internet.",
+    "rateLimited": "Prea multe cereri. Vă rugăm să așteptați."
+  }
+}

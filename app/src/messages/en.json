@@ -1,0 +1,129 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "download": "Download",
+    "create": "Create",
+    "submit": "Submit",
+    "close": "Close"
+  },
+  "auth": {
+    "login": "Log In",
+    "register": "Register",
+    "logout": "Log Out",
+    "forgotPassword": "Forgot Password",
+    "email": "Email Address",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "fullName": "Full Name",
+    "phone": "Phone",
+    "ageConfirmation": "I confirm I am at least 16 years old",
+    "privacyConsent": "I have read and accept the Privacy Policy",
+    "termsConsent": "I have read and accept the Terms of Service",
+    "gdprConsent": "I agree to the processing of my personal data in accordance with GDPR and Law 190/2018",
+    "invalidCredentials": "Invalid email or password",
+    "accountCreated": "Account created successfully",
+    "ageRestriction": "You must be at least 16 years old to use this platform"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "projects": "Projects",
+    "grants": "Funding",
+    "documents": "Documents",
+    "legislation": "Legislation",
+    "organization": "Organization",
+    "settings": "Settings"
+  },
+  "project": {
+    "new": "New Project",
+    "title": "Project Title",
+    "acronym": "Acronym",
+    "list": "Project List",
+    "create": "Create Project",
+    "status": {
+      "ciorna": "Draft",
+      "in_lucru": "In Progress",
+      "verificare": "Under Review",
+      "finalizat": "Completed",
+      "depus": "Submitted",
+      "aprobat": "Approved",
+      "respins": "Rejected"
+    },
+    "sections": {
+      "summary": "Summary",
+      "context": "Context & Justification",
+      "objectives": "Objectives",
+      "methodology": "Methodology",
+      "budget": "Budget",
+      "indicators": "Indicators",
+      "sustainability": "Sustainability",
+      "partnership": "Partnership",
+      "risks": "Risks",
+      "annexes": "Annexes"
+    }
+  },
+  "compliance": {
+    "check": "Check Compliance",
+    "score": "Compliance Score",
+    "conform": "Compliant",
+    "warning": "Warning",
+    "nonConform": "Non-Compliant",
+    "disclaimer": "Automatically generated check. Please consult the official applicant guide."
+  },
+  "grants": {
+    "available": "Available Funding",
+    "matchScore": "Match Score",
+    "deadline": "Deadline",
+    "budget": "Available Budget",
+    "startProject": "Start Project",
+    "program": "Program",
+    "status": "Status"
+  },
+  "organization": {
+    "name": "Organization Name",
+    "cui": "Tax ID (CUI)",
+    "regCom": "Trade Register No.",
+    "type": "Organization Type",
+    "size": "Size",
+    "caen": "Primary CAEN Code",
+    "address": "Address",
+    "county": "County",
+    "region": "Region"
+  },
+  "validation": {
+    "required": "The field \"{field}\" is required.",
+    "minLength": "The field \"{field}\" must have at least {min} characters.",
+    "maxLength": "The field \"{field}\" can have at most {max} characters.",
+    "invalidEmail": "The email address is not valid.",
+    "invalidCUI": "The CUI entered is not valid.",
+    "invalidCAEN": "The CAEN code is not valid.",
+    "invalidPhone": "The phone number is not valid.",
+    "passwordTooShort": "Password must be at least 8 characters.",
+    "passwordMismatch": "Passwords do not match."
+  },
+  "legal": {
+    "privacyPolicy": "Privacy Policy",
+    "termsOfService": "Terms of Service",
+    "gdprRights": "Your GDPR Rights",
+    "dataProcessing": "Personal Data Processing",
+    "dpia": "Data Protection Impact Assessment"
+  },
+  "errors": {
+    "notFound": "Resource not found.",
+    "unauthorized": "You are not authorized to access this resource.",
+    "forbidden": "Access denied.",
+    "serverError": "An internal error occurred. Please try again.",
+    "networkError": "Connection error. Check your internet connection.",
+    "rateLimited": "Too many requests. Please wait."
+  }
+}
