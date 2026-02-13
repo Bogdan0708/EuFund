@@ -118,6 +118,53 @@
     "dataProcessing": "Prelucrarea datelor personale",
     "dpia": "Evaluarea Impactului asupra Protecției Datelor"
   },
+  "legislation": {
+    "title": "Legislație UE",
+    "search": "Caută",
+    "searchPlaceholder": "Căutați regulamente, directive...",
+    "noResults": "Niciun rezultat găsit",
+    "openDocument": "Deschide",
+    "regulation": "Regulament",
+    "directive": "Directivă",
+    "decision": "Decizie"
+  },
+  "fundingCalls": {
+    "title": "Apeluri de Finanțare Active",
+    "subtitle": "Date în timp real de la Comisia Europeană",
+    "refresh": "Actualizează",
+    "open": "Deschise",
+    "forthcoming": "Viitoare",
+    "all": "Toate",
+    "noCalls": "Niciun apel găsit",
+    "details": "Detalii",
+    "deadline": "Termen",
+    "budget": "Buget"
+  },
+  "signing": {
+    "title": "Semnare Electronică Calificată (QES)",
+    "subtitle": "Semnare conformă eIDAS prin certSIGN",
+    "documentTitle": "Titlul documentului",
+    "uploadPdf": "Încărcați PDF-ul",
+    "signers": "Semnatari",
+    "addSigner": "Adaugă semnatar",
+    "signer": "Semnatar",
+    "approver": "Aprobator",
+    "witness": "Martor",
+    "sendForSigning": "Trimite pentru semnare",
+    "sent": "Document trimis pentru semnare",
+    "sentDescription": "Semnatarii vor primi un email cu link-ul de semnare.",
+    "signAnother": "Semnează alt document"
+  },
+  "companyValidation": {
+    "title": "Validare Companie",
+    "cuiLabel": "Cod Unic de Înregistrare (CUI)",
+    "validate": "Validează",
+    "eligible": "Eligibil",
+    "notEligible": "Neeligibil",
+    "issues": "Probleme identificate",
+    "companyActive": "Compania este activă",
+    "companyInactive": "Compania nu este activă"
+  },
   "errors": {
     "notFound": "Resursa nu a fost găsită.",
     "unauthorized": "Nu sunteți autorizat să accesați această resursă.",

@@ -301,6 +301,97 @@ export const notifications = pgTable('notifications', {
   userUnreadIdx: index('idx_notif_user_unread').on(table.userId, table.isRead),
 }));
 
+// ─── External Integrations ──────────────────────────────────────
+export const externalIntegrations = pgTable('external_integrations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  provider: varchar('provider', { length: 100 }).notNull(),
+  credentialRef: varchar('credential_ref', { length: 255 }),
+  baseUrl: varchar('base_url', { length: 500 }),
+  environment: varchar('environment', { length: 20 }).default('production'),
+  rateLimitMax: integer('rate_limit_max').default(10),
+  rateLimitWindowMs: integer('rate_limit_window_ms').default(60000),
+  isActive: boolean('is_active').default(true),
+  lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+  lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
+  lastError: text('last_error'),
+  metadata: jsonb('metadata').default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  providerIdx: uniqueIndex('idx_ext_integration_provider').on(table.provider),
+}));
+
+// ─── Legislation Cache ──────────────────────────────────────────
+export const legislationCache = pgTable('legislation_cache', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  celex: varchar('celex', { length: 50 }).unique().notNull(),
+  title: text('title').notNull(),
+  titleRo: text('title_ro'),
+  documentType: varchar('document_type', { length: 50 }),
+  publishedDate: date('published_date'),
+  textRo: text('text_ro'),
+  textEn: text('text_en'),
+  subjects: text('subjects').array(),
+  inForce: boolean('in_force').default(true),
+  sourceUrl: varchar('source_url', { length: 500 }),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  metadata: jsonb('metadata').default({}),
+}, (table) => ({
+  celexIdx: index('idx_legislation_cache_celex').on(table.celex),
+  typeIdx: index('idx_legislation_cache_type').on(table.documentType),
+}));
+
+// ─── Funding Calls (Live from EC Portal) ────────────────────────
+export const fundingCalls = pgTable('funding_calls', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  externalId: varchar('external_id', { length: 255 }).unique().notNull(),
+  title: text('title').notNull(),
+  description: text('description'),
+  programme: varchar('programme', { length: 100 }),
+  status: varchar('status', { length: 50 }).default('open'),
+  openingDate: timestamp('opening_date', { withTimezone: true }),
+  deadlineDate: timestamp('deadline_date', { withTimezone: true }),
+  budget: decimal('budget', { precision: 15, scale: 2 }),
+  currency: varchar('currency', { length: 10 }).default('EUR'),
+  topics: text('topics').array(),
+  eligibilityCriteria: jsonb('eligibility_criteria'),
+  sourceUrl: varchar('source_url', { length: 500 }),
+  syncedAt: timestamp('synced_at', { withTimezone: true }).defaultNow(),
+  metadata: jsonb('metadata').default({}),
+}, (table) => ({
+  statusIdx: index('idx_funding_calls_status').on(table.status),
+  deadlineIdx: index('idx_funding_calls_deadline').on(table.deadlineDate),
+  programmeIdx: index('idx_funding_calls_programme').on(table.programme),
+}));
+
+// ─── Signature Workflows (QES) ──────────────────────────────────
+export const signatureStatusEnum = pgEnum('signature_status', [
+  'pending', 'prepared', 'signing', 'signed', 'rejected', 'expired', 'error',
+]);
+
+export const signatureWorkflows = pgTable('signature_workflows', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  externalWorkflowId: varchar('external_workflow_id', { length: 255 }),
+  documentId: uuid('document_id').references(() => documents.id),
+  projectId: uuid('project_id').references(() => projects.id),
+  initiatedBy: uuid('initiated_by').notNull().references(() => users.id),
+  documentTitle: varchar('document_title', { length: 500 }).notNull(),
+  documentHash: varchar('document_hash', { length: 128 }),
+  status: signatureStatusEnum('status').default('pending'),
+  signers: jsonb('signers').default([]),
+  auditTrail: jsonb('audit_trail').default([]),
+  provider: varchar('provider', { length: 50 }).default('certsign'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  statusIdx: index('idx_sig_workflows_status').on(table.status),
+  projectIdx: index('idx_sig_workflows_project').on(table.projectId),
+  initiatorIdx: index('idx_sig_workflows_initiator').on(table.initiatedBy),
+}));
+
 // ─── Audit Log (GDPR-compliant, append-only) ────────────────────
 export const auditLog = pgTable('audit_log', {
   id: uuid('id').primaryKey().defaultRandom(),

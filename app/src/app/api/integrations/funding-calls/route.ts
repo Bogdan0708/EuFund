@@ -1,0 +1,21 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { searchFundingCalls, type ECProgramme } from '@/lib/integrations/ec-portal';
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const programme = searchParams.get('programme') as ECProgramme | undefined;
+    const status = (searchParams.get('status') ?? 'open') as 'open' | 'forthcoming' | 'closed';
+    const query = searchParams.get('q') ?? undefined;
+    const limit = parseInt(searchParams.get('limit') ?? '50', 10);
+
+    const calls = await searchFundingCalls({ programme: programme ?? undefined, status, query, limit });
+    return NextResponse.json({ calls, count: calls.length });
+  } catch (error: any) {
+    console.error('Funding calls error:', error);
+    return NextResponse.json(
+      { error: 'Eroare la obținerea apelurilor de finanțare', details: error.message },
+      { status: error.name === 'CircuitOpenError' ? 503 : 500 },
+    );
+  }
+}
