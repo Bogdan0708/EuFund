@@ -1,0 +1,109 @@
+groups:
+  - name: eu-funds-sla
+    rules:
+      # High error rate
+      - alert: HighErrorRate
+        expr: rate(http_request_errors_total[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Error rate above 5%"
+          description: "{{ $value | humanizePercentage }} error rate on {{ $labels.path }}"
+
+      # Slow API responses
+      - alert: SlowAPIResponse
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 latency above 500ms"
+          description: "P95 latency is {{ $value }}s"
+
+      # High P99 latency
+      - alert: CriticalLatency
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "P99 latency above 2s"
+
+  - name: eu-funds-infrastructure
+    rules:
+      # Database slow queries
+      - alert: SlowDatabaseQueries
+        expr: histogram_quantile(0.95, rate(db_query_duration_seconds_bucket[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 database query time above 100ms"
+
+      # Database connection pool exhaustion
+      - alert: DBConnectionPoolHigh
+        expr: db_connection_pool_size > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool usage high"
+
+      # External API down
+      - alert: ExternalAPIDown
+        expr: external_api_health == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "External API {{ $labels.api }} is down"
+
+      # High cache miss rate
+      - alert: HighCacheMissRate
+        expr: rate(cache_misses_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) > 0.8
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cache miss rate above 80%"
+
+  - name: eu-funds-business
+    rules:
+      # QES signature failures
+      - alert: QESSignatureFailures
+        expr: rate(qes_signature_errors_total[1h]) > 0.1
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "QES signature error rate elevated"
+
+      # No registrations (business hours)
+      - alert: NoUserRegistrations
+        expr: increase(user_registrations_total[6h]) == 0 and hour() >= 8 and hour() <= 18
+        for: 6h
+        labels:
+          severity: info
+        annotations:
+          summary: "No user registrations in 6 hours during business hours"
+
+  - name: eu-funds-security
+    rules:
+      # Rate limit hits
+      - alert: HighRateLimitHits
+        expr: rate(http_request_errors_total{status="429"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate of 429 responses - possible attack"
+
+      # Authentication failures
+      - alert: HighAuthFailures
+        expr: rate(http_request_errors_total{path="/api/auth/signin",status="401"}[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High authentication failure rate - possible brute force"

@@ -1,0 +1,68 @@
+{
+  "description": "AWS WAF Rules for EU Funds Platform - OWASP Top 10 Protection",
+  "rules": [
+    {
+      "name": "AWSManagedRulesCommonRuleSet",
+      "priority": 1,
+      "description": "Core rule set - cross-site scripting, path traversal, etc.",
+      "vendor": "AWS",
+      "overrideAction": "none"
+    },
+    {
+      "name": "AWSManagedRulesSQLiRuleSet",
+      "priority": 2,
+      "description": "SQL injection protection",
+      "vendor": "AWS",
+      "overrideAction": "none"
+    },
+    {
+      "name": "AWSManagedRulesKnownBadInputsRuleSet",
+      "priority": 3,
+      "description": "Known bad inputs including Log4j",
+      "vendor": "AWS",
+      "overrideAction": "none"
+    },
+    {
+      "name": "AWSManagedRulesLinuxRuleSet",
+      "priority": 4,
+      "description": "Linux-specific vulnerabilities",
+      "vendor": "AWS",
+      "overrideAction": "none"
+    },
+    {
+      "name": "RateLimitGlobal",
+      "priority": 5,
+      "description": "Global rate limit: 2000 requests per 5 minutes per IP",
+      "type": "rate-based",
+      "limit": 2000,
+      "action": "block"
+    },
+    {
+      "name": "RateLimitAuth",
+      "priority": 6,
+      "description": "Auth endpoint rate limit: 20 requests per 5 minutes per IP",
+      "type": "rate-based",
+      "limit": 20,
+      "scope": "/api/auth/*",
+      "action": "block"
+    },
+    {
+      "name": "GeoRestriction",
+      "priority": 7,
+      "description": "Allow only EU + EEA countries (optional - enable for gov deployments)",
+      "type": "geo-match",
+      "allowedCountries": ["RO", "DE", "FR", "IT", "ES", "NL", "BE", "AT", "PL", "CZ", "SK", "HU", "BG", "HR", "SI", "LT", "LV", "EE", "FI", "SE", "DK", "IE", "PT", "EL", "CY", "MT", "LU", "NO", "IS", "LI", "CH", "GB"],
+      "action": "allow",
+      "enabled": false
+    },
+    {
+      "name": "BlockBadBots",
+      "priority": 8,
+      "description": "Block known malicious user agents",
+      "type": "string-match",
+      "field": "User-Agent",
+      "patterns": ["sqlmap", "nikto", "nessus", "masscan", "zgrab"],
+      "action": "block"
+    }
+  ]
+}

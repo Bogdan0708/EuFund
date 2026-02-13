@@ -1,0 +1,64 @@
+name: Weekly Security Scan
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # Every Monday at 6:00 UTC
+  workflow_dispatch:
+
+jobs:
+  dependency-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - run: npm ci
+        working-directory: app
+
+      - name: npm audit
+        working-directory: app
+        run: npm audit --json > ../security-audit.json || true
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit
+          path: security-audit.json
+
+  container-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -f infrastructure/Dockerfile.prod -t eu-funds-scan:latest .
+
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: eu-funds-scan:latest
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+  dast-scan:
+    runs-on: ubuntu-latest
+    if: vars.STAGING_URL != ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ vars.STAGING_URL }}
+          rules_file_name: ".zap/rules.tsv"
+          allow_issue_writing: false

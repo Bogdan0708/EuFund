@@ -1,0 +1,60 @@
+{
+  "dashboard": {
+    "title": "EU Funds Platform - Overview",
+    "uid": "eu-funds-overview",
+    "timezone": "Europe/Bucharest",
+    "refresh": "30s",
+    "panels": [
+      {
+        "title": "Request Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "targets": [{ "expr": "rate(http_requests_total[5m])", "legendFormat": "{{method}} {{path}}" }]
+      },
+      {
+        "title": "Error Rate",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+        "targets": [{ "expr": "rate(http_request_errors_total[5m]) / rate(http_requests_total[5m]) * 100" }],
+        "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "steps": [{ "value": 0, "color": "green" }, { "value": 1, "color": "yellow" }, { "value": 5, "color": "red" }] } } }
+      },
+      {
+        "title": "P95 Latency",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+        "targets": [{ "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))" }],
+        "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "steps": [{ "value": 0, "color": "green" }, { "value": 0.5, "color": "yellow" }, { "value": 2, "color": "red" }] } } }
+      },
+      {
+        "title": "External API Health",
+        "type": "table",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "targets": [{ "expr": "external_api_health", "legendFormat": "{{api}}", "format": "table", "instant": true }]
+      },
+      {
+        "title": "Database Query Latency (P95)",
+        "type": "gauge",
+        "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+        "targets": [{ "expr": "histogram_quantile(0.95, rate(db_query_duration_seconds_bucket[5m]))" }],
+        "fieldConfig": { "defaults": { "unit": "s", "max": 1, "thresholds": { "steps": [{ "value": 0, "color": "green" }, { "value": 0.05, "color": "yellow" }, { "value": 0.1, "color": "red" }] } } }
+      },
+      {
+        "title": "Business Metrics",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+        "targets": [
+          { "expr": "increase(user_registrations_total[24h])", "legendFormat": "Registrations (24h)" },
+          { "expr": "increase(proposals_generated_total[24h])", "legendFormat": "Proposals (24h)" },
+          { "expr": "increase(qes_signatures_total[24h])", "legendFormat": "Signatures (24h)" }
+        ]
+      },
+      {
+        "title": "Cache Hit Rate",
+        "type": "gauge",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "targets": [{ "expr": "rate(cache_hits_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) * 100" }],
+        "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "thresholds": { "steps": [{ "value": 0, "color": "red" }, { "value": 50, "color": "yellow" }, { "value": 80, "color": "green" }] } } }
+      }
+    ]
+  }
+}

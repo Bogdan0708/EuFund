@@ -1,0 +1,69 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: eu-west-2
+  ECR_REPOSITORY: eu-funds-app
+  ECS_CLUSTER: eu-funds-staging
+  ECS_SERVICE: eu-funds-app-staging
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -f infrastructure/Dockerfile.prod -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Deploy to ECS
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --force-new-deployment
+
+      - name: Wait for deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE
+
+      - name: Health check
+        run: |
+          STAGING_URL="${{ vars.STAGING_URL }}"
+          for i in {1..10}; do
+            if curl -sf "$STAGING_URL/api/health" | jq -e '.status == "healthy"'; then
+              echo "Staging healthy!"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Health check failed"
+          exit 1
