@@ -1,6 +1,10 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { loginSchema } from '@/lib/validators';
+import { db } from '@/lib/db';
+import { users } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
+import { compare } from 'bcryptjs';
 
 export const {
   handlers: { GET, POST },
@@ -19,15 +23,27 @@ export const {
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) return null;
 
-        // TODO: Replace with actual DB lookup + bcrypt comparison
-        // This is a placeholder for Phase 4A
-        const { email } = parsed.data;
+        const { email, password } = parsed.data;
 
-        // Placeholder user
+        const user = await db.query.users.findFirst({
+          where: eq(users.email, email),
+        });
+
+        if (!user || !user.passwordHash) return null;
+
+        const isValid = await compare(password, user.passwordHash);
+        if (!isValid) return null;
+
+        // Update last login
+        await db
+          .update(users)
+          .set({ lastLoginAt: new Date() })
+          .where(eq(users.id, user.id));
+
         return {
-          id: 'placeholder-id',
-          email,
-          name: 'Test User',
+          id: user.id,
+          email: user.email,
+          name: user.fullName,
         };
       },
     }),
@@ -56,10 +72,9 @@ export const {
   },
   events: {
     async signIn({ user }) {
-      // TODO: Log to audit_log table
       console.log(`[AUDIT] User signed in: ${user.email}`);
     },
-    async signOut(message) {
+    async signOut() {
       console.log(`[AUDIT] User signed out`);
     },
   },

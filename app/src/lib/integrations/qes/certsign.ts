@@ -92,7 +92,7 @@ export async function prepareDocument(req: PrepareDocumentRequest): Promise<Sign
             hash,
             contentBase64: content.toString('base64'),
           },
-          signers: req.signers.map((s, i) => ({
+          signers: req.signers.map((s) => ({
             name: s.name,
             email: s.email,
             role: s.role,

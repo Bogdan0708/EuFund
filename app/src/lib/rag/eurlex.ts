@@ -4,7 +4,9 @@
 import { ingestLegislation } from './pipeline';
 import { normalizeDiacritics } from '@/lib/utils/romanian';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const EURLEX_SEARCH_API = 'https://eur-lex.europa.eu/search.html';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const EURLEX_CELLAR_API = 'https://publications.europa.eu/resource/cellar';
 
 export interface EURLexDocument {

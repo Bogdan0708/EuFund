@@ -71,18 +71,18 @@ export async function searchFundingCalls(options: ECSearchOptions = {}): Promise
           pageNumber: String(Math.floor(offset / limit) + 1),
         });
 
-        // Add filters
-        const queryParts: string[] = [];
-        if (status === 'open') queryParts.push('status/t:"Open for submission"');
-        if (status === 'forthcoming') queryParts.push('status/t:"Forthcoming"');
-        if (status === 'closed') queryParts.push('status/t:"Closed"');
+        // Programme filter for 2021-2027
         if (programme && PROGRAMME_IDS[programme]) {
-          queryParts.push(`programmePeriod/t:"2021-2027"`);
+          params.set('query', `programmePeriod:"2021-2027"`);
         }
 
         const apiUrl = `${EC_SEARCH_API}?${params.toString()}`;
         const response = await fetch(apiUrl, {
-          headers: { Accept: 'application/json' },
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json',
+          },
         });
 
         if (!response.ok) {
@@ -90,35 +90,54 @@ export async function searchFundingCalls(options: ECSearchOptions = {}): Promise
         }
 
         const data = await response.json();
-        return parseECResults(data);
+        let calls = parseECResults(data);
+        // Client-side status filtering (EC API query filters are unreliable)
+        if (status && status !== 'open') {
+          calls = calls.filter((c) => c.status === status);
+        } else if (status === 'open') {
+          // For 'open', include both open and forthcoming (useful results)
+          calls = calls.filter((c) => c.status === 'open' || c.status === 'forthcoming');
+        }
+        return calls;
       }, { maxRequests: 10, windowMs: 60_000 }),
     ),
   );
 }
 
+// Helper to extract first value from EC metadata field (arrays of strings)
+function metaVal(field: any): string {
+  if (!field) return '';
+  if (Array.isArray(field)) return field[0] ?? '';
+  if (typeof field === 'object' && field.value) return field.value;
+  return String(field);
+}
+
 function parseECResults(data: any): ECFundingCall[] {
   const results = data?.results ?? [];
   return results.map((r: any) => {
-    const metadata = r.metadata ?? {};
+    const m = r.metadata ?? {};
+    const identifier = metaVal(m.identifier) || r.reference || '';
+    const title = metaVal(m.title) || r.content || r.summary || '';
     return {
-      identifier: metadata.identifier?.value ?? r.reference ?? '',
-      title: metadata.title?.value ?? '',
-      description: metadata.description?.value ?? '',
-      programme: metadata.programmePeriod?.value ?? '',
-      status: parseStatus(metadata.status?.value ?? ''),
-      openingDate: metadata.startDate?.value ?? '',
-      deadlineDate: metadata.deadlineDate?.value ?? '',
-      budget: metadata.budget?.value ? parseFloat(metadata.budget.value) : null,
+      identifier,
+      title,
+      description: metaVal(m.descriptionByte)?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 500) || r.summary || '',
+      programme: metaVal(m.frameworkProgramme) || metaVal(m.programmePeriod) || '',
+      status: parseStatus(metaVal(m.status)),
+      openingDate: metaVal(m.startDate),
+      deadlineDate: metaVal(m.deadlineDate),
+      budget: null, // Budget is nested in budgetOverview, not a simple field
       currency: 'EUR',
-      topics: (metadata.keywords?.value ?? '').split(',').map((s: string) => s.trim()).filter(Boolean),
-      url: metadata.url?.value ?? `https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/${metadata.identifier?.value}`,
+      topics: Array.isArray(m.keywords) ? m.keywords.slice(0, 10) : [],
+      url: metaVal(m.url) || `https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/${identifier}`,
     };
   });
 }
 
 function parseStatus(status: string): ECFundingCall['status'] {
-  if (status.toLowerCase().includes('open')) return 'open';
-  if (status.toLowerCase().includes('forthcoming')) return 'forthcoming';
+  // EC API uses numeric IDs: 31094501=Open, 31094502=Forthcoming, 31094503=Closed
+  if (status === '31094501' || status.toLowerCase().includes('open')) return 'open';
+  if (status === '31094502' || status.toLowerCase().includes('forthcoming')) return 'forthcoming';
   return 'closed';
 }
 

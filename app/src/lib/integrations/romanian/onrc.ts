@@ -4,12 +4,13 @@
 import { withRateLimit } from '../common/rate-limiter';
 import { withCircuitBreaker } from '../common/circuit-breaker';
 import { withCache } from '../common/cache';
-import { validateCUI, validateCAEN, normalizeDiacritics } from '@/lib/utils/romanian';
+import { validateCUI, normalizeDiacritics } from '@/lib/utils/romanian';
 
 const RATE_KEY = 'onrc';
 const CACHE_TTL = 12 * 60 * 60 * 1000; // 12h
 
 // ONRC doesn't have a public REST API — we use the public RECOM endpoint
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const RECOM_URL = 'https://portal.onrc.ro/ONRCPortalWeb/appmanager/myONRC/public';
 
 export interface ONRCCompanyData {

@@ -1,0 +1,62 @@
+// ─── POST /api/ai/predict-success ────────────────────────────────
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { predictProposalSuccess, quickSuccessPrediction } from '@/lib/ai/predictive-analytics';
+import { FondEUError, Errors } from '@/lib/errors';
+import { logAudit } from '@/lib/legal/audit';
+
+const inputSchema = z.object({
+  projectTitle: z.string().min(5),
+  projectSummary: z.string().min(20),
+  programType: z.string(),
+  totalBudget: z.number().positive(),
+  durationMonths: z.number().positive(),
+  sector: z.string(),
+  trl: z.number().min(1).max(9).optional(),
+  partners: z.array(z.object({
+    name: z.string(),
+    country: z.string(),
+    type: z.enum(['university', 'research_institute', 'sme', 'large_enterprise', 'ngo', 'public_body']),
+    role: z.enum(['coordinator', 'partner']),
+    previousEUProjects: z.number().optional(),
+    budgetShare: z.number().optional(),
+  })),
+  methodology: z.string().optional(),
+  expectedImpact: z.string().optional(),
+  innovation: z.string().optional(),
+  objectives: z.array(z.string()).optional(),
+  romanianLead: z.boolean().optional(),
+  quick: z.boolean().optional(),
+  locale: z.enum(['ro', 'en']).optional(),
+});
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const parsed = inputSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(), { status: 400 });
+    }
+
+    const input = parsed.data as any;
+
+    if (input.quick) {
+      const result = quickSuccessPrediction(input);
+      return NextResponse.json({ success: true, data: result });
+    }
+
+    const result = await predictProposalSuccess(input);
+
+    await logAudit({
+      action: 'ai.generate',
+      resourceType: 'success_prediction',
+      metadata: { successProbability: result.successProbability, confidence: result.confidenceLevel },
+    });
+
+    return NextResponse.json({ success: true, data: result });
+  } catch (error) {
+    if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
+    console.error('[predict-success]', error);
+    return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
+  }
+}

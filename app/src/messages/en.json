@@ -125,5 +125,65 @@
     "serverError": "An internal error occurred. Please try again.",
     "networkError": "Connection error. Check your internet connection.",
     "rateLimited": "Too many requests. Please wait."
+  },
+  "predictiveAnalytics": {
+    "title": "Predictive Analytics",
+    "description": "AI-powered predictive intelligence",
+    "successProbability": "Success Probability",
+    "confidenceLevel": "Confidence Level",
+    "criticalFactors": "Critical Factors",
+    "improvementRecommendations": "Improvement Recommendations",
+    "benchmarkComparison": "Benchmark Comparison",
+    "lifecycleForecasting": "Lifecycle Forecasting",
+    "romanianContext": "Romanian Context",
+    "liveUpdates": "Live Updates",
+    "offline": "Offline"
+  },
+  "partnerMatching": {
+    "title": "Smart Partner Matching",
+    "description": "AI-powered partner discovery",
+    "capabilityGap": "Capability Matrix",
+    "geographicDistribution": "EU Geographic Distribution",
+    "matchScore": "Match Score",
+    "addToConsortium": "Add to Consortium",
+    "budgetImpact": "Budget Impact"
+  },
+  "collaboration": {
+    "title": "Collaborative Workspace",
+    "description": "Real-time editing with auto-translation",
+    "autoTranslation": "Auto Translation",
+    "activeUsers": "Active Users",
+    "editor": "Editor",
+    "ganttChart": "Gantt Chart",
+    "chat": "Chat",
+    "history": "History"
+  },
+  "reporting": {
+    "title": "Advanced Reports",
+    "description": "Intelligent report generation",
+    "executiveSummary": "Executive Summary",
+    "reportBuilder": "Report Builder",
+    "export": "Export",
+    "auditTrail": "Audit Trail"
+  },
+  "search": {
+    "title": "Advanced Search & Discovery",
+    "description": "Intelligent search with Romanian language understanding",
+    "semanticPlaceholder": "Search in natural language...",
+    "results": "Results",
+    "opportunities": "Opportunities"
+  },
+  "integrations": {
+    "title": "Integration Management",
+    "description": "Real-time monitoring of all external connections",
+    "connected": "Connected",
+    "error": "Error",
+    "retry": "Retry"
+  },
+  "mobile": {
+    "offlineMode": "Offline Mode",
+    "analytics": "Quick Analytics",
+    "notifications": "Notifications",
+    "approvals": "Approvals"
   }
 }

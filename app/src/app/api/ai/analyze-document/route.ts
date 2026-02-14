@@ -35,9 +35,11 @@ export async function POST(request: NextRequest) {
       content = await file.text();
     } else if (mimeType === 'application/pdf') {
       const buffer = Buffer.from(await file.arrayBuffer());
-      const pdfParse = (await import('pdf-parse')).default;
-      const pdf = await pdfParse(buffer);
-      content = pdf.text;
+      const { PDFParse } = await import('pdf-parse');
+      const parser = new PDFParse({ data: new Uint8Array(buffer) });
+      const textResult = await parser.getText();
+      content = textResult.text;
+      await parser.destroy();
     } else if (
       mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ) {

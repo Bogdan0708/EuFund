@@ -2,6 +2,7 @@ import {
   pgTable, pgEnum, uuid, varchar, text, boolean, integer, decimal,
   timestamp, jsonb, inet, bigint, date, index, uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
 
 // ─── Enums ───────────────────────────────────────────────────────
 export const userRoleEnum = pgEnum('user_role', ['admin', 'org_admin', 'project_manager', 'viewer']);
@@ -26,6 +27,8 @@ export const consentTypeEnum = pgEnum('consent_type', [
   'privacy_policy', 'terms_of_service', 'data_processing', 'marketing', 'analytics',
 ]);
 export const consentStatusEnum = pgEnum('consent_status', ['granted', 'withdrawn', 'expired']);
+export const workPackageStatusEnum = pgEnum('work_package_status', ['planned', 'active', 'completed', 'delayed', 'cancelled']);
+export const riskLevelEnum = pgEnum('risk_level', ['very_low', 'low', 'medium', 'high', 'very_high']);
 
 // ─── Users ───────────────────────────────────────────────────────
 export const users = pgTable('users', {
@@ -409,4 +412,156 @@ export const auditLog = pgTable('audit_log', {
   userIdx: index('idx_audit_user').on(table.userId),
   resourceIdx: index('idx_audit_resource').on(table.resourceType, table.resourceId),
   createdIdx: index('idx_audit_created').on(table.createdAt),
+}));
+
+// ─── Work Packages ──────────────────────────────────────────────
+export const workPackages = pgTable('work_packages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  startDate: date('start_date'),
+  endDate: date('end_date'),
+  budgetAllocated: decimal('budget_allocated', { precision: 12, scale: 2 }),
+  budgetSpent: decimal('budget_spent', { precision: 12, scale: 2 }).default('0'),
+  status: workPackageStatusEnum('status').default('planned'),
+  leadPartnerId: uuid('lead_partner_id').references(() => organizations.id),
+  dependencies: jsonb('dependencies').default([]),
+  milestones: jsonb('milestones').default([]),
+  deliverables: jsonb('deliverables').default([]),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  projectIdx: index('idx_wp_project').on(table.projectId),
+  statusIdx: index('idx_wp_status').on(table.status),
+}));
+
+// ─── Project Timelines ──────────────────────────────────────────
+export const projectTimelines = pgTable('project_timelines', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  workPackageId: uuid('work_package_id').references(() => workPackages.id, { onDelete: 'cascade' }),
+  taskName: varchar('task_name', { length: 255 }).notNull(),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  dependencies: jsonb('dependencies').default([]),
+  progressPercentage: integer('progress_percentage').default(0),
+  assignedTo: uuid('assigned_to').references(() => users.id),
+  riskLevel: riskLevelEnum('risk_level').default('low'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  projectIdx: index('idx_timeline_project').on(table.projectId),
+  wpIdx: index('idx_timeline_wp').on(table.workPackageId),
+}));
+
+// ─── Risk Assessments ───────────────────────────────────────────
+export const riskAssessments = pgTable('risk_assessments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  riskType: varchar('risk_type', { length: 100 }).notNull(),
+  description: text('description'),
+  probability: integer('probability'),
+  impact: integer('impact'),
+  mitigationStrategy: text('mitigation_strategy'),
+  status: varchar('status', { length: 50 }).default('identified'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  projectIdx: index('idx_risk_project').on(table.projectId),
+}));
+
+// ─── Compliance Checks ──────────────────────────────────────────
+export const complianceChecks = pgTable('compliance_checks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  criterionName: varchar('criterion_name', { length: 255 }).notNull(),
+  requirementText: text('requirement_text'),
+  complianceScore: integer('compliance_score'),
+  status: varchar('status', { length: 50 }).default('pending'),
+  evidenceDocuments: jsonb('evidence_documents').default([]),
+  assessorNotes: text('assessor_notes'),
+  assessedAt: timestamp('assessed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  projectIdx: index('idx_compliance_check_project').on(table.projectId),
+}));
+
+// ─── Relations ──────────────────────────────────────────────────
+export const usersRelations = relations(users, ({ many }) => ({
+  orgMemberships: many(orgMembers),
+  projects: many(projects),
+  notifications: many(notifications),
+  consentRecords: many(consentRecords),
+}));
+
+export const organizationsRelations = relations(organizations, ({ many }) => ({
+  members: many(orgMembers),
+  projects: many(projects),
+}));
+
+export const orgMembersRelations = relations(orgMembers, ({ one }) => ({
+  user: one(users, { fields: [orgMembers.userId], references: [users.id] }),
+  organization: one(organizations, { fields: [orgMembers.orgId], references: [organizations.id] }),
+}));
+
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  organization: one(organizations, { fields: [projects.orgId], references: [organizations.id] }),
+  creator: one(users, { fields: [projects.createdBy], references: [users.id] }),
+  call: one(callsForProposals, { fields: [projects.callId], references: [callsForProposals.id] }),
+  versions: many(projectVersions),
+  comments: many(projectComments),
+  documents: many(documents),
+  workPackages: many(workPackages),
+  timelines: many(projectTimelines),
+  riskAssessments: many(riskAssessments),
+  complianceChecks: many(complianceChecks),
+}));
+
+export const workPackagesRelations = relations(workPackages, ({ one, many }) => ({
+  project: one(projects, { fields: [workPackages.projectId], references: [projects.id] }),
+  leadPartner: one(organizations, { fields: [workPackages.leadPartnerId], references: [organizations.id] }),
+  timelineItems: many(projectTimelines),
+}));
+
+export const projectTimelinesRelations = relations(projectTimelines, ({ one }) => ({
+  project: one(projects, { fields: [projectTimelines.projectId], references: [projects.id] }),
+  workPackage: one(workPackages, { fields: [projectTimelines.workPackageId], references: [workPackages.id] }),
+  assignee: one(users, { fields: [projectTimelines.assignedTo], references: [users.id] }),
+}));
+
+export const riskAssessmentsRelations = relations(riskAssessments, ({ one }) => ({
+  project: one(projects, { fields: [riskAssessments.projectId], references: [projects.id] }),
+}));
+
+export const complianceChecksRelations = relations(complianceChecks, ({ one }) => ({
+  project: one(projects, { fields: [complianceChecks.projectId], references: [projects.id] }),
+}));
+
+export const projectVersionsRelations = relations(projectVersions, ({ one }) => ({
+  project: one(projects, { fields: [projectVersions.projectId], references: [projects.id] }),
+}));
+
+export const projectCommentsRelations = relations(projectComments, ({ one }) => ({
+  project: one(projects, { fields: [projectComments.projectId], references: [projects.id] }),
+  user: one(users, { fields: [projectComments.userId], references: [users.id] }),
+}));
+
+export const callsForProposalsRelations = relations(callsForProposals, ({ one }) => ({
+  program: one(fundingPrograms, { fields: [callsForProposals.programId], references: [fundingPrograms.id] }),
+}));
+
+export const documentsRelations = relations(documents, ({ one }) => ({
+  organization: one(organizations, { fields: [documents.orgId], references: [organizations.id] }),
+  project: one(projects, { fields: [documents.projectId], references: [projects.id] }),
+  uploader: one(users, { fields: [documents.uploadedBy], references: [users.id] }),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, { fields: [notifications.userId], references: [users.id] }),
+}));
+
+export const consentRecordsRelations = relations(consentRecords, ({ one }) => ({
+  user: one(users, { fields: [consentRecords.userId], references: [users.id] }),
 }));

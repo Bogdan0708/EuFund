@@ -31,7 +31,7 @@ export async function aiGenerate(opts: {
         system: opts.system,
         prompt: opts.prompt,
         temperature: opts.temperature ?? AI_CONFIG.generation.temperature,
-        maxTokens: opts.maxTokens ?? AI_CONFIG.generation.maxTokens,
+        maxOutputTokens: opts.maxTokens ?? AI_CONFIG.generation.maxTokens,
       });
       return {
         text: result.text,
@@ -62,7 +62,7 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
         temperature: opts.temperature ?? AI_CONFIG.analysis.temperature,
       });
       return {
-        object: result.object,
+        object: result.object as z.infer<T>,
         tokensUsed: (result.usage?.totalTokens) ?? 0,
       };
     })

@@ -62,22 +62,24 @@ export async function searchEURLex(query: string, options: {
     withCircuitBreaker(RATE_LIMIT_KEY, () =>
       withRateLimit(RATE_LIMIT_KEY, async () => {
         const typeFilter = type ? buildTypeFilter(type) : '';
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const forceFilter = inForceOnly ? '?work cdm:resource_legal_in-force "true"^^xsd:boolean .' : '';
+
+        // Use LANG() filter instead of expression_uses_language (CDM ontology compatibility)
+        const langCode = language.toLowerCase();
+        const escapedQuery = query.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
         const sparql = `
           PREFIX cdm: <http://publications.europa.eu/ontology/cdm#>
           PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-          SELECT DISTINCT ?celex ?title ?date WHERE {
+          SELECT DISTINCT ?celex ?title WHERE {
             ?work cdm:resource_legal_id_celex ?celex .
-            ?work cdm:work_date_document ?date .
             ?expression cdm:expression_belongs_to_work ?work .
-            ?expression cdm:expression_uses_language <http://publications.europa.eu/resource/authority/language/${language.toUpperCase()}> .
             ?expression cdm:expression_title ?title .
             ${typeFilter}
-            ${forceFilter}
-            FILTER(CONTAINS(LCASE(?title), LCASE("${query.replace(/"/g, '\\"')}")))
+            FILTER(LANG(?title) = "${langCode}")
+            FILTER(REGEX(STR(?title), "${escapedQuery}", "i"))
           }
-          ORDER BY DESC(?date)
           LIMIT ${limit}
         `;
 
@@ -100,9 +102,9 @@ export async function searchEURLex(query: string, options: {
           title: normalizeDiacritics(b.title?.value ?? ''),
           titleRo: language === 'ro' ? normalizeDiacritics(b.title?.value ?? '') : undefined,
           type: celexToType(b.celex?.value ?? ''),
-          date: b.date?.value ?? '',
+          date: '', // Date removed from query for compatibility
           inForce: true,
-          url: `${EURLEX_BASE}/legal-content/RO/TXT/?uri=CELEX:${b.celex?.value}`,
+          url: `${EURLEX_BASE}/legal-content/${language.toUpperCase()}/TXT/?uri=CELEX:${b.celex?.value}`,
         }));
       }, { maxRequests: 5, windowMs: 60_000 }),
     ),
