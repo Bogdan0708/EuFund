@@ -11,8 +11,24 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
+  codeql-sast:
+    name: CodeQL SAST
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+
   npm-audit:
     name: npm audit (PR)
     runs-on: ubuntu-latest

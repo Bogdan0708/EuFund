@@ -21,7 +21,6 @@ function generateNonce(): string {
 const publicPaths = [
   '/api/auth',
   '/api/health',
-  '/api/test-ai',  // Testing endpoint
   '/api/csp-report', // CSP violation reporting endpoint
   '/ro/autentificare',
   '/ro/inregistrare',
@@ -32,6 +31,10 @@ const publicPaths = [
   '/robots.txt',
   '/manifest.json'
 ];
+
+if (process.env.NODE_ENV === 'development') {
+  publicPaths.push('/api/test-ai'); // Testing endpoint
+}
 
 // CSRF validation helper — double-submit cookie pattern
 function validateCSRF(req: NextRequest): boolean {

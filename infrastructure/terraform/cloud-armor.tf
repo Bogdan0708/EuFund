@@ -129,6 +129,36 @@ resource "google_compute_security_policy" "cloud_run" {
     description = "Block XSS attacks"
   }
 
+  # OWASP LFI protections.
+  rule {
+    priority = 1300
+    action   = "deny(403)"
+    preview  = false
+
+    match {
+      expr {
+        expression = "evaluatePreconfiguredWaf('lfi-v33-stable')"
+      }
+    }
+
+    description = "Block local file inclusion attacks"
+  }
+
+  # OWASP RCE protections.
+  rule {
+    priority = 1400
+    action   = "deny(403)"
+    preview  = false
+
+    match {
+      expr {
+        expression = "evaluatePreconfiguredWaf('rce-v33-stable')"
+      }
+    }
+
+    description = "Block remote code execution attacks"
+  }
+
   # Default allow if no prior rule matches.
   rule {
     priority = 2147483647

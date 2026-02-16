@@ -16,7 +16,13 @@ export const analyzeDocumentSchema = z.object({
 
 export const forecastLifecycleSchema = z.object({
   projectId: z.string().min(1),
-  parameters: z.record(z.string(), z.unknown()),
+  parameters: z.object({
+    timeframeMonths: z.number().int().positive().max(120).optional(),
+    budgetEuros: z.number().nonnegative().optional(),
+    riskLevel: z.enum(['low', 'medium', 'high']).optional(),
+    sector: z.string().max(100).optional(),
+    region: z.string().max(100).optional(),
+  }),
 });
 
 export const generateProposalSchema = z.object({
