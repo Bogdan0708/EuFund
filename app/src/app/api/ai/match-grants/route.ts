@@ -1,26 +1,10 @@
 // ─── POST /api/ai/match-grants ───────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { matchGrants, type FundingCall } from '@/lib/ai/grant-matcher';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
-
-const matchInputSchema = z.object({
-  projectIdea: z.string().min(20),
-  organization: z.object({
-    orgType: z.string(),
-    orgSize: z.string().optional(),
-    caenPrimary: z.string().optional(),
-    caenSecondary: z.array(z.string()).optional(),
-    nutsRegion: z.string().optional(),
-    employeeCount: z.number().optional(),
-    annualRevenue: z.number().optional(),
-  }),
-  budget: z.number().optional(),
-  duration: z.number().optional(),
-  locale: z.enum(['ro', 'en']).optional().default('ro'),
-});
+import { matchGrantsSchema } from '@/lib/validation/schemas';
 
 // Seed data for demo - in production this comes from the database
 const DEMO_CALLS: FundingCall[] = [
@@ -86,7 +70,7 @@ export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
     try {
       const body = await request.json();
-      const parsed = matchInputSchema.safeParse(body);
+      const parsed = matchGrantsSchema.safeParse(body);
 
       if (!parsed.success) {
         return NextResponse.json(
@@ -95,14 +79,27 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const { companyProfile } = parsed.data;
+      const matcherInput = {
+        projectIdea: `${companyProfile.sector} innovation initiative for ${companyProfile.companyName}`,
+        organization: {
+          orgType: companyProfile.companyType,
+          employeeCount: companyProfile.employeeCount,
+          annualRevenue: companyProfile.annualRevenue,
+        },
+        budget: Math.max(companyProfile.annualRevenue * 0.25, 100000),
+        locale: 'ro' as const,
+      };
+
       // In production, fetch calls from DB. For now use demo data.
-      const result = await matchGrants(parsed.data, DEMO_CALLS);
+      const result = await matchGrants(matcherInput, DEMO_CALLS);
 
       await logAudit({
         userId: user.id,
         action: 'ai.generate',
         resourceType: 'grant_match',
         metadata: {
+          companyType: companyProfile.companyType,
           matchesFound: result.matches.length,
           tokensUsed: result.tokensUsed,
           userTier: user.tier,

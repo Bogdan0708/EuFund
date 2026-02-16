@@ -80,3 +80,79 @@ variable "private_subnet_cidrs" {
   description = "CIDR blocks for private subnets."
   default     = ["10.0.101.0/24", "10.0.102.0/24"]
 }
+
+variable "cloud_run_service_name" {
+  type        = string
+  description = "Existing Cloud Run service name exposed behind the external load balancer."
+}
+
+variable "cloud_run_region" {
+  type        = string
+  description = "Region where the Cloud Run service and serverless NEG are deployed."
+  default     = "europe-west1"
+}
+
+variable "cloud_run_lb_domains" {
+  type        = list(string)
+  description = "Domains to include in the Google-managed SSL certificate."
+}
+
+variable "cloud_armor_policy_name" {
+  type        = string
+  description = "Cloud Armor security policy name for the Cloud Run backend."
+  default     = "eu-funds-cloud-run-armor"
+}
+
+variable "cloud_armor_known_bad_ip_ranges" {
+  type        = list(string)
+  description = "CIDR ranges to block explicitly in Cloud Armor."
+  default     = []
+}
+
+variable "cloud_armor_geo_blocked_country_codes" {
+  type        = list(string)
+  description = "Optional ISO country codes to block (e.g. [\"RU\", \"KP\"])."
+  default     = []
+}
+
+variable "cloud_run_lb_ip_name" {
+  type        = string
+  description = "Global static IP resource name for the Cloud Run HTTPS load balancer."
+  default     = "eu-funds-cloud-run-lb-ip"
+}
+
+variable "cloud_run_managed_cert_name" {
+  type        = string
+  description = "Managed SSL certificate resource name."
+  default     = "eu-funds-cloud-run-managed-cert"
+}
+
+variable "cloud_run_neg_name" {
+  type        = string
+  description = "Serverless NEG name targeting Cloud Run."
+  default     = "eu-funds-cloud-run-neg"
+}
+
+variable "cloud_run_backend_service_name" {
+  type        = string
+  description = "Backend service name for Cloud Run NEG."
+  default     = "eu-funds-cloud-run-backend"
+}
+
+variable "cloud_run_url_map_name" {
+  type        = string
+  description = "URL map name for Cloud Run HTTPS load balancer."
+  default     = "eu-funds-cloud-run-url-map"
+}
+
+variable "cloud_run_https_proxy_name" {
+  type        = string
+  description = "Target HTTPS proxy name for Cloud Run load balancer."
+  default     = "eu-funds-cloud-run-https-proxy"
+}
+
+variable "cloud_run_https_forwarding_rule_name" {
+  type        = string
+  description = "Global forwarding rule name for HTTPS traffic to Cloud Run."
+  default     = "eu-funds-cloud-run-https-fr"
+}

@@ -1,5 +1,5 @@
 // ─── Global Authentication & Security Middleware ───────────────
-// Phase 1 Security: Auth + Rate Limiting + CSRF + Security Headers + CSP Nonces
+// Phase 1 Security: Auth + CSRF + Security Headers + CSP Nonces
 import { auth } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { NextResponse } from 'next/server';
@@ -17,43 +17,6 @@ function generateNonce(): string {
   ).toString('base64');
 }
 
-// ─── In-Memory Rate Limiter (Edge-compatible, no Redis needed) ───
-const rateLimitStore = new Map<string, number[]>();
-const MAX_RATE_LIMIT_ENTRIES = 50000;
-
-function enforceRateLimitStoreCap(): void {
-  while (rateLimitStore.size > MAX_RATE_LIMIT_ENTRIES) {
-    const oldestKey = rateLimitStore.keys().next().value;
-    if (!oldestKey) break;
-    rateLimitStore.delete(oldestKey);
-  }
-}
-
-function checkInMemoryRateLimit(key: string, max: number, windowMs: number): { allowed: boolean; remaining: number; resetTime: number } {
-  const now = Date.now();
-  const windowStart = now - windowMs;
-
-  let timestamps = rateLimitStore.get(key) || [];
-
-  timestamps = timestamps.filter(ts => ts > windowStart);
-  if (timestamps.length === 0) {
-    rateLimitStore.delete(key);
-  }
-
-  if (timestamps.length >= max) {
-    const oldestTimestamp = Math.min(...timestamps);
-    const resetTime = oldestTimestamp + windowMs;
-    return { allowed: false, remaining: 0, resetTime };
-  }
-
-  timestamps.push(now);
-  rateLimitStore.delete(key);
-  rateLimitStore.set(key, timestamps);
-  enforceRateLimitStoreCap();
-
-  return { allowed: true, remaining: max - timestamps.length, resetTime: now + windowMs };
-}
-
 // Public paths that don't require authentication
 const publicPaths = [
   '/api/auth',
@@ -69,24 +32,6 @@ const publicPaths = [
   '/robots.txt',
   '/manifest.json'
 ];
-
-// Enhanced rate limiting configuration per endpoint type
-const RATE_LIMIT_CONFIGS: Record<string, { max: number; windowMs: number }> = {
-  '/api/ai': { max: 100, windowMs: 60 * 60 * 1000 },           // 100 AI requests/hour per IP
-  '/api/v1': { max: 1000, windowMs: 60 * 60 * 1000 },          // 1000 API requests/hour per IP
-  '/api/auth/register': { max: 5, windowMs: 60 * 60 * 1000 },  // 5 registrations/hour per IP
-  '/api/documents/upload': { max: 50, windowMs: 60 * 60 * 1000 }, // 50 uploads/hour per IP
-  '/api/csp-report': { max: 100, windowMs: 60 * 60 * 1000 },   // 100 CSP reports/hour per IP
-  'default': { max: 500, windowMs: 60 * 60 * 1000 },           // Default: 500/hour
-};
-
-// Get rate limit config for a given path
-function getRateLimitConfig(pathname: string) {
-  const match = Object.entries(RATE_LIMIT_CONFIGS).find(([path]) =>
-    path !== 'default' && pathname.startsWith(path)
-  );
-  return match ? match[1] : RATE_LIMIT_CONFIGS['default'];
-}
 
 // CSRF validation helper — double-submit cookie pattern
 function validateCSRF(req: NextRequest): boolean {
@@ -110,38 +55,13 @@ export default auth(async (req) => {
   const pathname = req.nextUrl.pathname;
   const isPublic = publicPaths.some(path => pathname.startsWith(path));
 
-  // Get client IP for rate limiting and logging
+  // Get client IP for security logging
   const ip = req.ip ?? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? '127.0.0.1';
 
   // ═══════════════════════════════════════════════════════════════════
-  // 1. IP-BASED RATE LIMITING (DDoS Protection) - In-memory (edge-compatible)
+  // 1. RATE LIMITING
   // ═══════════════════════════════════════════════════════════════════
-  if (pathname.startsWith('/api/') && !pathname.startsWith('/api/health')) {
-    const config = getRateLimitConfig(pathname);
-    const rateLimitKey = `${ip}:${pathname.split('/').slice(0, 3).join('/')}`;
-    const rateLimit = checkInMemoryRateLimit(rateLimitKey, config.max, config.windowMs);
-
-    if (!rateLimit.allowed) {
-      log.warn(`[middleware] Rate limit exceeded: IP=${ip}, path=${pathname}`);
-      return NextResponse.json(
-        {
-          error: 'Rate limit exceeded',
-          code: 'RATE_LIMIT_EXCEEDED',
-          message: 'Too many requests. Please try again later.',
-          resetTime: rateLimit.resetTime
-        },
-        {
-          status: 429,
-          headers: {
-            'X-RateLimit-Limit': config.max.toString(),
-            'X-RateLimit-Remaining': '0',
-            'X-RateLimit-Reset': rateLimit.resetTime.toString(),
-            'Retry-After': Math.ceil((rateLimit.resetTime - Date.now()) / 1000).toString(),
-          }
-        }
-      );
-    }
-  }
+  // Cloud Armor enforces global per-IP rate limiting at the load balancer layer.
 
   // ═══════════════════════════════════════════════════════════════════
   // 2. AUTHENTICATION ENFORCEMENT

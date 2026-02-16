@@ -1,70 +1,24 @@
 // ─── POST /api/ai/generate-proposal ──────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { generateProposal, proposalInputSchema } from '@/lib/ai/proposal-generator';
-import { generateEnhancedProposal, type EnhancedProposalInput } from '@/lib/ai/enhanced-proposal-generator';
+import { generateProposal } from '@/lib/ai/proposal-generator';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
+import { generateProposalSchema } from '@/lib/validation/schemas';
+
+const PROGRAM_MAP: Record<string, 'horizon_europe' | 'interreg' | 'life_plus' | 'pocidif' | 'pnrr' | 'general'> = {
+  horizon_europe: 'horizon_europe',
+  interreg: 'interreg',
+  life_plus: 'life_plus',
+  pocidif: 'pocidif',
+  pnrr: 'pnrr',
+};
 
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
     try {
       const body = await request.json();
-
-      // Enhanced mode: if 'enhanced' flag is set, use new structured generator
-      if (body.enhanced) {
-      const input: EnhancedProposalInput = {
-        projectIdea: body.projectIdea,
-        programType: body.programType || 'general',
-        organizationType: body.organizationType,
-        organizationName: body.organizationName,
-        organizationCountry: body.organizationCountry || 'Romania',
-        organizationRegion: body.organizationRegion,
-        organizationSize: body.organizationSize,
-        sector: body.sector,
-        caenCode: body.caenCode,
-        budget: body.budget,
-        duration: body.duration,
-        partners: body.partners,
-        trlLevel: body.trlLevel,
-        objectives: body.objectives,
-        includeComplianceCheck: body.includeComplianceCheck ?? true,
-        locale: body.locale || 'ro',
-      };
-
-      const result = await generateEnhancedProposal(input);
-
-      await logAudit({
-        userId: user.id,
-        action: 'ai.generate',
-        resourceType: 'enhanced_proposal',
-        metadata: {
-          programType: input.programType,
-          tokensUsed: result.tokensUsed,
-          ragSourcesUsed: result.ragSourcesUsed,
-          complianceScore: result.compliance?.overallScore,
-          userTier: user.tier,
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          proposal: result.proposal,
-          compliance: result.compliance,
-          programGuidance: result.programGuidance,
-          metadata: {
-            tokensUsed: result.tokensUsed,
-            ragSourcesUsed: result.ragSourcesUsed,
-            generatedAt: new Date().toISOString(),
-            mode: 'enhanced',
-          },
-        },
-      });
-    }
-
-    // Legacy mode: original generator
-    const parsed = proposalInputSchema.safeParse(body);
+    const parsed = generateProposalSchema.safeParse(body);
 
     if (!parsed.success) {
       return NextResponse.json(
@@ -73,14 +27,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await generateProposal(parsed.data);
+    const programType = PROGRAM_MAP[parsed.data.fundingProgram] ?? 'general';
+    const proposalInput = {
+      projectIdea: parsed.data.businessDescription,
+      programType,
+      organizationType: 'company',
+      organizationName: 'Applicant Organization',
+      locale: 'ro' as const,
+    };
+
+    const result = await generateProposal(proposalInput);
 
     await logAudit({
       userId: user.id,
       action: 'ai.generate',
       resourceType: 'proposal',
       metadata: {
-        programType: parsed.data.programType,
+        fundingProgram: parsed.data.fundingProgram,
         tokensUsed: result.tokensUsed,
         ragSourcesUsed: result.ragSourcesUsed,
         userTier: user.tier,
@@ -95,7 +58,7 @@ export async function POST(request: NextRequest) {
           tokensUsed: result.tokensUsed,
           ragSourcesUsed: result.ragSourcesUsed,
           generatedAt: new Date().toISOString(),
-          mode: 'standard',
+          mode: 'validated',
         },
       },
     });

@@ -1,49 +1,16 @@
 // ─── POST /api/ai/validate-compliance ────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { validateCompliance } from '@/lib/ai/compliance-validator';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
-
-const complianceInputSchema = z.object({
-  project: z.object({
-    title: z.string().min(5),
-    summary: z.string().optional(),
-    objectives: z.string().optional(),
-    methodology: z.string().optional(),
-    budget: z.number().optional(),
-    ownContrib: z.number().optional(),
-    durationMonths: z.number().optional(),
-  }),
-  organization: z.object({
-    orgType: z.string(),
-    orgSize: z.string().optional(),
-    caenPrimary: z.string().optional(),
-    caenSecondary: z.array(z.string()).optional(),
-    nutsRegion: z.string().optional(),
-    employeeCount: z.number().optional(),
-    annualRevenue: z.number().optional(),
-  }),
-  call: z.object({
-    eligibleTypes: z.array(z.string()).optional(),
-    eligibleRegions: z.array(z.string()).optional(),
-    eligibleCaen: z.array(z.string()).optional(),
-    budgetMin: z.number().optional(),
-    budgetMax: z.number().optional(),
-    cofinancingRate: z.number().optional(),
-    durationMin: z.number().optional(),
-    durationMax: z.number().optional(),
-    submissionEnd: z.string().optional(),
-  }).optional(),
-  locale: z.enum(['ro', 'en']).optional().default('ro'),
-});
+import { validateComplianceSchema } from '@/lib/validation/schemas';
 
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
     try {
       const body = await request.json();
-      const parsed = complianceInputSchema.safeParse(body);
+      const parsed = validateComplianceSchema.safeParse(body);
 
       if (!parsed.success) {
         return NextResponse.json(
@@ -52,7 +19,19 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const result = await validateCompliance(parsed.data);
+      const result = await validateCompliance({
+        project: {
+          title: parsed.data.proposalText.slice(0, 120),
+          summary: parsed.data.proposalText,
+        },
+        organization: {
+          orgType: 'unknown',
+        },
+        call: {
+          eligibleTypes: parsed.data.regulations,
+        },
+        locale: 'ro',
+      });
 
       await logAudit({
         userId: user.id,
