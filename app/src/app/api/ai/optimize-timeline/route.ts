@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
 
     if (parsed.data.scenario) {
       const scenarioResult = await analyzeScenario(input, parsed.data.scenario as WhatIfScenario);
-      return NextResponse.json({ scenario: scenarioResult });
+      return NextResponse.json({ success: true, data: { scenario: scenarioResult } });
     }
 
     const result = await optimizeTimeline(input);

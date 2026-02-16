@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'projectId required' }, { status: 400 });
   }
   // Placeholder - in production would fetch from database
-  return NextResponse.json({ status: 'Use POST for full health analysis', projectId });
+  return NextResponse.json({ success: true, data: { status: 'Use POST for full health analysis', projectId } });
 });
 }
 
@@ -74,11 +74,14 @@ export async function POST(request: NextRequest) {
     // Advanced mode - would need full ProjectAnalysisRequest; for now return quick + supplementary
     const quickHealth = getProjectHealthQuick(projectId, projectTitle, workPackages as any, deadline ?? '', budget, spentBudget);
     return NextResponse.json({
-      ...quickHealth,
-      advancedMetrics: {
-        timeline: parsed.data.timelineData,
-        consortium: parsed.data.consortiumData,
-        budget: parsed.data.budgetData,
+      success: true,
+      data: {
+        ...quickHealth,
+        advancedMetrics: {
+          timeline: parsed.data.timelineData,
+          consortium: parsed.data.consortiumData,
+          budget: parsed.data.budgetData,
+        },
       },
     });
   } catch (error) {
