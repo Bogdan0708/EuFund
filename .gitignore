@@ -37,3 +37,4 @@ infrastructure/terraform/*.tfvars
 *.key
 
 audits/
+.abacusai/
