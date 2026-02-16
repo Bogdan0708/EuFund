@@ -109,6 +109,14 @@ export function PartnerDashboard({
                 key={partner.id}
                 className="cursor-pointer hover:shadow-md transition-shadow"
                 onClick={() => onPartnerClick?.(partner)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onPartnerClick?.(partner);
+                  }
+                }}
               >
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">

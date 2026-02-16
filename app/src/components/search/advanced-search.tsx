@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import DOMPurify from 'isomorphic-dompurify';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -110,7 +111,10 @@ function SearchResultCard({ result }: { result: SearchResult }) {
             <p className="text-xs text-muted-foreground mt-1">{result.description}</p>
             {result.highlights.length > 0 && (
               <div className="mt-2 text-xs bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded">
-                {result.highlights.map((h, i) => <p key={i} dangerouslySetInnerHTML={{ __html: h }} />)}
+                {result.highlights.map((h, i) => {
+                  const sanitizedHighlight = DOMPurify.sanitize(h);
+                  return <p key={i} dangerouslySetInnerHTML={{ __html: sanitizedHighlight }} />;
+                })}
               </div>
             )}
             <div className="flex flex-wrap gap-1 mt-2">

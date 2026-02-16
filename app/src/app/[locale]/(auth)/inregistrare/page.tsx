@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -54,7 +55,7 @@ export default function RegisterPage() {
           </CardHeader>
           <CardFooter className="justify-center">
             <Button asChild variant="link">
-              <a href="/ro/autentificare">{t('login')}</a>
+              <Link href="/ro/autentificare">{t('login')}</Link>
             </Button>
           </CardFooter>
         </Card>

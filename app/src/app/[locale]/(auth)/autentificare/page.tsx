@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,8 +34,7 @@ export default function LoginPage() {
       if (result?.error) {
         setError(t('invalidCredentials'));
       } else if (result?.ok) {
-        // Test: redirect to a simpler page first
-        window.location.href = '/ro';
+        router.push('/ro');
       }
     } catch {
       setError(t('invalidCredentials'));
@@ -84,9 +84,9 @@ export default function LoginPage() {
               {loading ? 'Se procesează...' : t('login')}
             </Button>
             <p className="text-sm text-muted-foreground">
-              <a href="/ro/inregistrare" className="text-primary hover:underline">
+              <Link href="/ro/inregistrare" className="text-primary hover:underline">
                 {t('register')}
-              </a>
+              </Link>
             </p>
           </CardFooter>
         </form>
