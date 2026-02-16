@@ -5,13 +5,12 @@ import { checkRateLimit } from '@/lib/redis/client';
 import { db, schema } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { eq } from 'drizzle-orm';
+import { LRUCache } from 'lru-cache';
 
 export type UserTier = 'free' | 'pro' | 'enterprise';
 
-// Cache user tiers in memory (short TTL to avoid stale data)
-const tierCache = new Map<string, { tier: UserTier; expiresAt: number; lastAccess: number }>();
-const TIER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const MAX_CACHE_SIZE = 10000;
+// Cache user tiers in memory with automatic LRU eviction and TTL
+const tierCache = new LRUCache<string, UserTier>({ max: 10000, ttl: 5 * 60 * 1000 });
 const log = logger.child({ component: 'auth' });
 
 /**
@@ -26,11 +25,9 @@ export function invalidateUserTierCache(userId: string): void {
  * Fail-closed: defaults to 'free' if lookup fails
  */
 async function getUserTier(userId: string): Promise<UserTier> {
-  // Check cache first
   const cached = tierCache.get(userId);
-  if (cached && cached.expiresAt > Date.now()) {
-    cached.lastAccess = Date.now();
-    return cached.tier;
+  if (cached !== undefined) {
+    return cached;
   }
 
   try {
@@ -40,21 +37,7 @@ async function getUserTier(userId: string): Promise<UserTier> {
       .limit(1);
 
     const tier: UserTier = user[0]?.tier || 'free';
-
-    // Enforce max cache size by removing least recently used entry
-    if (tierCache.size >= MAX_CACHE_SIZE) {
-      let lruKey: string | undefined;
-      let lruTime = Infinity;
-      for (const [key, entry] of tierCache) {
-        if (entry.lastAccess < lruTime) {
-          lruTime = entry.lastAccess;
-          lruKey = key;
-        }
-      }
-      if (lruKey) tierCache.delete(lruKey);
-    }
-
-    tierCache.set(userId, { tier, expiresAt: Date.now() + TIER_CACHE_TTL, lastAccess: Date.now() });
+    tierCache.set(userId, tier);
     return tier;
   } catch (error) {
     log.error({ error }, '[auth] Failed to get user tier, defaulting to free:');

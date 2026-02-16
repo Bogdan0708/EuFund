@@ -13,10 +13,8 @@ on:
         default: false
 
 env:
-  AWS_REGION: eu-west-2
-  ECR_REPOSITORY: eu-funds-app
-  ECS_CLUSTER: eu-funds-production
-  ECS_SERVICE: eu-funds-app-production
+  REGION: europe-west2
+  CLOUD_RUN_SERVICE: fondeu-platform
 
 permissions:
   id-token: write
@@ -36,49 +34,72 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Determine image tag
         id: image
         run: |
-          if [ "${{ inputs.rollback }}" == "true" ]; then
-            TAG=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --query 'services[0].deployments[1].taskDefinition' --output text | xargs aws ecs describe-task-definition --task-definition | jq -r '.taskDefinition.containerDefinitions[0].image' | cut -d: -f2)
-          elif [ -n "${{ inputs.image_tag }}" ]; then
+          if [ -n "${{ inputs.image_tag }}" ]; then
             TAG="${{ inputs.image_tag }}"
           else
             TAG="${{ github.sha }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Pre-deployment backup
+      - name: Snapshot current serving revision
+        if: ${{ inputs.rollback != true }}
+        id: current
         run: |
-          aws rds create-db-cluster-snapshot \
-            --db-cluster-identifier eu-funds-db \
-            --db-cluster-snapshot-identifier "pre-deploy-$(date +%s)" || true
+          CURRENT_REVISION=$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --region "$REGION" \
+            --format="value(status.traffic[0].revisionName)")
+          echo "revision=$CURRENT_REVISION" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy to ECS (Blue-Green)
+      - name: Deploy to Cloud Run
+        if: ${{ inputs.rollback != true }}
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
         run: |
-          aws ecs update-service \
-            --cluster $ECS_CLUSTER \
-            --service $ECS_SERVICE \
-            --force-new-deployment
+          gcloud run deploy "$CLOUD_RUN_SERVICE" \
+            --image "europe-west2-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/fondeu/platform:${IMAGE_TAG}" \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --update-secrets DATABASE_URL=DATABASE_URL:latest,NEXTAUTH_SECRET=NEXTAUTH_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,REDIS_URL=REDIS_URL:latest
 
-      - name: Wait for stable deployment
+      - name: Rollback to previous serving revision
+        if: ${{ inputs.rollback == true }}
         run: |
-          aws ecs wait services-stable \
-            --cluster $ECS_CLUSTER \
-            --services $ECS_SERVICE
+          PREVIOUS_REVISION=$(gcloud run revisions list \
+            --service "$CLOUD_RUN_SERVICE" \
+            --region "$REGION" \
+            --sort-by="~metadata.creationTimestamp" \
+            --format="value(metadata.name)" | sed -n '2p')
+
+          if [ -z "$PREVIOUS_REVISION" ]; then
+            echo "No previous revision found for rollback."
+            exit 1
+          fi
+
+          gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
+            --region "$REGION" \
+            --to-revisions "${PREVIOUS_REVISION}=100"
+
+      - name: Verify service is ready
+        run: |
+          gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --region "$REGION" \
+            --format="value(status.url)"
         timeout-minutes: 15
 
       - name: Production health check

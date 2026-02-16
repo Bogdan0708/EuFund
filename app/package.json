@@ -2,7 +2,9 @@
   "name": "app",
   "version": "0.1.0",
   "private": true,
-  "engines": { "node": ">=20.0.0" },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -52,10 +54,11 @@
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.1",
     "ioredis": "^5.9.3",
+    "lru-cache": "^11.2.6",
     "lucide-react": "^0.564.0",
     "mammoth": "^1.11.0",
     "next": "^14.2.35",
-    "next-auth": "^5.0.0-beta.25",
+    "next-auth": "5.0.0-beta.25",
     "next-intl": "^3.26.5",
     "openai": "^6.22.0",
     "pdf-parse": "^2.4.5",
