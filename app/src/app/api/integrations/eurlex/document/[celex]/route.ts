@@ -1,3 +1,4 @@
+import { requireAuth } from '@/lib/auth/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDocumentByCelex } from '@/lib/integrations/eurlex';
 
@@ -6,6 +7,7 @@ export async function GET(
   { params }: { params: { celex: string } },
 ) {
   try {
+    await requireAuth();
     const { celex } = params;
     if (!celex) {
       return NextResponse.json({ error: 'Numărul CELEX este obligatoriu' }, { status: 400 });

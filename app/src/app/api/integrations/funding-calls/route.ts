@@ -1,8 +1,10 @@
+import { requireAuth } from '@/lib/auth/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { searchFundingCalls, type ECProgramme } from '@/lib/integrations/ec-portal';
 
 export async function GET(req: NextRequest) {
   try {
+    await requireAuth();
     const { searchParams } = new URL(req.url);
     const programme = searchParams.get('programme') as ECProgramme | undefined;
     const status = (searchParams.get('status') ?? 'open') as 'open' | 'forthcoming' | 'closed';

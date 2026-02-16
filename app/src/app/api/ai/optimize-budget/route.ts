@@ -1,3 +1,4 @@
+import { withAIAuth } from '@/lib/middleware/auth';
 // ─── Budget Intelligence API ─────────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeBudget, type BudgetIntelligenceInput } from '@/lib/ai/budget-intelligence';
@@ -38,7 +39,9 @@ const budgetSchema = z.object({
   locale: z.enum(['ro', 'en']).default('en'),
 });
 
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
+  return withAIAuth(request, async (user) => {
+    const req = request;
   try {
     const body = await req.json();
     const parsed = budgetSchema.safeParse(body);
@@ -52,4 +55,5 @@ export async function POST(req: NextRequest) {
     console.error('Budget analysis error:', error);
     return NextResponse.json({ error: 'Budget analysis failed' }, { status: 500 });
   }
+});
 }

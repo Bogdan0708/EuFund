@@ -9,7 +9,10 @@ import {
 } from '@/lib/ai';
 
 export async function GET(request: NextRequest) {
-  try {
+  if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ error: 'Not available' }, { status: 404 });
+    }
+    try {
     // Test 1: Health check
     const health = await getAIHealthStatus();
     

@@ -5,6 +5,6 @@ export default {
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.DATABASE_URL || 'postgresql://fondeu:fondeu_dev_2026@localhost:5432/fondeu',
+    url: process.env.DATABASE_URL!,
   },
 } satisfies Config;

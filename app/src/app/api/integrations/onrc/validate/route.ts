@@ -1,8 +1,10 @@
+import { requireAuth } from '@/lib/auth/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { lookupCompany, validateCompanyEligibility } from '@/lib/integrations/romanian/onrc';
 
 export async function POST(req: NextRequest) {
   try {
+    await requireAuth();
     const body = await req.json();
     const { cui, requirements } = body;
 

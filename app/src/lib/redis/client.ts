@@ -39,8 +39,9 @@ export async function checkRateLimit(
   const redis = getRedis();
   
   if (!redis) {
-    // If Redis is not available, allow the request
-    return { allowed: true, remaining: maxRequests - 1, resetTime: Date.now() + windowMs };
+    // Fail-closed: deny requests when Redis is unavailable (security-critical)
+    log.warn('Redis unavailable - denying request (fail-closed)');
+    return { allowed: false, remaining: 0, resetTime: Date.now() + windowMs };
   }
 
   const now = Date.now();
@@ -62,7 +63,7 @@ export async function checkRateLimit(
     return { allowed, remaining, resetTime };
   } catch (error) {
     log.error({ error }, 'Rate limit check failed');
-    // On error, allow the request
-    return { allowed: true, remaining: maxRequests - 1, resetTime: now + windowMs };
+    // Fail-closed: deny on error (security-critical)
+    return { allowed: false, remaining: 0, resetTime: now + windowMs };
   }
 }

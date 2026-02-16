@@ -1,3 +1,4 @@
+import { withAIAuth } from '@/lib/middleware/auth';
 // ─── Deadline & Risk Assessment API ──────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeDeadlines, quickRiskCheck } from '@/lib/ai/deadline-intelligence';
@@ -22,6 +23,7 @@ const deadlineSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  return withAIAuth(request, async (user) => {
   try {
     const body = await request.json();
     const parsed = deadlineSchema.parse(body);
@@ -67,4 +69,5 @@ export async function POST(request: NextRequest) {
     console.error('Risk assessment error:', error);
     return NextResponse.json({ error: 'Assessment failed' }, { status: 500 });
   }
+});
 }

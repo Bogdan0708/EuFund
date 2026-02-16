@@ -1,3 +1,4 @@
+import { withAIAuth } from '@/lib/middleware/auth';
 // ─── Consortium Analytics API ────────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeConsortium, type ConsortiumAnalysisInput } from '@/lib/ai/consortium-analytics';
@@ -48,7 +49,9 @@ const consortiumSchema = z.object({
   locale: z.enum(['ro', 'en']).default('en'),
 });
 
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
+  return withAIAuth(request, async (user) => {
+    const req = request;
   try {
     const body = await req.json();
     const parsed = consortiumSchema.safeParse(body);
@@ -62,4 +65,5 @@ export async function POST(req: NextRequest) {
     console.error('Consortium analysis error:', error);
     return NextResponse.json({ error: 'Consortium analysis failed' }, { status: 500 });
   }
+});
 }

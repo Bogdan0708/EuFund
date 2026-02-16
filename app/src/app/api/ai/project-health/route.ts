@@ -1,3 +1,4 @@
+import { withAIAuth } from '@/lib/middleware/auth';
 // ─── Project Health Monitoring API ───────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { getProjectHealthQuick, getAdvancedProjectHealth, analyzeProject, type ProjectAnalysisRequest } from '@/lib/ai/project-intelligence';
@@ -40,16 +41,21 @@ const healthSchema = z.object({
   }).optional(),
 });
 
-export async function GET(req: NextRequest) {
+export async function GET(request: NextRequest) {
+  return withAIAuth(request, async (user) => {
+    const req = request;
   const projectId = req.nextUrl.searchParams.get('projectId');
   if (!projectId) {
     return NextResponse.json({ error: 'projectId required' }, { status: 400 });
   }
   // Placeholder - in production would fetch from database
   return NextResponse.json({ status: 'Use POST for full health analysis', projectId });
+});
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
+  return withAIAuth(request, async (user) => {
+    const req = request;
   try {
     const body = await req.json();
     const parsed = healthSchema.safeParse(body);
@@ -78,4 +84,5 @@ export async function POST(req: NextRequest) {
     console.error('Project health error:', error);
     return NextResponse.json({ error: 'Health analysis failed' }, { status: 500 });
   }
+});
 }

@@ -1,3 +1,4 @@
+import { withAIAuth } from '@/lib/middleware/auth';
 // ─── Project Analysis API ────────────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeProject, getProjectHealthQuick, type ProjectAnalysisRequest } from '@/lib/ai/project-intelligence';
@@ -52,6 +53,7 @@ const fullAnalysisSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  return withAIAuth(request, async (user) => {
   try {
     const body = await request.json();
 
@@ -78,4 +80,5 @@ export async function POST(request: NextRequest) {
     console.error('Project analysis error:', error);
     return NextResponse.json({ error: 'Analysis failed' }, { status: 500 });
   }
+});
 }

@@ -7,7 +7,7 @@ import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { createHash } from 'crypto';
 import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { join, basename } from 'path';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'documents-upload-api' });
@@ -58,6 +58,21 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+    // Validate file type by magic bytes (don't trust client MIME)
+    const magicHex = Buffer.from(buffer).subarray(0, 4).toString('hex');
+    const MAGIC_BYTES: Record<string, string[]> = {
+      '25504446': ['application/pdf'],           // %PDF
+      '504b0304': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'], // PK (DOCX/ZIP)
+    };
+    const detectedTypes = Object.entries(MAGIC_BYTES).find(([magic]) => magicHex.startsWith(magic));
+    if (file.type !== 'text/plain' && !detectedTypes) {
+      return NextResponse.json(
+        Errors.validation('file', 'Conținutul fișierului nu corespunde tipului declarat', 'File content does not match declared type').toResponse('ro'),
+        { status: 400 },
+      );
+    }
+
+        const safeName = basename(file.name).replace(/[^a-zA-Z0-9._-]/g, '_');
     const checksum = createHash('sha256').update(buffer).digest('hex');
 
     // Store file

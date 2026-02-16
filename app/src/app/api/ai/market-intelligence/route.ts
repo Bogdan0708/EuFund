@@ -1,3 +1,4 @@
+import { withAIAuth } from '@/lib/middleware/auth';
 // ─── GET /api/ai/market-intelligence ─────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { gatherMarketIntelligence, quickIntelligenceSummary } from '@/lib/ai/integration-intelligence';
@@ -5,6 +6,7 @@ import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 
 export async function GET(request: NextRequest) {
+  return withAIAuth(request, async (user) => {
   try {
     const { searchParams } = new URL(request.url);
     const sector = searchParams.get('sector') || 'general';
@@ -36,4 +38,5 @@ export async function GET(request: NextRequest) {
     console.error('[market-intelligence]', error);
     return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
   }
+});
 }

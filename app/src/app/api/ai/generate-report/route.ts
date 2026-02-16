@@ -1,3 +1,4 @@
+import { withAIAuth } from '@/lib/middleware/auth';
 // ─── Report Generation API ───────────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { generateReport, type ReportInput } from '@/lib/ai/reporting-engine';
@@ -49,7 +50,9 @@ const reportSchema = z.object({
   locale: z.enum(['ro', 'en']).default('en'),
 });
 
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
+  return withAIAuth(request, async (user) => {
+    const req = request;
   try {
     const body = await req.json();
     const parsed = reportSchema.safeParse(body);
@@ -63,4 +66,5 @@ export async function POST(req: NextRequest) {
     console.error('Report generation error:', error);
     return NextResponse.json({ error: 'Report generation failed' }, { status: 500 });
   }
+});
 }

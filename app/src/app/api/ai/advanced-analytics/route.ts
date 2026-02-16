@@ -1,3 +1,4 @@
+import { withAIAuth } from '@/lib/middleware/auth';
 // ─── POST /api/ai/advanced-analytics ─────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -26,6 +27,7 @@ const inputSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  return withAIAuth(request, async (user) => {
   try {
     const body = await request.json();
     const parsed = inputSchema.safeParse(body);
@@ -54,4 +56,5 @@ export async function POST(request: NextRequest) {
     console.error('[advanced-analytics]', error);
     return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
   }
+});
 }

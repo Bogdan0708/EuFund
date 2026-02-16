@@ -1,8 +1,10 @@
+import { requireAuth } from '@/lib/auth/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { searchEURLex } from '@/lib/integrations/eurlex';
 
 export async function GET(req: NextRequest) {
   try {
+    await requireAuth();
     const { searchParams } = new URL(req.url);
     const query = searchParams.get('q');
     if (!query) {

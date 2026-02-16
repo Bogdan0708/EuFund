@@ -1,3 +1,4 @@
+import { withAIAuth } from '@/lib/middleware/auth';
 // ─── Timeline Optimization API ───────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { optimizeTimeline, analyzeScenario, quickFeasibilityCheck, type TimelineOptimizationInput, type WhatIfScenario } from '@/lib/ai/timeline-optimizer';
@@ -41,7 +42,9 @@ const timelineSchema = z.object({
   }).optional(),
 });
 
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
+  return withAIAuth(request, async (user) => {
+    const req = request;
   try {
     const body = await req.json();
     const parsed = timelineSchema.safeParse(body);
@@ -62,4 +65,5 @@ export async function POST(req: NextRequest) {
     console.error('Timeline optimization error:', error);
     return NextResponse.json({ error: 'Timeline optimization failed' }, { status: 500 });
   }
+});
 }

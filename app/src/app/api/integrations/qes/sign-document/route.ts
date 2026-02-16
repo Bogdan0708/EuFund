@@ -1,8 +1,10 @@
+import { requireAuth } from '@/lib/auth/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSigningUrl, getWorkflowStatus } from '@/lib/integrations/qes';
 
 export async function POST(req: NextRequest) {
   try {
+    await requireAuth();
     const body = await req.json();
     const { workflowId, signerEmail, action } = body;
 
