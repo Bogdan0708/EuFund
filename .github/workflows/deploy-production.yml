@@ -65,6 +65,14 @@ jobs:
             --format="value(status.traffic[0].revisionName)")
           echo "revision=$CURRENT_REVISION" >> "$GITHUB_OUTPUT"
 
+      - name: Pre-deployment database backup
+        if: ${{ inputs.rollback != true }}
+        run: |
+          gcloud sql backups create \
+            --instance="${{ secrets.CLOUD_SQL_INSTANCE }}" \
+            --description="pre-deploy-${{ github.sha }}" \
+            --async
+
       - name: Deploy to Cloud Run
         if: ${{ inputs.rollback != true }}
         env:
