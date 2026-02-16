@@ -24,6 +24,9 @@ import {
   UsageMetrics,
   AIRouterConfig
 } from './types';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'ai-orchestrator' });
 
 export class AIOrchestrator {
   private router: AIRouter;
@@ -91,7 +94,7 @@ export class AIOrchestrator {
       return response;
 
     } catch (error: any) {
-      console.error('AI Orchestrator error:', error);
+      log.error({ error }, 'AI Orchestrator error');
       
       // Record failure for circuit breaker
       if (error instanceof AIProviderError) {
@@ -118,7 +121,7 @@ export class AIOrchestrator {
       return response;
 
     } catch (error: any) {
-      console.error('AI Orchestrator structured error:', error);
+      log.error({ error }, 'AI Orchestrator structured error');
       
       if (error instanceof AIProviderError) {
         this.router.reportFailure(error.provider as AIProvider, error);
@@ -141,7 +144,7 @@ export class AIOrchestrator {
       return await providerInstance.embed(text);
 
     } catch (error: any) {
-      console.error('AI Orchestrator embedding error:', error);
+      log.error({ error }, 'AI Orchestrator embedding error');
       throw error;
     }
   }
@@ -234,7 +237,7 @@ export class AIOrchestrator {
         }
         
         // Continue to next provider
-        console.warn(`Provider ${providerType} failed, trying next:`, error.message);
+        log.warn({ provider: providerType, error: error.message }, 'Provider failed, trying next');
       }
     }
 
@@ -265,7 +268,7 @@ export class AIOrchestrator {
           throw error;
         }
         
-        console.warn(`Provider ${providerType} failed for structured output, trying next:`, error.message);
+        log.warn({ provider: providerType, error: error.message }, 'Provider failed for structured output, trying next');
       }
     }
 
@@ -315,7 +318,7 @@ export class AIOrchestrator {
 
           case AIProvider.AI_GATEWAY:
             if (!config.baseURL) {
-              console.warn('AI Gateway requires baseURL, skipping');
+              log.warn('AI Gateway requires baseURL, skipping');
               continue;
             }
             provider = new AIGatewayProvider({
@@ -326,15 +329,15 @@ export class AIOrchestrator {
             break;
 
           default:
-            console.warn(`Unknown provider type: ${providerType}`);
+            log.warn(`Unknown provider type: ${providerType}`);
             continue;
         }
 
         this.registry.register(provider);
-        console.log(`Initialized provider: ${providerType}`);
+        log.info(`Initialized provider: ${providerType}`);
 
       } catch (error) {
-        console.error(`Failed to initialize provider ${providerType}:`, error);
+        log.error({ error, provider: providerType }, `Failed to initialize provider ${providerType}`);
       }
     }
   }

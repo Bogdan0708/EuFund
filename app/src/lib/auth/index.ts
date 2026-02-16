@@ -5,6 +5,9 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { compare } from 'bcryptjs';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'auth' });
 
 export const {
   handlers: { GET, POST },
@@ -72,10 +75,10 @@ export const {
   },
   events: {
     async signIn({ user }) {
-      console.log(`[AUDIT] User signed in: ${user.email}`);
+      log.info(`[AUDIT] User signed in: ${user.email}`);
     },
     async signOut() {
-      console.log(`[AUDIT] User signed out`);
+      log.info(`[AUDIT] User signed out`);
     },
   },
 });

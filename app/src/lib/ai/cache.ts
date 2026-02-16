@@ -4,6 +4,9 @@
 import { getRedis } from '../redis/client';
 import { AIRequest, AIResponse, CacheEntry } from './types';
 import crypto from 'crypto';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'ai-cache' });
 
 export class AICache {
   private redis;
@@ -48,7 +51,7 @@ export class AICache {
       return response;
 
     } catch (error) {
-      console.error('Cache get error:', error);
+      log.error({ error }, 'Cache get error');
       return null; // Fail gracefully
     }
   }
@@ -73,7 +76,7 @@ export class AICache {
       await this.redis.setex(cacheKey, ttl, JSON.stringify(entry));
 
     } catch (error) {
-      console.error('Cache set error:', error);
+      log.error({ error }, 'Cache set error');
       // Fail gracefully - don't throw
     }
   }
@@ -89,7 +92,7 @@ export class AICache {
       return keys.length;
 
     } catch (error) {
-      console.error('Cache invalidation error:', error);
+      log.error({ error }, 'Cache invalidation error');
       return 0;
     }
   }
@@ -136,7 +139,7 @@ export class AICache {
       };
 
     } catch (error) {
-      console.error('Cache stats error:', error);
+      log.error({ error }, 'Cache stats error');
       return { totalEntries: 0, memoryUsage: '0B', hitRate: 0 };
     }
   }
@@ -254,7 +257,7 @@ export async function warmCache(commonRequests: AIRequest[]): Promise<void> {
   const cache = getAICache();
   if (!cache.isEnabled()) return;
 
-  console.log(`Warming AI cache with ${commonRequests.length} common requests...`);
+  log.info(`Warming AI cache with ${commonRequests.length} common requests...`);
   
   // This would be called with pre-computed responses for common requests
   // Implementation depends on having a way to generate responses

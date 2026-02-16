@@ -5,6 +5,9 @@
 
 import { withRateLimit } from '../common/rate-limiter';
 import { withCircuitBreaker } from '../common/circuit-breaker';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'mysmis' });
 
 const RATE_KEY = 'mysmis';
 
@@ -36,7 +39,7 @@ export async function getProjectStatus(projectCode: string): Promise<MySMISProje
   const baseUrl = process.env.MYSMIS_BASE_URL ?? 'https://mysmis2021.gov.ro/api';
 
   if (!apiKey) {
-    console.warn('MySMIS API key not configured — returning null');
+    log.warn('MySMIS API key not configured — returning null');
     return null;
   }
 
@@ -68,7 +71,7 @@ export async function getOpenCalls(): Promise<MySMISCallInfo[]> {
   const baseUrl = process.env.MYSMIS_BASE_URL ?? 'https://mysmis2021.gov.ro/api';
 
   if (!apiKey) {
-    console.warn('MySMIS API key not configured — returning empty');
+    log.warn('MySMIS API key not configured — returning empty');
     return [];
   }
 

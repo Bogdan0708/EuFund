@@ -8,6 +8,9 @@ import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'documents-api' });
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 
@@ -66,7 +69,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[documents:get]', error);
+    log.error({ error }, '[documents:get]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }

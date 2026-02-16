@@ -2,6 +2,7 @@
   "name": "app",
   "version": "0.1.0",
   "private": true,
+  "engines": { "node": ">=20.0.0" },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -49,7 +50,6 @@
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "crypto": "^1.0.1",
     "drizzle-orm": "^0.45.1",
     "ioredis": "^5.9.3",
     "lucide-react": "^0.564.0",

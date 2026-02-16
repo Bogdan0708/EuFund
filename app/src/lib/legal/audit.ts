@@ -3,6 +3,9 @@
 
 import { db } from '@/lib/db';
 import { auditLog } from '@/lib/db/schema';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'legal-audit' });
 
 export type AuditAction =
   // Auth
@@ -81,11 +84,11 @@ export async function logAudit(entry: AuditEntry): Promise<void> {
   } catch (error) {
     // Audit logging should never crash the application
     // But we must log the failure somewhere
-    console.error('[AUDIT_FAILURE]', JSON.stringify({
+    log.error({
       action: entry.action,
       error: error instanceof Error ? error.message : 'Unknown error',
       timestamp: new Date().toISOString(),
-    }));
+    }, '[AUDIT_FAILURE]');
   }
 }
 

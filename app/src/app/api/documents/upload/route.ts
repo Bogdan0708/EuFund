@@ -8,6 +8,9 @@ import { logAudit } from '@/lib/legal/audit';
 import { createHash } from 'crypto';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'documents-upload-api' });
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -103,7 +106,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[documents:upload]', error);
+    log.error({ error }, '[documents:upload]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }

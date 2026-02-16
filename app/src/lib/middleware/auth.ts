@@ -9,7 +9,7 @@ import { eq } from 'drizzle-orm';
 export type UserTier = 'free' | 'pro' | 'enterprise';
 
 // Cache user tiers in memory (short TTL to avoid stale data)
-const tierCache = new Map<string, { tier: UserTier; expiresAt: number }>();
+const tierCache = new Map<string, { tier: UserTier; expiresAt: number; lastAccess: number }>();
 const TIER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const MAX_CACHE_SIZE = 10000;
 const log = logger.child({ component: 'auth' });
@@ -29,6 +29,7 @@ async function getUserTier(userId: string): Promise<UserTier> {
   // Check cache first
   const cached = tierCache.get(userId);
   if (cached && cached.expiresAt > Date.now()) {
+    cached.lastAccess = Date.now();
     return cached.tier;
   }
 
@@ -40,13 +41,20 @@ async function getUserTier(userId: string): Promise<UserTier> {
 
     const tier: UserTier = user[0]?.tier || 'free';
 
-    // Enforce max cache size by removing oldest entry if needed
+    // Enforce max cache size by removing least recently used entry
     if (tierCache.size >= MAX_CACHE_SIZE) {
-      const oldestKey = tierCache.keys().next().value;
-      if (oldestKey) tierCache.delete(oldestKey);
+      let lruKey: string | undefined;
+      let lruTime = Infinity;
+      for (const [key, entry] of tierCache) {
+        if (entry.lastAccess < lruTime) {
+          lruTime = entry.lastAccess;
+          lruKey = key;
+        }
+      }
+      if (lruKey) tierCache.delete(lruKey);
     }
 
-    tierCache.set(userId, { tier, expiresAt: Date.now() + TIER_CACHE_TTL });
+    tierCache.set(userId, { tier, expiresAt: Date.now() + TIER_CACHE_TTL, lastAccess: Date.now() });
     return tier;
   } catch (error) {
     log.error({ error }, '[auth] Failed to get user tier, defaulting to free:');

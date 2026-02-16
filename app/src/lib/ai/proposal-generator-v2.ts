@@ -11,6 +11,9 @@ import {
 } from './client-v2';
 import { hybridSearch } from '@/lib/rag/pipeline';
 import { normalizeDiacritics } from '@/lib/utils/romanian';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'proposal-generator-v2' });
 
 // ─── Enhanced Input Schema ──────────────────────────────────────────
 
@@ -328,7 +331,7 @@ Generate the title, acronym, summary, context, objectives, methodology with work
     };
 
   } catch (error: any) {
-    console.error('Enhanced proposal generation error:', error);
+    log.error({ error }, 'Enhanced proposal generation error');
     
     // Graceful fallback: Re-throw with enhanced context
     throw new Error(`Enhanced proposal generation failed: ${error.message}. Provider routing and Romanian optimization encountered issues.`);

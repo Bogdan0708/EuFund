@@ -8,6 +8,9 @@ import { validateCompliance } from '@/lib/ai/compliance-validator';
 import { logAudit } from '@/lib/legal/audit';
 import { listComplianceChecks, createComplianceCheck, getComplianceOverview } from '@/lib/services/compliance';
 import { eq, and, isNull } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'compliance-api' });
 
 type Params = { params: { id: string } };
 
@@ -36,7 +39,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[compliance:list]', error);
+    log.error({ error }, '[compliance:list]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }
@@ -144,7 +147,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[projects:compliance]', error);
+    log.error({ error }, '[projects:compliance]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }

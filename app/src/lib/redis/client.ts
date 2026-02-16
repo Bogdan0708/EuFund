@@ -1,5 +1,8 @@
 // ─── Redis Client Configuration ───────────────────────────
 import Redis from 'ioredis';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'redis-client' });
 
 let redis: Redis | null = null;
 
@@ -16,11 +19,11 @@ export function getRedis(): Redis | null {
     });
 
     redis.on('error', (error) => {
-      console.error('Redis connection error:', error);
+      log.error({ error }, 'Redis connection error');
     });
 
     redis.on('connect', () => {
-      console.log('Redis connected successfully');
+      log.info('Redis connected successfully');
     });
   }
 
@@ -58,7 +61,7 @@ export async function checkRateLimit(
 
     return { allowed, remaining, resetTime };
   } catch (error) {
-    console.error('Rate limit check failed:', error);
+    log.error({ error }, 'Rate limit check failed');
     // On error, allow the request
     return { allowed: true, remaining: maxRequests - 1, resetTime: now + windowMs };
   }

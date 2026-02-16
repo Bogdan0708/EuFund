@@ -6,6 +6,9 @@ import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { analyzeCompliance, type ComplianceCheckInput } from '@/lib/ai/compliance-engine';
 import { listComplianceChecks } from '@/lib/services/compliance';
 import { eq, and, isNull } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'compliance-ai-score-api' });
 
 type Params = { params: { id: string } };
 
@@ -86,7 +89,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[compliance:ai-score]', error);
+    log.error({ error }, '[compliance:ai-score]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }

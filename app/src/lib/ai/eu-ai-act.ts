@@ -99,16 +99,16 @@ export function checkHumanOversight(feature: string, confidence: number): Oversi
   const classification = AI_FEATURE_CLASSIFICATIONS[feature];
   const needsOversight = classification?.obligations.includes('human_oversight') || false;
 
-  // High confidence predictions should be flagged — could indicate overfitting or bias
-  const highConfidenceThreshold = 0.95;
-  const flagHighConfidence = confidence > highConfidenceThreshold;
+  // Low confidence predictions should be flagged for human review
+  const lowConfidenceThreshold = 0.5;
+  const flagLowConfidence = confidence < lowConfidenceThreshold;
 
-  const requiresReview = needsOversight || flagHighConfidence;
+  const requiresReview = needsOversight || flagLowConfidence;
 
   const flag: OversightFlag = {
     requiresReview,
-    reason: flagHighConfidence
-      ? `High confidence (${(confidence * 100).toFixed(1)}%) — verify for potential bias`
+    reason: flagLowConfidence
+      ? `Low confidence (${(confidence * 100).toFixed(1)}%) — requires human verification`
       : needsOversight
         ? `Feature '${feature}' requires human oversight per EU AI Act`
         : 'No oversight required',

@@ -10,6 +10,9 @@ import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole, getPaginationParams } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull, ilike, inArray, desc, count, sql } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'projects-api' });
 
 export async function GET(req: NextRequest) {
   try {
@@ -88,7 +91,7 @@ export async function GET(req: NextRequest) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[projects:list]', error);
+    log.error({ error }, '[projects:list]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }
@@ -142,7 +145,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[projects:create]', error);
+    log.error({ error }, '[projects:create]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }
