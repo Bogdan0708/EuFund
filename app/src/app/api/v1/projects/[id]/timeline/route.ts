@@ -44,7 +44,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const body = await req.json();
     if (!body.taskName || !body.startDate || !body.endDate) {
-      return NextResponse.json({ success: false, error: 'taskName, startDate, and endDate are required' }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'taskName, startDate, and endDate are required' },
+        },
+        { status: 400 },
+      );
     }
 
     const item = await createTimelineItem(id, body);

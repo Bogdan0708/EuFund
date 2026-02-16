@@ -7,6 +7,7 @@ const nextConfig = {
   eslint: {
     // ESLint errors are pre-existing across many files (no-explicit-any, unused-vars)
     // These don't affect runtime behavior - fix incrementally in Phase 2
+    // TODO: Remove `ignoreDuringBuilds` once lint errors are fixed across the app.
     ignoreDuringBuilds: true,
   },
   async headers() {

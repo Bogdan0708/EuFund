@@ -54,7 +54,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     logger.error({ error: error }, 'Budget analysis error:');
-    return NextResponse.json({ error: 'Budget analysis failed' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Budget analysis failed' } },
+      { status: 500 },
+    );
   }
 });
 }

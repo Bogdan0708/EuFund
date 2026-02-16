@@ -36,10 +36,10 @@ export async function GET(request: NextRequest) {
         tokensUsed: result.tokensUsed,
         cached: result.cached
       } as any;
-    } catch (error: any) {
+    } catch (error: unknown) {
       generationTest = {
         success: false,
-        error: error.message
+        error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
 
@@ -61,10 +61,10 @@ export async function GET(request: NextRequest) {
           recommendations: analysis.recommendations.slice(0, 3) // Limit for response size
         }
       } as any;
-    } catch (error: any) {
+    } catch (error: unknown) {
       romanianTest = {
         success: false,
-        error: error.message
+        error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
 
@@ -89,10 +89,10 @@ export async function GET(request: NextRequest) {
           tokensUsed: result.tokensUsed,
           romanianOptimization: result.romanianOptimization
         } as any;
-      } catch (error: any) {
+      } catch (error: unknown) {
         romanianGenerationTest = {
           success: false,
-          error: error.message
+          error: error instanceof Error ? error.message : 'Unknown error'
         };
       }
     }
@@ -115,11 +115,11 @@ export async function GET(request: NextRequest) {
       }
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const details = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({
-      error: 'Integration test failed',
-      details: error.message,
-      status: 'error'
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: `Integration test failed: ${details}` },
     }, { status: 500 });
   }
 }

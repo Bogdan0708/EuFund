@@ -23,12 +23,16 @@ export async function POST(req: NextRequest) {
       : { eligible: company.isActive, issues: company.isActive ? [] : ['Compania nu este activă'] };
 
     return NextResponse.json({ company, eligibility });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Eroare necunoscută';
     logger.error({ error: error }, 'ONRC validation error:');
-    const status = error.message?.includes('CUI invalid') ? 400
-      : error.name === 'CircuitOpenError' ? 503 : 500;
+    const status = message.includes('CUI invalid') ? 400
+      : error instanceof Error && error.name === 'CircuitOpenError' ? 503 : 500;
     return NextResponse.json(
-      { error: error.message ?? 'Eroare la validarea companiei' },
+      {
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: message || 'Eroare la validarea companiei' },
+      },
       { status },
     );
   }

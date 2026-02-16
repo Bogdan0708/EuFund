@@ -44,7 +44,10 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const body = await req.json();
     if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) {
-      return NextResponse.json({ success: false, error: 'Name is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'Name is required' } },
+        { status: 400 },
+      );
     }
 
     const wp = await createWorkPackage(id, body);

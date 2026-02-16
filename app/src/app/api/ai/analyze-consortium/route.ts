@@ -64,7 +64,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     logger.error({ error: error }, 'Consortium analysis error:');
-    return NextResponse.json({ error: 'Consortium analysis failed' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Consortium analysis failed' } },
+      { status: 500 },
+    );
   }
 });
 }

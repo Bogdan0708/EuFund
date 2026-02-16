@@ -20,11 +20,16 @@ export async function GET(
     }
 
     return NextResponse.json({ document });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Eroare necunoscută';
+    const status = error instanceof Error && error.name === 'CircuitOpenError' ? 503 : 500;
     logger.error({ error: error }, 'EUR-Lex document error:');
     return NextResponse.json(
-      { error: 'Eroare la obținerea documentului', details: error.message },
-      { status: error.name === 'CircuitOpenError' ? 503 : 500 },
+      {
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: `Eroare la obținerea documentului: ${message}` },
+      },
+      { status },
     );
   }
 }

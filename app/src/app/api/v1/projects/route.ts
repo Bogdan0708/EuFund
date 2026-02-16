@@ -34,8 +34,10 @@ export async function GET(req: NextRequest) {
     if (orgIds.length === 0) {
       return NextResponse.json({
         success: true,
-        data: [],
-        meta: { page, perPage, total: 0, totalPages: 0 },
+        data: {
+          items: [],
+          meta: { page, perPage, total: 0, totalPages: 0 },
+        },
       });
     }
 
@@ -84,8 +86,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: results,
-      meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
+      data: {
+        items: results,
+        meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
+      },
     });
   } catch (error) {
     if (error instanceof FondEUError) {

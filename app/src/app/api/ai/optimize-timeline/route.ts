@@ -64,7 +64,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     logger.error({ error: error }, 'Timeline optimization error:');
-    return NextResponse.json({ error: 'Timeline optimization failed' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Timeline optimization failed' } },
+      { status: 500 },
+    );
   }
 });
 }

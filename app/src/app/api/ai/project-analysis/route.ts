@@ -76,10 +76,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: 'Invalid input', details: error.issues }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: { code: 'INTERNAL_ERROR', message: 'Invalid input' } },
+        { status: 400 },
+      );
     }
     logger.error({ error: error }, 'Project analysis error:');
-    return NextResponse.json({ error: 'Analysis failed' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Analysis failed' } },
+      { status: 500 },
+    );
   }
 });
 }

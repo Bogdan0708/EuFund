@@ -14,11 +14,16 @@ export async function GET(req: NextRequest) {
 
     const calls = await searchFundingCalls({ programme: programme ?? undefined, status, query, limit });
     return NextResponse.json({ calls, count: calls.length });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Eroare necunoscută';
+    const status = error instanceof Error && error.name === 'CircuitOpenError' ? 503 : 500;
     logger.error({ error: error }, 'Funding calls error:');
     return NextResponse.json(
-      { error: 'Eroare la obținerea apelurilor de finanțare', details: error.message },
-      { status: error.name === 'CircuitOpenError' ? 503 : 500 },
+      {
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: `Eroare la obținerea apelurilor de finanțare: ${message}` },
+      },
+      { status },
     );
   }
 }

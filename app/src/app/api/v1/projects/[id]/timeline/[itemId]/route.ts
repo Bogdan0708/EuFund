@@ -70,7 +70,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     await deleteTimelineItem(id, itemId);
-    return NextResponse.json({ success: true, message: 'Timeline item deleted' });
+    return NextResponse.json({ success: true, data: { message: 'Timeline item deleted' } });
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });

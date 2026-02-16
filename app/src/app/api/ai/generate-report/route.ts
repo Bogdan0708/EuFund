@@ -65,7 +65,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     logger.error({ error: error }, 'Report generation error:');
-    return NextResponse.json({ error: 'Report generation failed' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Report generation failed' } },
+      { status: 500 },
+    );
   }
 });
 }

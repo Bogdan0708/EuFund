@@ -41,8 +41,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
     if (!companyData) {
       return NextResponse.json({
         success: false,
-        data: {
-          verified: false,
+        error: {
+          code: 'NOT_FOUND',
           message: `Compania cu CUI ${org.cui} nu a fost găsită în registrele publice.`,
         },
       }, { status: 404 });

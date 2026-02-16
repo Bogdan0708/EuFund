@@ -63,12 +63,14 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: results,
-      meta: {
-        page,
-        perPage,
-        total,
-        totalPages: Math.ceil(total / perPage),
+      data: {
+        items: results,
+        meta: {
+          page,
+          perPage,
+          total,
+          totalPages: Math.ceil(total / perPage),
+        },
       },
     });
   } catch (error) {

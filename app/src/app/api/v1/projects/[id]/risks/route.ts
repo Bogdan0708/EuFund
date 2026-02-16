@@ -23,12 +23,16 @@ export async function GET(req: NextRequest, { params }: Params) {
     const includeOverview = req.nextUrl.searchParams.get('overview') === 'true';
     const risks = await listRisks(id);
 
-    const response: Record<string, unknown> = { success: true, data: risks };
     if (includeOverview) {
-      response.overview = await getRiskOverview(id);
+      return NextResponse.json({
+        success: true,
+        data: {
+          risks,
+          overview: await getRiskOverview(id),
+        },
+      });
     }
-
-    return NextResponse.json(response);
+    return NextResponse.json({ success: true, data: risks });
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
@@ -51,13 +55,22 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const body = await req.json();
     if (!body.riskType) {
-      return NextResponse.json({ success: false, error: 'riskType is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'riskType is required' } },
+        { status: 400 },
+      );
     }
     if (body.probability != null && (body.probability < 1 || body.probability > 5)) {
-      return NextResponse.json({ success: false, error: 'probability must be 1-5' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'probability must be 1-5' } },
+        { status: 400 },
+      );
     }
     if (body.impact != null && (body.impact < 1 || body.impact > 5)) {
-      return NextResponse.json({ success: false, error: 'impact must be 1-5' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'impact must be 1-5' } },
+        { status: 400 },
+      );
     }
 
     const risk = await createRisk(id, body);
@@ -84,7 +97,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
     const body = await req.json();
     if (!body.riskId) {
-      return NextResponse.json({ success: false, error: 'riskId is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'riskId is required' } },
+        { status: 400 },
+      );
     }
 
     const risk = await updateRisk(id, body.riskId, body);

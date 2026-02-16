@@ -133,7 +133,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       resourceId: id,
     });
 
-    return NextResponse.json({ success: true, message: 'Organizația a fost ștearsă.' });
+    return NextResponse.json({ success: true, data: { message: 'Organizația a fost ștearsă.' } });
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });

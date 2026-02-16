@@ -28,11 +28,16 @@ export async function POST(req: NextRequest) {
 
     const signingUrl = await getSigningUrl(workflowId, signerEmail);
     return NextResponse.json({ signingUrl });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Eroare necunoscută';
+    const status = error instanceof Error && error.name === 'CircuitOpenError' ? 503 : 500;
     logger.error({ error: error }, 'QES sign error:');
     return NextResponse.json(
-      { error: 'Eroare la procesul de semnare', details: error.message },
-      { status: error.name === 'CircuitOpenError' ? 503 : 500 },
+      {
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: `Eroare la procesul de semnare: ${message}` },
+      },
+      { status },
     );
   }
 }

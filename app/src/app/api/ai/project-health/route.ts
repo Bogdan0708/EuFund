@@ -83,7 +83,10 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     logger.error({ error: error }, 'Project health error:');
-    return NextResponse.json({ error: 'Health analysis failed' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Health analysis failed' } },
+      { status: 500 },
+    );
   }
 });
 }

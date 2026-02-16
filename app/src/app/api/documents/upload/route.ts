@@ -1,7 +1,7 @@
 // ─── Document Upload API ─────────────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { documents } from '@/lib/db/schema';
+import { documents, docTypeEnum } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
@@ -29,7 +29,11 @@ export async function POST(req: NextRequest) {
     const file = formData.get('file') as File | null;
     const orgId = formData.get('orgId') as string | null;
     const projectId = formData.get('projectId') as string | null;
-    const docType = (formData.get('docType') as string) || 'altul';
+    const rawDocType = (formData.get('docType') as string) || 'altul';
+    type DocumentType = (typeof docTypeEnum.enumValues)[number];
+    const docType: DocumentType = docTypeEnum.enumValues.includes(rawDocType as DocumentType)
+      ? (rawDocType as DocumentType)
+      : 'altul';
 
     if (!file) {
       return NextResponse.json(
@@ -93,7 +97,7 @@ export async function POST(req: NextRequest) {
           orgId: orgId || undefined,
           projectId: projectId || undefined,
           uploadedBy: user.id,
-          docType: docType as any,
+          docType,
           filename: safeName,
           mimeType: file.type,
           fileSize: file.size,

@@ -24,11 +24,16 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ workflow }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Eroare necunoscută';
+    const status = error instanceof Error && error.name === 'CircuitOpenError' ? 503 : 500;
     logger.error({ error: error }, 'QES prepare error:');
     return NextResponse.json(
-      { error: 'Eroare la pregătirea documentului pentru semnare', details: error.message },
-      { status: error.name === 'CircuitOpenError' ? 503 : 500 },
+      {
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: `Eroare la pregătirea documentului pentru semnare: ${message}` },
+      },
+      { status },
     );
   }
 }

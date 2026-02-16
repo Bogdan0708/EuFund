@@ -154,7 +154,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       resourceId: id,
     });
 
-    return NextResponse.json({ success: true, message: 'Proiectul a fost șters.' });
+    return NextResponse.json({ success: true, data: { message: 'Proiectul a fost șters.' } });
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
