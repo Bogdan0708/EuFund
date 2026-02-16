@@ -3,7 +3,9 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { generateText, generateObject, embed } from 'ai';
 import { z } from 'zod';
 import { CircuitBreaker, Errors, withRetry } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 import { AI_CONFIG } from './config';
+const log = logger.child({ component: 'ai-client' });
 
 // OpenAI provider instance
 const openai = createOpenAI({
@@ -24,22 +26,27 @@ export async function aiGenerate(opts: {
   temperature?: number;
   maxTokens?: number;
 }): Promise<{ text: string; tokensUsed: number }> {
-  return generationBreaker.execute(() =>
-    withRetry(async () => {
-      const result = await generateText({
-        model: openai(AI_CONFIG.generation.model),
-        system: opts.system,
-        prompt: opts.prompt,
-        temperature: opts.temperature ?? AI_CONFIG.generation.temperature,
-        maxOutputTokens: opts.maxTokens ?? AI_CONFIG.generation.maxTokens,
-        abortSignal: AbortSignal.timeout(30000),
-      });
-      return {
-        text: result.text,
-        tokensUsed: (result.usage?.totalTokens) ?? 0,
-      };
-    })
-  );
+  const startTime = performance.now();
+  try {
+    return await generationBreaker.execute(() =>
+      withRetry(async () => {
+        const result = await generateText({
+          model: openai(AI_CONFIG.generation.model),
+          system: opts.system,
+          prompt: opts.prompt,
+          temperature: opts.temperature ?? AI_CONFIG.generation.temperature,
+          maxOutputTokens: opts.maxTokens ?? AI_CONFIG.generation.maxTokens,
+          abortSignal: AbortSignal.timeout(30000),
+        });
+        return {
+          text: result.text,
+          tokensUsed: (result.usage?.totalTokens) ?? 0,
+        };
+      })
+    );
+  } finally {
+    log.info({ operation: 'aiGenerate', durationMs: Number((performance.now() - startTime).toFixed(2)) }, 'AI call completed');
+  }
 }
 
 /**
@@ -52,42 +59,52 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
   schemaName: string;
   temperature?: number;
 }): Promise<{ object: z.infer<T>; tokensUsed: number }> {
-  return analysisBreaker.execute(() =>
-    withRetry(async () => {
-      const result = await generateObject({
-        model: openai(AI_CONFIG.analysis.model),
-        system: opts.system,
-        prompt: opts.prompt,
-        schema: opts.schema,
-        schemaName: opts.schemaName,
-        temperature: opts.temperature ?? AI_CONFIG.analysis.temperature,
-        abortSignal: AbortSignal.timeout(30000),
-      });
-      return {
-        object: result.object as z.infer<T>,
-        tokensUsed: (result.usage?.totalTokens) ?? 0,
-      };
-    })
-  );
+  const startTime = performance.now();
+  try {
+    return await analysisBreaker.execute(() =>
+      withRetry(async () => {
+        const result = await generateObject({
+          model: openai(AI_CONFIG.analysis.model),
+          system: opts.system,
+          prompt: opts.prompt,
+          schema: opts.schema,
+          schemaName: opts.schemaName,
+          temperature: opts.temperature ?? AI_CONFIG.analysis.temperature,
+          abortSignal: AbortSignal.timeout(30000),
+        });
+        return {
+          object: result.object as z.infer<T>,
+          tokensUsed: (result.usage?.totalTokens) ?? 0,
+        };
+      })
+    );
+  } finally {
+    log.info({ operation: 'aiGenerateObject', durationMs: Number((performance.now() - startTime).toFixed(2)) }, 'AI call completed');
+  }
 }
 
 /**
  * Generate embeddings for text
  */
 export async function aiEmbed(text: string): Promise<{ embedding: number[]; tokensUsed: number }> {
-  return embeddingBreaker.execute(() =>
-    withRetry(async () => {
-      const result = await embed({
-        model: openai.embedding(AI_CONFIG.embedding.model),
-        value: text,
-        abortSignal: AbortSignal.timeout(30000),
-      });
-      return {
-        embedding: result.embedding as number[],
-        tokensUsed: (result.usage?.tokens) ?? 0,
-      };
-    })
-  );
+  const startTime = performance.now();
+  try {
+    return await embeddingBreaker.execute(() =>
+      withRetry(async () => {
+        const result = await embed({
+          model: openai.embedding(AI_CONFIG.embedding.model),
+          value: text,
+          abortSignal: AbortSignal.timeout(30000),
+        });
+        return {
+          embedding: result.embedding as number[],
+          tokensUsed: (result.usage?.tokens) ?? 0,
+        };
+      })
+    );
+  } finally {
+    log.info({ operation: 'aiEmbed', durationMs: Number((performance.now() - startTime).toFixed(2)) }, 'AI call completed');
+  }
 }
 
 /**
@@ -115,26 +132,31 @@ export async function queryRomanianBert(opts: {
   inputs: string;
   task?: 'fill-mask' | 'ner' | 'text-classification';
 }): Promise<unknown> {
+  const startTime = performance.now();
   const endpoint = AI_CONFIG.romanianBert.endpoint;
   const token = process.env.HUGGINGFACE_TOKEN;
 
-  if (!token) {
-    throw Errors.serviceUnavailable('Romanian BERT (no HuggingFace token configured)');
+  try {
+    if (!token) {
+      throw Errors.serviceUnavailable('Romanian BERT (no HuggingFace token configured)');
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ inputs: opts.inputs }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      throw Errors.serviceUnavailable('Romanian BERT');
+    }
+
+    return response.json();
+  } finally {
+    log.info({ operation: 'queryRomanianBert', durationMs: Number((performance.now() - startTime).toFixed(2)) }, 'AI call completed');
   }
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ inputs: opts.inputs }),
-    signal: AbortSignal.timeout(30000),
-  });
-
-  if (!response.ok) {
-    throw Errors.serviceUnavailable('Romanian BERT');
-  }
-
-  return response.json();
 }

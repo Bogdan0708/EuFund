@@ -18,6 +18,7 @@ import {
   getRomanianProviderRanking,
   estimateCost
 } from './provider-matrix';
+import { LRUCache } from 'lru-cache';
 
 // ─── Language Detection ──────────────────────────────────────────────
 
@@ -112,8 +113,14 @@ export function analyzeTaskComplexity(request: AIRequest): {
 // ─── Provider Selection Logic ────────────────────────────────────────
 
 export class AIRouter {
-  private circuitBreakerStates: Map<AIProvider, { failures: number; lastFailure?: Date }> = new Map();
-  private usageCache: Map<string, { cost: number; latency: number; timestamp: Date }> = new Map();
+  private circuitBreakerStates = new LRUCache<AIProvider, { failures: number; lastFailure?: Date }>({
+    max: 50,
+    ttl: 5 * 60 * 1000,
+  });
+  private usageCache = new LRUCache<string, { cost: number; latency: number; timestamp: Date }>({
+    max: 5000,
+    ttl: 10 * 60 * 1000,
+  });
   
   constructor(private config: {
     enableCircuitBreaker: boolean;

@@ -6,6 +6,7 @@ import { analyzeDeadlines, quickRiskCheck, type ProjectDeadlineInput, type WorkP
 import { assessRisk, type RiskAssessmentInput, type RiskAssessment } from './risk-assessment';
 import { analyzeCompliance, type ComplianceCheckInput, type ComplianceAnalysis } from './compliance-engine';
 import { EU_PROGRAMS, type EUProgramKey } from './eu-knowledge-base';
+import { LRUCache } from 'lru-cache';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -68,14 +69,14 @@ export interface ProgramInsights {
 
 // ─── Cache ───────────────────────────────────────────────────────
 
-const analysisCache = new Map<string, { result: FullProjectAnalysis; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const ANALYSIS_CACHE_VERSION = 'v1';
+const analysisCache = new LRUCache<string, FullProjectAnalysis>({
+  max: 1000,
+  ttl: 5 * 60 * 1000,
+});
 
 function getCached(key: string): FullProjectAnalysis | null {
-  const entry = analysisCache.get(key);
-  if (entry && Date.now() - entry.timestamp < CACHE_TTL) return entry.result;
-  analysisCache.delete(key);
-  return null;
+  return analysisCache.get(key) ?? null;
 }
 
 // ─── Quick Health Check (no AI calls) ────────────────────────────
@@ -116,7 +117,7 @@ export function getProjectHealthQuick(
 // ─── Full Project Analysis (orchestrates all AI features) ────────
 
 export async function analyzeProject(request: ProjectAnalysisRequest): Promise<FullProjectAnalysis> {
-  const cacheKey = `${request.projectId}-${request.locale}`;
+  const cacheKey = `${ANALYSIS_CACHE_VERSION}:${request.projectId}-${request.locale ?? 'en'}`;
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
@@ -285,7 +286,7 @@ export async function analyzeProject(request: ProjectAnalysisRequest): Promise<F
     programInsights,
   };
 
-  analysisCache.set(cacheKey, { result, timestamp: Date.now() });
+  analysisCache.set(cacheKey, result);
   return result;
 }
 

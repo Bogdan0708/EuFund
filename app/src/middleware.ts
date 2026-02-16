@@ -4,17 +4,11 @@ import { auth } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-const log = logger.child({ component: 'middleware' });
+const baseLog = logger.child({ component: 'middleware' });
 
 // ─── CSP Nonce Generation ───
 function generateNonce(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  // Fallback for environments without crypto.randomUUID
-  return Buffer.from(
-    Array.from({ length: 16 }, () => Math.floor(Math.random() * 256))
-  ).toString('base64');
+  return crypto.randomUUID();
 }
 
 // Public paths that don't require authentication
@@ -55,6 +49,8 @@ function validateCSRF(req: NextRequest): boolean {
 }
 
 export default auth(async (req) => {
+  const requestId = crypto.randomUUID();
+  const log = baseLog.child({ requestId });
   const pathname = req.nextUrl.pathname;
   const isPublic = publicPaths.some(path => pathname.startsWith(path));
 
@@ -72,15 +68,19 @@ export default auth(async (req) => {
   if (!isPublic && !req.auth) {
     if (pathname.startsWith('/api/')) {
       log.warn(`[middleware] Unauthorized API access: IP=${ip}, path=${pathname}`);
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Authentication required', code: 'UNAUTHORIZED' },
         { status: 401 }
       );
+      response.headers.set('x-request-id', requestId);
+      return response;
     }
 
     // Redirect to login for web pages
     const loginUrl = pathname.startsWith('/en') ? '/en/login' : '/ro/autentificare';
-    return NextResponse.redirect(new URL(loginUrl, req.url));
+    const response = NextResponse.redirect(new URL(loginUrl, req.url));
+    response.headers.set('x-request-id', requestId);
+    return response;
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -100,7 +100,7 @@ export default auth(async (req) => {
     if (!isExempt && !isPublic && pathname.startsWith('/api/')) {
       if (!validateCSRF(req)) {
         log.warn(`[middleware] CSRF validation failed: IP=${ip}, path=${pathname}`);
-        return NextResponse.json(
+        const response = NextResponse.json(
           {
             error: 'CSRF token required',
             code: 'CSRF_REQUIRED',
@@ -108,6 +108,8 @@ export default auth(async (req) => {
           },
           { status: 403 }
         );
+        response.headers.set('x-request-id', requestId);
+        return response;
       }
     }
   }
@@ -129,6 +131,7 @@ export default auth(async (req) => {
   const nonce = generateNonce();
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-nonce', nonce);
+  requestHeaders.set('x-request-id', requestId);
   const response = NextResponse.next({
     request: {
       headers: requestHeaders,
@@ -151,6 +154,7 @@ export default auth(async (req) => {
 
   // Keep nonce on response headers as well for observability/debugging.
   response.headers.set('x-nonce', nonce);
+  response.headers.set('x-request-id', requestId);
 
   // Content Security
   response.headers.set('X-Content-Type-Options', 'nosniff');
@@ -174,8 +178,8 @@ export default auth(async (req) => {
       ? `script-src 'self' 'unsafe-eval' 'unsafe-inline' 'nonce-${nonce}'`
       : `script-src 'nonce-${nonce}' 'strict-dynamic'`,
     
-    // Style sources - nonces preferred, but allow unsafe-inline for backwards compatibility with Tailwind
-    `style-src 'self' 'nonce-${nonce}' 'unsafe-inline'`,
+    // Style sources
+    `style-src 'self' 'nonce-${nonce}'`,
     
     // Images - allow data URIs and HTTPS
     "img-src 'self' data: https:",
