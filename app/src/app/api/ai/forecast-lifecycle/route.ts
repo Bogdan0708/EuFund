@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { predictLifecycle, quickLifecycleCheck } from '@/lib/ai/lifecycle-prediction';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
+import { withAIAuth } from '@/lib/middleware/auth';
 
 const inputSchema = z.object({
   projectId: z.string(),
@@ -39,6 +40,7 @@ const inputSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  return withAIAuth(request, async (user) => {
   try {
     const body = await request.json();
     const parsed = inputSchema.safeParse(body);
@@ -58,7 +60,12 @@ export async function POST(request: NextRequest) {
     await logAudit({
       action: 'ai.generate',
       resourceType: 'lifecycle_prediction',
-      metadata: { projectId: input.projectId, health: result.overallProjectHealth },
+      userId: user.id,
+      metadata: { 
+        projectId: input.projectId, 
+        health: result.overallProjectHealth,
+        userTier: user.tier 
+      },
     });
 
     return NextResponse.json({ success: true, data: result });
@@ -67,4 +74,5 @@ export async function POST(request: NextRequest) {
     console.error('[forecast-lifecycle]', error);
     return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
   }
+  });
 }

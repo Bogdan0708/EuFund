@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { validateCompliance } from '@/lib/ai/compliance-validator';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
+import { withAIAuth } from '@/lib/middleware/auth';
 
 const complianceInputSchema = z.object({
   project: z.object({
@@ -39,48 +40,52 @@ const complianceInputSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const parsed = complianceInputSchema.safeParse(body);
+  return withAIAuth(request, async (user) => {
+    try {
+      const body = await request.json();
+      const parsed = complianceInputSchema.safeParse(body);
 
-    if (!parsed.success) {
-      return NextResponse.json(
-        Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(),
-        { status: 400 }
-      );
-    }
+      if (!parsed.success) {
+        return NextResponse.json(
+          Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(),
+          { status: 400 }
+        );
+      }
 
-    const result = await validateCompliance(parsed.data);
+      const result = await validateCompliance(parsed.data);
 
-    await logAudit({
-      action: 'ai.compliance_check',
-      resourceType: 'project',
-      metadata: {
-        overallScore: result.overallScore,
-        tokensUsed: result.tokensUsed,
-        ragSources: result.ragSources,
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        overallScore: result.overallScore,
-        deterministicResults: result.deterministicResults,
-        aiResults: result.aiResults,
-        recommendations: result.recommendations,
+      await logAudit({
+        userId: user.id,
+        action: 'ai.compliance_check',
+        resourceType: 'project',
         metadata: {
+          overallScore: result.overallScore,
           tokensUsed: result.tokensUsed,
-          ragSourcesUsed: result.ragSources,
-          validatedAt: new Date().toISOString(),
+          ragSources: result.ragSources,
+          userTier: user.tier,
         },
-      },
-    });
-  } catch (error) {
-    if (error instanceof FondEUError) {
-      return NextResponse.json(error.toResponse(), { status: error.statusCode });
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          overallScore: result.overallScore,
+          deterministicResults: result.deterministicResults,
+          aiResults: result.aiResults,
+          recommendations: result.recommendations,
+          metadata: {
+            tokensUsed: result.tokensUsed,
+            ragSourcesUsed: result.ragSources,
+            validatedAt: new Date().toISOString(),
+          },
+        },
+      });
+    } catch (error) {
+      if (error instanceof FondEUError) {
+        return NextResponse.json(error.toResponse(), { status: error.statusCode });
+      }
+      console.error('[validate-compliance]', error);
+      return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
     }
-    console.error('[validate-compliance]', error);
-    return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
-  }
+  });
 }

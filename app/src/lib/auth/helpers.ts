@@ -19,11 +19,11 @@ export interface SessionUser {
  */
 export async function requireAuth(): Promise<SessionUser> {
   const session = await auth();
-  if (!session?.user?.email) {
+  if (!session?.user?.email || !session?.user?.id) {
     throw Errors.unauthorized();
   }
   return {
-    id: (session.user as any).id || 'placeholder-id',
+    id: session.user.id,
     email: session.user.email,
     name: session.user.name || undefined,
   };

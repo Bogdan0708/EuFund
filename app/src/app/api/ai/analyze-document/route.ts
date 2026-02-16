@@ -3,10 +3,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { analyzeDocument } from '@/lib/ai/document-analyzer';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
+import { withAIAuth } from '@/lib/middleware/auth';
 
 export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData();
+  return withAIAuth(request, async (user) => {
+    try {
+      const formData = await request.formData();
     const file = formData.get('file') as File | null;
     const projectContext = formData.get('projectContext') as string | null;
     const callContext = formData.get('callContext') as string | null;
@@ -75,6 +77,7 @@ export async function POST(request: NextRequest) {
     });
 
     await logAudit({
+      userId: user.id,
       action: 'ai.compliance_check',
       resourceType: 'document',
       metadata: {
@@ -83,6 +86,7 @@ export async function POST(request: NextRequest) {
         fileSize: file.size,
         tokensUsed: result.tokensUsed,
         piiDetected: result.piiDetections.length > 0,
+        userTier: user.tier,
       },
     });
 
@@ -98,11 +102,12 @@ export async function POST(request: NextRequest) {
         },
       },
     });
-  } catch (error) {
-    if (error instanceof FondEUError) {
-      return NextResponse.json(error.toResponse(), { status: error.statusCode });
+    } catch (error) {
+      if (error instanceof FondEUError) {
+        return NextResponse.json(error.toResponse(), { status: error.statusCode });
+      }
+      console.error('[analyze-document]', error);
+      return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
     }
-    console.error('[analyze-document]', error);
-    return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
-  }
+  });
 }

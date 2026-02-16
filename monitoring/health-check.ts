@@ -22,8 +22,9 @@ const startTime = Date.now();
 async function checkDatabase(): Promise<ComponentCheck> {
   const start = Date.now();
   try {
-    // In production, use actual DB connection
-    // await db.execute(sql`SELECT 1`);
+    const { db } = await import('../app/src/lib/db');
+    const { sql } = await import('drizzle-orm');
+    await db.execute(sql`SELECT 1`);
     return { status: 'pass', responseTimeMs: Date.now() - start };
   } catch (error) {
     return {
@@ -37,8 +38,12 @@ async function checkDatabase(): Promise<ComponentCheck> {
 async function checkRedis(): Promise<ComponentCheck> {
   const start = Date.now();
   try {
-    // In production, use actual Redis connection
-    // await redis.ping();
+    const { getRedis } = await import('../app/src/lib/redis/client');
+    const redis = getRedis();
+    if (!redis) {
+      return { status: 'warn', responseTimeMs: Date.now() - start, message: 'Redis not configured' };
+    }
+    await redis.ping();
     return { status: 'pass', responseTimeMs: Date.now() - start };
   } catch (error) {
     return {

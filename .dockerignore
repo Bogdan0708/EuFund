@@ -1,0 +1,15 @@
+.git
+.env*
+node_modules
+*.md
+tests
+.github
+infrastructure/terraform/*.tfstate*
+secrets/
+
+# Build/runtime noise
+.next
+coverage
+dist
+tmp
+*.log

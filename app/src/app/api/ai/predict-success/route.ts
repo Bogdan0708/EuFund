@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { predictProposalSuccess, quickSuccessPrediction } from '@/lib/ai/predictive-analytics';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
+import { withAIAuth } from '@/lib/middleware/auth';
 
 const inputSchema = z.object({
   projectTitle: z.string().min(5),
@@ -31,6 +32,7 @@ const inputSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  return withAIAuth(request, async (user) => {
   try {
     const body = await request.json();
     const parsed = inputSchema.safeParse(body);
@@ -50,7 +52,12 @@ export async function POST(request: NextRequest) {
     await logAudit({
       action: 'ai.generate',
       resourceType: 'success_prediction',
-      metadata: { successProbability: result.successProbability, confidence: result.confidenceLevel },
+      userId: user.id,
+      metadata: { 
+        successProbability: result.successProbability, 
+        confidence: result.confidenceLevel,
+        userTier: user.tier 
+      },
     });
 
     return NextResponse.json({ success: true, data: result });
@@ -59,4 +66,5 @@ export async function POST(request: NextRequest) {
     console.error('[predict-success]', error);
     return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
   }
+  });
 }

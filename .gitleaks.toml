@@ -1,0 +1,58 @@
+title = "EU Funding Platform - Gitleaks Config"
+
+[allowlist]
+paths = [
+  '''node_modules''',
+  '''\.next''',
+  '''package-lock\.json''',
+  '''\.test\.(ts|tsx|js)$''',
+  '''__tests__''',
+]
+
+[[rules]]
+id = "openai-api-key"
+description = "OpenAI API Key"
+regex = '''sk-proj-[a-zA-Z0-9_-]{20,}'''
+tags = ["key", "openai"]
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API Key"
+regex = '''sk-ant-(api|oat)\d{2}-[a-zA-Z0-9_-]{20,}'''
+tags = ["key", "anthropic"]
+
+[[rules]]
+id = "google-api-key"
+description = "Google API Key"
+regex = '''AIza[0-9A-Za-z_-]{35}'''
+tags = ["key", "google"]
+
+[[rules]]
+id = "aws-access-key"
+description = "AWS Access Key ID"
+regex = '''AKIA[0-9A-Z]{16}'''
+tags = ["key", "aws"]
+
+[[rules]]
+id = "aws-secret-key"
+description = "AWS Secret Access Key"
+regex = '''(?i)aws_secret_access_key\s*=\s*[A-Za-z0-9/+=]{40}'''
+tags = ["key", "aws"]
+
+[[rules]]
+id = "perplexity-api-key"
+description = "Perplexity API Key"
+regex = '''pplx-[a-zA-Z0-9]{48}'''
+tags = ["key", "perplexity"]
+
+[[rules]]
+id = "stripe-secret-key"
+description = "Stripe Secret Key"
+regex = '''sk_live_[a-zA-Z0-9]{24,}'''
+tags = ["key", "stripe"]
+
+[[rules]]
+id = "generic-secret"
+description = "Generic Secret Assignment"
+regex = '''(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*['"][a-zA-Z0-9_\-\.]{20,}['"]'''
+tags = ["key", "generic"]

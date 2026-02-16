@@ -4,6 +4,18 @@ variable "aws_region" {
   default     = "eu-west-2"
 }
 
+variable "gcp_project_id" {
+  type        = string
+  description = "GCP project ID for Terraform state infrastructure."
+  default     = "eu-funds-prod"
+}
+
+variable "gcp_region" {
+  type        = string
+  description = "GCP region for state encryption resources."
+  default     = "europe-west1"
+}
+
 variable "app_name" {
   type        = string
   description = "Application name prefix."

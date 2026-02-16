@@ -1,64 +1,68 @@
-name: Weekly Security Scan
+name: Security Scan
 
 on:
+  pull_request:
+    branches:
+      - main
+      - develop
   schedule:
-    - cron: "0 6 * * 1"  # Every Monday at 6:00 UTC
+    - cron: '0 3 * * 1'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  dependency-scan:
+  npm-audit:
+    name: npm audit (PR)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
           cache: npm
           cache-dependency-path: app/package-lock.json
 
-      - run: npm ci
-        working-directory: app
+      - name: Install dependencies
+        run: npm ci
 
-      - name: npm audit
-        working-directory: app
-        run: npm audit --json > ../security-audit.json || true
+      - name: Run npm audit (high+critical fail)
+        run: npm audit --audit-level=high
 
-      - name: Upload audit report
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-audit
-          path: security-audit.json
-
-  container-scan:
+  trivy-container-scan:
+    name: Trivy container scan (high+critical fail)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Build image
-        run: docker build -f infrastructure/Dockerfile.prod -t eu-funds-scan:latest .
+      - name: Build application image
+        run: docker build -f app/Dockerfile -t eu-funds-security-scan:${{ github.sha }} app
 
-      - name: Run Trivy
+      - name: Run Trivy scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: eu-funds-scan:latest
-          format: sarif
-          output: trivy-results.sarif
+          image-ref: eu-funds-security-scan:${{ github.sha }}
+          format: table
           severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
 
-      - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-results.sarif
-
-  dast-scan:
+  owasp-zap-dast:
+    name: OWASP ZAP DAST (if DAST_TARGET_URL configured)
     runs-on: ubuntu-latest
-    if: vars.STAGING_URL != ''
+    if: ${{ vars.DAST_TARGET_URL != '' }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: OWASP ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.12.0
+      - name: Run ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.14.0
         with:
-          target: ${{ vars.STAGING_URL }}
-          rules_file_name: ".zap/rules.tsv"
-          allow_issue_writing: false
+          target: ${{ vars.DAST_TARGET_URL }}
+          fail_action: true

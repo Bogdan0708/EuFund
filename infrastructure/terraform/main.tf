@@ -10,14 +10,6 @@ terraform {
       version = "~> 5.0"
     }
   }
-
-  backend "s3" {
-    bucket         = "eu-funds-terraform-state"
-    key            = "production/terraform.tfstate"
-    region         = "eu-west-2"
-    dynamodb_table = "eu-funds-terraform-locks"
-    encrypt        = true
-  }
 }
 
 provider "aws" {

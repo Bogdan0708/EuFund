@@ -29,6 +29,7 @@ export const consentTypeEnum = pgEnum('consent_type', [
 export const consentStatusEnum = pgEnum('consent_status', ['granted', 'withdrawn', 'expired']);
 export const workPackageStatusEnum = pgEnum('work_package_status', ['planned', 'active', 'completed', 'delayed', 'cancelled']);
 export const riskLevelEnum = pgEnum('risk_level', ['very_low', 'low', 'medium', 'high', 'very_high']);
+export const userTierEnum = pgEnum('user_tier', ['free', 'pro', 'enterprise']);
 
 // ─── Users ───────────────────────────────────────────────────────
 export const users = pgTable('users', {
@@ -38,6 +39,7 @@ export const users = pgTable('users', {
   fullName: varchar('full_name', { length: 255 }).notNull(),
   phone: varchar('phone', { length: 20 }),
   preferredLang: varchar('preferred_lang', { length: 5 }).default('ro'),
+  tier: userTierEnum('tier').default('free'),
   avatarUrl: varchar('avatar_url', { length: 500 }),
   emailVerified: boolean('email_verified').default(false),
   mfaEnabled: boolean('mfa_enabled').default(false),

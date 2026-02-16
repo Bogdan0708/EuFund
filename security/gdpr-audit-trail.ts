@@ -2,6 +2,7 @@
  * GDPR Audit Trail - Article 32 Compliance
  * Enhanced audit logging for data processing activities
  */
+import { logger } from '../app/src/lib/logger';
 
 export interface AuditEvent {
   id: string;
@@ -47,6 +48,8 @@ export type AuditCategory =
   | 'SYSTEM'
   | 'EXTERNAL_API';
 
+const log = logger.child({ component: 'gdpr-audit-trail' });
+
 /**
  * Create an audit log entry
  */
@@ -69,16 +72,31 @@ export class GDPRAuditLogger {
     const entry = createAuditEntry(event);
 
     // Structured JSON log - picked up by log aggregation
-    console.log(
-      JSON.stringify({
-        level: 'audit',
-        ...entry,
-        timestamp: entry.timestamp.toISOString(),
-      })
-    );
+    log.info(JSON.stringify({
+      level: 'audit',
+      ...entry,
+      timestamp: entry.timestamp.toISOString(),
+    }));
 
-    // In production, also write to audit_logs table
-    // await db.insert(auditLogs).values(entry);
+    // Persist to database (GDPR Article 30 compliance)
+    try {
+      const { db, schema } = await import('@/lib/db');
+      await db.insert(schema.auditLog).values({
+        action: entry.action,
+        category: entry.category,
+        userId: entry.userId,
+        resourceType: entry.resourceType,
+        resourceId: entry.resourceId,
+        details: entry.details,
+        ipAddress: entry.ipAddress,
+        userAgent: entry.userAgent,
+        legalBasis: entry.legalBasis,
+        dataSubjectId: entry.dataSubjectId,
+      });
+    } catch (error) {
+      // Never fail the request due to audit logging — log and continue
+      log.error({ error }, '[audit] Failed to persist audit log to database:');
+    }
   }
 
   /**

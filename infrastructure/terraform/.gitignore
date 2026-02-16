@@ -1,0 +1,21 @@
+# Terraform state (contains secrets in plaintext)
+terraform.tfstate
+terraform.tfstate.backup
+*.tfstate
+*.tfstate.*
+
+# Terraform working directory
+.terraform/
+.terraform.lock.hcl
+
+# Variable files with secrets
+*.tfvars
+*.auto.tfvars
+!example.tfvars
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Plan files
+*.tfplan

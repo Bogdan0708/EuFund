@@ -1,6 +1,51 @@
 // ─── AI Module Exports ───────────────────────────────────────────
+
+// ==================== MULTI-PROVIDER AI SYSTEM ====================
+// Enhanced multi-provider versions (backward compatible)
+export { 
+  aiGenerate, 
+  aiGenerateObject, 
+  aiEmbed, 
+  aiEmbedBatch, 
+  queryRomanianBert 
+} from './client-v2';
+
+// Advanced multi-provider features
+export {
+  aiGenerateRomanian,
+  aiGenerateEconomical,
+  aiGenerateUrgent,
+  getAIHealthStatus,
+  getAIUsageSnapshot,
+  clearAICache,
+  TaskType,
+  // Romanian specialization
+  analyzeRomanianContent,
+  getRomanianAIMetrics,
+  aiGenerateRomanianEUProposal
+} from './client-v2';
+
+// Multi-provider types and configuration
+export type { 
+  AIRequest, 
+  AIResponse, 
+  AIProvider,
+  TaskType as TaskTypeEnum,
+  UserTierLimits,
+  RoutingDecision 
+} from './types';
+
+// Provider management
+export { getAIOrchestrator, createDefaultConfig } from './orchestrator';
+export { getAICache } from './cache';
+
+// Legacy single-provider client (for migration)
+export { 
+  aiGenerate as aiGenerateLegacy,
+  aiGenerateObject as aiGenerateObjectLegacy 
+} from './client';
+
 export { AI_CONFIG } from './config';
-export { aiGenerate, aiGenerateObject, aiEmbed, aiEmbedBatch, queryRomanianBert } from './client';
 export { generateProposal, proposalInputSchema, type ProposalInput, type ProposalOutput } from './proposal-generator';
 export { generateEnhancedProposal, type EnhancedProposalInput, type EUProposal, type EnhancedProposalOutput } from './enhanced-proposal-generator';
 export { analyzeDocument, detectPII, type AnalysisInput, type AnalysisResult, type PIIDetection } from './document-analyzer';
@@ -30,4 +75,4 @@ export { predictLifecycle, quickLifecycleCheck, type LifecyclePrediction, type L
 export { generateKnowledgeRecommendations, quickQualityCheck, type KnowledgeRecommendations, type KnowledgeEngineInput, type ProposalEnhancement, type BestPractice, type LessonLearned, type SuccessPattern, type PitfallWarning, type ExpertRecommendation } from './knowledge-engine';
 export { gatherMarketIntelligence, quickIntelligenceSummary, type IntegrationIntelligence, type IntelligenceInput, type EUDatabaseStatus, type MarketIntelligence, type RegulatoryChange, type CompetitorAnalysis, type OpportunityAlert } from './integration-intelligence';
 export { generateAdvancedReport, quickPortfolioSummary, type AdvancedReporting, type AdvancedReportingInput, type ExecutiveReport, type PredictiveInsights, type BenchmarkReport, type PortfolioInsights, type MarketAnalysis, type StrategyRecommendation } from './advanced-reporting';
-export { analyzeRomanianSpecialization, quickRomanianContext, type RomanianSpecialization, type RomanianSpecializationInput, type UEFISCDIData, type ANCAData, type IndustrialPartners, type RomanianCompliance, type CulturalInsights } from './romanian-specialization';
+// Romanian specialization exports are handled via client-v2

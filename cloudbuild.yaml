@@ -1,0 +1,123 @@
+# Cloud Build configuration for EU Funding Platform
+steps:
+  # Install dependencies
+  - name: 'node:18'
+    entrypoint: 'npm'
+    args: ['ci']
+    dir: 'app'
+    id: 'install-deps'
+
+  # Build application (skip tests for now to speed up deployment)
+  - name: 'node:18'
+    entrypoint: 'npm'
+    args: ['run', 'build']
+    dir: 'app'
+    id: 'build-app'
+    waitFor: ['install-deps']
+    env:
+      - 'NODE_ENV=production'
+      - 'NEXT_TELEMETRY_DISABLED=1'
+
+  # Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-f'
+      - 'app/Dockerfile.production'
+      - '-t'
+      - 'europe-west2-docker.pkg.dev/$PROJECT_ID/fondeu/platform:$BUILD_ID'
+      - '-t'
+      - 'europe-west2-docker.pkg.dev/$PROJECT_ID/fondeu/platform:latest'
+      - '.'
+    id: 'build-image'
+    waitFor: ['build-app']
+
+  # Push to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'europe-west2-docker.pkg.dev/$PROJECT_ID/fondeu/platform:$BUILD_ID']
+    id: 'push-build-id'
+    waitFor: ['build-image']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'europe-west2-docker.pkg.dev/$PROJECT_ID/fondeu/platform:latest']
+    id: 'push-latest'
+    waitFor: ['build-image']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'fondeu-platform'
+      - '--image'
+      - 'europe-west2-docker.pkg.dev/$PROJECT_ID/fondeu/platform:$BUILD_ID'
+      - '--region'
+      - 'europe-west2'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--port'
+      - '8080'
+      - '--cpu'
+      - '2'
+      - '--memory'
+      - '4Gi'
+      - '--concurrency'
+      - '80'
+      - '--max-instances'
+      - '100'
+      - '--min-instances'
+      - '1'
+      - '--timeout'
+      - '300s'
+      - '--service-account'
+      - 'fondeu-app-runner@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--add-cloudsql-instances'
+      - '$PROJECT_ID:europe-west2:fondeu-postgres-prod'
+      - '--set-env-vars'
+      - 'NODE_ENV=production,PORT=8080'
+      - '--update-secrets'
+      - 'DATABASE_URL=db-connection-string:latest'
+      - '--update-secrets'
+      - 'NEXTAUTH_SECRET=nextauth-secret:latest'
+      - '--update-secrets'
+      - 'OPENAI_API_KEY=openai-api-key:latest'
+    id: 'deploy-cloud-run'
+    waitFor: ['push-build-id', 'push-latest']
+
+  # Run database migrations (if needed)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Run database migrations using Cloud Run job
+        gcloud run jobs create fondeu-db-migrate \
+          --image=europe-west2-docker.pkg.dev/$PROJECT_ID/fondeu/platform:$BUILD_ID \
+          --region=europe-west2 \
+          --task-timeout=600s \
+          --parallelism=1 \
+          --task-count=1 \
+          --cpu=1 \
+          --memory=2Gi \
+          --service-account=fondeu-app-runner@$PROJECT_ID.iam.gserviceaccount.com \
+          --add-cloudsql-instances=$PROJECT_ID:europe-west2:fondeu-postgres-prod \
+          --set-env-vars=NODE_ENV=production \
+          --update-secrets=DATABASE_URL=db-connection-string:latest \
+          --command="npm" \
+          --args="run,db:migrate" \
+          --overwrite || true
+        
+        # Execute migration
+        gcloud run jobs execute fondeu-db-migrate --region=europe-west2 --wait
+    id: 'run-migrations'
+    waitFor: ['deploy-cloud-run']
+
+# Build configuration
+timeout: '1200s'
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  
+# No substitution variables needed - all values are hardcoded
+# Secrets are managed at runtime by Cloud Run, not during build

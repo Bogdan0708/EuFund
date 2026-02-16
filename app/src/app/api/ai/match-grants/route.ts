@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { matchGrants, type FundingCall } from '@/lib/ai/grant-matcher';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
+import { withAIAuth } from '@/lib/middleware/auth';
 
 const matchInputSchema = z.object({
   projectIdea: z.string().min(20),
@@ -82,45 +83,49 @@ const DEMO_CALLS: FundingCall[] = [
 ];
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const parsed = matchInputSchema.safeParse(body);
+  return withAIAuth(request, async (user) => {
+    try {
+      const body = await request.json();
+      const parsed = matchInputSchema.safeParse(body);
 
-    if (!parsed.success) {
-      return NextResponse.json(
-        Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(),
-        { status: 400 }
-      );
-    }
+      if (!parsed.success) {
+        return NextResponse.json(
+          Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(),
+          { status: 400 }
+        );
+      }
 
-    // In production, fetch calls from DB. For now use demo data.
-    const result = await matchGrants(parsed.data, DEMO_CALLS);
+      // In production, fetch calls from DB. For now use demo data.
+      const result = await matchGrants(parsed.data, DEMO_CALLS);
 
-    await logAudit({
-      action: 'ai.generate',
-      resourceType: 'grant_match',
-      metadata: {
-        matchesFound: result.matches.length,
-        tokensUsed: result.tokensUsed,
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        matches: result.matches,
+      await logAudit({
+        userId: user.id,
+        action: 'ai.generate',
+        resourceType: 'grant_match',
         metadata: {
+          matchesFound: result.matches.length,
           tokensUsed: result.tokensUsed,
-          callsEvaluated: DEMO_CALLS.length,
-          matchedAt: new Date().toISOString(),
+          userTier: user.tier,
         },
-      },
-    });
-  } catch (error) {
-    if (error instanceof FondEUError) {
-      return NextResponse.json(error.toResponse(), { status: error.statusCode });
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          matches: result.matches,
+          metadata: {
+            tokensUsed: result.tokensUsed,
+            callsEvaluated: DEMO_CALLS.length,
+            matchedAt: new Date().toISOString(),
+          },
+        },
+      });
+    } catch (error) {
+      if (error instanceof FondEUError) {
+        return NextResponse.json(error.toResponse(), { status: error.statusCode });
+      }
+      console.error('[match-grants]', error);
+      return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
     }
-    console.error('[match-grants]', error);
-    return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
-  }
+  });
 }

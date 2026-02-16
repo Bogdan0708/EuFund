@@ -3,3 +3,35 @@ app/.next/
 app/.env.local
 app/.env*.local
 *.tsbuildinfo
+
+# Local documentation with sensitive data (API keys exposed)
+QUICK_START.md
+UPDATED_CONFIG.md
+SECURE_DEPLOYMENT.md
+API_KEY_UPDATED.md
+SECURITY_QUICK_START.md
+MULTI_PROVIDER_AI_COMPLETE.md
+FINAL_DEPLOYMENT_STATUS.md
+SECURITY_ANALYSIS_REPORT.md
+PHASE2_MULTI_PROVIDER_AI_ARCHITECTURE.md
+PHASE2C_COMPLETION_STATUS.md
+PHASE2_EXECUTIVE_SUMMARY.md
+PHASE2_IMPLEMENTATION_GUIDE.md
+PHASE2_DELIVERY_SUMMARY.md
+GCP_SETUP_GUIDE.md
+docs/PRODUCTION-DEPLOYMENT.md
+
+# Environment files
+.env
+.env.*
+*.env
+!.env.example
+
+# Terraform
+infrastructure/terraform/.terraform/
+infrastructure/terraform/terraform.tfstate*
+infrastructure/terraform/*.tfvars
+
+# Secrets
+*.pem
+*.key

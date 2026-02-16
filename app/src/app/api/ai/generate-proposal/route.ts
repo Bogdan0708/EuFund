@@ -4,13 +4,15 @@ import { generateProposal, proposalInputSchema } from '@/lib/ai/proposal-generat
 import { generateEnhancedProposal, type EnhancedProposalInput } from '@/lib/ai/enhanced-proposal-generator';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
+import { withAIAuth } from '@/lib/middleware/auth';
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
+  return withAIAuth(request, async (user) => {
+    try {
+      const body = await request.json();
 
-    // Enhanced mode: if 'enhanced' flag is set, use new structured generator
-    if (body.enhanced) {
+      // Enhanced mode: if 'enhanced' flag is set, use new structured generator
+      if (body.enhanced) {
       const input: EnhancedProposalInput = {
         projectIdea: body.projectIdea,
         programType: body.programType || 'general',
@@ -33,6 +35,7 @@ export async function POST(request: NextRequest) {
       const result = await generateEnhancedProposal(input);
 
       await logAudit({
+        userId: user.id,
         action: 'ai.generate',
         resourceType: 'enhanced_proposal',
         metadata: {
@@ -40,6 +43,7 @@ export async function POST(request: NextRequest) {
           tokensUsed: result.tokensUsed,
           ragSourcesUsed: result.ragSourcesUsed,
           complianceScore: result.compliance?.overallScore,
+          userTier: user.tier,
         },
       });
 
@@ -72,12 +76,14 @@ export async function POST(request: NextRequest) {
     const result = await generateProposal(parsed.data);
 
     await logAudit({
+      userId: user.id,
       action: 'ai.generate',
       resourceType: 'proposal',
       metadata: {
         programType: parsed.data.programType,
         tokensUsed: result.tokensUsed,
         ragSourcesUsed: result.ragSourcesUsed,
+        userTier: user.tier,
       },
     });
 
@@ -93,14 +99,15 @@ export async function POST(request: NextRequest) {
         },
       },
     });
-  } catch (error) {
-    if (error instanceof FondEUError) {
-      return NextResponse.json(error.toResponse(), { status: error.statusCode });
+    } catch (error) {
+      if (error instanceof FondEUError) {
+        return NextResponse.json(error.toResponse(), { status: error.statusCode });
+      }
+      console.error('[generate-proposal]', error);
+      return NextResponse.json(
+        Errors.internal().toResponse(),
+        { status: 500 }
+      );
     }
-    console.error('[generate-proposal]', error);
-    return NextResponse.json(
-      Errors.internal().toResponse(),
-      { status: 500 }
-    );
-  }
+  });
 }
