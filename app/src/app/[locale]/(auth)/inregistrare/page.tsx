@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -14,6 +15,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function RegisterPage() {
   const t = useTranslations('auth');
+  const params = useParams();
+  const locale = (params.locale as string) || 'ro';
   const tv = useTranslations('validation');
   const [serverError, setServerError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -55,7 +58,7 @@ export default function RegisterPage() {
           </CardHeader>
           <CardFooter className="justify-center">
             <Button asChild variant="link">
-              <Link href="/ro/autentificare">{t('login')}</Link>
+              <Link href={`/${locale}/autentificare`}>{t('login')}</Link>
             </Button>
           </CardFooter>
         </Card>

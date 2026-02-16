@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 export default function LoginPage() {
   const t = useTranslations('auth');
   const router = useRouter();
+  const params = useParams();
+  const locale = (params.locale as string) || 'ro';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -34,7 +36,7 @@ export default function LoginPage() {
       if (result?.error) {
         setError(t('invalidCredentials'));
       } else if (result?.ok) {
-        router.push('/ro');
+        router.push(`/${locale}`);
       }
     } catch {
       setError(t('invalidCredentials'));
@@ -84,7 +86,7 @@ export default function LoginPage() {
               {loading ? 'Se procesează...' : t('login')}
             </Button>
             <p className="text-sm text-muted-foreground">
-              <Link href="/ro/inregistrare" className="text-primary hover:underline">
+              <Link href={`/${locale}/inregistrare`} className="text-primary hover:underline">
                 {t('register')}
               </Link>
             </p>

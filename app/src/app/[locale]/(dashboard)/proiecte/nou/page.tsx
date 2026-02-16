@@ -5,10 +5,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createProjectSchema, type CreateProjectInput } from '@/lib/validators';
 import { useState } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
 export default function NewProjectPage() {
   const t = useTranslations('project');
+  const params = useParams();
+  const locale = (params.locale as string) || 'ro';
   const [success, setSuccess] = useState(false);
 
   const {
@@ -39,7 +42,7 @@ export default function NewProjectPage() {
     return (
       <div className="rounded-xl bg-white p-8 shadow text-center">
         <h1 className="text-2xl font-bold text-success mb-4">✓ Proiect creat cu succes!</h1>
-        <Link href="/ro/proiecte" className="text-brand-500 hover:underline">Înapoi la proiecte</Link>
+        <Link href={`/${locale}/proiecte`} className="text-brand-500 hover:underline">Înapoi la proiecte</Link>
       </div>
     );
   }
