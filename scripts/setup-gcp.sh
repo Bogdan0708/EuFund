@@ -57,9 +57,8 @@ echo ""
 if [ -n "$OPENAI_API_KEY" ]; then
     print_status "Using OpenAI API key from environment variable"
 else
-    # Try project API key first, then admin key as fallback
-    OPENAI_API_KEY="REDACTED_OPENAI_KEY"
-    print_status "Using provided project OpenAI API key for AI features"
+    print_error "OPENAI_API_KEY environment variable is required. Set it before running this script."
+    exit 1
 fi
 
 # Validate inputs
