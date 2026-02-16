@@ -1,6 +1,7 @@
 import { requireAuth } from '@/lib/auth/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSigningUrl, getWorkflowStatus } from '@/lib/integrations/qes';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
     const signingUrl = await getSigningUrl(workflowId, signerEmail);
     return NextResponse.json({ signingUrl });
   } catch (error: any) {
-    console.error('QES sign error:', error);
+    logger.error({ error: error }, 'QES sign error:');
     return NextResponse.json(
       { error: 'Eroare la procesul de semnare', details: error.message },
       { status: error.name === 'CircuitOpenError' ? 503 : 500 },

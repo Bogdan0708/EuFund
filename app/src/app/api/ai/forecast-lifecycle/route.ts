@@ -5,6 +5,7 @@ import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
 import { forecastLifecycleSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
-    console.error('[forecast-lifecycle]', error);
+    logger.error({ error: error }, '[forecast-lifecycle]');
     return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
   }
   });

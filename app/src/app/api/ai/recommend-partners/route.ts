@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { recommendPartners, quickPartnerMatch } from '@/lib/ai/partner-matching';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
+import { logger } from '@/lib/logger';
 
 const inputSchema = z.object({
   projectTitle: z.string().min(5),
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
-    console.error('[recommend-partners]', error);
+    logger.error({ error: error }, '[recommend-partners]');
     return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
   }
 });

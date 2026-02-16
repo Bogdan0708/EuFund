@@ -6,7 +6,7 @@ import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { createHash } from 'crypto';
-import { writeFile, mkdir } from 'fs/promises';
+import { writeFile, mkdir, unlink } from 'fs/promises';
 import { join, basename } from 'path';
 import { logger } from '@/lib/logger';
 
@@ -73,31 +73,44 @@ export async function POST(req: NextRequest) {
       );
     }
 
-        const safeName = basename(file.name).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const safeName = basename(file.name).replace(/[^a-zA-Z0-9._-]/g, '_');
     const checksum = createHash('sha256').update(buffer).digest('hex');
 
-    // Store file
+    // Store file + DB insert in one transactional flow; on DB failure remove file.
     const dateDir = new Date().toISOString().split('T')[0];
     const fileId = crypto.randomUUID();
     const ext = safeName.split('.').pop() || 'bin';
     const storagePath = join(dateDir, `${fileId}.${ext}`);
     const fullPath = join(UPLOAD_DIR, storagePath);
 
-    await mkdir(join(UPLOAD_DIR, dateDir), { recursive: true });
-    await writeFile(fullPath, buffer);
+    let doc: typeof documents.$inferSelect | undefined;
+    try {
+      await db.transaction(async (tx) => {
+        await mkdir(join(UPLOAD_DIR, dateDir), { recursive: true });
+        await writeFile(fullPath, buffer);
 
-    // Insert document record
-    const [doc] = await db.insert(documents).values({
-      orgId: orgId || undefined,
-      projectId: projectId || undefined,
-      uploadedBy: user.id,
-      docType: docType as any,
-      filename: safeName,
-      mimeType: file.type,
-      fileSize: file.size,
-      storagePath,
-      checksumSha256: checksum,
-    }).returning();
+        const [inserted] = await tx.insert(documents).values({
+          orgId: orgId || undefined,
+          projectId: projectId || undefined,
+          uploadedBy: user.id,
+          docType: docType as any,
+          filename: safeName,
+          mimeType: file.type,
+          fileSize: file.size,
+          storagePath,
+          checksumSha256: checksum,
+        }).returning();
+
+        doc = inserted;
+      });
+    } catch (txError) {
+      await unlink(fullPath).catch(() => undefined);
+      throw txError;
+    }
+
+    if (!doc) {
+      throw Errors.internal('Nu s-a putut salva documentul.', 'Document could not be saved.');
+    }
 
     await logAudit({
       userId: user.id,

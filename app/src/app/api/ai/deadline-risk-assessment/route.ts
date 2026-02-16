@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { analyzeDeadlines, quickRiskCheck } from '@/lib/ai/deadline-intelligence';
 import { assessRisk } from '@/lib/ai/risk-assessment';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 const deadlineSchema = z.object({
   type: z.enum(['deadline', 'risk', 'quick']),
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid input', details: error.issues }, { status: 400 });
     }
-    console.error('Risk assessment error:', error);
+    logger.error({ error: error }, 'Risk assessment error:');
     return NextResponse.json({ error: 'Assessment failed' }, { status: 500 });
   }
 });

@@ -3,6 +3,7 @@
 
 import { db } from './index';
 import { fundingPrograms, callsForProposals, legislationDocuments } from './schema';
+import { logger } from '@/lib/logger';
 
 async function seed() {
   console.log('🌱 Seeding database...');
@@ -226,6 +227,6 @@ async function seed() {
 }
 
 seed().catch((err) => {
-  console.error('❌ Seed failed:', err);
+  logger.error({ error: err }, '❌ Seed failed:');
   process.exit(1);
 });

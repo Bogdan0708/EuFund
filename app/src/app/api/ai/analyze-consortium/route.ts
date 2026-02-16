@@ -3,6 +3,7 @@ import { withAIAuth } from '@/lib/middleware/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeConsortium, type ConsortiumAnalysisInput } from '@/lib/ai/consortium-analytics';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 const consortiumSchema = z.object({
   projectId: z.string(),
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
     const result = await analyzeConsortium(parsed.data as ConsortiumAnalysisInput);
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Consortium analysis error:', error);
+    logger.error({ error: error }, 'Consortium analysis error:');
     return NextResponse.json({ error: 'Consortium analysis failed' }, { status: 500 });
   }
 });

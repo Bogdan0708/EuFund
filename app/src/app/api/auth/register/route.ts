@@ -7,6 +7,7 @@ import { Errors, FondEUError } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { eq } from 'drizzle-orm';
 import { hash } from 'bcryptjs';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
   try {
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[auth:register]', error);
+    logger.error({ error: error }, '[auth:register]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }

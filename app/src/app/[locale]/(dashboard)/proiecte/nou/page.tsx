@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createProjectSchema, type CreateProjectInput } from '@/lib/validators';
 import { useState } from 'react';
+import { logger } from '@/lib/logger';
 
 export default function NewProjectPage() {
   const t = useTranslations('project');
@@ -30,7 +31,7 @@ export default function NewProjectPage() {
       });
       if (res.ok) setSuccess(true);
     } catch (err) {
-      console.error(err);
+      logger.error({ error: err }, 'Unhandled error');
     }
   };
 

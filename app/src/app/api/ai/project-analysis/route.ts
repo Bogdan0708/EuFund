@@ -3,6 +3,7 @@ import { withAIAuth } from '@/lib/middleware/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeProject, getProjectHealthQuick, type ProjectAnalysisRequest } from '@/lib/ai/project-intelligence';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 const quickAnalysisSchema = z.object({
   mode: z.literal('quick'),
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid input', details: error.issues }, { status: 400 });
     }
-    console.error('Project analysis error:', error);
+    logger.error({ error: error }, 'Project analysis error:');
     return NextResponse.json({ error: 'Analysis failed' }, { status: 500 });
   }
 });

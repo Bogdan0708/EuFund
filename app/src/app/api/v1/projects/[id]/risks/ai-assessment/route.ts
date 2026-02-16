@@ -7,6 +7,7 @@ import { assessRisk, type RiskAssessmentInput } from '@/lib/ai/risk-assessment';
 import { listRisks } from '@/lib/services/risks';
 import { listWorkPackages } from '@/lib/services/work-packages';
 import { eq, and, isNull } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 type Params = { params: { id: string } };
 
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[risks:ai-assessment]', error);
+    logger.error({ error: error }, '[risks:ai-assessment]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }

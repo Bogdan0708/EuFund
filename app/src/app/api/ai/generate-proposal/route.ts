@@ -5,6 +5,7 @@ import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
 import { generateProposalSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logger';
 
 const PROGRAM_MAP: Record<string, 'horizon_europe' | 'interreg' | 'life_plus' | 'pocidif' | 'pnrr' | 'general'> = {
   horizon_europe: 'horizon_europe',
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
       if (error instanceof FondEUError) {
         return NextResponse.json(error.toResponse(), { status: error.statusCode });
       }
-      console.error('[generate-proposal]', error);
+      logger.error({ error: error }, '[generate-proposal]');
       return NextResponse.json(
         Errors.internal().toResponse(),
         { status: 500 }

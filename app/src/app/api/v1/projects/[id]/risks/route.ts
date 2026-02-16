@@ -5,6 +5,7 @@ import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { listRisks, createRisk, updateRisk, getRiskOverview } from '@/lib/services/risks';
 import { eq, and, isNull } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 type Params = { params: { id: string } };
 
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[risks:list]', error);
+    logger.error({ error: error }, '[risks:list]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[risks:create]', error);
+    logger.error({ error: error }, '[risks:create]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }
@@ -94,7 +95,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[risks:update]', error);
+    logger.error({ error: error }, '[risks:update]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }

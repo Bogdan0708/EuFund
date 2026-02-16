@@ -32,6 +32,7 @@ export async function aiGenerate(opts: {
         prompt: opts.prompt,
         temperature: opts.temperature ?? AI_CONFIG.generation.temperature,
         maxOutputTokens: opts.maxTokens ?? AI_CONFIG.generation.maxTokens,
+        abortSignal: AbortSignal.timeout(30000),
       });
       return {
         text: result.text,
@@ -60,6 +61,7 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
         schema: opts.schema,
         schemaName: opts.schemaName,
         temperature: opts.temperature ?? AI_CONFIG.analysis.temperature,
+        abortSignal: AbortSignal.timeout(30000),
       });
       return {
         object: result.object as z.infer<T>,
@@ -78,6 +80,7 @@ export async function aiEmbed(text: string): Promise<{ embedding: number[]; toke
       const result = await embed({
         model: openai.embedding(AI_CONFIG.embedding.model),
         value: text,
+        abortSignal: AbortSignal.timeout(30000),
       });
       return {
         embedding: result.embedding as number[],
@@ -126,6 +129,7 @@ export async function queryRomanianBert(opts: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ inputs: opts.inputs }),
+    signal: AbortSignal.timeout(30000),
   });
 
   if (!response.ok) {

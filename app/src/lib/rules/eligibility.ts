@@ -182,7 +182,7 @@ const checkBudgetLimits: Rule = (ctx) => {
 
 const checkCofinancing: Rule = (ctx) => {
   const { project, call } = ctx;
-  if (!call.cofinancingRate || !project.totalBudget || !project.ownContrib) {
+  if (!call.cofinancingRate || !project.ownContrib) {
     return {
       ruleId: 'BUD-002',
       ruleName: 'Cofinanțare',
@@ -192,7 +192,18 @@ const checkCofinancing: Rule = (ctx) => {
     };
   }
 
-  const actualRate = (project.ownContrib / project.totalBudget) * 100;
+  const totalBudget = project.totalBudget;
+  if (!totalBudget) {
+    return {
+      ruleId: 'BUD-002',
+      ruleName: 'Cofinanțare',
+      status: 'not_applicable',
+      messageRo: 'Bugetul total nu este specificat.',
+      messageEn: 'Total budget is not specified.',
+    };
+  }
+
+  const actualRate = (project.ownContrib / totalBudget) * 100;
   const meetsRequirement = actualRate >= call.cofinancingRate;
 
   return {

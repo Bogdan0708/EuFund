@@ -3,6 +3,7 @@ import { withAIAuth } from '@/lib/middleware/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { getProjectHealthQuick, getAdvancedProjectHealth, analyzeProject, type ProjectAnalysisRequest } from '@/lib/ai/project-intelligence';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 const healthSchema = z.object({
   projectId: z.string(),
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Project health error:', error);
+    logger.error({ error: error }, 'Project health error:');
     return NextResponse.json({ error: 'Health analysis failed' }, { status: 500 });
   }
 });

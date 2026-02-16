@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { generateAdvancedReport, quickPortfolioSummary } from '@/lib/ai/advanced-reporting';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
+import { logger } from '@/lib/logger';
 
 const inputSchema = z.object({
   organizationName: z.string(),
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
-    console.error('[advanced-analytics]', error);
+    logger.error({ error: error }, '[advanced-analytics]');
     return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
   }
 });

@@ -2,6 +2,7 @@
 // Receives and logs Content Security Policy violations for monitoring
 
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 
 interface CSPViolationReport {
   'csp-report': {
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
     // Return 204 No Content (CSP reporting doesn't expect a response body)
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    console.error('[CSP Report] Failed to process violation report:', error);
+    logger.error({ error: error }, '[CSP Report] Failed to process violation report:');
     // Still return 204 to avoid breaking the browser's reporting
     return new NextResponse(null, { status: 204 });
   }

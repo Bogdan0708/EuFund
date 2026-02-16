@@ -1,6 +1,7 @@
 import { requireAuth } from '@/lib/auth/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { searchFundingCalls, type ECProgramme } from '@/lib/integrations/ec-portal';
+import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
     const calls = await searchFundingCalls({ programme: programme ?? undefined, status, query, limit });
     return NextResponse.json({ calls, count: calls.length });
   } catch (error: any) {
-    console.error('Funding calls error:', error);
+    logger.error({ error: error }, 'Funding calls error:');
     return NextResponse.json(
       { error: 'Eroare la obținerea apelurilor de finanțare', details: error.message },
       { status: error.name === 'CircuitOpenError' ? 503 : 500 },

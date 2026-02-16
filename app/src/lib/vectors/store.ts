@@ -3,6 +3,7 @@
 
 import { AI_CONFIG } from '@/lib/ai/config';
 import { aiEmbed, aiEmbedBatch } from '@/lib/ai/client';
+import { logger } from '@/lib/logger';
 
 export interface VectorDocument {
   id: string;
@@ -186,7 +187,7 @@ export function getVectorStore(): VectorStore {
     if (AI_CONFIG.vectorStore.provider === 'qdrant') {
       const qs = new QdrantVectorStore();
       // Fire and forget collection setup
-      qs.ensureCollection().catch(console.error);
+      qs.ensureCollection().catch((error) => logger.error({ error }, 'Unhandled async error'));
       _store = qs;
     } else {
       _store = new MemoryVectorStore();

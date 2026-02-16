@@ -9,6 +9,7 @@ import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { lookupCompany } from '@/lib/integrations/romanian/onrc';
 import { eq, and, isNull } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 type Params = { params: { id: string } };
 
@@ -99,7 +100,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[organizations:verify]', error);
+    logger.error({ error: error }, '[organizations:verify]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }

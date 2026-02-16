@@ -5,6 +5,7 @@ import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
 import { validateComplianceSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
       if (error instanceof FondEUError) {
         return NextResponse.json(error.toResponse(), { status: error.statusCode });
       }
-      console.error('[validate-compliance]', error);
+      logger.error({ error: error }, '[validate-compliance]');
       return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
     }
   });

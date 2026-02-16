@@ -4,6 +4,7 @@ import { analyzeDocument } from '@/lib/ai/document-analyzer';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
+import { logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
       if (error instanceof FondEUError) {
         return NextResponse.json(error.toResponse(), { status: error.statusCode });
       }
-      console.error('[analyze-document]', error);
+      logger.error({ error: error }, '[analyze-document]');
       return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
     }
   });

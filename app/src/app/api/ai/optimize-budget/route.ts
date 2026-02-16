@@ -3,6 +3,7 @@ import { withAIAuth } from '@/lib/middleware/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeBudget, type BudgetIntelligenceInput } from '@/lib/ai/budget-intelligence';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 const budgetSchema = z.object({
   projectId: z.string(),
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
     const result = await analyzeBudget(parsed.data as BudgetIntelligenceInput);
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Budget analysis error:', error);
+    logger.error({ error: error }, 'Budget analysis error:');
     return NextResponse.json({ error: 'Budget analysis failed' }, { status: 500 });
   }
 });

@@ -1,6 +1,7 @@
 import { requireAuth } from '@/lib/auth/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { lookupCompany, validateCompanyEligibility } from '@/lib/integrations/romanian/onrc';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ company, eligibility });
   } catch (error: any) {
-    console.error('ONRC validation error:', error);
+    logger.error({ error: error }, 'ONRC validation error:');
     const status = error.message?.includes('CUI invalid') ? 400
       : error.name === 'CircuitOpenError' ? 503 : 500;
     return NextResponse.json(

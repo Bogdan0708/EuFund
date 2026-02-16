@@ -3,6 +3,7 @@ import { withAIAuth } from '@/lib/middleware/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { optimizeTimeline, analyzeScenario, quickFeasibilityCheck, type TimelineOptimizationInput, type WhatIfScenario } from '@/lib/ai/timeline-optimizer';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 const timelineSchema = z.object({
   projectId: z.string(),
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
     const result = await optimizeTimeline(input);
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Timeline optimization error:', error);
+    logger.error({ error: error }, 'Timeline optimization error:');
     return NextResponse.json({ error: 'Timeline optimization failed' }, { status: 500 });
   }
 });

@@ -1,6 +1,7 @@
 import { requireAuth } from '@/lib/auth/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDocumentByCelex } from '@/lib/integrations/eurlex';
+import { logger } from '@/lib/logger';
 
 export async function GET(
   _req: NextRequest,
@@ -20,7 +21,7 @@ export async function GET(
 
     return NextResponse.json({ document });
   } catch (error: any) {
-    console.error('EUR-Lex document error:', error);
+    logger.error({ error: error }, 'EUR-Lex document error:');
     return NextResponse.json(
       { error: 'Eroare la obținerea documentului', details: error.message },
       { status: error.name === 'CircuitOpenError' ? 503 : 500 },

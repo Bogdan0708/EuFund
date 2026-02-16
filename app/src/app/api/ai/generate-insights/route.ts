@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { generateKnowledgeRecommendations, quickQualityCheck } from '@/lib/ai/knowledge-engine';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
+import { logger } from '@/lib/logger';
 
 const inputSchema = z.object({
   projectTitle: z.string().min(5),
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
-    console.error('[generate-insights]', error);
+    logger.error({ error: error }, '[generate-insights]');
     return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
   }
 });

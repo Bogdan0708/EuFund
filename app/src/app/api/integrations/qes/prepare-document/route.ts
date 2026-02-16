@@ -1,6 +1,7 @@
 import { requireAuth } from '@/lib/auth/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { prepareDocument } from '@/lib/integrations/qes';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ workflow }, { status: 201 });
   } catch (error: any) {
-    console.error('QES prepare error:', error);
+    logger.error({ error: error }, 'QES prepare error:');
     return NextResponse.json(
       { error: 'Eroare la pregătirea documentului pentru semnare', details: error.message },
       { status: error.name === 'CircuitOpenError' ? 503 : 500 },

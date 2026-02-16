@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { gatherMarketIntelligence, quickIntelligenceSummary } from '@/lib/ai/integration-intelligence';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
+import { logger } from '@/lib/logger';
 
 export async function GET(request: NextRequest) {
   return withAIAuth(request, async (user) => {
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
-    console.error('[market-intelligence]', error);
+    logger.error({ error: error }, '[market-intelligence]');
     return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
   }
 });

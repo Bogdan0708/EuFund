@@ -3,6 +3,7 @@ import { withAIAuth } from '@/lib/middleware/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { generateReport, type ReportInput } from '@/lib/ai/reporting-engine';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 const reportSchema = z.object({
   projectId: z.string(),
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
     const result = await generateReport(parsed.data as ReportInput);
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Report generation error:', error);
+    logger.error({ error: error }, 'Report generation error:');
     return NextResponse.json({ error: 'Report generation failed' }, { status: 500 });
   }
 });

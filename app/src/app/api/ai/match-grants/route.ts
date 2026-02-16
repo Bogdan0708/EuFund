@@ -5,6 +5,7 @@ import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
 import { matchGrantsSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logger';
 
 // Seed data for demo - in production this comes from the database
 const DEMO_CALLS: FundingCall[] = [
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
       if (error instanceof FondEUError) {
         return NextResponse.json(error.toResponse(), { status: error.statusCode });
       }
-      console.error('[match-grants]', error);
+      logger.error({ error: error }, '[match-grants]');
       return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
     }
   });

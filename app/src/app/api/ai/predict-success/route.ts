@@ -5,6 +5,7 @@ import { predictProposalSuccess, quickSuccessPrediction } from '@/lib/ai/predict
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
+import { logger } from '@/lib/logger';
 
 const inputSchema = z.object({
   projectTitle: z.string().min(5),
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
-    console.error('[predict-success]', error);
+    logger.error({ error: error }, '[predict-success]');
     return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
   }
   });

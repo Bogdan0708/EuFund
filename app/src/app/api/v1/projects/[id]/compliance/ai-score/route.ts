@@ -73,7 +73,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     // Update project compliance score
     await db.update(projects).set({
-      complianceScore: String(analysis.overallScore),
+      complianceScore: analysis.overallScore,
       lastComplianceCheck: new Date(),
     }).where(eq(projects.id, id));
 

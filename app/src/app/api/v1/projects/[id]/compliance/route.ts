@@ -109,7 +109,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     const [report] = await db.insert(complianceReports).values({
       projectId: id,
       generatedBy: user.id,
-      overallScore: result.overallScore.toString(),
+      overallScore: result.overallScore,
       items: result,
       modelUsed: 'gpt-4o',
       tokensUsed: result.tokensUsed,
@@ -119,7 +119,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     await db
       .update(projects)
       .set({
-        complianceScore: result.overallScore.toString(),
+        complianceScore: result.overallScore,
         lastComplianceCheck: new Date(),
         updatedAt: new Date(),
       })

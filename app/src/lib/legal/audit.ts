@@ -4,8 +4,11 @@
 import { db } from '@/lib/db';
 import { auditLog } from '@/lib/db/schema';
 import { logger } from '@/lib/logger';
+import { appendFile, mkdir } from 'fs/promises';
+import { dirname } from 'path';
 
 const log = logger.child({ component: 'legal-audit' });
+const AUDIT_DLQ_PATH = process.env.AUDIT_DLQ_PATH || './tmp/audit-dlq.log';
 
 export type AuditAction =
   // Auth
@@ -82,13 +85,29 @@ export async function logAudit(entry: AuditEntry): Promise<void> {
       },
     });
   } catch (error) {
-    // Audit logging should never crash the application
-    // But we must log the failure somewhere
+    const failedAudit = {
+      ...entry,
+      failedAt: new Date().toISOString(),
+      error: error instanceof Error
+        ? { name: error.name, message: error.message, stack: error.stack }
+        : error,
+    };
+
+    // Audit logging should never crash requests, but failures must be observable.
     log.error({
+      error,
       action: entry.action,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString(),
+      resourceType: entry.resourceType,
+      resourceId: entry.resourceId,
     }, '[AUDIT_FAILURE]');
+
+    // Dead-letter fallback so failed audit writes are not silently dropped.
+    try {
+      await mkdir(dirname(AUDIT_DLQ_PATH), { recursive: true });
+      await appendFile(AUDIT_DLQ_PATH, `${JSON.stringify(failedAudit)}\n`, 'utf8');
+    } catch (dlqError) {
+      log.error({ error: dlqError, action: entry.action }, '[AUDIT_DLQ_FAILURE]');
+    }
   }
 }
 

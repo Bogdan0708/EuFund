@@ -5,6 +5,7 @@ import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { updateTimelineItem, deleteTimelineItem, updateTimelineProgress } from '@/lib/services/timeline';
 import { eq, and, isNull } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 type Params = { params: { id: string; itemId: string } };
 
@@ -52,7 +53,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[timeline:update]', error);
+    logger.error({ error: error }, '[timeline:update]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }
@@ -74,7 +75,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
-    console.error('[timeline:delete]', error);
+    logger.error({ error: error }, '[timeline:delete]');
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 import { requireAuth } from '@/lib/auth/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { searchEURLex } from '@/lib/integrations/eurlex';
+import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
     const results = await searchEURLex(query, { type, language, limit });
     return NextResponse.json({ results, count: results.length });
   } catch (error: any) {
-    console.error('EUR-Lex search error:', error);
+    logger.error({ error: error }, 'EUR-Lex search error:');
     return NextResponse.json(
       { error: 'Eroare la căutarea în EUR-Lex', details: error.message },
       { status: error.name === 'CircuitOpenError' ? 503 : 500 },
