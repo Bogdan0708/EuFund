@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
     const MAGIC_BYTES: Record<string, string[]> = {
       '25504446': ['application/pdf'],           // %PDF
       '504b0304': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'], // PK (DOCX/ZIP)
+      'd0cf11e0': ['application/msword'],       // OLE2 Compound Document (.doc)
     };
     const detectedTypes = Object.entries(MAGIC_BYTES).find(([magic]) => magicHex.startsWith(magic));
     if (file.type !== 'text/plain' && !detectedTypes) {
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
     // Store file
     const dateDir = new Date().toISOString().split('T')[0];
     const fileId = crypto.randomUUID();
-    const ext = file.name.split('.').pop() || 'bin';
+    const ext = safeName.split('.').pop() || 'bin';
     const storagePath = join(dateDir, `${fileId}.${ext}`);
     const fullPath = join(UPLOAD_DIR, storagePath);
 
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
       projectId: projectId || undefined,
       uploadedBy: user.id,
       docType: docType as any,
-      filename: file.name,
+      filename: safeName,
       mimeType: file.type,
       fileSize: file.size,
       storagePath,
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
       action: 'document.upload',
       resourceType: 'document',
       resourceId: doc.id,
-      metadata: { filename: file.name, mimeType: file.type, fileSize: file.size },
+      metadata: { filename: safeName, originalName: file.name, mimeType: file.type, fileSize: file.size },
     });
 
     return NextResponse.json({
