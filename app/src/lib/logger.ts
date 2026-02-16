@@ -17,16 +17,9 @@ export const logger = pino({
     remove: true,
   },
   timestamp: () => `,"time":"${new Date().toISOString()}"`,
-  ...(isDevelopment
-    ? {
-        transport: {
-          target: 'pino-pretty',
-          options: { colorize: true, translateTime: 'SYS:HH:MM:ss.l', ignore: 'pid,hostname', singleLine: false },
-        },
-      }
-    : {
-        formatters: { level: (label: string) => ({ level: label }) },
-      }),
+  formatters: {
+    level: (label: string) => ({ level: label }),
+  },
   base: {
     env: process.env.NODE_ENV,
     pid: process.pid,
