@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ company, eligibility });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Eroare necunoscută';
+    const message = error instanceof Error ? error.message : String(error);
     logger.error({ error: error }, 'ONRC validation error:');
     const status = message.includes('CUI invalid') ? 400
       : error instanceof Error && error.name === 'CircuitOpenError' ? 503 : 500;

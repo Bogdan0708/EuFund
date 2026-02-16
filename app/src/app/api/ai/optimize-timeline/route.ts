@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     const body = await req.json();
     const parsed = timelineSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input', details: parsed.error.flatten() } }, { status: 400 });
     }
 
     const input: TimelineOptimizationInput = parsed.data;
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await optimizeTimeline(input);
-    return NextResponse.json(result);
+    return NextResponse.json({ success: true, data: result });
   } catch (error) {
     logger.error({ error: error }, 'Timeline optimization error:');
     return NextResponse.json(

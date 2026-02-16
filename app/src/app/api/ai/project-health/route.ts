@@ -61,14 +61,14 @@ export async function POST(request: NextRequest) {
     const body = await req.json();
     const parsed = healthSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input', details: parsed.error.flatten() } }, { status: 400 });
     }
 
     const { mode, projectId, projectTitle, workPackages, deadline, budget, spentBudget } = parsed.data;
 
     if (mode === 'quick') {
       const result = getProjectHealthQuick(projectId, projectTitle, workPackages as any, deadline ?? '', budget, spentBudget);
-      return NextResponse.json(result);
+      return NextResponse.json({ success: true, data: result });
     }
 
     // Advanced mode - would need full ProjectAnalysisRequest; for now return quick + supplementary

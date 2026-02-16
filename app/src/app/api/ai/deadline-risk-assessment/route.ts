@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
         parsed.workPackages || [],
         parsed.submissionDeadline || parsed.projectEnd || new Date().toISOString(),
       );
-      return NextResponse.json(result);
+      return NextResponse.json({ success: true, data: result });
     }
 
     if (parsed.type === 'deadline') {
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
         workPackages: parsed.workPackages || [],
         locale: parsed.locale,
       });
-      return NextResponse.json(result);
+      return NextResponse.json({ success: true, data: result });
     }
 
     if (parsed.type === 'risk') {
@@ -59,14 +59,14 @@ export async function POST(request: NextRequest) {
         romanianContext: parsed.romanianContext,
         locale: parsed.locale,
       });
-      return NextResponse.json(result);
+      return NextResponse.json({ success: true, data: result });
     }
 
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { success: false, error: { code: 'INTERNAL_ERROR', message: 'Invalid input' } },
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input' } },
         { status: 400 },
       );
     }

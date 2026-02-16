@@ -58,11 +58,11 @@ export async function POST(request: NextRequest) {
     const body = await req.json();
     const parsed = reportSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input', details: parsed.error.flatten() } }, { status: 400 });
     }
 
     const result = await generateReport(parsed.data as ReportInput);
-    return NextResponse.json(result);
+    return NextResponse.json({ success: true, data: result });
   } catch (error) {
     logger.error({ error: error }, 'Report generation error:');
     return NextResponse.json(

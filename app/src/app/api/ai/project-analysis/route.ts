@@ -68,16 +68,16 @@ export async function POST(request: NextRequest) {
         parsed.budget,
         parsed.spentBudget,
       );
-      return NextResponse.json(result);
+      return NextResponse.json({ success: true, data: result });
     }
 
     const parsed = fullAnalysisSchema.parse(body);
     const result = await analyzeProject(parsed as any as ProjectAnalysisRequest);
-    return NextResponse.json(result);
+    return NextResponse.json({ success: true, data: result });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { success: false, error: { code: 'INTERNAL_ERROR', message: 'Invalid input' } },
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input' } },
         { status: 400 },
       );
     }
