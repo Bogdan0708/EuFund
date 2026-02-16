@@ -81,24 +81,27 @@ export const {
       log.info(`[AUDIT] User signed out`);
     },
   },
-  cookies: {
-    sessionToken: {
-      name: '__Secure-next-auth.session-token',
-      options: {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        secure: process.env.NODE_ENV === 'production',
-      },
-    },
-    csrfToken: {
-      name: '__Host-next-auth.csrf-token',
-      options: {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        secure: process.env.NODE_ENV === 'production',
-      },
-    },
-  },
+  trustHost: true,
+  cookies: process.env.NODE_ENV === 'production'
+    ? {
+        sessionToken: {
+          name: '__Secure-next-auth.session-token',
+          options: {
+            httpOnly: true,
+            sameSite: 'lax',
+            path: '/',
+            secure: true,
+          },
+        },
+        csrfToken: {
+          name: '__Host-next-auth.csrf-token',
+          options: {
+            httpOnly: true,
+            sameSite: 'lax',
+            path: '/',
+            secure: true,
+          },
+        },
+      }
+    : undefined, // Use next-auth defaults in dev (no __Secure/__Host prefixes over HTTP)
 });
