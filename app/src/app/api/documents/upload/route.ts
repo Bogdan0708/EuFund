@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!doc) {
-      throw Errors.internal('Nu s-a putut salva documentul.', 'Document could not be saved.');
+      throw Errors.internal('Nu s-a putut salva documentul.');
     }
 
     await logAudit({
