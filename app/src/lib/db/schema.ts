@@ -52,6 +52,18 @@ export const users = pgTable('users', {
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
+// ─── Email Verification Tokens ──────────────────────────────────
+export const emailVerificationTokens = pgTable('email_verification_tokens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  token: varchar('token', { length: 255 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  userIdx: index('idx_email_verification_tokens_user').on(table.userId),
+  tokenIdx: uniqueIndex('idx_email_verification_tokens_token').on(table.token),
+}));
+
 // ─── Consent Records (GDPR + Law 190/2018) ──────────────────────
 export const consentRecords = pgTable('consent_records', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -496,6 +508,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   projects: many(projects),
   notifications: many(notifications),
   consentRecords: many(consentRecords),
+  emailVerificationTokens: many(emailVerificationTokens),
 }));
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({
@@ -566,4 +579,8 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
 
 export const consentRecordsRelations = relations(consentRecords, ({ one }) => ({
   user: one(users, { fields: [consentRecords.userId], references: [users.id] }),
+}));
+
+export const emailVerificationTokensRelations = relations(emailVerificationTokens, ({ one }) => ({
+  user: one(users, { fields: [emailVerificationTokens.userId], references: [users.id] }),
 }));

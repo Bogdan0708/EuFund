@@ -9,6 +9,17 @@ import { eq } from 'drizzle-orm';
 import { hash } from 'bcryptjs';
 import { logger } from '@/lib/logger';
 import { withRateLimit } from '@/lib/middleware/rate-limit';
+import { generateVerificationToken } from '@/lib/email/verification';
+import { sendEmail } from '@/lib/email/transporter';
+import { welcomeEmail } from '@/lib/email/templates';
+
+function detectLocale(acceptLanguage?: string | null): 'ro' | 'en' {
+  if (!acceptLanguage) {
+    return 'ro';
+  }
+
+  return acceptLanguage.toLowerCase().includes('en') ? 'en' : 'ro';
+}
 
 async function registerHandler(req: NextRequest) {
   try {
@@ -78,6 +89,22 @@ async function registerHandler(req: NextRequest) {
       ipAddress: ipAddress || undefined,
       userAgent: userAgent || undefined,
     });
+
+    try {
+      const locale = detectLocale(req.headers.get('accept-language'));
+      const baseUrl = process.env.NEXTAUTH_URL || req.nextUrl.origin;
+      const token = await generateVerificationToken(user.id);
+      const verificationUrl = `${baseUrl}/${locale}/verifica-email?token=${encodeURIComponent(token)}`;
+      const template = welcomeEmail(user.fullName, verificationUrl, locale);
+
+      await sendEmail({
+        to: user.email,
+        subject: template.subject,
+        html: template.html,
+      });
+    } catch (emailError) {
+      logger.warn({ emailError, userId: user.id }, '[auth:register] Verification email failed');
+    }
 
     return NextResponse.json({
       success: true,
