@@ -16,9 +16,13 @@ export async function GET(req: NextRequest) {
     await requireAuth();
     const { searchParams } = new URL(req.url);
 
-    const nutsCode = searchParams.get('nutsCode')?.trim();
+    const nutsCode = searchParams.get('nutsCode')?.trim().toUpperCase();
     if (!nutsCode) {
       return NextResponse.json({ error: 'Parametrul "nutsCode" este obligatoriu' }, { status: 400 });
+    }
+    // NUTS codes: 2-letter country (AT), NUTS1 (AT1), NUTS2 (AT12), NUTS3 (AT123)
+    if (!/^[A-Z]{2}[A-Z0-9]{0,3}$/.test(nutsCode)) {
+      return NextResponse.json({ error: 'Cod NUTS invalid. Format: RO, RO1, RO21, RO213' }, { status: 400 });
     }
 
     const requestedIndicators = parseIndicators(searchParams.get('indicators'));
@@ -46,6 +50,9 @@ export async function GET(req: NextRequest) {
       data,
     });
   } catch (error: unknown) {
+    if (error instanceof Error && (error.message === 'Unauthorized' || error.name === 'AuthError')) {
+      return NextResponse.json({ error: 'Neautorizat' }, { status: 401 });
+    }
     const message = error instanceof Error ? error.message : 'Eroare necunoscută';
     const status = error instanceof Error && error.name === 'CircuitOpenError' ? 503 : 500;
     logger.error({ error: error }, 'Eurostat integration error:');

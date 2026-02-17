@@ -24,6 +24,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ projects, count: projects.length });
   } catch (error: unknown) {
+    if (error instanceof Error && (error.message === 'Unauthorized' || error.name === 'AuthError')) {
+      return NextResponse.json({ error: 'Neautorizat' }, { status: 401 });
+    }
     const message = error instanceof Error ? error.message : 'Eroare necunoscută';
     const status = error instanceof Error && error.name === 'CircuitOpenError' ? 503 : 500;
     logger.error({ error: error }, 'CORDIS search error:');
