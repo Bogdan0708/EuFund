@@ -1,7 +1,7 @@
 import { randomBytes } from 'crypto';
 import { and, eq, lt } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
-import logger from '@/lib/logger';
+import { logger } from '@/lib/logger';
 
 const VERIFICATION_TOKEN_TTL_HOURS = 24;
 
@@ -48,16 +48,10 @@ export async function verifyEmailToken(token: string): Promise<boolean> {
         })
         .where(eq(schema.users.id, tokenRecord.userId));
 
+      // Delete used token + any expired tokens for this user
       await tx
         .delete(schema.emailVerificationTokens)
-        .where(eq(schema.emailVerificationTokens.id, tokenRecord.id));
-
-      await tx
-        .delete(schema.emailVerificationTokens)
-        .where(and(
-          eq(schema.emailVerificationTokens.userId, tokenRecord.userId),
-          lt(schema.emailVerificationTokens.expiresAt, now),
-        ));
+        .where(eq(schema.emailVerificationTokens.userId, tokenRecord.userId));
     });
 
     return true;
