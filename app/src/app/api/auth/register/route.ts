@@ -8,8 +8,9 @@ import { logAudit } from '@/lib/legal/audit';
 import { eq } from 'drizzle-orm';
 import { hash } from 'bcryptjs';
 import { logger } from '@/lib/logger';
+import { withRateLimit } from '@/lib/middleware/rate-limit';
 
-export async function POST(req: NextRequest) {
+async function registerHandler(req: NextRequest) {
   try {
     const body = await req.json();
     const parsed = registerSchema.safeParse(body);
@@ -91,3 +92,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }
+
+export const POST = withRateLimit(
+  {
+    keyPrefix: 'auth:register',
+    maxRequests: 5,
+    windowMs: 15 * 60 * 1000,
+    messageRo: 'Prea multe încercări de înregistrare. Vă rugăm să încercați din nou mai târziu.',
+  },
+  registerHandler,
+);
