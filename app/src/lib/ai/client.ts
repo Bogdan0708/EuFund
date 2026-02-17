@@ -1,21 +1,50 @@
 // ─── AI Client with Circuit Breaker ──────────────────────────────
-import { createOpenAI } from '@ai-sdk/openai';
-import { generateText, generateObject, embed } from 'ai';
 import { z } from 'zod';
 import { CircuitBreaker, Errors, withRetry } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { AI_CONFIG } from './config';
+import { createDefaultConfig, getAIOrchestrator } from './orchestrator';
+import { TaskType } from './types';
 const log = logger.child({ component: 'ai-client' });
-
-// OpenAI provider instance
-const openai = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
-});
 
 // Circuit breakers per service
 const generationBreaker = new CircuitBreaker('ai-generation', 5, 60000);
 const analysisBreaker = new CircuitBreaker('ai-analysis', 5, 60000);
 const embeddingBreaker = new CircuitBreaker('ai-embedding', 5, 60000);
+
+function resolveTaskType(hintText: string): TaskType {
+  const text = hintText.toLowerCase();
+
+  if (text.includes('proposal')) return TaskType.PROPOSAL_GENERATION;
+  if (text.includes('risk')) return TaskType.RISK_ASSESSMENT;
+  if (text.includes('grant')) return TaskType.GRANT_MATCHING;
+  if (text.includes('partner')) return TaskType.PARTNER_MATCHING;
+  if (text.includes('budget')) return TaskType.BUDGET_ANALYSIS;
+  if (text.includes('timeline')) return TaskType.TIMELINE_OPTIMIZATION;
+  if (text.includes('legal')) return TaskType.LEGAL_ANALYSIS;
+  if (text.includes('romania') || text.includes('romanian') || text.includes('română') || text.includes('romana')) {
+    return TaskType.ROMANIAN_LOCALIZATION;
+  }
+  if (text.includes('compliance')) return TaskType.COMPLIANCE_CHECK;
+
+  return TaskType.DOCUMENT_ANALYSIS;
+}
+
+function getOrchestrator() {
+  return getAIOrchestrator(createDefaultConfig());
+}
+
+function schemaToJsonSchema(schema: z.ZodType): unknown {
+  const zodAny = z as unknown as {
+    toJSONSchema?: (value: z.ZodType) => unknown;
+  };
+
+  if (typeof zodAny.toJSONSchema === 'function') {
+    return zodAny.toJSONSchema(schema);
+  }
+
+  return (schema as unknown as { _def?: unknown })._def ?? schema;
+}
 
 /**
  * Generate text with retry + circuit breaker
@@ -30,17 +59,22 @@ export async function aiGenerate(opts: {
   try {
     return await generationBreaker.execute(() =>
       withRetry(async () => {
-        const result = await generateText({
-          model: openai(AI_CONFIG.generation.model),
-          system: opts.system,
+        const orchestrator = getOrchestrator();
+        const result = await orchestrator.generateText({
+          taskType: resolveTaskType(`${opts.system}\n${opts.prompt}`),
           prompt: opts.prompt,
+          systemPrompt: opts.system,
+          maxTokens: opts.maxTokens ?? AI_CONFIG.generation.maxTokens,
           temperature: opts.temperature ?? AI_CONFIG.generation.temperature,
-          maxOutputTokens: opts.maxTokens ?? AI_CONFIG.generation.maxTokens,
-          abortSignal: AbortSignal.timeout(30000),
+          userTier: 'enterprise',
+          userId: 'legacy-client',
+          language: 'auto',
+          priority: 'normal',
         });
+
         return {
-          text: result.text,
-          tokensUsed: (result.usage?.totalTokens) ?? 0,
+          text: result.content,
+          tokensUsed: result.tokensUsed.total,
         };
       })
     );
@@ -63,18 +97,26 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
   try {
     return await analysisBreaker.execute(() =>
       withRetry(async () => {
-        const result = await generateObject({
-          model: openai(AI_CONFIG.analysis.model),
-          system: opts.system,
+        const orchestrator = getOrchestrator();
+        const result = await orchestrator.generateObject<z.infer<T>>({
+          taskType: resolveTaskType(`${opts.schemaName}\n${opts.system}\n${opts.prompt}`),
           prompt: opts.prompt,
-          schema: opts.schema,
-          schemaName: opts.schemaName,
+          systemPrompt: opts.system,
+          maxTokens: AI_CONFIG.analysis.maxTokens,
           temperature: opts.temperature ?? AI_CONFIG.analysis.temperature,
-          abortSignal: AbortSignal.timeout(30000),
+          userTier: 'enterprise',
+          userId: 'legacy-client',
+          language: 'auto',
+          priority: 'normal',
+          structuredOutput: true,
+          schema: schemaToJsonSchema(opts.schema),
         });
+
+        const validatedObject = opts.schema.parse(result.object);
+
         return {
-          object: result.object as z.infer<T>,
-          tokensUsed: (result.usage?.totalTokens) ?? 0,
+          object: validatedObject,
+          tokensUsed: result.tokensUsed.total,
         };
       })
     );
@@ -91,14 +133,11 @@ export async function aiEmbed(text: string): Promise<{ embedding: number[]; toke
   try {
     return await embeddingBreaker.execute(() =>
       withRetry(async () => {
-        const result = await embed({
-          model: openai.embedding(AI_CONFIG.embedding.model),
-          value: text,
-          abortSignal: AbortSignal.timeout(30000),
-        });
+        const orchestrator = getOrchestrator();
+        const embedding = await orchestrator.embed(text);
         return {
-          embedding: result.embedding as number[],
-          tokensUsed: (result.usage?.tokens) ?? 0,
+          embedding,
+          tokensUsed: Math.ceil(text.length / 4),
         };
       })
     );
