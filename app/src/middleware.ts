@@ -1,10 +1,14 @@
 // ─── Global Authentication & Security Middleware ───────────────
 // Phase 1 Security: Auth + CSRF + Security Headers + CSP Nonces
-import { auth } from '@/lib/auth';
-import { logger } from '@/lib/logger';
+import { auth } from '@/lib/auth/edge';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-const baseLog = logger.child({ component: 'middleware' });
+
+// Edge-safe logger (no pino in Edge runtime)
+const baseLog = {
+  warn: (data: Record<string, unknown>, msg: string) => console.warn(JSON.stringify({ ...data, msg })),
+  info: (data: Record<string, unknown>, msg: string) => console.log(JSON.stringify({ ...data, msg })),
+};
 
 // ─── CSP Nonce Generation ───
 function generateNonce(): string {
