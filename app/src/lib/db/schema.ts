@@ -40,6 +40,11 @@ export const users = pgTable('users', {
   phone: varchar('phone', { length: 20 }),
   preferredLang: varchar('preferred_lang', { length: 5 }).default('ro'),
   tier: userTierEnum('tier').default('free'),
+  stripeCustomerId: varchar('stripe_customer_id', { length: 255 }),
+  stripeSubscriptionId: varchar('stripe_subscription_id', { length: 255 }),
+  subscriptionStatus: varchar('subscription_status', { length: 50 }).default('none'),
+  subscriptionPeriodEnd: timestamp('subscription_period_end', { withTimezone: true }),
+  apiCallsThisMonth: integer('api_calls_this_month').default(0),
   avatarUrl: varchar('avatar_url', { length: 500 }),
   emailVerified: boolean('email_verified').default(false),
   mfaEnabled: boolean('mfa_enabled').default(false),
@@ -50,7 +55,9 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
-});
+}, (table) => ({
+  stripeCustomerIdx: index('idx_users_stripe_customer').on(table.stripeCustomerId),
+}));
 
 // ─── Email Verification Tokens ──────────────────────────────────
 export const emailVerificationTokens = pgTable('email_verification_tokens', {
