@@ -25,16 +25,24 @@ export default function NewProjectPage() {
     },
   });
 
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   const onSubmit = async (data: CreateProjectInput) => {
+    setSubmitError(null);
     try {
       const res = await fetch('/api/v1/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      if (res.ok) setSuccess(true);
+      if (res.ok) {
+        setSuccess(true);
+      } else {
+        const body = await res.json().catch(() => null);
+        setSubmitError(body?.error?.message || `Eroare ${res.status}`);
+      }
     } catch (err) {
-      console.error('Unhandled error:', err);
+      setSubmitError('Eroare de conexiune. Încercați din nou.');
     }
   };
 
@@ -93,6 +101,12 @@ export default function NewProjectPage() {
         </div>
 
         <input type="hidden" {...register('orgId')} />
+
+        {submitError && (
+          <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+            {submitError}
+          </div>
+        )}
 
         <button
           type="submit"
