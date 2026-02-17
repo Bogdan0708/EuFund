@@ -7,11 +7,28 @@ if (!connectionString) {
   throw new Error('DATABASE_URL environment variable is required. Cannot start without database configuration.');
 }
 
-const client = postgres(connectionString, {
-  max: 10,
-  idle_timeout: 20,
-  connect_timeout: 10,
-});
+// Support Cloud SQL unix socket via DB_SOCKET_PATH env var
+// postgres.js accepts a `host` option as a unix socket path
+const socketPath = process.env.DB_SOCKET_PATH;
+const clientOptions = socketPath
+  ? {
+      host: socketPath,
+      database: process.env.DB_NAME || 'fondeu',
+      username: process.env.DB_USER || 'fondeu',
+      password: process.env.DB_PASS,
+      max: 5,
+      idle_timeout: 20,
+      connect_timeout: 30,
+    }
+  : {
+      max: 10,
+      idle_timeout: 20,
+      connect_timeout: 10,
+    };
+
+const client = socketPath
+  ? postgres(clientOptions as Parameters<typeof postgres>[0])
+  : postgres(connectionString, clientOptions as Parameters<typeof postgres>[1]);
 
 export const db = drizzle(client, { schema });
 export type Database = typeof db;
