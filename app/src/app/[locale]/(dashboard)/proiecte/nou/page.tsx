@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createProjectSchema, type CreateProjectInput } from '@/lib/validators';
+import { createProjectSchema } from '@/lib/validators';
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
