@@ -97,8 +97,12 @@ export function withRateLimit(options: RateLimitOptions, handler: NextRouteHandl
     }
 
     const response = await handler(request);
-    for (const [header, value] of Object.entries(limit.headers)) {
-      response.headers.set(header, value);
+    try {
+      for (const [header, value] of Object.entries(limit.headers)) {
+        response.headers.set(header, value);
+      }
+    } catch {
+      // Headers may be immutable (e.g. NextAuth responses) — skip
     }
 
     return response;
