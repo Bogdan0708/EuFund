@@ -50,16 +50,10 @@ export async function enforceRateLimit(
 > {
   const ip = getClientIp(request);
 
-  // Reject requests with no identifiable IP — can't rate limit safely
+  // If no IP can be determined, allow the request but skip rate limiting
   if (!ip) {
-    log.warn('Request with no identifiable IP address — denying');
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: { code: 'BAD_REQUEST', message: 'Nu s-a putut identifica adresa IP.' } },
-        { status: 400 },
-      ),
-    };
+    log.warn('Request with no identifiable IP address — skipping rate limit');
+    return { ok: true, headers: {} };
   }
 
   try {
