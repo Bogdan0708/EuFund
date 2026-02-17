@@ -50,6 +50,8 @@ export default function ProposalWizard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
+          businessDescription: form.projectIdea,
+          fundingProgram: form.programType,
           budget: form.budget ? Number(form.budget) : undefined,
           duration: form.duration ? Number(form.duration) : undefined,
           locale: 'ro',

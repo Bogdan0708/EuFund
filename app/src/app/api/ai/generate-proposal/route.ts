@@ -19,50 +19,52 @@ export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
     try {
       const body = await request.json();
-    const parsed = generateProposalSchema.safeParse(body);
+      const parsed = generateProposalSchema.safeParse(body);
 
-    if (!parsed.success) {
-      return NextResponse.json(
-        Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(),
-        { status: 400 }
-      );
-    }
+      if (!parsed.success) {
+        return NextResponse.json(
+          Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(),
+          { status: 400 }
+        );
+      }
 
-    const programType = PROGRAM_MAP[parsed.data.fundingProgram ?? parsed.data.programType ?? ''] ?? 'general';
-    const proposalInput = {
-      projectIdea: parsed.data.projectIdea ?? parsed.data.businessDescription ?? '',
-      programType,
-      organizationType: parsed.data.organizationType ?? 'company',
-      organizationName: parsed.data.organizationName ?? 'Applicant Organization',
-      locale: (parsed.data.locale ?? 'ro') as const,
-    };
+      const selectedProgram = parsed.data.fundingProgram ?? parsed.data.programType ?? 'general';
+      const programType = PROGRAM_MAP[selectedProgram] ?? 'general';
+      const locale: 'ro' | 'en' = parsed.data.locale === 'en' ? 'en' : 'ro';
+      const proposalInput = {
+        projectIdea: parsed.data.projectIdea ?? parsed.data.businessDescription ?? '',
+        programType,
+        organizationType: parsed.data.organizationType ?? 'company',
+        organizationName: parsed.data.organizationName ?? 'Applicant Organization',
+        locale,
+      };
 
-    const result = await generateProposal(proposalInput);
+      const result = await generateProposal(proposalInput);
 
-    await logAudit({
-      userId: user.id,
-      action: 'ai.generate',
-      resourceType: 'proposal',
-      metadata: {
-        fundingProgram: parsed.data.fundingProgram,
-        tokensUsed: result.tokensUsed,
-        ragSourcesUsed: result.ragSourcesUsed,
-        userTier: user.tier,
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        proposal: result.proposal,
+      await logAudit({
+        userId: user.id,
+        action: 'ai.generate',
+        resourceType: 'proposal',
         metadata: {
+          fundingProgram: selectedProgram,
           tokensUsed: result.tokensUsed,
           ragSourcesUsed: result.ragSourcesUsed,
-          generatedAt: new Date().toISOString(),
-          mode: 'validated',
+          userTier: user.tier,
         },
-      },
-    });
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          proposal: result.proposal,
+          metadata: {
+            tokensUsed: result.tokensUsed,
+            ragSourcesUsed: result.ragSourcesUsed,
+            generatedAt: new Date().toISOString(),
+            mode: 'validated',
+          },
+        },
+      });
     } catch (error) {
       if (error instanceof FondEUError) {
         return NextResponse.json(error.toResponse(), { status: error.statusCode });

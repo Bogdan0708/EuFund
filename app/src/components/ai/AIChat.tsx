@@ -40,6 +40,8 @@ export default function AIChat() {
         body: JSON.stringify({
           projectIdea: `Răspunde la următoarea întrebare despre fonduri europene: ${userMessage.content}. Răspunde concis și direct, fără a genera o propunere completă.`,
           programType: 'general',
+          businessDescription: `Răspunde la următoarea întrebare despre fonduri europene: ${userMessage.content}. Răspunde concis și direct, fără a genera o propunere completă.`,
+          fundingProgram: 'general',
           organizationName: 'Consultanță',
           organizationType: 'srl',
           locale: 'ro',
