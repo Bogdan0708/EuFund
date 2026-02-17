@@ -7,6 +7,9 @@ import { createProjectSchema, type CreateProjectInput } from '@/lib/validators';
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { z } from 'zod';
+
+type CreateProjectFormInput = z.input<typeof createProjectSchema>;
 
 export default function NewProjectPage() {
   const t = useTranslations('project');
@@ -18,7 +21,7 @@ export default function NewProjectPage() {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<CreateProjectInput>({
+  } = useForm<CreateProjectFormInput>({
     resolver: zodResolver(createProjectSchema),
     defaultValues: {
       orgId: '', // Will be set from user's org
@@ -27,7 +30,7 @@ export default function NewProjectPage() {
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const onSubmit = async (data: CreateProjectInput) => {
+  const onSubmit = async (data: CreateProjectFormInput) => {
     setSubmitError(null);
     try {
       const res = await fetch('/api/v1/projects', {
@@ -94,10 +97,17 @@ export default function NewProjectPage() {
           <label className="block text-sm font-medium text-gray-700 mb-1">Durata (luni)</label>
           <input
             type="number"
-            {...register('durationMonths', { valueAsNumber: true })}
+            {...register('durationMonths', {
+              setValueAs: (value) => {
+                if (value === '' || value === null || value === undefined) return undefined;
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? parsed : undefined;
+              },
+            })}
             placeholder="ex: 24"
             className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-brand-500 focus:outline-none"
           />
+          {errors.durationMonths && <p className="text-sm text-danger mt-1">{errors.durationMonths.message}</p>}
         </div>
 
         <input type="hidden" {...register('orgId')} />
