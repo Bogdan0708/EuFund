@@ -65,7 +65,7 @@ export const createProjectSchema = z.object({
     .max(1000).transform(normalizeDiacritics),
   acronym: z.string().max(50).optional(),
   callId: z.string().uuid().optional(),
-  orgId: z.string().uuid(),
+  orgId: z.string().uuid().optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   durationMonths: z.number().min(1).max(120).optional(),

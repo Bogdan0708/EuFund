@@ -26,9 +26,21 @@ export const forecastLifecycleSchema = z.object({
 });
 
 export const generateProposalSchema = z.object({
-  businessDescription: z.string().min(1).max(10000),
-  fundingProgram: z.string().min(1),
-});
+  // Accept both field names (frontend sends projectIdea, legacy sends businessDescription)
+  projectIdea: z.string().min(1).max(10000).optional(),
+  businessDescription: z.string().min(1).max(10000).optional(),
+  programType: z.string().min(1).optional(),
+  fundingProgram: z.string().min(1).optional(),
+  organizationName: z.string().optional(),
+  organizationType: z.string().optional(),
+  sector: z.string().optional(),
+  budget: z.number().optional(),
+  duration: z.number().optional(),
+  locale: z.string().optional(),
+}).refine(
+  (data) => data.projectIdea || data.businessDescription,
+  { message: 'projectIdea or businessDescription is required', path: ['projectIdea'] }
+);
 
 export const companyProfileSchema = z.object({
   companyName: z.string().min(1),

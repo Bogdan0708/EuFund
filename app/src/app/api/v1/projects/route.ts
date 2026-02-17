@@ -116,12 +116,36 @@ export async function POST(req: NextRequest) {
 
     const data = parsed.data;
 
-    // Verify user has access to the organization
-    await requireOrgRole(user.id, data.orgId, 'project_manager');
+    // Resolve orgId: use provided, or find user's first org, or create a default
+    let orgId = data.orgId;
+    if (!orgId) {
+      const userOrg = await db.query.orgMembers.findFirst({
+        where: eq(orgMembers.userId, user.id),
+      });
+      if (userOrg) {
+        orgId = userOrg.orgId;
+      } else {
+        // Auto-create a personal organization for the user
+        const [newOrg] = await db.insert(organizations).values({
+          name: `Organizația lui ${user.name || 'Utilizator'}`,
+          orgType: 'srl',
+          orgSize: 'micro',
+        }).returning();
+        await db.insert(orgMembers).values({
+          orgId: newOrg.id,
+          userId: user.id,
+          role: 'org_admin',
+        });
+        orgId = newOrg.id;
+      }
+    } else {
+      // Verify user has access to the organization
+      await requireOrgRole(user.id, orgId, 'project_manager');
+    }
 
     // Insert project
     const [project] = await db.insert(projects).values({
-      orgId: data.orgId,
+      orgId,
       callId: data.callId,
       createdBy: user.id,
       title: data.title,
@@ -138,7 +162,7 @@ export async function POST(req: NextRequest) {
       action: 'project.create',
       resourceType: 'project',
       resourceId: project.id,
-      newValue: { title: data.title, orgId: data.orgId, callId: data.callId },
+      newValue: { title: data.title, orgId, callId: data.callId },
     });
 
     return NextResponse.json({

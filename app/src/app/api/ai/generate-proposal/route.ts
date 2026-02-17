@@ -28,13 +28,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const programType = PROGRAM_MAP[parsed.data.fundingProgram] ?? 'general';
+    const programType = PROGRAM_MAP[parsed.data.fundingProgram ?? parsed.data.programType ?? ''] ?? 'general';
     const proposalInput = {
-      projectIdea: parsed.data.businessDescription,
+      projectIdea: parsed.data.projectIdea ?? parsed.data.businessDescription ?? '',
       programType,
-      organizationType: 'company',
-      organizationName: 'Applicant Organization',
-      locale: 'ro' as const,
+      organizationType: parsed.data.organizationType ?? 'company',
+      organizationName: parsed.data.organizationName ?? 'Applicant Organization',
+      locale: (parsed.data.locale ?? 'ro') as const,
     };
 
     const result = await generateProposal(proposalInput);
