@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -183,6 +183,7 @@ export default function ProjectDetailPage() {
   const t = useTranslations();
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [ganttData, setGanttData] = useState<GanttData | null>(null);
   const [workPackages, setWorkPackages] = useState<WorkPackage[]>([]);
@@ -239,6 +240,13 @@ export default function ProjectDetailPage() {
     }
     load();
   }, [params.id, t]);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'detalii' || tab === 'gantt' || tab === 'pachete' || tab === 'propunere' || tab === 'documente' || tab === 'conformitate') {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   const handleTaskUpdate = async (taskId: string, updates: { startDate: string; endDate: string }) => {
     try {
