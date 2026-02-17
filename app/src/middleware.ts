@@ -179,7 +179,9 @@ export default auth(async (req) => {
       : `script-src 'nonce-${nonce}' 'strict-dynamic'`,
     
     // Style sources
-    `style-src 'self' 'nonce-${nonce}'`,
+    isDev
+      ? `style-src 'self' 'unsafe-inline'`
+      : `style-src 'self' 'nonce-${nonce}'`,
     
     // Images - allow data URIs and HTTPS
     "img-src 'self' data: https:",
