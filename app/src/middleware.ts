@@ -5,10 +5,12 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // Edge-safe logger (no pino in Edge runtime)
-const baseLog = {
-  warn: (data: Record<string, unknown>, msg: string) => console.warn(JSON.stringify({ ...data, msg })),
-  info: (data: Record<string, unknown>, msg: string) => console.log(JSON.stringify({ ...data, msg })),
-};
+const makeLog = (ctx: Record<string, unknown> = {}) => ({
+  warn: (data: Record<string, unknown>, msg: string) => console.warn(JSON.stringify({ ...ctx, ...data, msg })),
+  info: (data: Record<string, unknown>, msg: string) => console.log(JSON.stringify({ ...ctx, ...data, msg })),
+  child: (childCtx: Record<string, unknown>) => makeLog({ ...ctx, ...childCtx }),
+});
+const baseLog = makeLog({ component: 'middleware' });
 
 // ─── CSP Nonce Generation ───
 function generateNonce(): string {
