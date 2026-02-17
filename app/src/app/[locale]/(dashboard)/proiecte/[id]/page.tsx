@@ -463,7 +463,7 @@ export default function ProjectDetailPage() {
           />
           <WorkPackageTable
             workPackages={workPackages}
-            onRowClick={(wp) => {/* TODO: navigate to WP detail */}}
+            onRowClick={(wp) => router.push(`/${params.locale}/proiecte/${params.id}/pachete/${wp.id}`)}
           />
         </TabsContent>
 
