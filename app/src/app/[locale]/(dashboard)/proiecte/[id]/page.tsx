@@ -458,6 +458,7 @@ export default function ProjectDetailPage() {
           <WorkPackageDashboard
             workPackages={workPackages}
             projectBudget={project.totalBudget ? Number(project.totalBudget) : undefined}
+            onEdit={(wp) => router.push(`/${params.locale}/proiecte/${params.id}/pachete/${wp.id}`)}
             onComplete={(id) => handleWpStatusChange(id, 'completed')}
             onDelay={(id) => handleWpStatusChange(id, 'delayed')}
           />
