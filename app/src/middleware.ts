@@ -24,8 +24,8 @@ const publicPaths = [
   '/api/csp-report', // CSP violation reporting endpoint
   '/ro/autentificare',
   '/ro/inregistrare',
-  '/en/login',
-  '/en/register',
+  '/en/autentificare',
+  '/en/inregistrare',
   '/_next',
   '/favicon.ico',
   '/robots.txt',
