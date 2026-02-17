@@ -36,7 +36,7 @@ export default function LoginPage() {
       if (result?.error) {
         setError(t('invalidCredentials'));
       } else if (result?.ok) {
-        router.push(`/${locale}`);
+        router.push(`/${locale}/panou`);
       }
     } catch {
       setError(t('invalidCredentials'));
