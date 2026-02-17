@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface MarketIntelData {
   overallReadiness?: number;
@@ -15,6 +16,10 @@ export default function RomanianMarketIntelligenceWidget() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState<MarketIntelData | null>(null);
+  const [projectBudget, setProjectBudget] = useState(500000);
+  const [romanianPartnerCount, setRomanianPartnerCount] = useState(2);
+  const [hasPublicProcurement, setHasPublicProcurement] = useState(true);
+  const [projectDurationMonths, setProjectDurationMonths] = useState(24);
 
   const loadIntelligence = async () => {
     setLoading(true);
@@ -24,10 +29,10 @@ export default function RomanianMarketIntelligenceWidget() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          projectBudget: 500000,
-          romanianPartnerCount: 2,
-          hasPublicProcurement: true,
-          projectDurationMonths: 24,
+          projectBudget,
+          romanianPartnerCount,
+          hasPublicProcurement,
+          projectDurationMonths,
           sectorFocus: 'general',
           locale: 'ro',
         }),
@@ -50,6 +55,43 @@ export default function RomanianMarketIntelligenceWidget() {
         <CardDescription>ANAF, riscuri achiziții, curs EUR/RON și recomandări operaționale</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            type="number"
+            min={0}
+            value={projectBudget}
+            onChange={(event) => setProjectBudget(Math.max(0, Number(event.target.value) || 0))}
+            placeholder="Buget (EUR)"
+            aria-label="Buget proiect"
+          />
+          <Input
+            type="number"
+            min={0}
+            step={1}
+            value={romanianPartnerCount}
+            onChange={(event) => setRomanianPartnerCount(Math.max(0, Math.floor(Number(event.target.value) || 0)))}
+            placeholder="Parteneri RO"
+            aria-label="Număr parteneri români"
+          />
+          <Input
+            type="number"
+            min={1}
+            step={1}
+            value={projectDurationMonths}
+            onChange={(event) => setProjectDurationMonths(Math.max(1, Math.floor(Number(event.target.value) || 1)))}
+            placeholder="Durată (luni)"
+            aria-label="Durata proiectului în luni"
+          />
+          <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+            <input
+              type="checkbox"
+              checked={hasPublicProcurement}
+              onChange={(event) => setHasPublicProcurement(event.target.checked)}
+            />
+            Achiziții publice
+          </label>
+        </div>
+
         <Button onClick={loadIntelligence} disabled={loading}>
           {loading ? 'Se analizează...' : 'Rulează analiza de piață'}
         </Button>
