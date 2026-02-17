@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { projects } from '@/lib/db/schema';
+import { organizations, projects } from '@/lib/db/schema';
 import { updateProjectSectionSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
@@ -30,7 +30,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     await requireOrgRole(user.id, project.orgId, 'viewer');
 
-    return NextResponse.json({ success: true, data: project });
+    const organization = await db.query.organizations.findFirst({
+      where: eq(organizations.id, project.orgId),
+      columns: { name: true },
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: { ...project, organizationName: organization?.name || null },
+    });
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });

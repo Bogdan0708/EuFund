@@ -19,10 +19,164 @@ interface Project {
   acronym?: string;
   status: string;
   description?: string;
+  sectionSummary?: string;
+  sectionContext?: string;
+  sectionObjectives?: unknown;
+  sectionPartnership?: unknown;
   totalBudget?: number;
   euContribution?: number;
+  ownContrib?: number;
   startDate?: string;
   endDate?: string;
+  durationMonths?: number;
+  callId?: string;
+  programType?: string;
+  sector?: string;
+  metadata?: Record<string, unknown> | null;
+  organizationName?: string;
+}
+
+type PredictionPartnerType = 'university' | 'research_institute' | 'sme' | 'large_enterprise' | 'ngo' | 'public_body';
+type PredictionPartnerRole = 'coordinator' | 'partner';
+
+function unwrapApiData<T>(payload: unknown): T {
+  if (payload && typeof payload === 'object' && 'data' in payload) {
+    return (payload as { data: T }).data;
+  }
+  return payload as T;
+}
+
+function normalizeProgramType(project: Project): string {
+  const metadata = project.metadata && typeof project.metadata === 'object' ? project.metadata : {};
+  const candidates = [
+    project.programType,
+    project.callId,
+    typeof metadata['programType'] === 'string' ? metadata['programType'] : undefined,
+    typeof metadata['program'] === 'string' ? metadata['program'] : undefined,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.toLowerCase());
+
+  const candidate = candidates.find((value) => value.length > 0) || '';
+  if (candidate.includes('horizon')) return 'horizon_europe';
+  if (candidate.includes('interreg')) return 'interreg';
+  if (candidate.includes('life')) return 'life_plus';
+  if (candidate.includes('pnrr')) return 'pnrr';
+  if (candidate.includes('pocidif')) return 'pocidif';
+  return 'general';
+}
+
+function deriveSector(project: Project): string {
+  const metadata = project.metadata && typeof project.metadata === 'object' ? project.metadata : {};
+  const candidates = [
+    project.sector,
+    typeof metadata['sector'] === 'string' ? metadata['sector'] : undefined,
+    project.sectionContext,
+    project.sectionSummary,
+  ].filter((value): value is string => Boolean(value));
+
+  const joined = candidates.join(' ').toLowerCase();
+  if (joined.includes('digital') || joined.includes('software') || joined.includes('it')) return 'digital';
+  if (joined.includes('energie') || joined.includes('energy')) return 'energy';
+  if (joined.includes('sănăt') || joined.includes('health')) return 'health';
+  if (joined.includes('educa') || joined.includes('education')) return 'education';
+  if (joined.includes('mediu') || joined.includes('environment')) return 'environment';
+  return candidates[0]?.trim() || 'general';
+}
+
+function toPartnerType(value: unknown): PredictionPartnerType {
+  const raw = typeof value === 'string' ? value.toLowerCase() : '';
+  if (raw === 'university' || raw === 'research_institute' || raw === 'sme' || raw === 'large_enterprise' || raw === 'ngo' || raw === 'public_body') {
+    return raw;
+  }
+  if (raw.includes('univers')) return 'university';
+  if (raw.includes('research') || raw.includes('institut')) return 'research_institute';
+  if (raw.includes('public') || raw.includes('uat')) return 'public_body';
+  if (raw.includes('ngo') || raw.includes('ong')) return 'ngo';
+  if (raw.includes('enterprise') || raw.includes('corporate')) return 'large_enterprise';
+  return 'sme';
+}
+
+function extractProjectPartners(project: Project) {
+  const source = project.sectionPartnership;
+  const fromArray = Array.isArray(source)
+    ? source
+    : source && typeof source === 'object' && Array.isArray((source as { partners?: unknown[] }).partners)
+      ? (source as { partners: unknown[] }).partners
+      : [];
+
+  const parsed = fromArray
+    .map((partner, index) => {
+      if (typeof partner === 'string') {
+        return {
+          name: partner,
+          country: 'RO',
+          type: 'sme' as PredictionPartnerType,
+          role: index === 0 ? 'coordinator' as PredictionPartnerRole : 'partner' as PredictionPartnerRole,
+          previousEUProjects: 1,
+        };
+      }
+
+      if (!partner || typeof partner !== 'object') return null;
+      const rawPartner = partner as Record<string, unknown>;
+      const name = typeof rawPartner.name === 'string' ? rawPartner.name : `Partener ${index + 1}`;
+      const country = typeof rawPartner.country === 'string' ? rawPartner.country : 'RO';
+      const role = rawPartner.role === 'coordinator' ? 'coordinator' : 'partner';
+      const previousEUProjects = typeof rawPartner.previousEUProjects === 'number'
+        ? rawPartner.previousEUProjects
+        : typeof rawPartner.previous_projects === 'number'
+          ? rawPartner.previous_projects
+          : 1;
+
+      return {
+        name,
+        country,
+        type: toPartnerType(rawPartner.type),
+        role,
+        previousEUProjects,
+        budgetShare: typeof rawPartner.budgetShare === 'number' ? rawPartner.budgetShare : undefined,
+      };
+    })
+    .filter((partner): partner is NonNullable<typeof partner> => Boolean(partner))
+    .map((partner, index) => ({
+      ...partner,
+      role: index === 0 ? 'coordinator' : partner.role,
+    }));
+
+  if (parsed.length > 0) {
+    const hasShares = parsed.some((partner) => typeof partner.budgetShare === 'number');
+    if (hasShares) return parsed;
+    const equalShare = Number((100 / parsed.length).toFixed(2));
+    return parsed.map((partner) => ({ ...partner, budgetShare: equalShare }));
+  }
+
+  return [
+    {
+      name: project.organizationName || `Coordonator ${project.acronym || project.title}`,
+      country: 'RO',
+      type: 'sme' as PredictionPartnerType,
+      role: 'coordinator' as PredictionPartnerRole,
+      previousEUProjects: 1,
+      budgetShare: 100,
+    },
+  ];
+}
+
+function getComplianceRegulations(programType: string): string[] {
+  switch (programType) {
+    case 'horizon_europe':
+      return ['Regulamentul (UE) 2021/695', 'Model Grant Agreement Horizon Europe', 'GDPR'];
+    case 'interreg':
+      return ['Regulamentul (UE) 2021/1059', 'Regulamentul (UE) 2021/1060', 'Reguli naționale Interreg România'];
+    case 'pnrr':
+      return ['Regulamentul (UE) 2021/241', 'Principiul DNSH', 'GDPR'];
+    case 'pocidif':
+      return ['Programul POCIDIF 2021-2027', 'Regulamentul (UE) 2021/1060', 'Reguli ajutor de stat aplicabile'];
+    case 'life_plus':
+      return ['Regulamentul (UE) 2021/783', 'Programul LIFE 2021-2027', 'GDPR'];
+    default:
+      return ['Regulamentul (UE) 2021/1060', 'GDPR', 'Reguli eligibilitate cheltuieli'];
+  }
 }
 
 export default function ProjectDetailPage() {
@@ -59,11 +213,24 @@ export default function ProjectDetailPage() {
           fetch(`/api/v1/projects/${params.id}/timeline`),
         ]);
 
-        if (projRes.ok) setProject(await projRes.json());
+        if (projRes.ok) {
+          const projectPayload = await projRes.json();
+          const projectData = unwrapApiData<Project>(projectPayload);
+          setProject({
+            ...projectData,
+            description: projectData.description || projectData.sectionSummary || '',
+          });
+        }
         else setError(t('errors.notFound'));
 
-        if (wpRes.ok) setWorkPackages(await wpRes.json());
-        if (timelineRes.ok) setGanttData(await timelineRes.json());
+        if (wpRes.ok) {
+          const wpPayload = await wpRes.json();
+          setWorkPackages(unwrapApiData<WorkPackage[]>(wpPayload));
+        }
+        if (timelineRes.ok) {
+          const timelinePayload = await timelineRes.json();
+          setGanttData(unwrapApiData<GanttData>(timelinePayload));
+        }
       } catch {
         setError(t('errors.serverError'));
       } finally {
@@ -82,7 +249,10 @@ export default function ProjectDetailPage() {
       });
       // Refresh timeline
       const res = await fetch(`/api/v1/projects/${params.id}/timeline`);
-      if (res.ok) setGanttData(await res.json());
+      if (res.ok) {
+        const payload = await res.json();
+        setGanttData(unwrapApiData<GanttData>(payload));
+      }
     } catch { /* silent */ }
   };
 
@@ -94,7 +264,10 @@ export default function ProjectDetailPage() {
         body: JSON.stringify({ status }),
       });
       const res = await fetch(`/api/v1/projects/${params.id}/work-packages`);
-      if (res.ok) setWorkPackages(await res.json());
+      if (res.ok) {
+        const payload = await res.json();
+        setWorkPackages(unwrapApiData<WorkPackage[]>(payload));
+      }
     } catch { /* silent */ }
   };
 
@@ -105,30 +278,28 @@ export default function ProjectDetailPage() {
     try {
       const startDate = project.startDate ? new Date(project.startDate) : null;
       const endDate = project.endDate ? new Date(project.endDate) : null;
-      const durationMonths = startDate && endDate
+      const durationMonths = project.durationMonths || (startDate && endDate
         ? Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30)))
-        : 24;
+        : 24);
+
+      const programType = normalizeProgramType(project);
+      const sector = deriveSector(project);
+      const partners = extractProjectPartners(project);
+      const derivedBudget = Number(project.totalBudget) > 0
+        ? Number(project.totalBudget)
+        : Number(project.euContribution || 0) + Number(project.ownContrib || 0) || Math.max(50000, partners.length * 50000);
 
       const res = await fetch('/api/ai/predict-success', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectTitle: project.title,
-          projectSummary: project.description || `Proiect ${project.title} cu focus pe implementare și rezultate măsurabile.`,
-          programType: 'horizon_europe',
-          totalBudget: Number(project.totalBudget) || 100000,
+          projectSummary: project.description || project.sectionSummary || `Proiect ${project.title} cu focus pe implementare și rezultate măsurabile.`,
+          programType,
+          totalBudget: derivedBudget,
           durationMonths,
-          sector: 'general',
-          partners: [
-            {
-              name: 'Organizația solicitantă',
-              country: 'RO',
-              type: 'sme',
-              role: 'coordinator',
-              previousEUProjects: 1,
-              budgetShare: 100,
-            },
-          ],
+          sector,
+          partners,
           locale: 'ro',
         }),
       });
@@ -148,12 +319,19 @@ export default function ProjectDetailPage() {
     setComplianceLoading(true);
     setComplianceError('');
     try {
+      const programType = normalizeProgramType(project);
+      const objectiveText = Array.isArray(project.sectionObjectives)
+        ? project.sectionObjectives.filter((item) => typeof item === 'string').join('\n')
+        : typeof project.sectionObjectives === 'string'
+          ? project.sectionObjectives
+          : '';
+
       const res = await fetch('/api/ai/validate-compliance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          proposalText: `${project.title}\n\n${project.description || 'Descriere indisponibilă.'}`,
-          regulations: ['CPR 2021/1060', 'GDPR', 'Reguli eligibilitate cheltuieli'],
+          proposalText: `${project.title}\n\n${project.description || project.sectionSummary || 'Descriere indisponibilă.'}\n\n${project.sectionContext || ''}\n\n${objectiveText}`,
+          regulations: getComplianceRegulations(programType),
         }),
       });
 
