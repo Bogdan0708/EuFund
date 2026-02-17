@@ -43,6 +43,12 @@ export default function ProjectDetailPage() {
     overallReadiness?: string;
     benchmarkComparison?: { programAverage?: number; romanianAverage?: number };
   }>(null);
+  const [complianceLoading, setComplianceLoading] = useState(false);
+  const [complianceError, setComplianceError] = useState('');
+  const [compliance, setCompliance] = useState<null | {
+    overallScore?: number;
+    recommendations?: string[];
+  }>(null);
 
   useEffect(() => {
     async function load() {
@@ -134,6 +140,30 @@ export default function ProjectDetailPage() {
       setPredictionError(err instanceof Error ? err.message : 'Eroare necunoscută');
     } finally {
       setPredictionLoading(false);
+    }
+  };
+
+  const runComplianceValidation = async () => {
+    if (!project) return;
+    setComplianceLoading(true);
+    setComplianceError('');
+    try {
+      const res = await fetch('/api/ai/validate-compliance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposalText: `${project.title}\n\n${project.description || 'Descriere indisponibilă.'}`,
+          regulations: ['CPR 2021/1060', 'GDPR', 'Reguli eligibilitate cheltuieli'],
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error?.message || 'Eroare la validarea conformității');
+      setCompliance(data.data);
+    } catch (err) {
+      setComplianceError(err instanceof Error ? err.message : 'Eroare necunoscută');
+    } finally {
+      setComplianceLoading(false);
     }
   };
 
@@ -280,9 +310,20 @@ export default function ProjectDetailPage() {
             <CardHeader>
               <CardTitle className="text-lg">{t('compliance.check')}</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
               <p className="text-muted-foreground">{t('compliance.disclaimer')}</p>
-              <Button className="mt-4">✅ {t('compliance.check')}</Button>
+              <Button onClick={runComplianceValidation} disabled={complianceLoading}>
+                {complianceLoading ? 'Se validează...' : '✅ Validare Conformitate'}
+              </Button>
+              {complianceError && <p className="text-sm text-destructive">{complianceError}</p>}
+              {compliance && (
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <p>Scor conformitate: <span className="font-semibold text-foreground">{compliance.overallScore ?? 0}/100</span></p>
+                  {compliance.recommendations?.slice(0, 3).map((item, idx) => (
+                    <p key={idx}>• {item}</p>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
