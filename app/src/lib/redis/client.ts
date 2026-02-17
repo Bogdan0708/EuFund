@@ -39,9 +39,10 @@ export async function checkRateLimit(
   const redis = getRedis();
   
   if (!redis) {
-    // Fail-closed: deny requests when Redis is unavailable (security-critical)
-    log.warn('Redis unavailable - denying request (fail-closed)');
-    return { allowed: false, remaining: 0, resetTime: Date.now() + windowMs };
+    // Fail-open when Redis is not configured (no REDIS_URL) — allow requests through
+    // Rate limiting is defense-in-depth; auth + CSRF are the primary security layers
+    log.warn('Redis not configured - allowing request (fail-open)');
+    return { allowed: true, remaining: maxRequests, resetTime: Date.now() + windowMs };
   }
 
   const now = Date.now();
