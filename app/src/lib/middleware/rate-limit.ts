@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/redis/client';
 import { Errors } from '@/lib/errors';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'rate-limit' });
 
 export interface RateLimitOptions {
   keyPrefix: string;
@@ -21,7 +24,7 @@ function getClientIp(request: NextRequest): string {
   const realIp = request.headers.get('x-real-ip')?.trim();
   if (realIp) return realIp;
 
-  return 'unknown';
+  return '';
 }
 
 function buildRateLimitExceededResponse(retryAfterSeconds: number, messageRo?: string): NextResponse {
@@ -46,29 +49,50 @@ export async function enforceRateLimit(
   | { ok: false; response: Response }
 > {
   const ip = getClientIp(request);
-  const rateLimit = await checkRateLimit(
-    `${options.keyPrefix}:${ip}`,
-    options.maxRequests,
-    options.windowMs,
-  );
 
-  const retryAfterSeconds = Math.max(1, Math.ceil((rateLimit.resetTime - Date.now()) / 1000));
-
-  if (!rateLimit.allowed) {
+  // Reject requests with no identifiable IP — can't rate limit safely
+  if (!ip) {
+    log.warn('Request with no identifiable IP address — denying');
     return {
       ok: false,
-      response: buildRateLimitExceededResponse(retryAfterSeconds, options.messageRo),
+      response: NextResponse.json(
+        { error: { code: 'BAD_REQUEST', message: 'Nu s-a putut identifica adresa IP.' } },
+        { status: 400 },
+      ),
     };
   }
 
-  return {
-    ok: true,
-    headers: {
-      'X-RateLimit-Limit': options.maxRequests.toString(),
-      'X-RateLimit-Remaining': rateLimit.remaining.toString(),
-      'X-RateLimit-Reset': rateLimit.resetTime.toString(),
-    },
-  };
+  try {
+    const rateLimit = await checkRateLimit(
+      `${options.keyPrefix}:${ip}`,
+      options.maxRequests,
+      options.windowMs,
+    );
+
+    const retryAfterSeconds = Math.max(1, Math.ceil((rateLimit.resetTime - Date.now()) / 1000));
+
+    if (!rateLimit.allowed) {
+      return {
+        ok: false,
+        response: buildRateLimitExceededResponse(retryAfterSeconds, options.messageRo),
+      };
+    }
+
+    return {
+      ok: true,
+      headers: {
+        'X-RateLimit-Limit': options.maxRequests.toString(),
+        'X-RateLimit-Remaining': rateLimit.remaining.toString(),
+        'X-RateLimit-Reset': rateLimit.resetTime.toString(),
+      },
+    };
+  } catch (error) {
+    log.error({ error }, 'Rate limit check failed — allowing request');
+    return {
+      ok: true,
+      headers: {},
+    };
+  }
 }
 
 export function withRateLimit(options: RateLimitOptions, handler: NextRouteHandler): NextRouteHandler {
