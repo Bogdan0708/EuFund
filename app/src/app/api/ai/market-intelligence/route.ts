@@ -1,43 +1,55 @@
-import { withAIAuth } from '@/lib/middleware/auth';
-// ─── GET /api/ai/market-intelligence ─────────────────────────────
+// ─── POST /api/ai/market-intelligence ────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { gatherMarketIntelligence, quickIntelligenceSummary } from '@/lib/ai/integration-intelligence';
+import { z } from 'zod';
+import { analyzeRomanianContext, quickRomanianCheck } from '@/lib/ai/romanian-market-intelligence';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
+import { withAIAuth } from '@/lib/middleware/auth';
 import { logger } from '@/lib/logger';
 
-export async function GET(request: NextRequest) {
-  return withAIAuth(request, async (user) => {
-  try {
-    const { searchParams } = new URL(request.url);
-    const sector = searchParams.get('sector') || 'general';
-    const quick = searchParams.get('quick') === 'true';
-
-    if (quick) {
-      const result = quickIntelligenceSummary(sector);
-      return NextResponse.json({ success: true, data: result });
-    }
-
-    const interests = searchParams.get('interests')?.split(',') || [sector];
-    const result = await gatherMarketIntelligence({
-      sector,
-      interests,
-      organizationName: searchParams.get('organization') || undefined,
-      country: 'RO',
-      locale: (searchParams.get('locale') as 'ro' | 'en') || 'en',
-    });
-
-    await logAudit({
-      action: 'ai.generate',
-      resourceType: 'market_intelligence',
-      metadata: { sector, alertCount: result.opportunityAlerts.length },
-    });
-
-    return NextResponse.json({ success: true, data: result });
-  } catch (error) {
-    if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
-    logger.error({ error: error }, '[market-intelligence]');
-    return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
-  }
+const inputSchema = z.object({
+  projectBudget: z.number().nonnegative(),
+  romanianPartnerCount: z.number().int().nonnegative(),
+  hasPublicProcurement: z.boolean(),
+  projectDurationMonths: z.number().int().positive(),
+  sectorFocus: z.string().optional(),
+  currentExchangeRate: z.number().optional(),
+  locale: z.enum(['ro', 'en']).optional(),
+  quick: z.boolean().optional(),
 });
+
+export async function POST(request: NextRequest) {
+  return withAIAuth(request, async (user) => {
+    try {
+      const body = await request.json();
+      const parsed = inputSchema.safeParse(body);
+      if (!parsed.success) {
+        return NextResponse.json(Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(), { status: 400 });
+      }
+
+      if (parsed.data.quick) {
+        const quick = quickRomanianCheck(parsed.data.hasPublicProcurement, parsed.data.romanianPartnerCount);
+        return NextResponse.json({ success: true, data: quick });
+      }
+
+      const result = await analyzeRomanianContext(parsed.data);
+
+      await logAudit({
+        action: 'ai.generate',
+        resourceType: 'market_intelligence',
+        userId: user.id,
+        metadata: {
+          readiness: result.overallReadiness,
+          procurementRisks: result.publicProcurementRisks.length,
+          userTier: user.tier,
+        },
+      });
+
+      return NextResponse.json({ success: true, data: result });
+    } catch (error) {
+      if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
+      logger.error({ error: error }, '[market-intelligence]');
+      return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
+    }
+  });
 }

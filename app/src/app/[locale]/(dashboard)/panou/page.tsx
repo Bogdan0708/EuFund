@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import RomanianMarketIntelligenceWidget from '@/components/ai/RomanianMarketIntelligenceWidget';
 
 export default function DashboardPage() {
   const t = useTranslations();
@@ -76,6 +77,8 @@ export default function DashboardPage() {
             </p>
           </CardContent>
         </Card>
+
+        <RomanianMarketIntelligenceWidget />
       </div>
     </div>
   );
