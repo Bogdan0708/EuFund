@@ -63,45 +63,89 @@ export async function searchFundingCalls(options: ECSearchOptions = {}): Promise
   return withCache(cacheKey, CACHE_TTL, () =>
     withCircuitBreaker(RATE_KEY, () =>
       withRateLimit(RATE_KEY, async () => {
-        // Build query for EC search API
-        const params = new URLSearchParams({
-          apiKey: process.env.EC_PORTAL_API_KEY ?? 'SEDIA',
-          text: query ?? '*',
-          pageSize: String(limit),
-          pageNumber: String(Math.floor(offset / limit) + 1),
-        });
+        // EC API frequently returns closed calls first. When the UI asks for open/forthcoming,
+        // scan several pages and then filter status client-side to avoid empty results.
+        const basePage = Math.floor(offset / limit) + 1;
+        const pagesToScan = !query && (status === 'open' || status === 'forthcoming') ? 5 : 1;
+        const allCalls: ECFundingCall[] = [];
+        const seen = new Set<string>();
 
-        // Programme filter for 2021-2027
-        if (programme && PROGRAMME_IDS[programme]) {
-          params.set('query', `programmePeriod:"2021-2027"`);
+        for (let i = 0; i < pagesToScan; i += 1) {
+          const calls = await fetchECPage({
+            programme,
+            status,
+            query,
+            limit,
+            pageNumber: basePage + i,
+          });
+          if (calls.length === 0) break;
+
+          for (const call of calls) {
+            if (seen.has(call.identifier)) continue;
+            seen.add(call.identifier);
+            allCalls.push(call);
+          }
+
+          if (allCalls.length >= limit * pagesToScan) break;
         }
 
-        const apiUrl = `${EC_SEARCH_API}?${params.toString()}`;
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`EC Portal API error: ${response.status}`);
+        let filtered = allCalls;
+        if (status === 'open') {
+          filtered = allCalls.filter((c) => c.status === 'open' || c.status === 'forthcoming');
+        } else if (status === 'forthcoming' || status === 'closed') {
+          filtered = allCalls.filter((c) => c.status === status);
         }
 
-        const data = await response.json();
-        let calls = parseECResults(data);
-        // Client-side status filtering (EC API query filters are unreliable)
-        if (status && status !== 'open') {
-          calls = calls.filter((c) => c.status === status);
-        } else if (status === 'open') {
-          // For 'open', include both open and forthcoming (useful results)
-          calls = calls.filter((c) => c.status === 'open' || c.status === 'forthcoming');
+        if (filtered.length === 0 && allCalls.length > 0 && (status === 'open' || status === 'forthcoming')) {
+          filtered = allCalls;
         }
-        return calls;
+
+        return filtered.slice(0, limit);
       }, { maxRequests: 10, windowMs: 60_000 }),
     ),
   );
+}
+
+async function fetchECPage({
+  programme,
+  status,
+  query,
+  limit,
+  pageNumber,
+}: {
+  programme?: ECProgramme;
+  status?: 'open' | 'forthcoming' | 'closed';
+  query?: string;
+  limit: number;
+  pageNumber: number;
+}): Promise<ECFundingCall[]> {
+  const defaultText = status === 'open' ? 'open' : status === 'forthcoming' ? 'forthcoming' : '*';
+  const params = new URLSearchParams({
+    apiKey: process.env.EC_PORTAL_API_KEY ?? 'SEDIA',
+    text: query ?? defaultText,
+    pageSize: String(limit),
+    pageNumber: String(pageNumber),
+  });
+
+  if (programme && PROGRAMME_IDS[programme]) {
+    params.set('query', `programmePeriod:"2021-2027"`);
+  }
+
+  const apiUrl = `${EC_SEARCH_API}?${params.toString()}`;
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`EC Portal API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return parseECResults(data);
 }
 
 // Helper to extract first value from EC metadata field (arrays of strings)
@@ -118,12 +162,13 @@ function parseECResults(data: any): ECFundingCall[] {
     const m = r.metadata ?? {};
     const identifier = metaVal(m.identifier) || r.reference || '';
     const title = metaVal(m.title) || r.content || r.summary || '';
+    const rawStatus = metaVal(m.status) || metaVal(m.sortStatus);
     return {
       identifier,
       title,
       description: metaVal(m.descriptionByte)?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 500) || r.summary || '',
       programme: metaVal(m.frameworkProgramme) || metaVal(m.programmePeriod) || '',
-      status: parseStatus(metaVal(m.status)),
+      status: parseStatus(rawStatus),
       openingDate: metaVal(m.startDate),
       deadlineDate: metaVal(m.deadlineDate),
       budget: null, // Budget is nested in budgetOverview, not a simple field
@@ -136,8 +181,8 @@ function parseECResults(data: any): ECFundingCall[] {
 
 function parseStatus(status: string): ECFundingCall['status'] {
   // EC API uses numeric IDs: 31094501=Open, 31094502=Forthcoming, 31094503=Closed
-  if (status === '31094501' || status.toLowerCase().includes('open')) return 'open';
-  if (status === '31094502' || status.toLowerCase().includes('forthcoming')) return 'forthcoming';
+  if (status === '31094501' || status === '1' || status.toLowerCase().includes('open')) return 'open';
+  if (status === '31094502' || status === '2' || status.toLowerCase().includes('forthcoming')) return 'forthcoming';
   return 'closed';
 }
 
