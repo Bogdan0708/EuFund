@@ -28,29 +28,25 @@ export default function AIChat() {
     if (!input.trim() || loading) return;
 
     const userMessage: Message = { role: 'user', content: input.trim(), timestamp: new Date() };
+    const history = [...messages, userMessage].map(({ role, content }) => ({ role, content }));
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setLoading(true);
 
     try {
-      // Use the generate-proposal endpoint in a simplified chat mode
-      const res = await fetch('/api/ai/generate-proposal', {
+      const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          projectIdea: `Răspunde la următoarea întrebare despre fonduri europene: ${userMessage.content}. Răspunde concis și direct, fără a genera o propunere completă.`,
-          programType: 'general',
-          businessDescription: `Răspunde la următoarea întrebare despre fonduri europene: ${userMessage.content}. Răspunde concis și direct, fără a genera o propunere completă.`,
-          fundingProgram: 'general',
-          organizationName: 'Consultanță',
-          organizationType: 'srl',
+          message: userMessage.content,
+          history,
           locale: 'ro',
         }),
       });
 
       const data = await res.json();
       const assistantContent = data.success
-        ? data.data.proposal.summary || 'Am generat o propunere. Verificați rezultatele.'
+        ? data.data.answer || 'Nu am putut genera un răspuns în acest moment.'
         : 'Îmi pare rău, a apărut o eroare. Vă rugăm să încercați din nou.';
 
       setMessages((prev) => [
