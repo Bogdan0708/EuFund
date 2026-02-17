@@ -93,6 +93,9 @@ export default auth(async (req) => {
       '/api/webhooks',
       '/api/health',
       '/api/csp-report',
+      '/api/v1/',
+      '/api/ai/',
+      '/api/integrations/',
     ];
 
     const isExempt = csrfExemptPaths.some(p => pathname.startsWith(p));
