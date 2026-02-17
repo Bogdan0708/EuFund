@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { formatCurrencyEur, formatDateRo } from '@/lib/utils/romanian';
 
 interface FundingCall {
@@ -16,6 +18,7 @@ interface FundingCall {
 }
 
 export default function FundingCallsLivePage() {
+  const params = useParams<{ locale: string }>();
   const [calls, setCalls] = useState<FundingCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'open' | 'forthcoming' | 'all'>('open');
@@ -55,12 +58,18 @@ export default function FundingCallsLivePage() {
 
   return (
     <div className="max-w-5xl mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
+        <div className="space-y-3">
           <h1 className="text-2xl font-bold">Apeluri de Finanțare Active</h1>
           <p className="text-gray-600 mt-1">
             Date în timp real de la Portalul de Finanțare al Comisiei Europene
           </p>
+          <Link
+            href={`/${params.locale || 'ro'}/finantari/potriviri`}
+            className="inline-flex items-center px-4 py-2.5 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors"
+          >
+            🤖 Găsește grantul potrivit cu AI
+          </Link>
         </div>
         <button
           onClick={loadCalls}
