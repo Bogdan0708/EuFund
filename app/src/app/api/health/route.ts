@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { sql } from 'drizzle-orm';
-import { getRedis } from '@/lib/redis/client';
+
+const SERVICE_CHECK_TIMEOUT_MS = 2000;
+
+async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T | 'timeout'> {
+  return Promise.race([
+    operation,
+    new Promise<'timeout'>((resolve) => {
+      setTimeout(() => resolve('timeout'), timeoutMs);
+    }),
+  ]);
+}
 
 export async function GET(req: NextRequest) {
   const healthCheck = {
@@ -19,26 +27,39 @@ export async function GET(req: NextRequest) {
   };
 
   try {
-    // Quick database check
+    // Optional database check with short timeout
     try {
-      await db.execute(sql`SELECT 1`);
-      healthCheck.services.database = 'healthy';
+      const dbCheck = await withTimeout(
+        (async () => {
+          const [{ db }, { sql }] = await Promise.all([
+            import('@/lib/db'),
+            import('drizzle-orm'),
+          ]);
+          await db.execute(sql`SELECT 1`);
+        })(),
+        SERVICE_CHECK_TIMEOUT_MS
+      );
+      healthCheck.services.database = dbCheck === 'timeout' ? 'timeout' : 'healthy';
     } catch (error) {
-      healthCheck.services.database = 'unhealthy';
+      healthCheck.services.database = 'timeout';
       healthCheck.status = 'degraded';
     }
 
-    // Redis check (if configured)
+    // Optional Redis check with short timeout
     try {
-      const redis = getRedis();
-      if (redis) {
-        await redis.ping();
-        healthCheck.services.redis = 'healthy';
-      } else {
-        healthCheck.services.redis = 'not_configured';
-      }
+      const redisCheck = await withTimeout(
+        (async () => {
+          const { getRedis } = await import('@/lib/redis/client');
+          const redis = getRedis();
+          if (!redis) return 'not_configured' as const;
+          await redis.ping();
+          return 'healthy' as const;
+        })(),
+        SERVICE_CHECK_TIMEOUT_MS
+      );
+      healthCheck.services.redis = redisCheck;
     } catch (error) {
-      healthCheck.services.redis = 'unhealthy';
+      healthCheck.services.redis = 'timeout';
       healthCheck.status = 'degraded';
     }
 
@@ -53,23 +74,20 @@ export async function GET(req: NextRequest) {
       healthCheck.services.ai = 'error';
     }
 
-    // Overall status
-    const hasUnhealthyServices = Object.values(healthCheck.services)
-      .some(status => status === 'unhealthy');
-    
-    if (hasUnhealthyServices) {
-      healthCheck.status = 'unhealthy';
-      return NextResponse.json(healthCheck, { status: 503 });
+    const hasTimeouts = [healthCheck.services.database, healthCheck.services.redis]
+      .some(status => status === 'timeout');
+    if (hasTimeouts) {
+      healthCheck.status = 'degraded';
     }
 
     return NextResponse.json(healthCheck, { status: 200 });
 
   } catch (error) {
     return NextResponse.json({
-      status: 'error',
+      status: 'unhealthy',
       timestamp: new Date().toISOString(),
       error: 'Health check failed',
       message: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    }, { status: 503 });
   }
 }
