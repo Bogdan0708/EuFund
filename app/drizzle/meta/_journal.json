@@ -15,6 +15,13 @@
       "when": 1771061129690,
       "tag": "0001_omniscient_nuke",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771321145002,
+      "tag": "0002_chunky_captain_britain",
+      "breakpoints": true
     }
   ]
 }
