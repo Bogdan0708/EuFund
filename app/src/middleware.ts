@@ -73,7 +73,7 @@ export default auth(async (req) => {
   // ═══════════════════════════════════════════════════════════════════
   if (!isPublic && !req.auth) {
     if (pathname.startsWith('/api/')) {
-      log.warn(`[middleware] Unauthorized API access: IP=${ip}, path=${pathname}`);
+      log.warn({ ip, path: pathname }, '[middleware] Unauthorized API access');
       const response = NextResponse.json(
         { error: 'Authentication required', code: 'UNAUTHORIZED' },
         { status: 401 }
@@ -108,7 +108,7 @@ export default auth(async (req) => {
 
     if (!isExempt && !isPublic && pathname.startsWith('/api/')) {
       if (!validateCSRF(req)) {
-        log.warn(`[middleware] CSRF validation failed: IP=${ip}, path=${pathname}`);
+        log.warn({ ip, path: pathname }, '[middleware] CSRF validation failed');
         const response = NextResponse.json(
           {
             error: 'CSRF token required',
