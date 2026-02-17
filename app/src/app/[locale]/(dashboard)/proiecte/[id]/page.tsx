@@ -35,6 +35,14 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('detalii');
+  const [predictionLoading, setPredictionLoading] = useState(false);
+  const [predictionError, setPredictionError] = useState('');
+  const [prediction, setPrediction] = useState<null | {
+    successProbability?: number;
+    confidenceLevel?: string;
+    overallReadiness?: string;
+    benchmarkComparison?: { programAverage?: number; romanianAverage?: number };
+  }>(null);
 
   useEffect(() => {
     async function load() {
@@ -84,6 +92,52 @@ export default function ProjectDetailPage() {
     } catch { /* silent */ }
   };
 
+  const runSuccessPrediction = async () => {
+    if (!project) return;
+    setPredictionLoading(true);
+    setPredictionError('');
+    try {
+      const startDate = project.startDate ? new Date(project.startDate) : null;
+      const endDate = project.endDate ? new Date(project.endDate) : null;
+      const durationMonths = startDate && endDate
+        ? Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30)))
+        : 24;
+
+      const res = await fetch('/api/ai/predict-success', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectTitle: project.title,
+          projectSummary: project.description || `Proiect ${project.title} cu focus pe implementare și rezultate măsurabile.`,
+          programType: 'horizon_europe',
+          totalBudget: Number(project.totalBudget) || 100000,
+          durationMonths,
+          sector: 'general',
+          partners: [
+            {
+              name: 'Organizația solicitantă',
+              country: 'RO',
+              type: 'sme',
+              role: 'coordinator',
+              previousEUProjects: 1,
+              budgetShare: 100,
+            },
+          ],
+          locale: 'ro',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error?.message || 'Eroare la predicția de succes');
+      setPrediction(data.data);
+    } catch (err) {
+      setPredictionError(err instanceof Error ? err.message : 'Eroare necunoscută');
+    } finally {
+      setPredictionLoading(false);
+    }
+  };
+
+
   if (loading) {
     return <div className="flex justify-center p-12 text-muted-foreground">{t('common.loading')}</div>;
   }
@@ -132,16 +186,38 @@ export default function ProjectDetailPage() {
         </TabsList>
 
         <TabsContent value="detalii">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">{t('project.sections.summary')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                {project.description || 'Nicio descriere disponibilă. Editați proiectul pentru a adăuga detalii.'}
-              </p>
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">{t('project.sections.summary')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">
+                  {project.description || 'Nicio descriere disponibilă. Editați proiectul pentru a adăuga detalii.'}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Predicție succes AI</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button onClick={runSuccessPrediction} disabled={predictionLoading}>
+                  {predictionLoading ? 'Se calculează...' : '📈 Rulează predicția de succes'}
+                </Button>
+                {predictionError && <p className="text-sm text-destructive">{predictionError}</p>}
+                {prediction && (
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <p>Probabilitate succes: <span className="font-semibold text-foreground">{prediction.successProbability ?? 0}%</span></p>
+                    <p>Încredere model: <span className="font-medium text-foreground">{prediction.confidenceLevel || 'n/a'}</span></p>
+                    <p>Stare pregătire: <span className="font-medium text-foreground">{prediction.overallReadiness || 'n/a'}</span></p>
+                    <p>Media program: {prediction.benchmarkComparison?.programAverage ?? 0}% | Media RO: {prediction.benchmarkComparison?.romanianAverage ?? 0}%</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="gantt">
