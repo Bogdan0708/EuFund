@@ -1,5 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import { Card, CardContent } from '@/components/ui/card';
 import { FinancialReporting } from '@/components/budget/financial-reporting';
 
 const DEMO_CATEGORIES = [
@@ -17,6 +20,43 @@ const DEMO_ENTRIES = [
 ];
 
 export default function ReportsPage() {
+  const params = useParams();
+  const [loading, setLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState(false);
+
+  useEffect(() => {
+    const projectId = Array.isArray(params.id) ? params.id[0] : params.id;
+    if (!projectId) {
+      setLoading(false);
+      return;
+    }
+
+    fetch(`/api/v1/projects/${projectId}`)
+      .then((response) => {
+        setHasAccess(response.ok);
+      })
+      .catch(() => {
+        setHasAccess(false);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [params.id]);
+
+  if (loading) {
+    return <div className="flex justify-center p-12 text-muted-foreground">Se încarcă...</div>;
+  }
+
+  if (!hasAccess) {
+    return (
+      <Card className="max-w-md mx-auto mt-12">
+        <CardContent className="p-6 text-center text-destructive">
+          Nu aveți acces la acest proiect.
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <FinancialReporting
