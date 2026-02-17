@@ -24,10 +24,11 @@ const ORG_TYPE_OPTIONS = [
 ];
 
 export default function ProposalWizard() {
+  const [generatorMode, setGeneratorMode] = useState<'standard' | 'advanced'>('standard');
   const [step, setStep] = useState<Step>('input');
   const [error, setError] = useState<string | null>(null);
   const [proposal, setProposal] = useState<ProposalOutput | null>(null);
-  const [meta, setMeta] = useState<{ tokensUsed: number; ragSourcesUsed: number } | null>(null);
+  const [meta, setMeta] = useState<{ tokensUsed: number; ragSourcesUsed: number; mode?: string } | null>(null);
 
   const [form, setForm] = useState({
     projectIdea: '',
@@ -39,13 +40,66 @@ export default function ProposalWizard() {
     duration: '',
   });
 
+  const mapEnhancedProposal = (proposal: any): ProposalOutput => {
+    const probabilityMap: Record<string, 'scăzut' | 'mediu' | 'ridicat'> = {
+      low: 'scăzut',
+      medium: 'mediu',
+      high: 'ridicat',
+    };
+
+    return {
+      title: proposal.title || 'Propunere avansată',
+      acronym: proposal.acronym || 'AI',
+      summary: proposal.executive_summary || '',
+      context: proposal.context || '',
+      objectives: {
+        general: proposal.objectives?.general || '',
+        specific: proposal.objectives?.specific || [],
+      },
+      methodology: {
+        approach: proposal.methodology?.approach || '',
+        workPackages: (proposal.methodology?.work_packages || []).map((wp: any) => ({
+          name: wp.title,
+          description: (wp.objectives || []).join(' | '),
+          duration: `${wp.startMonth}-${wp.endMonth} luni`,
+          deliverables: (wp.deliverables || []).map((d: any) => d.title),
+        })),
+      },
+      budget: {
+        summary: proposal.budget?.justification || '',
+        categories: (proposal.budget?.cost_breakdown || []).map((cat: any) => ({
+          name: cat.category,
+          amount: Number(cat.amount) || 0,
+          justification: cat.justification || '',
+        })),
+      },
+      indicators: (proposal.impact?.kpis || []).map((kpi: any) => ({
+        name: kpi.indicator,
+        baseline: kpi.baseline,
+        target: kpi.target,
+        source: kpi.source,
+      })),
+      sustainability: proposal.impact?.sustainability || '',
+      risks: (proposal.risks || []).map((risk: any) => ({
+        description: risk.description || '',
+        probability: probabilityMap[risk.probability] || 'mediu',
+        impact: probabilityMap[risk.impact] || 'mediu',
+        mitigation: risk.mitigation || '',
+      })),
+    };
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStep('generating');
     setError(null);
 
     try {
-      const res = await fetch('/api/ai/generate-proposal', {
+      const endpoint = generatorMode === 'advanced'
+        ? '/api/ai/generate-proposal-enhanced'
+        : '/api/ai/generate-proposal';
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -63,7 +117,8 @@ export default function ProposalWizard() {
         throw new Error(data.error?.message || 'Eroare la generare');
       }
 
-      setProposal(data.data.proposal);
+      const isEnhanced = data.data?.metadata?.mode === 'enhanced';
+      setProposal(isEnhanced ? mapEnhancedProposal(data.data.proposal) : data.data.proposal);
       setMeta(data.data.metadata);
       setStep('result');
     } catch (err) {
@@ -97,7 +152,7 @@ export default function ProposalWizard() {
 
         {meta && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
-            Tokens utilizați: {meta.tokensUsed} | Surse RAG: {meta.ragSourcesUsed}
+            Mod: {meta.mode === 'enhanced' ? 'Avansat' : 'Standard'} | Tokens utilizați: {meta.tokensUsed} | Surse RAG: {meta.ragSourcesUsed}
           </div>
         )}
 
@@ -188,6 +243,22 @@ export default function ProposalWizard() {
     <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
       <h2 className="text-2xl font-bold text-gray-900">Generare propunere de proiect</h2>
       <p className="text-gray-600">Completați detaliile proiectului pentru a genera automat o propunere de finanțare.</p>
+      <div className="inline-flex rounded-lg border border-gray-300 p-1 bg-gray-50">
+        <button
+          type="button"
+          onClick={() => setGeneratorMode('standard')}
+          className={`px-3 py-1.5 text-sm rounded ${generatorMode === 'standard' ? 'bg-white shadow-sm font-medium' : 'text-gray-600'}`}
+        >
+          Standard
+        </button>
+        <button
+          type="button"
+          onClick={() => setGeneratorMode('advanced')}
+          className={`px-3 py-1.5 text-sm rounded ${generatorMode === 'advanced' ? 'bg-white shadow-sm font-medium' : 'text-gray-600'}`}
+        >
+          Avansat AI
+        </button>
+      </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700">{error}</div>
@@ -283,7 +354,7 @@ export default function ProposalWizard() {
         type="submit"
         className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
       >
-        🤖 Generează propunerea
+        🤖 {generatorMode === 'advanced' ? 'Generează propunere avansată' : 'Generează propunerea'}
       </button>
     </form>
   );
