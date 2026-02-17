@@ -1,12 +1,8 @@
-version: '3.9'
-
 services:
   postgres:
     image: postgres:16-alpine
+    env_file: .env.docker
     environment:
-      POSTGRES_DB: fondeu
-      POSTGRES_USER: fondeu
-      POSTGRES_PASSWORD: fondeu_dev_2026
       POSTGRES_INITDB_ARGS: '--locale=ro_RO.utf8'
     ports:
       - '5432:5432'
@@ -36,12 +32,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - '3000:3000'
-    environment:
-      DATABASE_URL: postgresql://fondeu:fondeu_dev_2026@postgres:5432/fondeu
-      REDIS_URL: redis://redis:6379
-      NEXTAUTH_URL: http://localhost:3000
-      NEXTAUTH_SECRET: dev-secret-change-in-production-32chars!
-      NODE_ENV: development
+    env_file: .env.docker
     depends_on:
       postgres:
         condition: service_healthy
