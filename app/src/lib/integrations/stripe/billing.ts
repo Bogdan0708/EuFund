@@ -111,6 +111,21 @@ function resolveTierByPriceId(priceId: string | null | undefined): BillingTier {
   return 'free';
 }
 
+const TIER_RANK: Record<BillingTier, number> = { free: 0, pro: 1, enterprise: 2 };
+
+async function checkIfDowngrade(
+  userId: string | undefined,
+  customerId: string | null,
+  newTier: BillingTier,
+): Promise<boolean> {
+  const condition = userId ? eq(users.id, userId) : customerId ? eq(users.stripeCustomerId, customerId) : null;
+  if (!condition) return false;
+
+  const row = await db.select({ tier: users.tier }).from(users).where(condition).limit(1);
+  const currentTier = (row[0]?.tier || 'free') as BillingTier;
+  return TIER_RANK[newTier] < TIER_RANK[currentTier];
+}
+
 export async function getOrCreateCustomer(userId: string, email: string): Promise<string> {
   const stripe = getStripeClient();
   const existing = await db
@@ -242,6 +257,9 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Pro
   const priceId = subscription.items.data[0]?.price?.id;
   const resolvedTier = resolveTierByPriceId(priceId);
 
+  // On downgrade, reset API call counter to prevent overuse at new tier limit
+  const isDowngrade = await checkIfDowngrade(userIdFromMetadata, customerId, resolvedTier);
+
   const updateValues = {
     tier: resolvedTier,
     stripeSubscriptionId: subscription.id,
@@ -250,6 +268,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Pro
     subscriptionPeriodEnd: subscription.current_period_end
       ? new Date(subscription.current_period_end * 1000)
       : null,
+    ...(isDowngrade ? { apiCallsThisMonth: 0 } : {}),
     updatedAt: new Date(),
   } as const;
 
