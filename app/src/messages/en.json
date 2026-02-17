@@ -15,7 +15,19 @@
     "download": "Download",
     "create": "Create",
     "submit": "Submit",
-    "close": "Close"
+    "close": "Close",
+    "add": "Add",
+    "remove": "Remove",
+    "approve": "Approve",
+    "reject": "Reject",
+    "all": "All",
+    "none": "None",
+    "total": "Total",
+    "progress": "Progress",
+    "actions": "Actions",
+    "details": "Details",
+    "overview": "Overview",
+    "status": "Status"
   },
   "auth": {
     "login": "Log In",
@@ -42,7 +54,12 @@
     "documents": "Documents",
     "legislation": "Legislation",
     "organization": "Organization",
-    "settings": "Settings"
+    "settings": "Settings",
+    "consortium": "Consortium",
+    "budget": "Budget",
+    "reports": "Reports",
+    "gantt": "Gantt Chart",
+    "workPackages": "Work Packages"
   },
   "project": {
     "new": "New Project",
@@ -72,13 +89,210 @@
       "annexes": "Annexes"
     }
   },
+  "workPackages": {
+    "title": "Work Packages",
+    "create": "Create Work Package",
+    "name": "Package Name",
+    "description": "Description",
+    "status": {
+      "planned": "Planned",
+      "active": "Active",
+      "completed": "Completed",
+      "delayed": "Delayed",
+      "cancelled": "Cancelled"
+    },
+    "budget": {
+      "allocated": "Allocated Budget",
+      "spent": "Spent Budget",
+      "remaining": "Remaining Budget"
+    },
+    "timeline": {
+      "startDate": "Start Date",
+      "endDate": "End Date",
+      "duration": "Duration",
+      "daysRemaining": "Days Remaining"
+    },
+    "milestones": {
+      "title": "Milestones",
+      "add": "Add Milestone",
+      "name": "Milestone Name",
+      "dueDate": "Due Date",
+      "completed": "Completed",
+      "pending": "Pending"
+    },
+    "deliverables": {
+      "title": "Deliverables",
+      "add": "Add Deliverable",
+      "name": "Deliverable Name",
+      "type": "Type",
+      "types": {
+        "report": "Report",
+        "software": "Software",
+        "prototype": "Prototype",
+        "study": "Study",
+        "other": "Other"
+      }
+    },
+    "dependencies": {
+      "title": "Dependencies",
+      "add": "Add Dependency",
+      "noDependencies": "No dependencies"
+    }
+  },
+  "gantt": {
+    "title": "Gantt Chart",
+    "viewMonths": "Months",
+    "viewWeeks": "Weeks",
+    "viewDays": "Days",
+    "totalProgress": "Total Progress",
+    "today": "Today",
+    "noData": "No timeline data for this project",
+    "riskLevels": {
+      "very_low": "Very Low Risk",
+      "low": "Low Risk",
+      "medium": "Medium Risk",
+      "high": "High Risk",
+      "very_high": "Very High Risk"
+    },
+    "criticalPath": "Critical Path",
+    "dependencies": "Dependencies"
+  },
+  "consortium": {
+    "title": "Consortium & Partners",
+    "dashboard": "Consortium Overview",
+    "workspace": "Collaboration Space",
+    "management": "Partner Management",
+    "partner": {
+      "title": "Partner",
+      "coordinator": "Coordinator",
+      "partner": "Partner",
+      "observer": "Observer",
+      "add": "Add Partner",
+      "remove": "Remove Partner",
+      "invite": "Invite Partner"
+    },
+    "contributions": {
+      "title": "Contributions",
+      "budgetAllocated": "Allocated Budget",
+      "budgetSpent": "Spent Budget",
+      "percentage": "Percentage of Total"
+    },
+    "communication": {
+      "title": "Communication",
+      "newThread": "New Discussion",
+      "meetings": "Meetings",
+      "decisions": "Decisions",
+      "notifications": "Notifications",
+      "documents": "Shared Documents"
+    },
+    "performance": {
+      "title": "Performance",
+      "score": "Performance Score",
+      "excellent": "Excellent",
+      "good": "Good",
+      "needsImprovement": "Needs Improvement"
+    },
+    "capabilities": {
+      "title": "Capabilities Matrix",
+      "research": "Research",
+      "development": "Development",
+      "management": "Management",
+      "dissemination": "Dissemination",
+      "training": "Training",
+      "itDigital": "IT & Digital",
+      "legal": "Legal",
+      "financial": "Financial",
+      "communication": "Communication"
+    }
+  },
+  "budget": {
+    "title": "Budget Management",
+    "dashboard": "Budget Overview",
+    "totalBudget": "Total Budget",
+    "euContribution": "EU Contribution",
+    "nationalContribution": "National Contribution",
+    "ownContribution": "Own Contribution",
+    "spent": "Spent",
+    "available": "Available",
+    "execution": "Budget Execution",
+    "categories": {
+      "title": "Expense Categories",
+      "staffCosts": "Staff Costs",
+      "travel": "Travel Expenses",
+      "equipment": "Equipment",
+      "subcontracting": "Subcontracting",
+      "otherGoods": "Other Goods and Services",
+      "indirectCosts": "Indirect Costs",
+      "ineligible": "Ineligible Expenses"
+    },
+    "fundingSources": "Funding Sources",
+    "forecast": {
+      "title": "Budget Forecast",
+      "monthlyAverage": "Monthly Average",
+      "monthsRemaining": "Estimated Months Remaining",
+      "projectedTotal": "Projected Total"
+    },
+    "monthlySpending": "Monthly Spending",
+    "complianceAlerts": "Compliance Alerts",
+    "budgetExceeded": "Budget Exceeded",
+    "ineligibleExpenses": "EU Ineligible Expenses",
+    "currency": {
+      "eur": "Euro (EUR)",
+      "ron": "Romanian Leu (RON)",
+      "exchangeRate": "Exchange Rate",
+      "conversion": "Currency Conversion"
+    }
+  },
+  "expenses": {
+    "title": "Expense Tracking",
+    "add": "Add Expense",
+    "balance": "Available Balance",
+    "pending": "Pending",
+    "approved": "Approved",
+    "description": "Expense Description",
+    "amount": "Amount",
+    "category": "Category",
+    "date": "Date",
+    "receipt": "Receipt",
+    "uploadReceipt": "Upload Receipt",
+    "status": {
+      "draft": "Draft",
+      "submitted": "Submitted",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "budgetWarning": "Warning: Budget nearly depleted",
+    "budgetExceeded": "Budget exceeded!",
+    "justification": "Justification",
+    "notes": "Additional Notes"
+  },
+  "reports": {
+    "title": "Financial Reporting",
+    "exportExcel": "Export Excel",
+    "exportPdf": "Export PDF",
+    "auditReport": "EU Audit Report",
+    "period": "Reporting Period",
+    "totalReported": "Total Reported",
+    "euEligible": "EU Eligible",
+    "categorySummary": "Category Summary",
+    "expenseDetails": "Expense Details",
+    "allCategories": "All categories",
+    "allPartners": "All partners",
+    "allocated": "Allocated",
+    "reported": "Reported",
+    "difference": "Difference",
+    "utilized": "Utilized"
+  },
   "compliance": {
     "check": "Check Compliance",
     "score": "Compliance Score",
     "conform": "Compliant",
     "warning": "Warning",
     "nonConform": "Non-Compliant",
-    "disclaimer": "Automatically generated check. Please consult the official applicant guide."
+    "disclaimer": "Automatically generated check. Please consult the official applicant guide.",
+    "euCompliant": "EU Compliant",
+    "euNonCompliant": "EU Non-Compliant",
+    "auditReady": "Audit Ready"
   },
   "grants": {
     "available": "Available Funding",
@@ -118,6 +332,53 @@
     "dataProcessing": "Personal Data Processing",
     "dpia": "Data Protection Impact Assessment"
   },
+  "legislation": {
+    "title": "EU Legislation",
+    "search": "Search",
+    "searchPlaceholder": "Search for regulations, directives...",
+    "noResults": "No results found",
+    "openDocument": "Open",
+    "regulation": "Regulation",
+    "directive": "Directive",
+    "decision": "Decision"
+  },
+  "fundingCalls": {
+    "title": "Active Funding Calls",
+    "subtitle": "Real-time data from the European Commission",
+    "refresh": "Refresh",
+    "open": "Open",
+    "forthcoming": "Forthcoming",
+    "all": "All",
+    "noCalls": "No calls found",
+    "details": "Details",
+    "deadline": "Deadline",
+    "budget": "Budget"
+  },
+  "signing": {
+    "title": "Qualified Electronic Signature (QES)",
+    "subtitle": "eIDAS compliant signing via certSIGN",
+    "documentTitle": "Document Title",
+    "uploadPdf": "Upload PDF",
+    "signers": "Signers",
+    "addSigner": "Add Signer",
+    "signer": "Signer",
+    "approver": "Approver",
+    "witness": "Witness",
+    "sendForSigning": "Send for Signing",
+    "sent": "Document sent for signing",
+    "sentDescription": "Signers will receive an email with the signing link.",
+    "signAnother": "Sign Another Document"
+  },
+  "companyValidation": {
+    "title": "Company Validation",
+    "cuiLabel": "Tax ID (CUI)",
+    "validate": "Validate",
+    "eligible": "Eligible",
+    "notEligible": "Not Eligible",
+    "issues": "Issues Identified",
+    "companyActive": "Company is active",
+    "companyInactive": "Company is not active"
+  },
   "errors": {
     "notFound": "Resource not found.",
     "unauthorized": "You are not authorized to access this resource.",
@@ -137,16 +398,55 @@
     "lifecycleForecasting": "Lifecycle Forecasting",
     "romanianContext": "Romanian Context",
     "liveUpdates": "Live Updates",
-    "offline": "Offline"
+    "offline": "Offline",
+    "impactHigh": "High Impact",
+    "impactMedium": "Medium Impact",
+    "impactLow": "Low Impact",
+    "priorityCritical": "Critical",
+    "priorityHigh": "High",
+    "priorityMedium": "Medium",
+    "priorityLow": "Low",
+    "factorPositive": "Positive Factor",
+    "factorNegative": "Negative Factor",
+    "estimatedImpact": "Estimated Impact",
+    "effort": "Effort",
+    "project": "Project",
+    "average": "Average",
+    "topPerformers": "Top 10%",
+    "riskLow": "Low Risk",
+    "riskMedium": "Medium Risk",
+    "riskHigh": "High Risk"
   },
   "partnerMatching": {
     "title": "Smart Partner Matching",
     "description": "AI-powered partner discovery",
     "capabilityGap": "Capability Matrix",
+    "gapsCovered": "Covered",
+    "gapsRemaining": "Gaps",
     "geographicDistribution": "EU Geographic Distribution",
+    "withPartner": "With Partner",
+    "required": "Required",
+    "available": "Available",
     "matchScore": "Match Score",
+    "matchReasons": "Match Reasons",
     "addToConsortium": "Add to Consortium",
-    "budgetImpact": "Budget Impact"
+    "budgetImpact": "Budget Impact",
+    "totalConsortium": "Total Consortium",
+    "onrcVerified": "ONRC Verified",
+    "sicapScore": "SICAP Score",
+    "pastProjects": "Past Projects",
+    "discover": "Discover",
+    "gapAnalysis": "Gap Analysis",
+    "euMap": "EU Map",
+    "budgetTab": "Budget Impact",
+    "filterCountry": "Filter by country",
+    "filterType": "Filter by type",
+    "allCountries": "All countries",
+    "allTypes": "All types",
+    "university": "University",
+    "research": "Research Institute",
+    "sme": "SME",
+    "largeEnterprise": "Large Enterprise"
   },
   "collaboration": {
     "title": "Collaborative Workspace",
@@ -156,7 +456,18 @@
     "editor": "Editor",
     "ganttChart": "Gantt Chart",
     "chat": "Chat",
-    "history": "History"
+    "history": "History",
+    "sendMessage": "Send",
+    "typePlaceholder": "Type a message...",
+    "originalMessage": "Original Message",
+    "editSection": "Edit Section",
+    "saveChanges": "Save Changes",
+    "locked": "Locked",
+    "version": "Version",
+    "onTrack": "On Track",
+    "atRisk": "At Risk",
+    "delayed": "Delayed",
+    "changeHistory": "Change History"
   },
   "reporting": {
     "title": "Advanced Reports",
@@ -164,26 +475,64 @@
     "executiveSummary": "Executive Summary",
     "reportBuilder": "Report Builder",
     "export": "Export",
-    "auditTrail": "Audit Trail"
+    "auditTrail": "Audit Trail",
+    "aiGenerated": "AI-Generated",
+    "complete": "Complete",
+    "draft": "Draft",
+    "pending": "Pending",
+    "generate": "Generate",
+    "exportPdf": "PDF",
+    "exportExcel": "Excel",
+    "exportPptx": "PowerPoint",
+    "exportDocx": "Word",
+    "audienceInternal": "Internal",
+    "audienceEcAudit": "EC Audit",
+    "audiencePartner": "Partners",
+    "audienceGovernment": "Government"
   },
   "search": {
-    "title": "Advanced Search & Discovery",
+    "title": "Advanced Search",
     "description": "Intelligent search with Romanian language understanding",
     "semanticPlaceholder": "Search in natural language...",
+    "aiPowered": "AI-Powered",
+    "semanticSearch": "Semantic Search",
     "results": "Results",
-    "opportunities": "Opportunities"
+    "opportunities": "Opportunities",
+    "noResults": "No results found",
+    "startSearch": "Start searching",
+    "relevance": "Relevance",
+    "project": "Project",
+    "partner": "Partner",
+    "opportunity": "Opportunity",
+    "article": "Article",
+    "matchPercentage": "Match"
   },
   "integrations": {
     "title": "Integration Management",
     "description": "Real-time monitoring of all external connections",
     "connected": "Connected",
+    "degraded": "Degraded",
+    "disconnected": "Disconnected",
     "error": "Error",
-    "retry": "Retry"
+    "retry": "Retry",
+    "governmentApis": "Romanian Government APIs",
+    "marketData": "Market Data Sources",
+    "totalIntegrations": "Total Integrations",
+    "withIssues": "With Issues",
+    "averageLatency": "Average Latency",
+    "lastSync": "Last Sync",
+    "errors24h": "Errors in last 24h"
   },
   "mobile": {
     "offlineMode": "Offline Mode",
+    "syncPending": "Data will be synced upon reconnection",
     "analytics": "Quick Analytics",
+    "collaboration": "Collaboration",
     "notifications": "Notifications",
-    "approvals": "Approvals"
+    "approvals": "Approvals",
+    "approve": "Approve",
+    "reject": "Reject",
+    "approved": "Approved",
+    "rejected": "Rejected"
   }
 }
