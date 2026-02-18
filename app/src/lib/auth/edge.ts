@@ -1,23 +1,11 @@
 // Edge-safe auth config — no DB imports, JWT-only session reading
 // Used by middleware which runs in Edge runtime
+// NOTE: No Credentials provider here — it uses eval() which is blocked in Edge.
+// Middleware only reads JWT sessions, never authenticates users.
 import NextAuth from 'next-auth';
-import Credentials from 'next-auth/providers/credentials';
 
 export const { auth } = NextAuth({
-  providers: [
-    // Minimal credentials provider — actual auth happens in the full config
-    // This is only for Edge-compatible JWT session reading
-    Credentials({
-      name: 'credentials',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' },
-      },
-      async authorize() {
-        return null; // Never called in middleware — just for type compat
-      },
-    }),
-  ],
+  providers: [],  // No providers needed — middleware only reads existing JWT sessions
   callbacks: {
     jwt({ token, user }) {
       if (user) token.userId = user.id;

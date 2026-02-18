@@ -265,8 +265,8 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Pro
     stripeSubscriptionId: subscription.id,
     stripeCustomerId: customerId,
     subscriptionStatus: mapStripeStatus(subscription.status),
-    subscriptionPeriodEnd: subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000)
+    subscriptionPeriodEnd: (subscription as any).current_period_end
+      ? new Date((subscription as any).current_period_end * 1000)
       : null,
     ...(isDowngrade ? { apiCallsThisMonth: 0 } : {}),
     updatedAt: new Date(),
@@ -290,8 +290,8 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Pro
     tier: 'free' as const,
     stripeSubscriptionId: null,
     subscriptionStatus: 'canceled' as const,
-    subscriptionPeriodEnd: subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000)
+    subscriptionPeriodEnd: (subscription as any).current_period_end
+      ? new Date((subscription as any).current_period_end * 1000)
       : null,
     updatedAt: new Date(),
   };
