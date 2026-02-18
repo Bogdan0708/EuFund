@@ -21,8 +21,9 @@ async function createSession(request: NextRequest, payload: unknown): Promise<st
       );
     }
 
-    const successUrl = `${request.nextUrl.origin}/billing/success`;
-    const cancelUrl = `${request.nextUrl.origin}/billing`;
+    const baseUrl = process.env.NEXTAUTH_URL || request.nextUrl.origin;
+    const successUrl = `${baseUrl}/billing/success`;
+    const cancelUrl = `${baseUrl}/billing`;
 
     const session = await createCheckoutSession(
       user.id,
@@ -49,17 +50,4 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ url: result });
-}
-
-export async function GET(request: NextRequest) {
-  const result = await createSession(request, {
-    tier: request.nextUrl.searchParams.get('tier'),
-    interval: request.nextUrl.searchParams.get('interval') || 'monthly',
-  });
-
-  if (typeof result !== 'string') {
-    return result;
-  }
-
-  return NextResponse.redirect(result);
 }

@@ -6,7 +6,8 @@ import { FondEUError } from '@/lib/errors';
 async function createSession(request: NextRequest): Promise<string | NextResponse> {
   try {
     const user = await requireAuth();
-    const returnUrl = `${request.nextUrl.origin}/billing`;
+    const baseUrl = process.env.NEXTAUTH_URL || request.nextUrl.origin;
+    const returnUrl = `${baseUrl}/billing`;
     const session = await createPortalSession(user.id, returnUrl);
 
     return session.url;
@@ -26,13 +27,4 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ url: result });
-}
-
-export async function GET(request: NextRequest) {
-  const result = await createSession(request);
-  if (typeof result !== 'string') {
-    return result;
-  }
-
-  return NextResponse.redirect(result);
 }
