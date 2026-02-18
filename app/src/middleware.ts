@@ -184,16 +184,15 @@ export default auth(async (req) => {
     "default-src 'self'",
     
     // Script sources:
-    // - production: nonce + strict-dynamic
-    // - development: keep eval/inline for Next.js HMR tooling
+    // NOTE: Using 'unsafe-inline' because Next.js standalone generates its own
+    // nonces internally that don't match the middleware-generated nonce.
+    // TODO: Wire nonce through x-nonce header → layout.tsx to enable strict CSP.
     isDev 
-      ? `script-src 'self' 'unsafe-eval' 'unsafe-inline' 'nonce-${nonce}'`
-      : `script-src 'nonce-${nonce}' 'strict-dynamic'`,
+      ? `script-src 'self' 'unsafe-eval' 'unsafe-inline'`
+      : `script-src 'self' 'unsafe-inline' 'unsafe-eval'`,
     
     // Style sources
-    isDev
-      ? `style-src 'self' 'unsafe-inline'`
-      : `style-src 'self' 'nonce-${nonce}'`,
+    `style-src 'self' 'unsafe-inline'`,
     
     // Images - allow data URIs and HTTPS
     "img-src 'self' data: https:",
