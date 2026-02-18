@@ -112,11 +112,9 @@ export function PricingPage({ locale }: { locale: Locale }) {
     <main className="min-h-screen bg-background px-6 py-16">
       <div className="mx-auto max-w-6xl">
         <p className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">{content.badge}</p>
-        <form action="/api/billing/portal" method="post" className="mb-4 text-right">
-          <Button type="submit" variant="outline" size="sm">
-            {content.ctaManageSubscription}
-          </Button>
-        </form>
+        {/* Manage subscription button - only useful for authenticated users.
+           The sidebar already links to /api/billing/portal for logged-in users.
+           Hidden here since pricing page is public. */}
         <h1 className="text-4xl font-bold tracking-tight">{content.title}</h1>
         <p className="mt-4 max-w-2xl text-muted-foreground">{content.description}</p>
 

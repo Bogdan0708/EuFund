@@ -45,7 +45,9 @@
     "gdprConsent": "Sunt de acord cu prelucrarea datelor personale conform GDPR și Legii 190/2018",
     "invalidCredentials": "Email sau parolă incorectă",
     "accountCreated": "Contul a fost creat cu succes",
-    "ageRestriction": "Trebuie să aveți cel puțin 16 ani pentru a utiliza această platformă"
+    "ageRestriction": "Trebuie să aveți cel puțin 16 ani pentru a utiliza această platformă",
+    "processing": "Se procesează...",
+    "alreadyHaveAccount": "Ai deja cont? Autentifică-te"
   },
   "nav": {
     "dashboard": "Panou de control",

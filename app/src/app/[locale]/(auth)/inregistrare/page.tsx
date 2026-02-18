@@ -145,11 +145,11 @@ export default function RegisterPage() {
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
             <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? 'Se procesează...' : t('register')}
+              {isSubmitting ? t('processing') : t('register')}
             </Button>
             <p className="text-sm text-muted-foreground">
               <Link href={`/${locale}/autentificare`} className="text-primary hover:underline">
-                Ai deja cont? Autentifică-te
+                {t('alreadyHaveAccount')}
               </Link>
             </p>
           </CardFooter>

@@ -45,7 +45,9 @@
     "gdprConsent": "I agree to the processing of my personal data in accordance with GDPR and Law 190/2018",
     "invalidCredentials": "Invalid email or password",
     "accountCreated": "Account created successfully",
-    "ageRestriction": "You must be at least 16 years old to use this platform"
+    "ageRestriction": "You must be at least 16 years old to use this platform",
+    "processing": "Processing...",
+    "alreadyHaveAccount": "Already have an account? Sign in"
   },
   "nav": {
     "dashboard": "Dashboard",
