@@ -30,6 +30,28 @@ export function getRedis(): Redis | null {
   return redis;
 }
 
+/**
+ * Returns true if Redis is configured and the connection is healthy.
+ * Used by AI endpoint auth to enforce fail-closed behaviour.
+ */
+export async function isRedisAvailable(): Promise<boolean> {
+  if (!process.env.REDIS_URL) {
+    return false;
+  }
+
+  const client = getRedis();
+  if (!client) {
+    return false;
+  }
+
+  try {
+    const result = await client.ping();
+    return result === 'PONG';
+  } catch {
+    return false;
+  }
+}
+
 // Rate limiting helper
 export async function checkRateLimit(
   key: string,

@@ -17,6 +17,31 @@ function generateNonce(): string {
   return crypto.randomUUID();
 }
 
+// ─── Build CSP Header ───
+function buildCSP(nonce: string, isDev: boolean): string {
+  const directives = [
+    "default-src 'self'",
+    isDev
+      ? `script-src 'self' 'unsafe-eval' 'nonce-${nonce}' 'strict-dynamic'`
+      : `script-src 'nonce-${nonce}' 'strict-dynamic'`,
+    `style-src 'self' 'unsafe-inline'`,
+    "img-src 'self' data: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' https://api.anthropic.com https://*.googleapis.com https://eurlex.europa.eu",
+    "object-src 'none'",
+    "media-src 'self'",
+    "frame-ancestors 'none'",
+    "frame-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "worker-src 'self' blob:",
+    ...(isDev ? [] : ["upgrade-insecure-requests"]),
+    "report-uri /api/csp-report",
+    "report-to csp-endpoint",
+  ];
+  return directives.join('; ');
+}
+
 // Public paths that don't require authentication
 const publicPaths = [
   '/api/auth',
@@ -26,6 +51,10 @@ const publicPaths = [
   '/ro/inregistrare',
   '/en/autentificare',
   '/en/inregistrare',
+  '/ro/resetare-parola',
+  '/en/resetare-parola',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
   '/ro/preturi',
   '/en/pricing',
   '/pricing',
@@ -144,6 +173,11 @@ export default auth(async (req) => {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('x-request-id', requestId);
+  // Set CSP on request headers so Next.js can extract the nonce for its own <script> tags.
+  // Next.js reads `content-security-policy` from req.headers in app-render.
+  const isDev = process.env.NODE_ENV === 'development';
+  const cspValue = buildCSP(nonce, isDev);
+  requestHeaders.set('content-security-policy', cspValue);
   const response = NextResponse.next({
     request: {
       headers: requestHeaders,
@@ -177,56 +211,9 @@ export default auth(async (req) => {
   // Permissions Policy (disable unnecessary features)
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), interest-cohort=()');
 
-  // Content Security Policy (strict, nonce-based)
-  const isDev = process.env.NODE_ENV === 'development';
-  
-  const cspDirectives = [
-    "default-src 'self'",
-    
-    // Script sources:
-    // NOTE: Using 'unsafe-inline' because Next.js standalone generates its own
-    // nonces internally that don't match the middleware-generated nonce.
-    // TODO: Wire nonce through x-nonce header → layout.tsx to enable strict CSP.
-    isDev 
-      ? `script-src 'self' 'unsafe-eval' 'unsafe-inline'`
-      : `script-src 'self' 'unsafe-inline' 'unsafe-eval'`,
-    
-    // Style sources
-    `style-src 'self' 'unsafe-inline'`,
-    
-    // Images - allow data URIs and HTTPS
-    "img-src 'self' data: https:",
-    
-    // Fonts - allow data URIs
-    "font-src 'self' data:",
-    
-    // Connect sources - API endpoints
-    "connect-src 'self' https://api.anthropic.com https://*.googleapis.com https://eurlex.europa.eu",
-    
-    // Object and embed sources
-    "object-src 'none'",
-    "media-src 'self'",
-    
-    // Frame restrictions
-    "frame-ancestors 'none'",
-    "frame-src 'none'",
-    
-    // Base URI and form actions
-    "base-uri 'self'",
-    "form-action 'self'",
-    
-    // Worker sources
-    "worker-src 'self' blob:",
-    
-    // Upgrade insecure requests in production
-    ...(isDev ? [] : ["upgrade-insecure-requests"]),
-    
-    // CSP violation reporting
-    `report-uri /api/csp-report`,
-    `report-to csp-endpoint`
-  ];
-
-  response.headers.set('Content-Security-Policy', cspDirectives.join('; '));
+  // Content Security Policy — already built and set on request headers above.
+  // Set it on the response headers too.
+  response.headers.set('Content-Security-Policy', cspValue);
 
   // Report-To header for CSP violation reporting (newer standard)
   response.headers.set('Report-To', JSON.stringify({

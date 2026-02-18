@@ -4,6 +4,7 @@ import { getMessages } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { locales } from '@/lib/i18n';
 import AuthSessionProvider from '@/components/providers/session-provider';
+import { getNonce } from '@/lib/security/nonce';
 import '@/app/globals.css';
 
 export const metadata: Metadata = {
@@ -20,10 +21,15 @@ export default async function LocaleLayout({
 }) {
   if (!locales.includes(locale as any)) notFound();
 
-  const messages = await getMessages();
+  const [messages, nonce] = await Promise.all([getMessages(), getNonce()]);
 
   return (
     <html lang={locale}>
+      <head>
+        {nonce && (
+          <meta name="csp-nonce" content={nonce} />
+        )}
+      </head>
       <body className="min-h-screen bg-gray-50 text-gray-900 antialiased">
         <AuthSessionProvider>
           <NextIntlClientProvider messages={messages}>

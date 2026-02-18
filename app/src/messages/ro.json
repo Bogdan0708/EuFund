@@ -47,7 +47,19 @@
     "accountCreated": "Contul a fost creat cu succes",
     "ageRestriction": "Trebuie să aveți cel puțin 16 ani pentru a utiliza această platformă",
     "processing": "Se procesează...",
-    "alreadyHaveAccount": "Ai deja cont? Autentifică-te"
+    "alreadyHaveAccount": "Ai deja cont? Autentifică-te",
+    "resetPassword": "Resetare parolă",
+    "resetPasswordRequest": "Solicitare resetare parolă",
+    "resetPasswordSuccess": "Parola a fost resetată cu succes. Te poți autentifica acum.",
+    "resetPasswordSent": "Dacă există un cont cu această adresă, vei primi un email cu instrucțiunile de resetare.",
+    "resetPasswordInstructions": "Introdu adresa de email și îți vom trimite un link pentru resetarea parolei.",
+    "newPassword": "Parolă nouă",
+    "resetPasswordSubmit": "Trimite link de resetare",
+    "setNewPassword": "Setează parola nouă",
+    "tokenExpired": "Link-ul de resetare este invalid sau a expirat. Te rugăm să soliciți unul nou.",
+    "backToLogin": "Înapoi la autentificare",
+    "passwordMismatch": "Parolele nu coincid.",
+    "passwordTooShort": "Parola trebuie să aibă cel puțin 8 caractere."
   },
   "nav": {
     "dashboard": "Panou de control",

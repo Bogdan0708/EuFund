@@ -1,7 +1,7 @@
 // ─── Authentication Middleware for AI Endpoints ───────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { checkRateLimit } from '@/lib/redis/client';
+import { checkRateLimit, isRedisAvailable } from '@/lib/redis/client';
 import { db, schema } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { eq } from 'drizzle-orm';
@@ -83,6 +83,20 @@ export async function withAIAuth(
       name: session.user.name || undefined,
       tier: userTier
     };
+
+    // Fail-closed: AI endpoints require Redis for rate limiting.
+    // If Redis is unavailable, return 503 to prevent unmetered AI usage.
+    if (!await isRedisAvailable()) {
+      log.warn({ userId: user.id }, '[auth] Redis unavailable — rejecting AI request (fail-closed)');
+      return NextResponse.json(
+        {
+          error: 'Service temporarily unavailable',
+          code: 'RATE_LIMIT_UNAVAILABLE',
+          message: 'Rate limiting service is unavailable. Please try again shortly.',
+        },
+        { status: 503 },
+      );
+    }
 
     // Check rate limits
     const rateLimit = await checkRateLimit(

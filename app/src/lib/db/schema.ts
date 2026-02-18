@@ -71,6 +71,18 @@ export const emailVerificationTokens = pgTable('email_verification_tokens', {
   tokenIdx: uniqueIndex('idx_email_verification_tokens_token').on(table.token),
 }));
 
+// ─── Password Reset Tokens ──────────────────────────────────────
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  token: varchar('token', { length: 255 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  userIdx: index('idx_password_reset_tokens_user').on(table.userId),
+  tokenIdx: uniqueIndex('idx_password_reset_tokens_token').on(table.token),
+}));
+
 // ─── Consent Records (GDPR + Law 190/2018) ──────────────────────
 export const consentRecords = pgTable('consent_records', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -590,4 +602,8 @@ export const consentRecordsRelations = relations(consentRecords, ({ one }) => ({
 
 export const emailVerificationTokensRelations = relations(emailVerificationTokens, ({ one }) => ({
   user: one(users, { fields: [emailVerificationTokens.userId], references: [users.id] }),
+}));
+
+export const passwordResetTokensRelations = relations(passwordResetTokens, ({ one }) => ({
+  user: one(users, { fields: [passwordResetTokens.userId], references: [users.id] }),
 }));

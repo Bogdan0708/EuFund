@@ -47,7 +47,19 @@
     "accountCreated": "Account created successfully",
     "ageRestriction": "You must be at least 16 years old to use this platform",
     "processing": "Processing...",
-    "alreadyHaveAccount": "Already have an account? Sign in"
+    "alreadyHaveAccount": "Already have an account? Sign in",
+    "resetPassword": "Reset Password",
+    "resetPasswordRequest": "Password Reset Request",
+    "resetPasswordSuccess": "Your password has been reset successfully. You can now sign in.",
+    "resetPasswordSent": "If an account exists with that email, you will receive reset instructions.",
+    "resetPasswordInstructions": "Enter your email address and we'll send you a link to reset your password.",
+    "newPassword": "New Password",
+    "resetPasswordSubmit": "Send Reset Link",
+    "setNewPassword": "Set New Password",
+    "tokenExpired": "The reset link is invalid or has expired. Please request a new one.",
+    "backToLogin": "Back to sign in",
+    "passwordMismatch": "Passwords do not match.",
+    "passwordTooShort": "Password must be at least 8 characters."
   },
   "nav": {
     "dashboard": "Dashboard",
