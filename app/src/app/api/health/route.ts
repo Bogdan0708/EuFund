@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 const SERVICE_CHECK_TIMEOUT_MS = 2000;
 
 async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T | 'timeout'> {
