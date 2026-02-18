@@ -4,6 +4,7 @@ const withNextIntl = createNextIntlPlugin('./src/lib/i18n.ts');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   eslint: {
     // ESLint errors are pre-existing across many files (no-explicit-any, unused-vars)
     // These don't affect runtime behavior - fix incrementally in Phase 2

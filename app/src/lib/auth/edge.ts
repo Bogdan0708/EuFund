@@ -1,7 +1,7 @@
 // Edge-safe auth — manual JWT decoding, NO NextAuth import
 // NextAuth v5 beta bundles eval()-using code even with empty providers,
 // which crashes in Edge runtime. We bypass it entirely.
-import { jwtVerify } from 'jose';
+import { jwtVerify, compactDecrypt } from 'jose';
 import { NextRequest } from 'next/server';
 
 const COOKIE_NAME = process.env.NODE_ENV === 'production'
@@ -52,7 +52,6 @@ export async function getEdgeSession(req: NextRequest): Promise<EdgeSession | nu
     } catch {
       // Try as encrypted JWT (JWE) — NextAuth v5 default
       try {
-        const { compactDecrypt } = await import('jose');
         const { plaintext } = await compactDecrypt(token, derivedKey);
         const payload = JSON.parse(new TextDecoder().decode(plaintext));
         return extractSession(payload);
