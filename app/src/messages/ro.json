@@ -386,7 +386,7 @@
     "unauthorized": "Nu sunteți autorizat să accesați această resursă.",
     "forbidden": "Acces interzis.",
     "serverError": "A apărut o eroare internă. Vă rugăm să încercați din nou.",
-    "networkError": "Eroare de conexiune. Verificați conexiunea la internet.",
+    "networkError": "Eroare de conexiune. Vă rugăm să încercați din nou.",
     "rateLimited": "Prea multe cereri. Vă rugăm să așteptați."
   },
   "predictiveAnalytics": {

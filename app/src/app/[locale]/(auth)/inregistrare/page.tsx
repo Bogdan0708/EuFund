@@ -18,6 +18,7 @@ export default function RegisterPage() {
   const params = useParams();
   const locale = (params.locale as string) || 'ro';
   const tv = useTranslations('validation');
+  const te = useTranslations('errors');
   const [serverError, setServerError] = useState('');
   const [success, setSuccess] = useState(false);
 
@@ -45,7 +46,7 @@ export default function RegisterPage() {
         setServerError(body.error?.message || t('invalidCredentials'));
       }
     } catch {
-      setServerError('Eroare de conexiune. Vă rugăm să încercați din nou.');
+      setServerError(te('networkError'));
     }
   };
 

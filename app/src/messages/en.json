@@ -386,7 +386,7 @@
     "unauthorized": "You are not authorized to access this resource.",
     "forbidden": "Access denied.",
     "serverError": "An internal error occurred. Please try again.",
-    "networkError": "Connection error. Check your internet connection.",
+    "networkError": "Connection error. Please try again.",
     "rateLimited": "Too many requests. Please wait."
   },
   "predictiveAnalytics": {
