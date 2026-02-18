@@ -9,6 +9,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const params = useParams<{ locale?: string; id?: string }>();
   const t = useTranslations('nav');
   const locale = params.locale || 'ro';
+  const manageSubscriptionLabel = locale === 'en' ? 'Manage subscription' : 'Gestionare abonament';
   const projectId = params.id;
   const projectBase = projectId ? `/${locale}/proiecte/${projectId}` : `/${locale}/proiecte`;
 
@@ -67,6 +68,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Quick actions */}
         <div className="mt-auto pt-4 border-t space-y-2">
+          <Button asChild variant="ghost" size="sm" className="w-full justify-start">
+            <Link href="/api/billing/portal">
+              <span className="mr-2">💳</span>
+              {manageSubscriptionLabel}
+            </Link>
+          </Button>
           <Button asChild variant="outline" size="sm" className="w-full justify-start">
             <Link href={`/${locale}/proiecte/nou`}>
               <span className="mr-2">➕</span>

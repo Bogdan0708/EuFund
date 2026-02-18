@@ -9,10 +9,10 @@ const checkoutSchema = z.object({
   interval: z.enum(['monthly', 'yearly']).optional().default('monthly'),
 });
 
-export async function POST(request: NextRequest) {
+async function createSession(request: NextRequest, payload: unknown): Promise<string | NextResponse> {
   try {
     const user = await requireAuth();
-    const parsed = checkoutSchema.safeParse(await request.json());
+    const parsed = checkoutSchema.safeParse(payload);
 
     if (!parsed.success) {
       return NextResponse.json(
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       cancelUrl,
     );
 
-    return NextResponse.json({ url: session.url });
+    return session.url;
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
@@ -40,4 +40,26 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 500 });
   }
+}
+
+export async function POST(request: NextRequest) {
+  const result = await createSession(request, await request.json());
+  if (typeof result !== 'string') {
+    return result;
+  }
+
+  return NextResponse.json({ url: result });
+}
+
+export async function GET(request: NextRequest) {
+  const result = await createSession(request, {
+    tier: request.nextUrl.searchParams.get('tier'),
+    interval: request.nextUrl.searchParams.get('interval') || 'monthly',
+  });
+
+  if (typeof result !== 'string') {
+    return result;
+  }
+
+  return NextResponse.redirect(result);
 }

@@ -3,13 +3,13 @@ import { requireAuth } from '@/lib/auth/helpers';
 import { createPortalSession } from '@/lib/integrations/stripe/billing';
 import { FondEUError } from '@/lib/errors';
 
-export async function POST(request: NextRequest) {
+async function createSession(request: NextRequest): Promise<string | NextResponse> {
   try {
     const user = await requireAuth();
     const returnUrl = `${request.nextUrl.origin}/billing`;
     const session = await createPortalSession(user.id, returnUrl);
 
-    return NextResponse.json({ url: session.url });
+    return session.url;
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
@@ -17,4 +17,22 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Failed to create billing portal session' }, { status: 500 });
   }
+}
+
+export async function POST(request: NextRequest) {
+  const result = await createSession(request);
+  if (typeof result !== 'string') {
+    return result;
+  }
+
+  return NextResponse.json({ url: result });
+}
+
+export async function GET(request: NextRequest) {
+  const result = await createSession(request);
+  if (typeof result !== 'string') {
+    return result;
+  }
+
+  return NextResponse.redirect(result);
 }

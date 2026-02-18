@@ -1,4 +1,5 @@
 // ─── AI Client with Circuit Breaker ──────────────────────────────
+import OpenAI from 'openai';
 import { z } from 'zod';
 import { CircuitBreaker, Errors, withRetry } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -11,6 +12,9 @@ const log = logger.child({ component: 'ai-client' });
 const generationBreaker = new CircuitBreaker('ai-generation', 5, 60000);
 const analysisBreaker = new CircuitBreaker('ai-analysis', 5, 60000);
 const embeddingBreaker = new CircuitBreaker('ai-embedding', 5, 60000);
+const gatewayUrl = process.env.AI_GATEWAY_URL?.replace(/\/$/, '');
+const gatewayKey = process.env.AI_GATEWAY_KEY || process.env.AI_GATEWAY_API_KEY;
+let gatewayClient: OpenAI | null = null;
 
 function resolveTaskType(hintText: string): TaskType {
   const text = hintText.toLowerCase();
@@ -32,6 +36,86 @@ function resolveTaskType(hintText: string): TaskType {
 
 function getOrchestrator() {
   return getAIOrchestrator(createDefaultConfig());
+}
+
+function getGatewayClient(): OpenAI | null {
+  if (!gatewayUrl || !gatewayKey) {
+    return null;
+  }
+
+  if (!gatewayClient) {
+    gatewayClient = new OpenAI({
+      apiKey: gatewayKey,
+      baseURL: `${gatewayUrl}/v1`,
+      timeout: 30000,
+    });
+  }
+
+  return gatewayClient;
+}
+
+async function aiGenerateDirect(opts: {
+  system: string;
+  prompt: string;
+  temperature?: number;
+  maxTokens?: number;
+}): Promise<{ text: string; tokensUsed: number }> {
+  const orchestrator = getOrchestrator();
+  const result = await orchestrator.generateText({
+    taskType: resolveTaskType(`${opts.system}\n${opts.prompt}`),
+    prompt: opts.prompt,
+    systemPrompt: opts.system,
+    maxTokens: opts.maxTokens ?? AI_CONFIG.generation.maxTokens,
+    temperature: opts.temperature ?? AI_CONFIG.generation.temperature,
+    userTier: 'enterprise',
+    userId: 'legacy-client',
+    language: 'auto',
+    priority: 'normal',
+  });
+
+  return {
+    text: result.content,
+    tokensUsed: result.tokensUsed.total,
+  };
+}
+
+async function aiGenerateObjectDirect<T extends z.ZodType>(opts: {
+  system: string;
+  prompt: string;
+  schema: T;
+  schemaName: string;
+  temperature?: number;
+}): Promise<{ object: z.infer<T>; tokensUsed: number }> {
+  const orchestrator = getOrchestrator();
+  const result = await orchestrator.generateObject<z.infer<T>>({
+    taskType: resolveTaskType(`${opts.schemaName}\n${opts.system}\n${opts.prompt}`),
+    prompt: opts.prompt,
+    systemPrompt: opts.system,
+    maxTokens: AI_CONFIG.analysis.maxTokens,
+    temperature: opts.temperature ?? AI_CONFIG.analysis.temperature,
+    userTier: 'enterprise',
+    userId: 'legacy-client',
+    language: 'auto',
+    priority: 'normal',
+    structuredOutput: true,
+    schema: schemaToJsonSchema(opts.schema),
+  });
+
+  const validatedObject = opts.schema.parse(result.object);
+
+  return {
+    object: validatedObject,
+    tokensUsed: result.tokensUsed.total,
+  };
+}
+
+async function aiEmbedDirect(text: string): Promise<{ embedding: number[]; tokensUsed: number }> {
+  const orchestrator = getOrchestrator();
+  const embedding = await orchestrator.embed(text);
+  return {
+    embedding,
+    tokensUsed: Math.ceil(text.length / 4),
+  };
 }
 
 function schemaToJsonSchema(schema: z.ZodType): unknown {
@@ -59,23 +143,31 @@ export async function aiGenerate(opts: {
   try {
     return await generationBreaker.execute(() =>
       withRetry(async () => {
-        const orchestrator = getOrchestrator();
-        const result = await orchestrator.generateText({
-          taskType: resolveTaskType(`${opts.system}\n${opts.prompt}`),
-          prompt: opts.prompt,
-          systemPrompt: opts.system,
-          maxTokens: opts.maxTokens ?? AI_CONFIG.generation.maxTokens,
-          temperature: opts.temperature ?? AI_CONFIG.generation.temperature,
-          userTier: 'enterprise',
-          userId: 'legacy-client',
-          language: 'auto',
-          priority: 'normal',
-        });
+        const gateway = getGatewayClient();
 
-        return {
-          text: result.content,
-          tokensUsed: result.tokensUsed.total,
-        };
+        if (!gateway) {
+          return aiGenerateDirect(opts);
+        }
+
+        try {
+          const response = await gateway.chat.completions.create({
+            model: AI_CONFIG.generation.model,
+            messages: [
+              { role: 'system', content: opts.system },
+              { role: 'user', content: opts.prompt },
+            ],
+            max_tokens: opts.maxTokens ?? AI_CONFIG.generation.maxTokens,
+            temperature: opts.temperature ?? AI_CONFIG.generation.temperature,
+          });
+
+          return {
+            text: response.choices[0]?.message?.content || '',
+            tokensUsed: response.usage?.total_tokens || 0,
+          };
+        } catch (error) {
+          log.warn({ error }, 'Gateway generation failed, falling back to direct provider routing');
+          return aiGenerateDirect(opts);
+        }
       })
     );
   } finally {
@@ -97,27 +189,38 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
   try {
     return await analysisBreaker.execute(() =>
       withRetry(async () => {
-        const orchestrator = getOrchestrator();
-        const result = await orchestrator.generateObject<z.infer<T>>({
-          taskType: resolveTaskType(`${opts.schemaName}\n${opts.system}\n${opts.prompt}`),
-          prompt: opts.prompt,
-          systemPrompt: opts.system,
-          maxTokens: AI_CONFIG.analysis.maxTokens,
-          temperature: opts.temperature ?? AI_CONFIG.analysis.temperature,
-          userTier: 'enterprise',
-          userId: 'legacy-client',
-          language: 'auto',
-          priority: 'normal',
-          structuredOutput: true,
-          schema: schemaToJsonSchema(opts.schema),
-        });
+        const gateway = getGatewayClient();
 
-        const validatedObject = opts.schema.parse(result.object);
+        if (!gateway) {
+          return aiGenerateObjectDirect(opts);
+        }
 
-        return {
-          object: validatedObject,
-          tokensUsed: result.tokensUsed.total,
-        };
+        try {
+          const response = await gateway.chat.completions.create({
+            model: AI_CONFIG.analysis.model,
+            messages: [
+              {
+                role: 'system',
+                content: `${opts.system}\n\nReturn only valid JSON that matches this schema: ${JSON.stringify(schemaToJsonSchema(opts.schema))}`,
+              },
+              { role: 'user', content: opts.prompt },
+            ],
+            max_tokens: AI_CONFIG.analysis.maxTokens,
+            temperature: opts.temperature ?? AI_CONFIG.analysis.temperature,
+            response_format: { type: 'json_object' },
+          });
+
+          const content = response.choices[0]?.message?.content || '{}';
+          const object = opts.schema.parse(JSON.parse(content));
+
+          return {
+            object,
+            tokensUsed: response.usage?.total_tokens || 0,
+          };
+        } catch (error) {
+          log.warn({ error }, 'Gateway structured generation failed, falling back to direct provider routing');
+          return aiGenerateObjectDirect(opts);
+        }
       })
     );
   } finally {
@@ -133,12 +236,27 @@ export async function aiEmbed(text: string): Promise<{ embedding: number[]; toke
   try {
     return await embeddingBreaker.execute(() =>
       withRetry(async () => {
-        const orchestrator = getOrchestrator();
-        const embedding = await orchestrator.embed(text);
-        return {
-          embedding,
-          tokensUsed: Math.ceil(text.length / 4),
-        };
+        const gateway = getGatewayClient();
+
+        if (!gateway) {
+          return aiEmbedDirect(text);
+        }
+
+        try {
+          const response = await gateway.embeddings.create({
+            model: AI_CONFIG.embedding.model,
+            input: text,
+            dimensions: AI_CONFIG.embedding.dimensions,
+          });
+
+          return {
+            embedding: response.data[0]?.embedding || [],
+            tokensUsed: response.usage?.total_tokens || Math.ceil(text.length / 4),
+          };
+        } catch (error) {
+          log.warn({ error }, 'Gateway embedding failed, falling back to direct provider routing');
+          return aiEmbedDirect(text);
+        }
       })
     );
   } finally {
