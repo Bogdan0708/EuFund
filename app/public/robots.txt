@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /ro/panou
+Disallow: /en/dashboard
+Sitemap: https://fondeu-platform-857599941951.europe-west2.run.app/sitemap.xml

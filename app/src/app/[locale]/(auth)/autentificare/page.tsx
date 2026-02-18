@@ -74,6 +74,11 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
+              <div className="text-right">
+                <Link href={`/${locale}/resetare-parola`} className="text-xs text-primary hover:underline">
+                  {t('forgotPassword')}
+                </Link>
+              </div>
             </div>
             {error && (
               <Alert variant="destructive">

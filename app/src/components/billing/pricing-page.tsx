@@ -14,29 +14,30 @@ type Tier = {
 
 const copy = {
   ro: {
-    badge: 'Preturi FondEU',
+    badge: 'Prețuri FondEU',
     title: 'Alege planul potrivit pentru echipa ta',
-    description: 'Incepe gratuit, apoi activeaza Pro sau Enterprise pentru volume mai mari si suport prioritar.',
-    ctaLoggedOut: 'Ai deja cont? Autentifica-te',
+    description: 'Începe gratuit, apoi activează Pro sau Enterprise pentru volume mai mari și suport prioritar.',
+    ctaLoggedOut: 'Ai deja cont? Autentifică-te',
+    ctaManageSubscription: 'Gestionează abonamentul',
     tiers: [
       {
         name: 'Free',
         price: 'EUR 0',
-        subtitle: 'luna',
+        subtitle: 'lună',
         features: [
-          'Pana la 1.000 cereri AI/luna',
-          'Instrumente de baza pentru proiecte',
-          'Suport prin documentatie',
+          'Până la 1.000 cereri AI/lună',
+          'Instrumente de bază pentru proiecte',
+          'Suport prin documentație',
         ],
-        ctaLabel: 'Incepe gratuit',
+        ctaLabel: 'Începe gratuit',
         ctaHref: '/ro/inregistrare',
       },
       {
         name: 'Pro',
         price: 'EUR 29',
-        subtitle: 'luna',
+        subtitle: 'lună',
         features: [
-          'Pana la 25.000 cereri AI/luna',
+          'Până la 25.000 cereri AI/lună',
           'Fluxuri avansate pentru conformitate',
           'Suport prioritar',
         ],
@@ -46,10 +47,10 @@ const copy = {
       {
         name: 'Enterprise',
         price: 'EUR 99',
-        subtitle: 'luna',
+        subtitle: 'lună',
         features: [
-          'Pana la 200.000 cereri AI/luna',
-          'Politici si audit pentru echipe extinse',
+          'Până la 200.000 cereri AI/lună',
+          'Politici și audit pentru echipe extinse',
           'Suport dedicat',
         ],
         ctaLabel: 'Alege Enterprise',
@@ -62,6 +63,7 @@ const copy = {
     title: 'Pick the plan that fits your team',
     description: 'Start free, then unlock Pro or Enterprise for higher usage and priority support.',
     ctaLoggedOut: 'Already have an account? Log in',
+    ctaManageSubscription: 'Manage subscription',
     tiers: [
       {
         name: 'Free',
@@ -110,6 +112,11 @@ export function PricingPage({ locale }: { locale: Locale }) {
     <main className="min-h-screen bg-background px-6 py-16">
       <div className="mx-auto max-w-6xl">
         <p className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">{content.badge}</p>
+        <form action="/api/billing/portal" method="post" className="mb-4 text-right">
+          <Button type="submit" variant="outline" size="sm">
+            {content.ctaManageSubscription}
+          </Button>
+        </form>
         <h1 className="text-4xl font-bold tracking-tight">{content.title}</h1>
         <p className="mt-4 max-w-2xl text-muted-foreground">{content.description}</p>
 
