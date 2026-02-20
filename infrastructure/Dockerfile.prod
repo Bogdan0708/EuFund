@@ -5,7 +5,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 FROM base AS deps
 COPY app/package.json app/package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 FROM base AS builder
 COPY app/package.json app/package-lock.json ./
@@ -13,17 +13,25 @@ RUN npm ci
 COPY app/ ./
 # Dummy DATABASE_URL for build-time prerendering (not used at runtime)
 ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
+ENV NODE_ENV=production
 RUN npm run build
 
 FROM base AS runner
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/.next ./.next
+
+# Copy standalone build output (uses Next.js standalone mode for minimal image)
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/drizzle ./drizzle
-COPY --from=builder /app/next.config.* ./
+
+# Copy drizzle migrations for runtime
+COPY --from=builder /app/src/lib/db/migrations ./src/lib/db/migrations
+
 USER nextjs
 EXPOSE 3000
-CMD ["npm", "run", "start"]
+
+CMD ["node", "server.js"]
