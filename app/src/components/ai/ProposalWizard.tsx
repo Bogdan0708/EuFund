@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { csrfFetch } from '@/lib/csrf/client';
 import type { ProposalOutput } from '@/lib/ai/proposal-generator';
 
 type Step = 'input' | 'generating' | 'result';
@@ -99,7 +100,7 @@ export default function ProposalWizard() {
         ? '/api/ai/generate-proposal-enhanced'
         : '/api/ai/generate-proposal';
 
-      const res = await fetch(endpoint, {
+      const res = await csrfFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

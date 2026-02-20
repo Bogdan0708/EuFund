@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { csrfFetch } from '@/lib/csrf/client';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -34,7 +35,7 @@ export default function AIChat() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/ai/chat', {
+      const res = await csrfFetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

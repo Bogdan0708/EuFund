@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { csrfFetch } from '@/lib/csrf/client';
 
 interface AnalysisResult {
   analysis: {
@@ -62,7 +63,7 @@ export default function DocumentUpload() {
       formData.append('file', file);
       formData.append('locale', 'ro');
 
-      const res = await fetch('/api/ai/analyze-document', {
+      const res = await csrfFetch('/api/ai/analyze-document', {
         method: 'POST',
         body: formData,
       });
