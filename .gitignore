@@ -38,3 +38,6 @@ infrastructure/terraform/*.tfvars
 
 audits/
 .abacusai/
+
+# Docker env
+.env.docker

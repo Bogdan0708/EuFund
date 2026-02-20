@@ -3,20 +3,16 @@
 ## Context
 - FondEU app: `~/Dev/EU-Funds/app/` (Next.js 14, commit `5215613`)
 - AI Gateway v3.0.0 deployed at: `https://ai-gateway-382299704849.europe-west2.run.app`
-- Gateway auth token: `by4K2R1L8B/K4jTPkPnkItKLEf8TinERSwGEUEqutuI=`
+- Gateway auth token: [stored in GCP Secret Manager as AI_GATEWAY_KEY]
 - GCP project: `eufunding`, region: `europe-west2`
 - Artifact Registry: `europe-west2-docker.pkg.dev/eufunding/fondeu/app`
 - Cloud SQL: `eufunding:europe-west2:fondeu-db`
 
 ## Stripe Config (LIVE)
-- Secret key: `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`
-- Publishable key: `pk_live_51ShaAgFtDF1TRyu7eyWPufYdfcXoBTDTeRTGA14pqIzXuXdJfmXuHMsqWgbk9IrN3DFTyfh1h1VrmCcVJynZISiZ00Nebgc2gs`
-- Webhook secret: `whsec_xWhaNqDezUYROENI6NbN0d9KRuXzgRPU`
-- Price IDs:
-  - Pro Monthly: `price_1T27AjFtDF1TRyu76fBlpRYd`
-  - Pro Yearly: `price_1T27AjFtDF1TRyu7ZjMBS8cz`
-  - Enterprise Monthly: `price_1T27AkFtDF1TRyu7z539ngbG`
-  - Enterprise Yearly: `price_1T27AkFtDF1TRyu7H5320TGE`
+- Secret key: [ROTATED — stored in GCP Secret Manager as STRIPE_SECRET_KEY]
+- Publishable key: [stored in env as NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY]
+- Webhook secret: [ROTATED — stored in GCP Secret Manager as STRIPE_WEBHOOK_SECRET]
+- Price IDs: stored in env as STRIPE_PRICE_PRO_MONTHLY, STRIPE_PRICE_PRO_YEARLY, STRIPE_PRICE_ENTERPRISE_MONTHLY, STRIPE_PRICE_ENTERPRISE_YEARLY
 
 ## Task 1: Wire FondEU AI client to use AI Gateway
 Currently `src/lib/ai/client.ts` calls providers directly. It should route through the gateway instead.
