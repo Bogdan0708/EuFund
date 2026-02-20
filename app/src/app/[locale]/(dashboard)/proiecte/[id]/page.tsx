@@ -1,5 +1,6 @@
 'use client';
 
+import { csrfFetch } from '@/lib/csrf/client';
 import { useTranslations } from 'next-intl';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -250,7 +251,7 @@ export default function ProjectDetailPage() {
 
   const handleTaskUpdate = async (taskId: string, updates: { startDate: string; endDate: string }) => {
     try {
-      await fetch(`/api/v1/projects/${params.id}/timeline/${taskId}`, {
+      await csrfFetch(`/api/v1/projects/${params.id}/timeline/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
@@ -266,7 +267,7 @@ export default function ProjectDetailPage() {
 
   const handleWpStatusChange = async (wpId: string, status: string) => {
     try {
-      await fetch(`/api/v1/projects/${params.id}/work-packages/${wpId}`, {
+      await csrfFetch(`/api/v1/projects/${params.id}/work-packages/${wpId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
@@ -297,7 +298,7 @@ export default function ProjectDetailPage() {
         ? Number(project.totalBudget)
         : Number(project.euContribution || 0) + Number(project.ownContrib || 0) || Math.max(50000, partners.length * 50000);
 
-      const res = await fetch('/api/ai/predict-success', {
+      const res = await csrfFetch('/api/ai/predict-success', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -334,7 +335,7 @@ export default function ProjectDetailPage() {
           ? project.sectionObjectives
           : '';
 
-      const res = await fetch('/api/ai/validate-compliance', {
+      const res = await csrfFetch('/api/ai/validate-compliance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

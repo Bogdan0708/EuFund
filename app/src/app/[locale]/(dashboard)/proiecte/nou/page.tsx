@@ -1,5 +1,6 @@
 'use client';
 
+import { csrfFetch } from '@/lib/csrf/client';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -33,7 +34,7 @@ export default function NewProjectPage() {
   const onSubmit = async (data: CreateProjectFormInput) => {
     setSubmitError(null);
     try {
-      const res = await fetch('/api/v1/projects', {
+      const res = await csrfFetch('/api/v1/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
