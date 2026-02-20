@@ -120,7 +120,7 @@ export async function analyzeDocument(input: AnalysisInput): Promise<AnalysisRes
     : `You are an expert document analyzer for EU funding. Analyze documents for compliance, quality and completeness. Identify compliance gaps and provide concrete improvement suggestions.`;
 
   // Wrap user-provided content in delimiters for prompt injection protection
-  const safeContent = wrapUserInput(truncated, 'DOCUMENT_CONTENT');
+  const wrappedContent = wrapUserInput(truncated, 'DOCUMENT_CONTENT');
   const safeProjectCtx = input.projectContext
     ? wrapUserInput(input.projectContext.substring(0, AI_INPUT_LIMITS.projectContext), 'PROJECT_CONTEXT')
     : '';
@@ -147,7 +147,7 @@ ${input.projectContext ? `Context proiect: ${safeProjectCtx}` : ''}
 ${input.callContext ? `Context apel: ${safeCallCtx}` : ''}
 
 Conținut document:
-${safeContent}
+${wrappedContent}
 
 Evaluează: tipul documentului, limba, rezumat, concluzii cheie, lacune de conformitate, scor calitate (0-100), scor completitudine (0-100), și sugestii de îmbunătățire.`
     : `${delimiterNotice}
@@ -160,7 +160,7 @@ ${input.projectContext ? `Project context: ${safeProjectCtx}` : ''}
 ${input.callContext ? `Call context: ${safeCallCtx}` : ''}
 
 Document content:
-${safeContent}
+${wrappedContent}
 
 Evaluate: document type, language, summary, key findings, compliance gaps, quality score (0-100), completeness score (0-100), and improvement suggestions.`;
 
