@@ -17,7 +17,7 @@ const nextConfig = {
   // Production optimizations (merged from next.config.production.js)
   experimental: {
     ...(isProd && {
-      optimizeCss: true,
+      optimizeCss: false,
     }),
     optimizePackageImports: ['@/components', '@/lib'],
   },
