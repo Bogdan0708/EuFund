@@ -1,5 +1,6 @@
 'use client';
 
+import { csrfFetch } from '@/lib/csrf/client';
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { WorkPackageForm } from '@/components/project/work-package-form';
@@ -17,7 +18,7 @@ export default function CreateWorkPackagePage() {
     setIsSubmitting(true);
     setError('');
     try {
-      const response = await fetch(`/api/v1/projects/${params.id}/work-packages`, {
+      const response = await csrfFetch(`/api/v1/projects/${params.id}/work-packages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

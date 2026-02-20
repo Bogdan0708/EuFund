@@ -1,5 +1,6 @@
 'use client';
 
+import { csrfFetch } from '@/lib/csrf/client';
 import { useState } from 'react';
 
 interface Signer {
@@ -38,7 +39,7 @@ export default function DocumentSigningPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/integrations/qes/prepare-document', {
+      const res = await csrfFetch('/api/integrations/qes/prepare-document', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

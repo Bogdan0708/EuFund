@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { csrfFetch } from '@/lib/csrf/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +26,7 @@ export default function RomanianMarketIntelligenceWidget() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/ai/market-intelligence', {
+      const res = await csrfFetch('/api/ai/market-intelligence', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -131,9 +131,6 @@ export default auth(async (req) => {
       '/api/webhooks',
       '/api/health',
       '/api/csp-report',
-      '/api/v1/',
-      '/api/ai/',
-      '/api/integrations/',
     ];
 
     const isExempt = csrfExemptPaths.some(p => pathname.startsWith(p));
@@ -188,13 +185,13 @@ export default auth(async (req) => {
   if (!req.cookies.get('csrf-token')) {
     const csrfToken = crypto.randomUUID();
     response.cookies.set('csrf-token', csrfToken, {
-      httpOnly: true,
+      httpOnly: false, // Client JS must read this for double-submit CSRF pattern
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       maxAge: 3600,
       path: '/'
     });
-    // Expose token via response header so client can read it
+    // Also expose via response header for initial fetch
     response.headers.set('X-CSRF-Token', csrfToken);
   }
 

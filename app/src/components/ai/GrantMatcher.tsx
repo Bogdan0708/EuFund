@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { csrfFetch } from '@/lib/csrf/client';
 
 interface MatchResult {
   call: {
@@ -45,7 +46,7 @@ export default function GrantMatcher() {
     setError(null);
 
     try {
-      const res = await fetch('/api/ai/match-grants', {
+      const res = await csrfFetch('/api/ai/match-grants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,5 +1,6 @@
 'use client';
 
+import { csrfFetch } from '@/lib/csrf/client';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { GanttChart } from '@/components/project/gantt-chart';
@@ -18,7 +19,7 @@ export default function GanttPage() {
   }, [params.id]);
 
   const handleUpdate = async (taskId: string, updates: { startDate: string; endDate: string }) => {
-    await fetch(`/api/v1/projects/${params.id}/timeline/${taskId}`, {
+    await csrfFetch(`/api/v1/projects/${params.id}/timeline/${taskId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
     });

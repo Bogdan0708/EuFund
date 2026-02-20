@@ -1,5 +1,6 @@
 'use client';
 
+import { csrfFetch } from '@/lib/csrf/client';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { WorkPackageForm } from '@/components/project/work-package-form';
@@ -51,7 +52,7 @@ export default function WorkPackageDetailPage() {
     setIsSubmitting(true);
     setError('');
     try {
-      const response = await fetch(`/api/v1/projects/${params.id}/work-packages/${params.wpId}`, {
+      const response = await csrfFetch(`/api/v1/projects/${params.id}/work-packages/${params.wpId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -80,7 +81,7 @@ export default function WorkPackageDetailPage() {
     setIsDeleting(true);
     setError('');
     try {
-      const response = await fetch(`/api/v1/projects/${params.id}/work-packages/${params.wpId}`, {
+      const response = await csrfFetch(`/api/v1/projects/${params.id}/work-packages/${params.wpId}`, {
         method: 'DELETE',
       });
 
