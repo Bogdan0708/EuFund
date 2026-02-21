@@ -181,19 +181,21 @@ export default auth(async (req) => {
     },
   });
 
+  const existingCsrfToken = req.cookies.get('csrf-token')?.value;
+  const csrfToken = existingCsrfToken ?? crypto.randomUUID();
+
   // Set CSRF cookie if missing
-  if (!req.cookies.get('csrf-token')) {
-    const csrfToken = crypto.randomUUID();
+  if (!existingCsrfToken) {
     response.cookies.set('csrf-token', csrfToken, {
-      httpOnly: false, // Client JS must read this for double-submit CSRF pattern
+      httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       maxAge: 3600,
       path: '/'
     });
-    // Also expose via response header for initial fetch
-    response.headers.set('X-CSRF-Token', csrfToken);
   }
+  // Expose CSRF token via response header for client bootstrap/read.
+  response.headers.set('X-CSRF-Token', csrfToken);
 
   // Keep nonce on response headers as well for observability/debugging.
   response.headers.set('x-nonce', nonce);

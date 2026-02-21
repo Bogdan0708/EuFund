@@ -75,12 +75,12 @@ export const emailVerificationTokens = pgTable('email_verification_tokens', {
 export const passwordResetTokens = pgTable('password_reset_tokens', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  token: varchar('token', { length: 255 }).notNull(),
+  tokenHash: varchar('token', { length: 255 }).notNull(), // stores SHA-256 hash of reset token
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   userIdx: index('idx_password_reset_tokens_user').on(table.userId),
-  tokenIdx: uniqueIndex('idx_password_reset_tokens_token').on(table.token),
+  tokenIdx: uniqueIndex('idx_password_reset_tokens_token').on(table.tokenHash),
 }));
 
 // ─── Consent Records (GDPR + Law 190/2018) ──────────────────────

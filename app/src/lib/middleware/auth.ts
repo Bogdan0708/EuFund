@@ -52,6 +52,10 @@ export interface AuthenticatedUser {
   tier: UserTier;
 }
 
+interface AIAuthOptions {
+  allowedContentTypes?: string[];
+}
+
 // Rate limits by tier (requests per hour)
 const RATE_LIMITS: Record<UserTier, number> = {
   free: 10,      // 10 AI requests per hour
@@ -61,9 +65,31 @@ const RATE_LIMITS: Record<UserTier, number> = {
 
 export async function withAIAuth(
   request: NextRequest,
-  handler: (user: AuthenticatedUser) => Promise<NextResponse>
+  handler: (user: AuthenticatedUser) => Promise<NextResponse>,
+  options: AIAuthOptions = {}
 ): Promise<NextResponse> {
   try {
+    if (['POST', 'PUT', 'PATCH'].includes(request.method)) {
+      const defaultAllowedContentTypes = request.nextUrl.pathname.endsWith('/api/ai/analyze-document')
+        ? ['multipart/form-data']
+        : ['application/json'];
+
+      const allowedContentTypes = options.allowedContentTypes ?? defaultAllowedContentTypes;
+      const contentType = (request.headers.get('content-type') || '').toLowerCase();
+      const isAllowed = allowedContentTypes.some((allowed) => contentType.includes(allowed.toLowerCase()));
+
+      if (!isAllowed) {
+        return NextResponse.json(
+          {
+            error: 'Unsupported media type',
+            code: 'UNSUPPORTED_MEDIA_TYPE',
+            message: `Expected content-type: ${allowedContentTypes.join(' or ')}`,
+          },
+          { status: 415 }
+        );
+      }
+    }
+
     // Check authentication
     const session = await auth();
     

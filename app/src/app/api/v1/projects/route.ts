@@ -7,89 +7,98 @@ import { db } from '@/lib/db';
 import { projects, orgMembers, organizations } from '@/lib/db/schema';
 import { createProjectSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole, getPaginationParams } from '@/lib/auth/helpers';
+import { withAuthScope, requireOrgRole, getPaginationParams } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
-import { eq, and, isNull, ilike, inArray, desc, count, sql } from 'drizzle-orm';
+import { eq, and, isNull, inArray, desc, count, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'projects-api' });
 
+function escapeILikePattern(input: string): string {
+  return input
+    .replace(/\\/g, '\\\\')
+    .replace(/%/g, '\\%')
+    .replace(/_/g, '\\_');
+}
+
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireAuth();
-    const { page, perPage, offset } = getPaginationParams(req);
-    const url = new URL(req.url);
-    const search = url.searchParams.get('search') || undefined;
-    const status = url.searchParams.get('status') || undefined;
-    const orgId = url.searchParams.get('orgId') || undefined;
+    return await withAuthScope(async (user) => {
+      const { page, perPage, offset } = getPaginationParams(req);
+      const url = new URL(req.url);
+      const search = url.searchParams.get('search') || undefined;
+      const status = url.searchParams.get('status') || undefined;
+      const orgId = url.searchParams.get('orgId') || undefined;
 
-    // Get user's org IDs
-    const userOrgs = await db
-      .select({ orgId: orgMembers.orgId })
-      .from(orgMembers)
-      .where(eq(orgMembers.userId, user.id));
+      // Get user's org IDs
+      const userOrgs = await db
+        .select({ orgId: orgMembers.orgId })
+        .from(orgMembers)
+        .where(eq(orgMembers.userId, user.id));
 
-    const orgIds = userOrgs.map((o) => o.orgId);
+      const orgIds = userOrgs.map((o) => o.orgId);
 
-    if (orgIds.length === 0) {
+      if (orgIds.length === 0) {
+        return NextResponse.json({
+          success: true,
+          data: {
+            items: [],
+            meta: { page, perPage, total: 0, totalPages: 0 },
+          },
+        });
+      }
+
+      // Build conditions
+      const conditions = [
+        inArray(projects.orgId, orgIds),
+        isNull(projects.deletedAt),
+      ];
+
+      if (orgId && orgIds.includes(orgId)) {
+        conditions.push(eq(projects.orgId, orgId));
+      }
+      if (status) {
+        conditions.push(eq(projects.status, status as any));
+      }
+      if (search) {
+        const escapedSearch = escapeILikePattern(search);
+        conditions.push(sql`${projects.title} ILIKE ${`%${escapedSearch}%`} ESCAPE '\\'`);
+      }
+
+      const whereClause = and(...conditions);
+
+      const [results, totalResult] = await Promise.all([
+        db
+          .select({
+            id: projects.id,
+            orgId: projects.orgId,
+            callId: projects.callId,
+            title: projects.title,
+            acronym: projects.acronym,
+            status: projects.status,
+            totalBudget: projects.totalBudget,
+            complianceScore: projects.complianceScore,
+            matchScore: projects.matchScore,
+            createdAt: projects.createdAt,
+            updatedAt: projects.updatedAt,
+          })
+          .from(projects)
+          .where(whereClause)
+          .orderBy(desc(projects.updatedAt))
+          .limit(perPage)
+          .offset(offset),
+        db.select({ total: count() }).from(projects).where(whereClause),
+      ]);
+
+      const total = totalResult[0]?.total || 0;
+
       return NextResponse.json({
         success: true,
         data: {
-          items: [],
-          meta: { page, perPage, total: 0, totalPages: 0 },
+          items: results,
+          meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
         },
       });
-    }
-
-    // Build conditions
-    const conditions = [
-      inArray(projects.orgId, orgIds),
-      isNull(projects.deletedAt),
-    ];
-
-    if (orgId && orgIds.includes(orgId)) {
-      conditions.push(eq(projects.orgId, orgId));
-    }
-    if (status) {
-      conditions.push(eq(projects.status, status as any));
-    }
-    if (search) {
-      conditions.push(ilike(projects.title, `%${search}%`));
-    }
-
-    const whereClause = and(...conditions);
-
-    const [results, totalResult] = await Promise.all([
-      db
-        .select({
-          id: projects.id,
-          orgId: projects.orgId,
-          callId: projects.callId,
-          title: projects.title,
-          acronym: projects.acronym,
-          status: projects.status,
-          totalBudget: projects.totalBudget,
-          complianceScore: projects.complianceScore,
-          matchScore: projects.matchScore,
-          createdAt: projects.createdAt,
-          updatedAt: projects.updatedAt,
-        })
-        .from(projects)
-        .where(whereClause)
-        .orderBy(desc(projects.updatedAt))
-        .limit(perPage)
-        .offset(offset),
-      db.select({ total: count() }).from(projects).where(whereClause),
-    ]);
-
-    const total = totalResult[0]?.total || 0;
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        items: results,
-        meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
-      },
     });
   } catch (error) {
     if (error instanceof FondEUError) {
@@ -102,73 +111,82 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireAuth();
-    const body = await req.json();
-    const parsed = createProjectSchema.safeParse(body);
+    let auditData: Parameters<typeof logAudit>[0] | undefined;
 
-    if (!parsed.success) {
-      const firstError = parsed.error.issues[0];
-      return NextResponse.json(
-        Errors.validation(firstError.path.join('.'), firstError.message, firstError.message).toResponse('ro'),
-        { status: 400 },
-      );
-    }
+    const response = await withAuthScope(async (user) => {
+      const body = await req.json();
+      const parsed = createProjectSchema.safeParse(body);
 
-    const data = parsed.data;
-
-    // Resolve orgId: use provided, or find user's first org, or create a default
-    let orgId = data.orgId;
-    if (!orgId) {
-      const userOrg = await db.query.orgMembers.findFirst({
-        where: eq(orgMembers.userId, user.id),
-      });
-      if (userOrg) {
-        orgId = userOrg.orgId;
-      } else {
-        // Auto-create a personal organization for the user
-        const [newOrg] = await db.insert(organizations).values({
-          name: `Organizația lui ${user.name || 'Utilizator'}`,
-          orgType: 'srl',
-          orgSize: 'micro',
-        }).returning();
-        await db.insert(orgMembers).values({
-          orgId: newOrg.id,
-          userId: user.id,
-          role: 'org_admin',
-        });
-        orgId = newOrg.id;
+      if (!parsed.success) {
+        const firstError = parsed.error.issues[0];
+        return NextResponse.json(
+          Errors.validation(firstError.path.join('.'), firstError.message, firstError.message).toResponse('ro'),
+          { status: 400 },
+        );
       }
-    } else {
-      // Verify user has access to the organization
-      await requireOrgRole(user.id, orgId, 'project_manager');
-    }
 
-    // Insert project
-    const [project] = await db.insert(projects).values({
-      orgId,
-      callId: data.callId,
-      createdBy: user.id,
-      title: data.title,
-      acronym: data.acronym,
-      status: 'ciorna',
-      currentVersion: 1,
-      startDate: data.startDate,
-      endDate: data.endDate,
-      durationMonths: data.durationMonths,
-    }).returning();
+      const data = parsed.data;
 
-    await logAudit({
-      userId: user.id,
-      action: 'project.create',
-      resourceType: 'project',
-      resourceId: project.id,
-      newValue: { title: data.title, orgId, callId: data.callId },
+      // Resolve orgId: use provided, or find user's first org, or create a default
+      let orgId = data.orgId;
+      if (!orgId) {
+        const userOrg = await db.query.orgMembers.findFirst({
+          where: eq(orgMembers.userId, user.id),
+        });
+        if (userOrg) {
+          orgId = userOrg.orgId;
+        } else {
+          // Auto-create a personal organization for the user
+          const [newOrg] = await db.insert(organizations).values({
+            name: `Organizația lui ${user.name || 'Utilizator'}`,
+            orgType: 'srl',
+            orgSize: 'micro',
+          }).returning();
+          await db.insert(orgMembers).values({
+            orgId: newOrg.id,
+            userId: user.id,
+            role: 'org_admin',
+          });
+          orgId = newOrg.id;
+        }
+      } else {
+        // Verify user has access to the organization
+        await requireOrgRole(user.id, orgId, 'project_manager');
+      }
+
+      // Insert project
+      const [project] = await db.insert(projects).values({
+        orgId,
+        callId: data.callId,
+        createdBy: user.id,
+        title: data.title,
+        acronym: data.acronym,
+        status: 'ciorna',
+        currentVersion: 1,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        durationMonths: data.durationMonths,
+      }).returning();
+
+      auditData = {
+        userId: user.id,
+        action: 'project.create',
+        resourceType: 'project',
+        resourceId: project.id,
+        newValue: { title: data.title, orgId, callId: data.callId },
+      };
+
+      return NextResponse.json({
+        success: true,
+        data: project,
+      }, { status: 201 });
     });
 
-    return NextResponse.json({
-      success: true,
-      data: project,
-    }, { status: 201 });
+    if (auditData) {
+      await logAudit(auditData);
+    }
+
+    return response;
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });

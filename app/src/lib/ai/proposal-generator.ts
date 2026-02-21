@@ -69,6 +69,20 @@ export const proposalOutputSchema = z.object({
 
 export type ProposalOutput = z.infer<typeof proposalOutputSchema>;
 
+function getRagSourceId(result: { id: string; metadata?: Record<string, unknown> }): string {
+  const sourceDocumentId = result.metadata?.sourceDocumentId;
+  if (typeof sourceDocumentId === 'string' && sourceDocumentId.trim().length > 0) {
+    return sourceDocumentId;
+  }
+
+  const sourceId = result.metadata?.sourceId;
+  if (typeof sourceId === 'string' && sourceId.trim().length > 0) {
+    return sourceId;
+  }
+
+  return result.id;
+}
+
 // ─── Program-Specific Templates ──────────────────────────────────
 
 const PROGRAM_TEMPLATES: Record<string, string> = {
@@ -121,6 +135,7 @@ export async function generateProposal(input: ProposalInput): Promise<{
   proposal: ProposalOutput;
   tokensUsed: number;
   ragSourcesUsed: number;
+  ragSourceIds: string[];
 }> {
   // Search for relevant legislation and guidelines
   const ragResults = await hybridSearch({
@@ -129,8 +144,9 @@ export async function generateProposal(input: ProposalInput): Promise<{
     topK: 3,
   });
 
+  const ragSourceIds = Array.from(new Set(ragResults.map((result) => getRagSourceId(result))));
   const ragContext = ragResults.length > 0
-    ? `\nInformații relevante din legislația UE:\n${ragResults.map((r, i) => `[${i + 1}] ${r.content.substring(0, 500)}`).join('\n')}`
+    ? `\nInformații relevante din legislația UE:\n${ragResults.map((r, i) => `[${i + 1}] [Source: ${getRagSourceId(r)}] ${r.content.substring(0, 500)}`).join('\n')}`
     : '';
 
   const template = PROGRAM_TEMPLATES[input.programType] || PROGRAM_TEMPLATES.general;
@@ -213,5 +229,6 @@ Generate the title, acronym, summary, context, objectives, methodology with work
     proposal,
     tokensUsed,
     ragSourcesUsed: ragResults.length,
+    ragSourceIds,
   };
 }

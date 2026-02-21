@@ -139,7 +139,22 @@ export interface EnhancedProposalOutput {
   compliance?: ComplianceAnalysis;
   tokensUsed: number;
   ragSourcesUsed: number;
+  ragSourceIds: string[];
   programGuidance: string[];
+}
+
+function getRagSourceId(result: { id: string; metadata?: Record<string, unknown> }): string {
+  const sourceDocumentId = result.metadata?.sourceDocumentId;
+  if (typeof sourceDocumentId === 'string' && sourceDocumentId.trim().length > 0) {
+    return sourceDocumentId;
+  }
+
+  const sourceId = result.metadata?.sourceId;
+  if (typeof sourceId === 'string' && sourceId.trim().length > 0) {
+    return sourceId;
+  }
+
+  return result.id;
 }
 
 // ─── AI Schema ───────────────────────────────────────────────────
@@ -246,13 +261,17 @@ export async function generateEnhancedProposal(input: EnhancedProposalInput): Pr
   // RAG context
   let ragContext = '';
   let ragCount = 0;
+  let ragSourceIds: string[] = [];
   try {
     const ragResults = await hybridSearch({
       query: `${input.programType} ${input.projectIdea} requirements eligibility`,
       topK: 5,
     });
     ragCount = ragResults.length;
-    ragContext = ragResults.map((r, i) => `[${i + 1}] ${r.content.substring(0, 500)}`).join('\n');
+    ragSourceIds = Array.from(new Set(ragResults.map((result) => getRagSourceId(result))));
+    ragContext = ragResults
+      .map((r, i) => `[${i + 1}] [Source: ${getRagSourceId(r)}] ${r.content.substring(0, 500)}`)
+      .join('\n');
   } catch { /* continue without RAG */ }
 
   const partnersList = input.partners?.map(p => `${p.name} (${p.country}, ${p.type}, ${p.role})`).join('; ') || input.organizationName;
@@ -383,6 +402,7 @@ Budget must be distributed across programme cost categories.`;
     compliance,
     tokensUsed,
     ragSourcesUsed: ragCount,
+    ragSourceIds,
     programGuidance: program.tips,
   };
 }

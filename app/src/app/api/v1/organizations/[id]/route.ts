@@ -8,7 +8,7 @@ import { db } from '@/lib/db';
 import { organizations, orgMembers } from '@/lib/db/schema';
 import { organizationSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { withAuthScope, requireOrgRole } from '@/lib/auth/helpers';
 import { logAudit, sanitizeForAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
@@ -17,33 +17,34 @@ type Params = { params: { id: string } };
 
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
-    const user = await requireAuth();
     const { id } = params;
 
-    await requireOrgRole(user.id, id, 'viewer');
+    return await withAuthScope(async (user) => {
+      await requireOrgRole(user.id, id, 'viewer');
 
-    const org = await db.query.organizations.findFirst({
-      where: and(eq(organizations.id, id), isNull(organizations.deletedAt)),
-    });
+      const org = await db.query.organizations.findFirst({
+        where: and(eq(organizations.id, id), isNull(organizations.deletedAt)),
+      });
 
-    if (!org) {
-      throw Errors.notFound('organization', id);
-    }
+      if (!org) {
+        throw Errors.notFound('organization', id);
+      }
 
-    // Get members list
-    const members = await db
-      .select({
-        id: orgMembers.id,
-        userId: orgMembers.userId,
-        role: orgMembers.role,
-        joinedAt: orgMembers.joinedAt,
-      })
-      .from(orgMembers)
-      .where(eq(orgMembers.orgId, id));
+      // Get members list
+      const members = await db
+        .select({
+          id: orgMembers.id,
+          userId: orgMembers.userId,
+          role: orgMembers.role,
+          joinedAt: orgMembers.joinedAt,
+        })
+        .from(orgMembers)
+        .where(eq(orgMembers.orgId, id));
 
-    return NextResponse.json({
-      success: true,
-      data: { ...org, members },
+      return NextResponse.json({
+        success: true,
+        data: { ...org, members },
+      });
     });
   } catch (error) {
     if (error instanceof FondEUError) {
@@ -56,46 +57,54 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
-    const user = await requireAuth();
     const { id } = params;
+    let auditData: Parameters<typeof logAudit>[0] | undefined;
 
-    await requireOrgRole(user.id, id, 'org_admin');
+    const response = await withAuthScope(async (user) => {
+      await requireOrgRole(user.id, id, 'org_admin');
 
-    const body = await req.json();
-    const parsed = organizationSchema.partial().safeParse(body);
+      const body = await req.json();
+      const parsed = organizationSchema.partial().safeParse(body);
 
-    if (!parsed.success) {
-      const firstError = parsed.error.issues[0];
-      return NextResponse.json(
-        Errors.validation(firstError.path.join('.'), firstError.message, firstError.message).toResponse('ro'),
-        { status: 400 },
-      );
-    }
+      if (!parsed.success) {
+        const firstError = parsed.error.issues[0];
+        return NextResponse.json(
+          Errors.validation(firstError.path.join('.'), firstError.message, firstError.message).toResponse('ro'),
+          { status: 400 },
+        );
+      }
 
-    const existing = await db.query.organizations.findFirst({
-      where: and(eq(organizations.id, id), isNull(organizations.deletedAt)),
+      const existing = await db.query.organizations.findFirst({
+        where: and(eq(organizations.id, id), isNull(organizations.deletedAt)),
+      });
+
+      if (!existing) {
+        throw Errors.notFound('organization', id);
+      }
+
+      const [updated] = await db
+        .update(organizations)
+        .set({ ...parsed.data, updatedAt: new Date() })
+        .where(eq(organizations.id, id))
+        .returning();
+
+      auditData = {
+        userId: user.id,
+        action: 'organization.update',
+        resourceType: 'organization',
+        resourceId: id,
+        oldValue: sanitizeForAudit(existing as any),
+        newValue: sanitizeForAudit(parsed.data as any),
+      };
+
+      return NextResponse.json({ success: true, data: updated });
     });
 
-    if (!existing) {
-      throw Errors.notFound('organization', id);
+    if (auditData) {
+      await logAudit(auditData);
     }
 
-    const [updated] = await db
-      .update(organizations)
-      .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(organizations.id, id))
-      .returning();
-
-    await logAudit({
-      userId: user.id,
-      action: 'organization.update',
-      resourceType: 'organization',
-      resourceId: id,
-      oldValue: sanitizeForAudit(existing as any),
-      newValue: sanitizeForAudit(parsed.data as any),
-    });
-
-    return NextResponse.json({ success: true, data: updated });
+    return response;
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
@@ -107,33 +116,41 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
-    const user = await requireAuth();
     const { id } = params;
+    let auditData: Parameters<typeof logAudit>[0] | undefined;
 
-    await requireOrgRole(user.id, id, 'org_admin');
+    const response = await withAuthScope(async (user) => {
+      await requireOrgRole(user.id, id, 'org_admin');
 
-    const existing = await db.query.organizations.findFirst({
-      where: and(eq(organizations.id, id), isNull(organizations.deletedAt)),
+      const existing = await db.query.organizations.findFirst({
+        where: and(eq(organizations.id, id), isNull(organizations.deletedAt)),
+      });
+
+      if (!existing) {
+        throw Errors.notFound('organization', id);
+      }
+
+      // Soft delete
+      await db
+        .update(organizations)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        .where(eq(organizations.id, id));
+
+      auditData = {
+        userId: user.id,
+        action: 'organization.delete',
+        resourceType: 'organization',
+        resourceId: id,
+      };
+
+      return NextResponse.json({ success: true, data: { message: 'Organizația a fost ștearsă.' } });
     });
 
-    if (!existing) {
-      throw Errors.notFound('organization', id);
+    if (auditData) {
+      await logAudit(auditData);
     }
 
-    // Soft delete
-    await db
-      .update(organizations)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(organizations.id, id));
-
-    await logAudit({
-      userId: user.id,
-      action: 'organization.delete',
-      resourceType: 'organization',
-      resourceId: id,
-    });
-
-    return NextResponse.json({ success: true, data: { message: 'Organizația a fost ștearsă.' } });
+    return response;
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });

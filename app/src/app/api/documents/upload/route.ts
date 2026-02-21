@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { documents, docTypeEnum } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { withAuthScope, requireOrgRole } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { createHash } from 'crypto';
 import { writeFile, mkdir, unlink } from 'fs/promises';
@@ -23,118 +23,127 @@ const ALLOWED_TYPES = [
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireAuth();
-    const formData = await req.formData();
+    let auditData: Parameters<typeof logAudit>[0] | undefined;
 
-    const file = formData.get('file') as File | null;
-    const orgId = formData.get('orgId') as string | null;
-    const projectId = formData.get('projectId') as string | null;
-    const rawDocType = (formData.get('docType') as string) || 'altul';
-    type DocumentType = (typeof docTypeEnum.enumValues)[number];
-    const docType: DocumentType = docTypeEnum.enumValues.includes(rawDocType as DocumentType)
-      ? (rawDocType as DocumentType)
-      : 'altul';
+    const response = await withAuthScope(async (user) => {
+      const formData = await req.formData();
 
-    if (!file) {
-      return NextResponse.json(
-        Errors.validation('file', 'Fișierul este obligatoriu.', 'File is required.').toResponse('ro'),
-        { status: 400 },
-      );
-    }
+      const file = formData.get('file') as File | null;
+      const orgId = formData.get('orgId') as string | null;
+      const projectId = formData.get('projectId') as string | null;
+      const rawDocType = (formData.get('docType') as string) || 'altul';
+      type DocumentType = (typeof docTypeEnum.enumValues)[number];
+      const docType: DocumentType = docTypeEnum.enumValues.includes(rawDocType as DocumentType)
+        ? (rawDocType as DocumentType)
+        : 'altul';
 
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json(
-        Errors.validation('file', 'Fișierul depășește limita de 50MB.', 'File exceeds 50MB limit.').toResponse('ro'),
-        { status: 400 },
-      );
-    }
+      if (!file) {
+        return NextResponse.json(
+          Errors.validation('file', 'Fișierul este obligatoriu.', 'File is required.').toResponse('ro'),
+          { status: 400 },
+        );
+      }
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      return NextResponse.json(
-        Errors.validation('file', 'Tip de fișier neacceptat. Acceptăm PDF, DOCX, TXT.', 'Unsupported file type.').toResponse('ro'),
-        { status: 400 },
-      );
-    }
+      if (file.size > MAX_FILE_SIZE) {
+        return NextResponse.json(
+          Errors.validation('file', 'Fișierul depășește limita de 50MB.', 'File exceeds 50MB limit.').toResponse('ro'),
+          { status: 400 },
+        );
+      }
 
-    // Verify org access if orgId provided
-    if (orgId) {
-      await requireOrgRole(user.id, orgId, 'project_manager');
-    }
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        return NextResponse.json(
+          Errors.validation('file', 'Tip de fișier neacceptat. Acceptăm PDF, DOCX, TXT.', 'Unsupported file type.').toResponse('ro'),
+          { status: 400 },
+        );
+      }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    // Validate file type by magic bytes (don't trust client MIME)
-    const magicHex = Buffer.from(buffer).subarray(0, 4).toString('hex');
-    const MAGIC_BYTES: Record<string, string[]> = {
-      '25504446': ['application/pdf'],           // %PDF
-      '504b0304': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'], // PK (DOCX/ZIP)
-      'd0cf11e0': ['application/msword'],       // OLE2 Compound Document (.doc)
-    };
-    const detectedTypes = Object.entries(MAGIC_BYTES).find(([magic]) => magicHex.startsWith(magic));
-    if (file.type !== 'text/plain' && !detectedTypes) {
-      return NextResponse.json(
-        Errors.validation('file', 'Conținutul fișierului nu corespunde tipului declarat', 'File content does not match declared type').toResponse('ro'),
-        { status: 400 },
-      );
-    }
+      // Verify org access if orgId provided
+      if (orgId) {
+        await requireOrgRole(user.id, orgId, 'project_manager');
+      }
 
-    const safeName = basename(file.name).replace(/[^a-zA-Z0-9._-]/g, '_');
-    const checksum = createHash('sha256').update(buffer).digest('hex');
+      const buffer = Buffer.from(await file.arrayBuffer());
+      // Validate file type by magic bytes (don't trust client MIME)
+      const magicHex = Buffer.from(buffer).subarray(0, 4).toString('hex');
+      const MAGIC_BYTES: Record<string, string[]> = {
+        '25504446': ['application/pdf'],           // %PDF
+        '504b0304': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'], // PK (DOCX/ZIP)
+        'd0cf11e0': ['application/msword'],       // OLE2 Compound Document (.doc)
+      };
+      const detectedTypes = Object.entries(MAGIC_BYTES).find(([magic]) => magicHex.startsWith(magic));
+      if (file.type !== 'text/plain' && !detectedTypes) {
+        return NextResponse.json(
+          Errors.validation('file', 'Conținutul fișierului nu corespunde tipului declarat', 'File content does not match declared type').toResponse('ro'),
+          { status: 400 },
+        );
+      }
 
-    // Store file + DB insert in one transactional flow; on DB failure remove file.
-    const dateDir = new Date().toISOString().split('T')[0];
-    const fileId = crypto.randomUUID();
-    const ext = safeName.split('.').pop() || 'bin';
-    const storagePath = join(dateDir, `${fileId}.${ext}`);
-    const fullPath = join(UPLOAD_DIR, storagePath);
+      const safeName = basename(file.name).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const checksum = createHash('sha256').update(buffer).digest('hex');
 
-    let doc: typeof documents.$inferSelect | undefined;
-    try {
-      await db.transaction(async (tx) => {
-        await mkdir(join(UPLOAD_DIR, dateDir), { recursive: true });
-        await writeFile(fullPath, buffer);
+      // Store file + DB insert in one transactional flow; on DB failure remove file.
+      const dateDir = new Date().toISOString().split('T')[0];
+      const fileId = crypto.randomUUID();
+      const ext = safeName.split('.').pop() || 'bin';
+      const storagePath = join(dateDir, `${fileId}.${ext}`);
+      const fullPath = join(UPLOAD_DIR, storagePath);
 
-        const [inserted] = await tx.insert(documents).values({
-          orgId: orgId || undefined,
-          projectId: projectId || undefined,
-          uploadedBy: user.id,
-          docType,
-          filename: safeName,
-          mimeType: file.type,
-          fileSize: file.size,
-          storagePath,
-          checksumSha256: checksum,
-        }).returning();
+      let doc: typeof documents.$inferSelect | undefined;
+      try {
+        await db.transaction(async (tx) => {
+          await mkdir(join(UPLOAD_DIR, dateDir), { recursive: true });
+          await writeFile(fullPath, buffer);
 
-        doc = inserted;
-      });
-    } catch (txError) {
-      await unlink(fullPath).catch(() => undefined);
-      throw txError;
-    }
+          const [inserted] = await tx.insert(documents).values({
+            orgId: orgId || undefined,
+            projectId: projectId || undefined,
+            uploadedBy: user.id,
+            docType,
+            filename: safeName,
+            mimeType: file.type,
+            fileSize: file.size,
+            storagePath,
+            checksumSha256: checksum,
+          }).returning();
 
-    if (!doc) {
-      throw Errors.internal('Nu s-a putut salva documentul.');
-    }
+          doc = inserted;
+        });
+      } catch (txError) {
+        await unlink(fullPath).catch(() => undefined);
+        throw txError;
+      }
 
-    await logAudit({
-      userId: user.id,
-      action: 'document.upload',
-      resourceType: 'document',
-      resourceId: doc.id,
-      metadata: { filename: safeName, originalName: file.name, mimeType: file.type, fileSize: file.size },
+      if (!doc) {
+        throw Errors.internal('Nu s-a putut salva documentul.');
+      }
+
+      auditData = {
+        userId: user.id,
+        action: 'document.upload',
+        resourceType: 'document',
+        resourceId: doc.id,
+        metadata: { filename: safeName, originalName: file.name, mimeType: file.type, fileSize: file.size },
+      };
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          id: doc.id,
+          filename: doc.filename,
+          mimeType: doc.mimeType,
+          fileSize: doc.fileSize,
+          docType: doc.docType,
+          createdAt: doc.createdAt,
+        },
+      }, { status: 201 });
     });
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        id: doc.id,
-        filename: doc.filename,
-        mimeType: doc.mimeType,
-        fileSize: doc.fileSize,
-        docType: doc.docType,
-        createdAt: doc.createdAt,
-      },
-    }, { status: 201 });
+    if (auditData) {
+      await logAudit(auditData);
+    }
+
+    return response;
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });

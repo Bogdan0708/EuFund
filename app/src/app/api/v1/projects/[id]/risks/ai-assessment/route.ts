@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { projects, riskAssessments } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { withAuthScope, requireOrgRole } from '@/lib/auth/helpers';
 import { assessRisk, type RiskAssessmentInput } from '@/lib/ai/risk-assessment';
 import { listRisks } from '@/lib/services/risks';
 import { listWorkPackages } from '@/lib/services/work-packages';
@@ -13,82 +13,77 @@ type Params = { params: { id: string } };
 
 export async function POST(req: NextRequest, { params }: Params) {
   try {
-    const user = await requireAuth();
     const { id } = params;
+    return await withAuthScope(async (user) => {
+      const project = await db.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
+      if (!project) throw Errors.notFound('project', id);
+      await requireOrgRole(user.id, project.orgId, 'project_manager');
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
-    });
-    if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
+      const [existingRisks, workPackages] = await Promise.all([
+        listRisks(id),
+        listWorkPackages(id),
+      ]);
 
-    // Gather context for AI analysis
-    const [existingRisks, workPackages] = await Promise.all([
-      listRisks(id),
-      listWorkPackages(id),
-    ]);
+      const startDate = project.startDate ? new Date(project.startDate) : new Date();
+      const now = new Date();
+      const elapsedMonths = Math.max(0, Math.round(
+        (now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
+      ));
 
-    // Calculate elapsed months
-    const startDate = project.startDate ? new Date(project.startDate) : new Date();
-    const now = new Date();
-    const elapsedMonths = Math.max(0, Math.round(
-      (now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
-    ));
+      const riskInput: RiskAssessmentInput = {
+        project: {
+          title: project.title,
+          summary: project.sectionSummary || '',
+          programType: 'general',
+          totalBudget: Number(project.totalBudget) || 0,
+          spentBudget: 0, // Would need financial tracking data
+          durationMonths: project.durationMonths || 12,
+          elapsedMonths,
+          startDate: project.startDate || new Date().toISOString(),
+          endDate: project.endDate || new Date().toISOString(),
+        },
+        workPackages: workPackages.map(wp => ({
+          id: wp.id,
+          name: wp.name,
+          progress: 0,
+          budget: Number(wp.budgetAllocated) || 0,
+          spent: Number(wp.budgetSpent) || 0,
+          plannedStart: wp.startDate || '',
+          plannedEnd: wp.endDate || '',
+          status: wp.status || 'planned',
+          dependencies: [],
+          deliverables: [],
+        })),
+        partners: [],
+        locale: 'ro',
+      };
 
-    // Build AI input from project data
-    const riskInput: RiskAssessmentInput = {
-      project: {
-        title: project.title,
-        summary: project.sectionSummary || '',
-        programType: 'general',
-        totalBudget: Number(project.totalBudget) || 0,
-        spentBudget: 0, // Would need financial tracking data
-        durationMonths: project.durationMonths || 12,
-        elapsedMonths,
-        startDate: project.startDate || new Date().toISOString(),
-        endDate: project.endDate || new Date().toISOString(),
-      },
-      workPackages: workPackages.map(wp => ({
-        id: wp.id,
-        name: wp.name,
-        progress: 0,
-        budget: Number(wp.budgetAllocated) || 0,
-        spent: Number(wp.budgetSpent) || 0,
-        plannedStart: wp.startDate || '',
-        plannedEnd: wp.endDate || '',
-        status: wp.status || 'planned',
-        dependencies: [],
-        deliverables: [],
-      })),
-      partners: [],
-      locale: 'ro',
-    };
+      const assessment = await assessRisk(riskInput);
 
-    // Run AI risk assessment
-    const assessment = await assessRisk(riskInput);
+      const storedRisks = [];
+      for (const entry of assessment.riskMatrix.slice(0, 10)) {
+        const [risk] = await db.insert(riskAssessments).values({
+          projectId: id,
+          riskType: entry.category,
+          description: entry.risk,
+          probability: entry.probability,
+          impact: entry.impact,
+          mitigationStrategy: entry.response,
+          status: 'identified',
+        }).returning();
+        storedRisks.push(risk);
+      }
 
-    // Store individual risks in risk_assessments table
-    const storedRisks = [];
-    for (const entry of assessment.riskMatrix.slice(0, 10)) {
-      const [risk] = await db.insert(riskAssessments).values({
-        projectId: id,
-        riskType: entry.category,
-        description: entry.risk,
-        probability: entry.probability,
-        impact: entry.impact,
-        mitigationStrategy: entry.response,
-        status: 'identified',
-      }).returning();
-      storedRisks.push(risk);
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        assessment,
-        storedRisks: storedRisks.length,
-        existingRisksCount: existingRisks.length,
-      },
+      return NextResponse.json({
+        success: true,
+        data: {
+          assessment,
+          storedRisks: storedRisks.length,
+          existingRisksCount: existingRisks.length,
+        },
+      });
     });
   } catch (error) {
     if (error instanceof FondEUError) {

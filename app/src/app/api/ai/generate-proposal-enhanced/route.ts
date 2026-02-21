@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
           fundingProgram: selectedProgram,
           tokensUsed: result.tokensUsed,
           ragSourcesUsed: result.ragSourcesUsed,
+          ragSourceIds: result.ragSourceIds,
           userTier: user.tier,
         },
       });
@@ -66,6 +67,7 @@ export async function POST(request: NextRequest) {
           metadata: {
             tokensUsed: result.tokensUsed,
             ragSourcesUsed: result.ragSourcesUsed,
+            ragSourceIds: result.ragSourceIds,
             generatedAt: new Date().toISOString(),
             mode: 'enhanced',
           },

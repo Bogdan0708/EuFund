@@ -1,4 +1,4 @@
-import { requireAuth } from '@/lib/auth/helpers';
+import { withAuthScope } from '@/lib/auth/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getRegionalGDP,
@@ -13,41 +13,42 @@ type IndicatorName = (typeof AVAILABLE_INDICATORS)[number];
 
 export async function GET(req: NextRequest) {
   try {
-    await requireAuth();
-    const { searchParams } = new URL(req.url);
+    return await withAuthScope(async () => {
+      const { searchParams } = new URL(req.url);
 
-    const nutsCode = searchParams.get('nutsCode')?.trim().toUpperCase();
-    if (!nutsCode) {
-      return NextResponse.json({ error: 'Parametrul "nutsCode" este obligatoriu' }, { status: 400 });
-    }
-    // NUTS codes: 2-letter country (AT), NUTS1 (AT1), NUTS2 (AT12), NUTS3 (AT123)
-    if (!/^[A-Z]{2}[A-Z0-9]{0,3}$/.test(nutsCode)) {
-      return NextResponse.json({ error: 'Cod NUTS invalid. Format: RO, RO1, RO21, RO213' }, { status: 400 });
-    }
-
-    const requestedIndicators = parseIndicators(searchParams.get('indicators'));
-    const years = parseYears(searchParams.get('years'));
-
-    const data: Partial<Record<IndicatorName, EurostatRegionalData>> = {};
-
-    const tasks = requestedIndicators.map(async (indicator) => {
-      if (indicator === 'gdp') {
-        data.gdp = await getRegionalGDP(nutsCode, years);
-        return;
+      const nutsCode = searchParams.get('nutsCode')?.trim().toUpperCase();
+      if (!nutsCode) {
+        return NextResponse.json({ error: 'Parametrul "nutsCode" este obligatoriu' }, { status: 400 });
       }
-      if (indicator === 'unemployment') {
-        data.unemployment = await getRegionalUnemployment(nutsCode, years);
-        return;
+      // NUTS codes: 2-letter country (AT), NUTS1 (AT1), NUTS2 (AT12), NUTS3 (AT123)
+      if (!/^[A-Z]{2}[A-Z0-9]{0,3}$/.test(nutsCode)) {
+        return NextResponse.json({ error: 'Cod NUTS invalid. Format: RO, RO1, RO21, RO213' }, { status: 400 });
       }
-      data.population = await getRegionalPopulation(nutsCode, years);
-    });
 
-    await Promise.all(tasks);
+      const requestedIndicators = parseIndicators(searchParams.get('indicators'));
+      const years = parseYears(searchParams.get('years'));
 
-    return NextResponse.json({
-      nutsCode,
-      indicators: requestedIndicators,
-      data,
+      const data: Partial<Record<IndicatorName, EurostatRegionalData>> = {};
+
+      const tasks = requestedIndicators.map(async (indicator) => {
+        if (indicator === 'gdp') {
+          data.gdp = await getRegionalGDP(nutsCode, years);
+          return;
+        }
+        if (indicator === 'unemployment') {
+          data.unemployment = await getRegionalUnemployment(nutsCode, years);
+          return;
+        }
+        data.population = await getRegionalPopulation(nutsCode, years);
+      });
+
+      await Promise.all(tasks);
+
+      return NextResponse.json({
+        nutsCode,
+        indicators: requestedIndicators,
+        data,
+      });
     });
   } catch (error: unknown) {
     if (error instanceof Error && (error.message === 'Unauthorized' || error.name === 'AuthError')) {

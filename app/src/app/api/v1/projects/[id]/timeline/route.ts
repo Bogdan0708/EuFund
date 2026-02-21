@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { withAuthScope, requireOrgRole } from '@/lib/auth/helpers';
 import { getProjectTimeline, createTimelineItem } from '@/lib/services/timeline';
 import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
@@ -11,17 +11,17 @@ type Params = { params: { id: string } };
 
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
-    const user = await requireAuth();
     const { id } = params;
+    return await withAuthScope(async (user) => {
+      const project = await db.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
+      if (!project) throw Errors.notFound('project', id);
+      await requireOrgRole(user.id, project.orgId, 'viewer');
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      const timeline = await getProjectTimeline(id);
+      return NextResponse.json({ success: true, data: timeline });
     });
-    if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'viewer');
-
-    const timeline = await getProjectTimeline(id);
-    return NextResponse.json({ success: true, data: timeline });
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
@@ -33,16 +33,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function POST(req: NextRequest, { params }: Params) {
   try {
-    const user = await requireAuth();
     const { id } = params;
-
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
-    });
-    if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
-
     const body = await req.json();
+
     if (!body.taskName || !body.startDate || !body.endDate) {
       return NextResponse.json(
         {
@@ -53,8 +46,16 @@ export async function POST(req: NextRequest, { params }: Params) {
       );
     }
 
-    const item = await createTimelineItem(id, body);
-    return NextResponse.json({ success: true, data: item }, { status: 201 });
+    return await withAuthScope(async (user) => {
+      const project = await db.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
+      if (!project) throw Errors.notFound('project', id);
+      await requireOrgRole(user.id, project.orgId, 'project_manager');
+
+      const item = await createTimelineItem(id, body);
+      return NextResponse.json({ success: true, data: item }, { status: 201 });
+    });
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });

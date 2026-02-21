@@ -40,11 +40,18 @@ export async function POST(request: NextRequest) {
       const { message, history = [], locale } = parsed.data;
 
       // Sanitize user message for prompt injection protection
-      const { sanitized: safeMessage, injectionDetected } = sanitizeForAI(message, {
+      const { sanitized: safeMessage, injectionDetected, nonTextDetected } = sanitizeForAI(message, {
         maxLength: AI_INPUT_LIMITS.chatMessage,
         label: 'CHAT_MESSAGE',
         fieldName: 'message',
       });
+
+      if (nonTextDetected) {
+        return NextResponse.json(
+          Errors.validation('message', 'Mesajul trebuie să fie text valid', 'Message must be valid text').toResponse(),
+          { status: 400 }
+        );
+      }
 
       if (injectionDetected) {
         logger.warn({ endpoint: 'ai/chat' }, '[ai-chat] Potential prompt injection detected in user message');

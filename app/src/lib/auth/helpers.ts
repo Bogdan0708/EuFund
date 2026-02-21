@@ -1,7 +1,7 @@
 // ─── Auth Helper Utilities ───────────────────────────────────────
 import { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
-import { db } from '@/lib/db';
+import { db, withUserScope } from '@/lib/db';
 import { orgMembers } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { Errors } from '@/lib/errors';
@@ -27,6 +27,28 @@ export async function requireAuth(): Promise<SessionUser> {
     email: session.user.email,
     name: session.user.name || undefined,
   };
+}
+
+/**
+ * Authenticate the current user and run fn within a database transaction
+ * that has RLS user context activated.
+ *
+ * Combines requireAuth() + withUserScope() into a single call so every
+ * `db` query inside fn automatically has `app.user_id` set, activating
+ * the RLS policies defined in rls.sql.
+ *
+ * @example
+ * export async function GET(req: NextRequest, { params }: Params) {
+ *   return withAuthScope(async (user) => {
+ *     const project = await db.query.projects.findFirst(...); // RLS active
+ *     await requireOrgRole(user.id, project.orgId, 'viewer');
+ *     return NextResponse.json({ data: project });
+ *   });
+ * }
+ */
+export async function withAuthScope<T>(fn: (user: SessionUser) => Promise<T>): Promise<T> {
+  const user = await requireAuth();
+  return withUserScope(user.id, () => fn(user));
 }
 
 /**

@@ -6,6 +6,11 @@ import { logger } from '@/lib/logger';
 import { AI_CONFIG } from './config';
 import { createDefaultConfig, getAIOrchestrator } from './orchestrator';
 import { TaskType } from './types';
+import {
+  buildBoundaryInstruction,
+  extractPromptBoundaries,
+  filterAIOutput,
+} from './sanitize';
 const log = logger.child({ component: 'ai-client' });
 
 // Circuit breakers per service
@@ -130,6 +135,39 @@ function schemaToJsonSchema(schema: z.ZodType): unknown {
   return (schema as unknown as { _def?: unknown })._def ?? schema;
 }
 
+function applySystemBoundaryGuard(systemPrompt: string, prompt: string): string {
+  const boundaries = extractPromptBoundaries(prompt);
+  if (boundaries.length === 0) {
+    return systemPrompt;
+  }
+
+  const boundaryInstruction = buildBoundaryInstruction(boundaries);
+  if (!boundaryInstruction) {
+    return systemPrompt;
+  }
+
+  return `${systemPrompt}\n\n${boundaryInstruction}`;
+}
+
+function sanitizeObjectOutput(value: unknown, systemPrompt: string): unknown {
+  if (typeof value === 'string') {
+    const filtered = filterAIOutput(value, { systemPrompt });
+    return filtered.blocked ? '[REDACTED_BY_SECURITY_POLICY]' : filtered.text;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeObjectOutput(item, systemPrompt));
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [key, sanitizeObjectOutput(nested, systemPrompt)])
+    );
+  }
+
+  return value;
+}
+
 /**
  * Generate text with retry + circuit breaker
  */
@@ -140,20 +178,24 @@ export async function aiGenerate(opts: {
   maxTokens?: number;
 }): Promise<{ text: string; tokensUsed: number }> {
   const startTime = performance.now();
+  const securedSystemPrompt = applySystemBoundaryGuard(opts.system, opts.prompt);
   try {
-    return await generationBreaker.execute(() =>
+    const result = await generationBreaker.execute(() =>
       withRetry(async () => {
         const gateway = getGatewayClient();
 
         if (!gateway) {
-          return aiGenerateDirect(opts);
+          return aiGenerateDirect({
+            ...opts,
+            system: securedSystemPrompt,
+          });
         }
 
         try {
           const response = await gateway.chat.completions.create({
             model: AI_CONFIG.generation.model,
             messages: [
-              { role: 'system', content: opts.system },
+              { role: 'system', content: securedSystemPrompt },
               { role: 'user', content: opts.prompt },
             ],
             max_tokens: opts.maxTokens ?? AI_CONFIG.generation.maxTokens,
@@ -166,10 +208,29 @@ export async function aiGenerate(opts: {
           };
         } catch (error) {
           log.warn({ error }, 'Gateway generation failed, falling back to direct provider routing');
-          return aiGenerateDirect(opts);
+          return aiGenerateDirect({
+            ...opts,
+            system: securedSystemPrompt,
+          });
         }
       })
     );
+
+    const filtered = filterAIOutput(result.text, { systemPrompt: securedSystemPrompt });
+    if (filtered.blocked || filtered.redactions.length > 0) {
+      log.warn(
+        {
+          blocked: filtered.blocked,
+          redactions: filtered.redactions,
+        },
+        '[aiGenerate] Output filtered by security policy'
+      );
+    }
+
+    return {
+      text: filtered.text,
+      tokensUsed: result.tokensUsed,
+    };
   } finally {
     log.info({ operation: 'aiGenerate', durationMs: Number((performance.now() - startTime).toFixed(2)) }, 'AI call completed');
   }
@@ -186,13 +247,17 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
   temperature?: number;
 }): Promise<{ object: z.infer<T>; tokensUsed: number }> {
   const startTime = performance.now();
+  const securedSystemPrompt = applySystemBoundaryGuard(opts.system, opts.prompt);
   try {
-    return await analysisBreaker.execute(() =>
+    const result = await analysisBreaker.execute(() =>
       withRetry(async () => {
         const gateway = getGatewayClient();
 
         if (!gateway) {
-          return aiGenerateObjectDirect(opts);
+          return aiGenerateObjectDirect({
+            ...opts,
+            system: securedSystemPrompt,
+          });
         }
 
         try {
@@ -201,7 +266,7 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
             messages: [
               {
                 role: 'system',
-                content: `${opts.system}\n\nReturn only valid JSON that matches this schema: ${JSON.stringify(schemaToJsonSchema(opts.schema))}`,
+                content: `${securedSystemPrompt}\n\nReturn only valid JSON that matches this schema: ${JSON.stringify(schemaToJsonSchema(opts.schema))}`,
               },
               { role: 'user', content: opts.prompt },
             ],
@@ -219,10 +284,21 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
           };
         } catch (error) {
           log.warn({ error }, 'Gateway structured generation failed, falling back to direct provider routing');
-          return aiGenerateObjectDirect(opts);
+          return aiGenerateObjectDirect({
+            ...opts,
+            system: securedSystemPrompt,
+          });
         }
       })
     );
+
+    const sanitizedObject = sanitizeObjectOutput(result.object, securedSystemPrompt);
+    const validatedObject = opts.schema.parse(sanitizedObject);
+
+    return {
+      object: validatedObject,
+      tokensUsed: result.tokensUsed,
+    };
   } finally {
     log.info({ operation: 'aiGenerateObject', durationMs: Number((performance.now() - startTime).toFixed(2)) }, 'AI call completed');
   }

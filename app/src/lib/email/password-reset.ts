@@ -1,12 +1,17 @@
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { logger } from '@/lib/logger';
 
 const RESET_TOKEN_TTL_HOURS = 1;
 
+function hashResetToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
 export async function generatePasswordResetToken(userId: string): Promise<string> {
   const token = randomBytes(32).toString('hex');
+  const tokenHash = hashResetToken(token);
   const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_HOURS * 60 * 60 * 1000);
 
   await db.transaction(async (tx) => {
@@ -15,7 +20,7 @@ export async function generatePasswordResetToken(userId: string): Promise<string
 
     await tx.insert(schema.passwordResetTokens).values({
       userId,
-      token,
+      tokenHash,
       expiresAt,
     });
   });
@@ -25,9 +30,10 @@ export async function generatePasswordResetToken(userId: string): Promise<string
 
 export async function verifyPasswordResetToken(token: string): Promise<string | null> {
   const now = new Date();
+  const tokenHash = hashResetToken(token);
 
   const tokenRecord = await db.query.passwordResetTokens.findFirst({
-    where: eq(schema.passwordResetTokens.token, token),
+    where: eq(schema.passwordResetTokens.tokenHash, tokenHash),
   });
 
   if (!tokenRecord) {
@@ -43,8 +49,9 @@ export async function verifyPasswordResetToken(token: string): Promise<string | 
 }
 
 export async function consumePasswordResetToken(token: string): Promise<void> {
+  const tokenHash = hashResetToken(token);
   try {
-    await db.delete(schema.passwordResetTokens).where(eq(schema.passwordResetTokens.token, token));
+    await db.delete(schema.passwordResetTokens).where(eq(schema.passwordResetTokens.tokenHash, tokenHash));
   } catch (error) {
     logger.error({ error }, '[password-reset] Failed to delete token');
   }

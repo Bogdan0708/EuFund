@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { withAuthScope, requireOrgRole } from '@/lib/auth/helpers';
 import { listRisks, createRisk, updateRisk, getRiskOverview } from '@/lib/services/risks';
 import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
@@ -11,28 +11,25 @@ type Params = { params: { id: string } };
 
 export async function GET(req: NextRequest, { params }: Params) {
   try {
-    const user = await requireAuth();
     const { id } = params;
-
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
-    });
-    if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'viewer');
-
-    const includeOverview = req.nextUrl.searchParams.get('overview') === 'true';
-    const risks = await listRisks(id);
-
-    if (includeOverview) {
-      return NextResponse.json({
-        success: true,
-        data: {
-          risks,
-          overview: await getRiskOverview(id),
-        },
+    return await withAuthScope(async (user) => {
+      const project = await db.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
       });
-    }
-    return NextResponse.json({ success: true, data: risks });
+      if (!project) throw Errors.notFound('project', id);
+      await requireOrgRole(user.id, project.orgId, 'viewer');
+
+      const includeOverview = req.nextUrl.searchParams.get('overview') === 'true';
+      const risks = await listRisks(id);
+
+      if (includeOverview) {
+        return NextResponse.json({
+          success: true,
+          data: { risks, overview: await getRiskOverview(id) },
+        });
+      }
+      return NextResponse.json({ success: true, data: risks });
+    });
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
@@ -44,16 +41,9 @@ export async function GET(req: NextRequest, { params }: Params) {
 
 export async function POST(req: NextRequest, { params }: Params) {
   try {
-    const user = await requireAuth();
     const { id } = params;
-
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
-    });
-    if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
-
     const body = await req.json();
+
     if (!body.riskType) {
       return NextResponse.json(
         { success: false, error: { code: 'VALIDATION_ERROR', message: 'riskType is required' } },
@@ -73,8 +63,16 @@ export async function POST(req: NextRequest, { params }: Params) {
       );
     }
 
-    const risk = await createRisk(id, body);
-    return NextResponse.json({ success: true, data: risk }, { status: 201 });
+    return await withAuthScope(async (user) => {
+      const project = await db.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
+      if (!project) throw Errors.notFound('project', id);
+      await requireOrgRole(user.id, project.orgId, 'project_manager');
+
+      const risk = await createRisk(id, body);
+      return NextResponse.json({ success: true, data: risk }, { status: 201 });
+    });
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
@@ -86,16 +84,9 @@ export async function POST(req: NextRequest, { params }: Params) {
 
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
-    const user = await requireAuth();
     const { id } = params;
-
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
-    });
-    if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
-
     const body = await req.json();
+
     if (!body.riskId) {
       return NextResponse.json(
         { success: false, error: { code: 'VALIDATION_ERROR', message: 'riskId is required' } },
@@ -103,10 +94,18 @@ export async function PUT(req: NextRequest, { params }: Params) {
       );
     }
 
-    const risk = await updateRisk(id, body.riskId, body);
-    if (!risk) throw Errors.notFound('risk_assessment', body.riskId);
+    return await withAuthScope(async (user) => {
+      const project = await db.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
+      if (!project) throw Errors.notFound('project', id);
+      await requireOrgRole(user.id, project.orgId, 'project_manager');
 
-    return NextResponse.json({ success: true, data: risk });
+      const risk = await updateRisk(id, body.riskId, body);
+      if (!risk) throw Errors.notFound('risk_assessment', body.riskId);
+
+      return NextResponse.json({ success: true, data: risk });
+    });
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
