@@ -187,7 +187,7 @@ export function validateCSRFToken(request: NextRequest): boolean {
   return mismatch === 0;
 }
 
-export function requireCSRF(handler: Function) {
+export function requireCSRF(handler: (request: NextRequest) => Promise<Response>) {
   return async (request: NextRequest) => {
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
       if (!validateCSRFToken(request)) {

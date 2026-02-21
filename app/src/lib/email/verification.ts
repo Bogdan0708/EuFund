@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import { and, eq, lt } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { logger } from '@/lib/logger';
 

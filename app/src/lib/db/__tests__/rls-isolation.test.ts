@@ -19,7 +19,7 @@ describe('withUserScope', () => {
   it('calls SET LOCAL set_config with the correct userId inside the transaction', async () => {
     // Arrange: mock baseDb.transaction to capture what it executes
     const executedStatements: string[] = [];
-    let capturedFn: ((tx: unknown) => Promise<unknown>) | null = null;
+    let _capturedFn: ((tx: unknown) => Promise<unknown>) | null = null;
 
     const mockTx = {
       execute: vi.fn(async (stmt: { queryChunks?: unknown[] }) => {
@@ -31,7 +31,7 @@ describe('withUserScope', () => {
     };
 
     const mockTransaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-      capturedFn = fn;
+      _capturedFn = fn;
       return fn(mockTx);
     });
 
