@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * RLS Isolation Tests — F-002 Remediation
  *

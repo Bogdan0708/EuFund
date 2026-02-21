@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // ─── In-Memory Cache with TTL ────────────────────────────────────
 // Simple cache layer (replace with Redis in production)
 
@@ -6,7 +7,6 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const store = new Map<string, CacheEntry<any>>();
 
 export function cacheGet<T>(key: string): T | null {

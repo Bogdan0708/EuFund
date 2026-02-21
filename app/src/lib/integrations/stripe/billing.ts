@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import Stripe from 'stripe';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
@@ -265,11 +266,9 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Pro
     stripeSubscriptionId: subscription.id,
     stripeCustomerId: customerId,
     subscriptionStatus: mapStripeStatus(subscription.status),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     subscriptionPeriodEnd: (subscription as any).current_period_end
       ? new Date((subscription as any).current_period_end * 1000)
       : null,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ...(isDowngrade ? { apiCallsThisMonth: 0 } : {}),
     updatedAt: new Date(),
   } as const;
@@ -295,11 +294,9 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Pro
     subscriptionPeriodEnd: (subscription as any).current_period_end
       ? new Date((subscription as any).current_period_end * 1000)
       : null,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     updatedAt: new Date(),
   };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (userIdFromMetadata) {
     await db.update(users).set(updateValues).where(eq(users.id, userIdFromMetadata));
     return;

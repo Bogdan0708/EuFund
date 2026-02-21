@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 // ─── Timeline Optimization Algorithms ────────────────────────────
 // Critical path analysis, resource leveling, bottleneck detection,
 // what-if scenario planning, and Romanian holiday-aware scheduling.

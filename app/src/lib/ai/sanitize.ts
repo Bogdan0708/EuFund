@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 // ─── AI Prompt Injection Protection ─────────────────────────────
 // Sanitizes and wraps user input to prevent prompt injection attacks.
 

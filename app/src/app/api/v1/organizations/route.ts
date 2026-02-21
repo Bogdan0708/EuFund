@@ -7,7 +7,7 @@ import { db } from '@/lib/db';
 import { organizations, orgMembers } from '@/lib/db/schema';
 import { organizationSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
-import { withAuthScope, getPaginationParams } from '@/lib/auth/helpers';
+import { withAuthScope, requireAuth, getPaginationParams } from '@/lib/auth/helpers';
 import { logAudit, sanitizeForAudit } from '@/lib/legal/audit';
 import { eq, and, isNull, count, desc } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
@@ -86,85 +86,83 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     let auditData: Parameters<typeof logAudit>[0] | undefined;
+    const user = await requireAuth();
+    const body = await req.json();
+    const parsed = organizationSchema.safeParse(body);
 
-    const response = await withAuthScope(async (user) => {
-      const body = await req.json();
-      const parsed = organizationSchema.safeParse(body);
+    if (!parsed.success) {
+      const firstError = parsed.error.issues[0];
+      return NextResponse.json(
+        Errors.validation(
+          firstError.path.join('.'),
+          firstError.message,
+          firstError.message,
+        ).toResponse('ro'),
+        { status: 400 },
+      );
+    }
 
-      if (!parsed.success) {
-        const firstError = parsed.error.issues[0];
+    const data = parsed.data;
+
+    // Check for duplicate CUI
+    if (data.cui) {
+      const existing = await db.query.organizations.findFirst({
+        where: and(
+          eq(organizations.cui, data.cui),
+          isNull(organizations.deletedAt),
+        ),
+      });
+      if (existing) {
         return NextResponse.json(
           Errors.validation(
-            firstError.path.join('.'),
-            firstError.message,
-            firstError.message,
+            'cui',
+            `O organizație cu CUI-ul ${data.cui} există deja.`,
+            `An organization with CUI ${data.cui} already exists.`,
           ).toResponse('ro'),
-          { status: 400 },
+          { status: 409 },
         );
       }
+    }
 
-      const data = parsed.data;
+    // Insert organization without RLS user scope; membership for this org does not exist yet.
+    const [org] = await db.insert(organizations).values({
+      name: data.name,
+      cui: data.cui,
+      regCom: data.regCom,
+      orgType: data.orgType,
+      orgSize: data.orgSize,
+      caenPrimary: data.caenPrimary,
+      caenSecondary: data.caenSecondary,
+      address: data.address,
+      nutsRegion: data.nutsRegion,
+      legalRepName: data.legalRepName,
+      legalRepRole: data.legalRepRole,
+      contactEmail: data.contactEmail,
+      contactPhone: data.contactPhone,
+      website: data.website,
+    }).returning();
 
-      // Check for duplicate CUI
-      if (data.cui) {
-        const existing = await db.query.organizations.findFirst({
-          where: and(
-            eq(organizations.cui, data.cui),
-            isNull(organizations.deletedAt),
-          ),
-        });
-        if (existing) {
-          return NextResponse.json(
-            Errors.validation(
-              'cui',
-              `O organizație cu CUI-ul ${data.cui} există deja.`,
-              `An organization with CUI ${data.cui} already exists.`,
-            ).toResponse('ro'),
-            { status: 409 },
-          );
-        }
-      }
-
-      // Insert organization
-      const [org] = await db.insert(organizations).values({
-        name: data.name,
-        cui: data.cui,
-        regCom: data.regCom,
-        orgType: data.orgType,
-        orgSize: data.orgSize,
-        caenPrimary: data.caenPrimary,
-        caenSecondary: data.caenSecondary,
-        address: data.address,
-        nutsRegion: data.nutsRegion,
-        legalRepName: data.legalRepName,
-        legalRepRole: data.legalRepRole,
-        contactEmail: data.contactEmail,
-        contactPhone: data.contactPhone,
-        website: data.website,
-      }).returning();
-
-      // Add creator as org_admin
-      await db.insert(orgMembers).values({
-        orgId: org.id,
-        userId: user.id,
-        role: 'org_admin',
-        invitedBy: user.id,
-      });
-
-      auditData = {
-        userId: user.id,
-        action: 'organization.create',
-        resourceType: 'organization',
-        resourceId: org.id,
-        newValue: sanitizeForAudit(data as any),
-        metadata: { cui: data.cui },
-      };
-
-      return NextResponse.json({
-        success: true,
-        data: org,
-      }, { status: 201 });
+    // Add creator as org_admin
+    await db.insert(orgMembers).values({
+      orgId: org.id,
+      userId: user.id,
+      role: 'org_admin',
+      invitedBy: user.id,
     });
+
+    auditData = {
+      userId: user.id,
+      action: 'organization.create',
+      resourceType: 'organization',
+      resourceId: org.id,
+      newValue: sanitizeForAudit(data as any),
+      metadata: { cui: data.cui },
+    };
+
+    const response = NextResponse.json({
+      success: true,
+      data: org,
+    }, { status: 201 });
 
     if (auditData) {
       await logAudit(auditData);

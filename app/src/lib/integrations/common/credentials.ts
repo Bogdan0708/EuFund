@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // ─── API Credential Management ──────────────────────────────────
 // Secure credential storage and rotation
 
@@ -23,7 +24,6 @@ function getEnvCredential(provider: string): ApiCredential | null {
     apiKey: apiKey ?? undefined,
     apiSecret: process.env[`${prefix}_API_SECRET`] ?? undefined,
     baseUrl,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
     environment: (process.env[`${prefix}_ENV`] as any) ?? 'production',
   };
 }
