@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // ─── EC Funding & Tenders Portal Client ─────────────────────────
 // Live funding calls from EU Funding & Tenders Portal REST API
 

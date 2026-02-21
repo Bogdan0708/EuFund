@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // ─── In-Memory Cache with TTL ────────────────────────────────────
 // Simple cache layer (replace with Redis in production)
 

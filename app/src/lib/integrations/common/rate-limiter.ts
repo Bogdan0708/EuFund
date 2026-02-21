@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // ─── Rate Limiter with Exponential Backoff ──────────────────────
 // Generic rate limiter for all external API integrations
 

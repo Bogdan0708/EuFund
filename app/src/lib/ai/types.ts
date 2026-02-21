@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 // ─── Multi-Provider AI Types ─────────────────────────────────────────
 // Comprehensive type system for intelligent AI provider routing
 

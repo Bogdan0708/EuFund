@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // ─── EUR-Lex API Client ─────────────────────────────────────────
 // SPARQL and REST access to EU legal documents
 
