@@ -56,6 +56,7 @@ export async function withRateLimit<T>(
     try {
       recordRequest(key);
       return await fn();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       const isRateLimit = error?.status === 429 || error?.message?.includes('rate limit');
       const isRetryable = isRateLimit || error?.status === 503 || error?.status === 502;

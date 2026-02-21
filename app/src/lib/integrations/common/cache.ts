@@ -6,6 +6,7 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const store = new Map<string, CacheEntry<any>>();
 
 export function cacheGet<T>(key: string): T | null {

@@ -97,6 +97,7 @@ export async function searchEURLex(query: string, options: {
         }
 
         const data = await response.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return (data.results?.bindings ?? []).map((b: any) => ({
           celex: b.celex?.value ?? '',
           title: normalizeDiacritics(b.title?.value ?? ''),

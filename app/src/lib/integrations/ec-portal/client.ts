@@ -149,6 +149,7 @@ async function fetchECPage({
 }
 
 // Helper to extract first value from EC metadata field (arrays of strings)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function metaVal(field: any): string {
   if (!field) return '';
   if (Array.isArray(field)) return field[0] ?? '';
@@ -157,9 +158,11 @@ function metaVal(field: any): string {
 }
 
 function parseECResults(data: any): ECFundingCall[] {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const results = data?.results ?? [];
   return results.map((r: any) => {
     const m = r.metadata ?? {};
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const identifier = metaVal(m.identifier) || r.reference || '';
     const title = metaVal(m.title) || r.content || r.summary || '';
     const rawStatus = metaVal(m.status) || metaVal(m.sortStatus);
