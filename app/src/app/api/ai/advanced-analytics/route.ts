@@ -3,16 +3,19 @@ import { withAIAuth } from '@/lib/middleware/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { generateAdvancedReport, quickPortfolioSummary } from '@/lib/ai/advanced-reporting';
+import { type EUProgramKey } from '@/lib/ai/eu-knowledge-base';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
+
+const euProgramKeys = ['horizon_europe', 'life_plus', 'interreg', 'erdf', 'pocidif', 'pnrr', 'general'] as const;
 
 const inputSchema = z.object({
   organizationName: z.string(),
   projects: z.array(z.object({
     id: z.string(),
     title: z.string(),
-    program: z.string(),
+    program: z.enum(euProgramKeys),
     budget: z.number(),
     spent: z.number(),
     status: z.enum(['active', 'completed', 'pipeline']),
@@ -36,7 +39,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(), { status: 400 });
     }
 
-    const input = parsed.data;
+    const input = parsed.data as typeof parsed.data & {
+      projects: Array<typeof parsed.data.projects[number] & { program: EUProgramKey }>;
+    };
 
     if (input.quick) {
       const result = quickPortfolioSummary(input);
