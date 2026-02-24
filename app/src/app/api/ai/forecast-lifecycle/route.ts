@@ -42,11 +42,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (parsed.data.quick === true) {
-      const result = quickLifecycleCheck(input);
-      return NextResponse.json({ success: true, data: result });
-    }
-
     const result = await predictLifecycle(input);
 
     await logAudit({
