@@ -235,7 +235,11 @@ export async function analyzeProject(request: ProjectAnalysisRequest): Promise<F
       ...(compliance?.improvementPlan.slice(0, 2).map(s => s.action) || []),
     ].slice(0, 5),
     nextActions: [
-      ...(risk?.actionPlan.slice(0, 3).map(a => ({ action: a.action, priority: a.priority, owner: a.responsible })) || []),
+      ...(risk?.actionPlan.slice(0, 3).map(a => ({
+        action: a.action,
+        priority: a.priority === 'immediate' ? 'immediate' : a.priority === 'short_term' ? 'soon' : 'planned',
+        owner: a.responsible,
+      }) as { action: string; priority: 'immediate' | 'soon' | 'planned'; owner?: string }) || []),
     ],
   };
 

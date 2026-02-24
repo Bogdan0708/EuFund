@@ -255,6 +255,7 @@ export async function getAIHealthStatus(): Promise<{
 }> {
   const orchestrator = getAIOrchestrator(createDefaultConfig());
   const health = await orchestrator.getHealthStatus();
+  const cacheStats = health.cache.stats as { hitRate?: number; totalEntries?: number } | undefined;
 
   return {
     healthy: health.healthy,
@@ -265,8 +266,8 @@ export async function getAIHealthStatus(): Promise<{
     })),
     cache: {
       enabled: health.cache.enabled,
-      hitRate: health.cache.stats?.hitRate,
-      entries: health.cache.stats?.totalEntries
+      hitRate: cacheStats?.hitRate,
+      entries: cacheStats?.totalEntries
     }
   };
 }

@@ -40,7 +40,11 @@ type RomanianGenerationTest = {
   text?: string;
   provider?: string;
   tokensUsed?: number;
-  romanianOptimization?: boolean;
+  romanianOptimization?: {
+    detected: boolean;
+    context: string;
+    optimizations: string[];
+  };
 };
 
 export async function GET() {

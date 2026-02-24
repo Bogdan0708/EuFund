@@ -1,6 +1,6 @@
 // ─── POST /api/ai/forecast-lifecycle ─────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { predictLifecycle, quickLifecycleCheck, type LifecyclePredictionInput } from '@/lib/ai/lifecycle-prediction';
+import { predictLifecycle, type LifecyclePredictionInput } from '@/lib/ai/lifecycle-prediction';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';

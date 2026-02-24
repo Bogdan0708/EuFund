@@ -87,7 +87,7 @@ export default function ProposalWizard() {
       methodology: {
         approach: proposal.methodology?.approach || '',
         workPackages: (proposal.methodology?.work_packages || []).map((wp) => ({
-          name: wp.title,
+          name: wp.title || '',
           description: (wp.objectives || []).join(' | '),
           duration: `${wp.startMonth}-${wp.endMonth} luni`,
           deliverables: (wp.deliverables || []).map((d) => d.title || ''),
@@ -103,15 +103,15 @@ export default function ProposalWizard() {
       },
       indicators: (proposal.impact?.kpis || []).map((kpi) => ({
         name: kpi.indicator || '',
-        baseline: kpi.baseline,
-        target: kpi.target,
-        source: kpi.source,
+        baseline: kpi.baseline || '',
+        target: kpi.target || '',
+        source: kpi.source || '',
       })),
       sustainability: proposal.impact?.sustainability || '',
       risks: (proposal.risks || []).map((risk) => ({
         description: risk.description || '',
-        probability: probabilityMap[risk.probability] || 'mediu',
-        impact: probabilityMap[risk.impact] || 'mediu',
+        probability: probabilityMap[risk.probability || ''] || 'mediu',
+        impact: probabilityMap[risk.impact || ''] || 'mediu',
         mitigation: risk.mitigation || '',
       })),
     };

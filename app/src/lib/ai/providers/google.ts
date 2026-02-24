@@ -60,13 +60,14 @@ export class GoogleProvider extends BaseAIProvider {
       return this.createResponse(content, this.selectModel(request), tokensUsed, startTime);
 
     } catch (error: unknown) {
-      if (error.message?.includes('quota')) {
+      const message = error instanceof Error ? error.message : '';
+      if (message.includes('quota')) {
         throw new AIProviderError(this.provider, 'rate-limit', 'Rate limit exceeded', true);
       }
-      if (error.message?.includes('API key')) {
+      if (message.includes('API key')) {
         throw new AIProviderError(this.provider, 'auth', 'Invalid API key', false);
       }
-      if (error.message?.includes('safety')) {
+      if (message.includes('safety')) {
         throw new AIProviderError(this.provider, 'safety', 'Content blocked by safety filters', false);
       }
       

@@ -3,14 +3,17 @@ import { withAIAuth } from '@/lib/middleware/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { generateKnowledgeRecommendations, quickQualityCheck } from '@/lib/ai/knowledge-engine';
+import { type EUProgramKey } from '@/lib/ai/eu-knowledge-base';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
 
+const euProgramKeys = ['horizon_europe', 'life_plus', 'interreg', 'erdf', 'pocidif', 'pnrr', 'general'] as const;
+
 const inputSchema = z.object({
   projectTitle: z.string().min(5),
   projectSummary: z.string().min(20),
-  programType: z.string(),
+  programType: z.enum(euProgramKeys),
   objectives: z.array(z.string()).optional(),
   methodology: z.string().optional(),
   impact: z.string().optional(),
@@ -37,7 +40,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(), { status: 400 });
     }
 
-    const input = parsed.data;
+    const input = parsed.data as typeof parsed.data & { programType: EUProgramKey };
 
     if (input.quick) {
       const result = quickQualityCheck(input);

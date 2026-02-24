@@ -49,13 +49,16 @@ export class OpenAIProvider extends BaseAIProvider {
       return this.createResponse(content, model, tokensUsed, startTime);
 
     } catch (error: unknown) {
-      if (error.status === 429) {
+      const status = typeof error === 'object' && error !== null && 'status' in error
+        ? (error as { status?: number }).status
+        : undefined;
+      if (status === 429) {
         throw new AIProviderError(this.provider, 'rate-limit', 'Rate limit exceeded', true);
       }
-      if (error.status === 401) {
+      if (status === 401) {
         throw new AIProviderError(this.provider, 'auth', 'Invalid API key', false);
       }
-      if (error.status >= 500) {
+      if ((status ?? 0) >= 500) {
         throw new AIProviderError(this.provider, 'server', 'OpenAI server error', true);
       }
       

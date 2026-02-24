@@ -13,7 +13,7 @@ import { eq, and, isNull, ilike, inArray, desc, count } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'projects-api' });
-type ProjectStatus = typeof projects.$inferSelect.status;
+type ProjectStatus = NonNullable<typeof projects.$inferSelect.status>;
 
 export async function GET(req: NextRequest) {
   try {

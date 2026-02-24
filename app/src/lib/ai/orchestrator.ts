@@ -97,7 +97,7 @@ export class AIOrchestrator {
       
       // Record failure for circuit breaker
       if (error instanceof AIProviderError) {
-        this.router.reportFailure(error.provider as AIProvider, error);
+        this.router.reportFailure(error.provider as AIProvider);
       }
       
       throw error;
@@ -121,7 +121,7 @@ export class AIOrchestrator {
       log.error({ error }, 'AI Orchestrator structured error');
       
       if (error instanceof AIProviderError) {
-        this.router.reportFailure(error.provider as AIProvider, error);
+        this.router.reportFailure(error.provider as AIProvider);
       }
       
       throw error;
@@ -226,7 +226,7 @@ export class AIOrchestrator {
       try {
         return await provider.generateText(request);
       } catch (error: unknown) {
-        lastError = error;
+        lastError = error instanceof Error ? error : new Error('Unknown provider error');
         
         // Don't retry on non-retryable errors
         if (error instanceof AIProviderError && !error.retryable) {
@@ -260,7 +260,7 @@ export class AIOrchestrator {
       try {
         return await provider.generateObject<T>(request) as AIResponse & { object: T };
       } catch (error: unknown) {
-        lastError = error;
+        lastError = error instanceof Error ? error : new Error('Unknown provider error');
         
         if (error instanceof AIProviderError && !error.retryable) {
           throw error;

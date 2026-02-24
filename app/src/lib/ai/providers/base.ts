@@ -85,7 +85,7 @@ export abstract class BaseAIProvider implements AIProviderInterface {
   }
 
   protected handleError(error: unknown, retryable: boolean = true): never {
-    const message = error?.message || 'Unknown error';
+    const message = error instanceof Error ? error.message : 'Unknown error';
     throw new AIProviderError(this.provider, 'unknown', message, retryable);
   }
 
