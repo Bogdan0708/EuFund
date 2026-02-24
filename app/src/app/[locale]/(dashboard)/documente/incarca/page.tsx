@@ -5,8 +5,8 @@ export default function UploadDocumentPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Documents & Evidence"
-        description="Upload and classify supporting files linked to milestones and reports."
+        title="Documente și dovezi"
+        description="Încarcă și clasifică fișiere justificative legate de jaloane și rapoarte."
       />
       <DocumentUpload />
     </div>

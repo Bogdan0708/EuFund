@@ -12,27 +12,27 @@ const toneClass: Record<StatusTone, string> = {
 };
 
 const projectStatusMap: Record<string, { label: string; tone: StatusTone; description: string }> = {
-  ciorna: { label: 'Draft', tone: 'neutral', description: 'Work in progress, not submitted.' },
-  in_lucru: { label: 'In Progress', tone: 'info', description: 'Active preparation and updates.' },
-  verificare: { label: 'Under Review', tone: 'warning', description: 'Waiting for reviewer feedback.' },
-  finalizat: { label: 'Completed', tone: 'success', description: 'Implementation completed.' },
-  depus: { label: 'Submitted', tone: 'info', description: 'Submitted to managing authority.' },
-  aprobat: { label: 'Approved', tone: 'success', description: 'Approved for implementation/funding.' },
-  respins: { label: 'Rejected', tone: 'danger', description: 'Rejected. Change request expected.' },
-  arhivat: { label: 'Archived', tone: 'neutral', description: 'Closed and archived.' },
+  ciorna: { label: 'Ciornă', tone: 'neutral', description: 'În lucru, nedepus încă.' },
+  in_lucru: { label: 'În lucru', tone: 'info', description: 'Pregătire și actualizări active.' },
+  verificare: { label: 'În verificare', tone: 'warning', description: 'În așteptarea feedbackului.' },
+  finalizat: { label: 'Finalizat', tone: 'success', description: 'Implementare finalizată.' },
+  depus: { label: 'Depus', tone: 'info', description: 'Depus către autoritatea de management.' },
+  aprobat: { label: 'Aprobat', tone: 'success', description: 'Aprobat pentru finanțare/implementare.' },
+  respins: { label: 'Respins', tone: 'danger', description: 'Respins. Sunt necesare modificări.' },
+  arhivat: { label: 'Arhivat', tone: 'neutral', description: 'Închis și arhivat.' },
 };
 
 const callStatusMap: Record<string, { label: string; tone: StatusTone; description: string }> = {
-  open: { label: 'Open', tone: 'success', description: 'Applications are currently accepted.' },
-  forthcoming: { label: 'Forthcoming', tone: 'warning', description: 'Call not yet open for submission.' },
-  closed: { label: 'Closed', tone: 'neutral', description: 'Submission window has ended.' },
+  open: { label: 'Deschis', tone: 'success', description: 'Se acceptă aplicații în acest moment.' },
+  forthcoming: { label: 'În curând', tone: 'warning', description: 'Apelul nu este încă deschis.' },
+  closed: { label: 'Închis', tone: 'neutral', description: 'Perioada de depunere s-a încheiat.' },
 };
 
 const reviewStatusMap: Record<string, { label: string; tone: StatusTone; description: string }> = {
-  draft: { label: 'Draft', tone: 'neutral', description: 'The item is still being prepared.' },
-  pending: { label: 'Pending', tone: 'warning', description: 'Waiting for action.' },
-  approved: { label: 'Approved', tone: 'success', description: 'Validated and accepted.' },
-  changes: { label: 'Needs Changes', tone: 'danger', description: 'User must revise and resubmit.' },
+  draft: { label: 'Ciornă', tone: 'neutral', description: 'Elementul este încă în pregătire.' },
+  pending: { label: 'În așteptare', tone: 'warning', description: 'Așteaptă acțiune.' },
+  approved: { label: 'Aprobat', tone: 'success', description: 'Validat și acceptat.' },
+  changes: { label: 'Necesită modificări', tone: 'danger', description: 'Utilizatorul trebuie să revizuiască și să redepună.' },
 };
 
 interface StatusBadgeProps {
@@ -45,7 +45,7 @@ export function StatusBadge({ kind, value }: StatusBadgeProps) {
   const resolved = source[value] || {
     label: value,
     tone: 'neutral' as const,
-    description: 'Status provided by source system.',
+    description: 'Status furnizat de sistemul sursă.',
   };
 
   return (

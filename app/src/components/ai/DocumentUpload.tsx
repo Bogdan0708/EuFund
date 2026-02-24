@@ -21,9 +21,9 @@ type EvidenceDocument = {
 };
 
 const missingEvidenceByArea = [
-  'Signed declaration for milestone M2',
-  'Timesheets for staff costs Q2',
-  'Procurement proof for equipment package',
+  'Declarație semnată pentru jalonul M2',
+  'Pontaje pentru costurile de personal T2',
+  'Dovadă achiziție pentru pachetul de echipamente',
 ];
 
 export default function DocumentUpload() {
@@ -32,8 +32,8 @@ export default function DocumentUpload() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [tagsInput, setTagsInput] = useState('evidence, compliance');
-  const [linkedTo, setLinkedTo] = useState('Milestone M2');
+  const [tagsInput, setTagsInput] = useState('dovadă, conformitate');
+  const [linkedTo, setLinkedTo] = useState('Jalon M2');
   const [documents, setDocuments] = useState<EvidenceDocument[]>([]);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
@@ -54,12 +54,12 @@ export default function DocumentUpload() {
 
   const onSelectFile = (selected: File) => {
     if (!allowed.includes(selected.type)) {
-      setError('Unsupported file type. Upload PDF, DOC, DOCX, or TXT.');
+      setError('Tip de fișier nesuportat. Încarcă PDF, DOC, DOCX sau TXT.');
       return;
     }
 
     if (selected.size > 50 * 1024 * 1024) {
-      setError('File exceeds 50MB limit.');
+      setError('Fișierul depășește limita de 50MB.');
       return;
     }
 
@@ -91,7 +91,7 @@ export default function DocumentUpload() {
 
       const payload = await res.json();
       if (!res.ok || !payload.success) {
-        throw new Error(payload?.error?.message || 'Could not upload evidence file.');
+        throw new Error(payload?.error?.message || 'Nu s-a putut încărca fișierul justificativ.');
       }
 
       const entry: EvidenceDocument = {
@@ -107,10 +107,10 @@ export default function DocumentUpload() {
       setDocuments((previous) => [entry, ...previous]);
       setFile(null);
       setUploadProgress(100);
-      pushToast('Evidence uploaded successfully.', 'success');
+      pushToast('Dovada a fost încărcată cu succes.', 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unexpected upload error.');
-      pushToast('Upload failed. Please retry.', 'warning');
+      setError(err instanceof Error ? err.message : 'Eroare neașteptată la încărcare.');
+      pushToast('Încărcarea a eșuat. Încearcă din nou.', 'warning');
     } finally {
       window.clearInterval(progressTimer);
       setUploading(false);
@@ -126,7 +126,7 @@ export default function DocumentUpload() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
-            Missing evidence callouts
+            Dovezi lipsă
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -140,7 +140,7 @@ export default function DocumentUpload() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Documents & Evidence Upload</CardTitle>
+          <CardTitle>Încărcare documente și dovezi</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {error && (
@@ -166,7 +166,7 @@ export default function DocumentUpload() {
               if (selected) onSelectFile(selected);
             }}
             onClick={() => document.getElementById('evidence-upload-input')?.click()}
-            aria-label="Upload evidence document"
+            aria-label="Încarcă document justificativ"
           >
             <input
               id="evidence-upload-input"
@@ -179,25 +179,25 @@ export default function DocumentUpload() {
               }}
             />
             <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
-            <p className="mt-2 text-sm font-medium">Drop files here or click to browse</p>
-            <p className="text-xs text-muted-foreground">Supported: PDF, DOC, DOCX, TXT, max 50MB</p>
+            <p className="mt-2 text-sm font-medium">Trage fișierele aici sau apasă pentru selectare</p>
+            <p className="text-xs text-muted-foreground">Acceptat: PDF, DOC, DOCX, TXT, max 50MB</p>
           </button>
 
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs text-muted-foreground">Tags (comma separated)</label>
+              <label className="mb-1 block text-xs text-muted-foreground">Etichete (separate prin virgulă)</label>
               <Input
                 value={tagsInput}
                 onChange={(event) => setTagsInput(event.target.value)}
-                placeholder="evidence, invoice, annex"
+                placeholder="dovadă, factură, anexă"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-muted-foreground">Linked milestone/report</label>
+              <label className="mb-1 block text-xs text-muted-foreground">Jalon/raport asociat</label>
               <Input
                 value={linkedTo}
                 onChange={(event) => setLinkedTo(event.target.value)}
-                placeholder="Milestone M2 or Q2 report"
+                placeholder="Jalon M2 sau raport trimestrial"
               />
             </div>
           </div>
@@ -210,7 +210,7 @@ export default function DocumentUpload() {
                   <p className="text-xs text-muted-foreground">{Math.round(file.size / 1024)} KB</p>
                 </div>
                 <Button onClick={handleUpload} disabled={uploading}>
-                  {uploading ? 'Uploading...' : 'Upload evidence'}
+                  {uploading ? 'Se încarcă...' : 'Încarcă dovada'}
                 </Button>
               </div>
 
@@ -219,7 +219,7 @@ export default function DocumentUpload() {
                   <div className="h-2 overflow-hidden rounded-full bg-muted">
                     <div className="h-full bg-primary transition-all" style={{ width: `${uploadProgress}%` }} />
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{uploadProgress}% complete</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{uploadProgress}% finalizat</p>
                 </div>
               )}
             </div>
@@ -229,11 +229,11 @@ export default function DocumentUpload() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Document list</CardTitle>
+          <CardTitle>Listă documente</CardTitle>
         </CardHeader>
         <CardContent>
           {documents.length === 0 ? (
-            <EmptyState title="No uploaded evidence" description="Uploaded documents appear here with status and links." />
+            <EmptyState title="Nu există dovezi încărcate" description="Documentele încărcate apar aici cu status și legături." />
           ) : (
             <ul className="space-y-3">
               {documents.map((document) => (
@@ -257,7 +257,7 @@ export default function DocumentUpload() {
                     </span>
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      Source of truth: document registry
+                      Sursă de adevăr: registrul de documente
                     </span>
                   </div>
                 </li>

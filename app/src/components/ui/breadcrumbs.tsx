@@ -5,20 +5,20 @@ import { ChevronRight } from 'lucide-react';
 import { useParams, usePathname } from 'next/navigation';
 
 const labelMap: Record<string, string> = {
-  panou: 'Dashboard',
-  finantari: 'Calls',
-  live: 'Applications',
-  proiecte: 'Projects',
-  documente: 'Documents',
-  incarca: 'Upload',
-  rapoarte: 'Reports',
-  reports: 'Reports',
-  budget: 'Budget',
-  consortium: 'Consortium',
-  aprobare: 'Approvals',
-  aprobari: 'Approvals',
-  audit: 'Audit Log',
-  setari: 'Settings',
+  panou: 'Panou',
+  finantari: 'Finanțări',
+  live: 'Apeluri',
+  proiecte: 'Proiecte',
+  documente: 'Documente',
+  incarca: 'Încărcare',
+  rapoarte: 'Rapoarte',
+  reports: 'Rapoarte',
+  budget: 'Buget',
+  consortium: 'Consorțiu',
+  aprobare: 'Aprobări',
+  aprobari: 'Aprobări',
+  audit: 'Jurnal audit',
+  setari: 'Setări',
 };
 
 export function AppBreadcrumbs() {
@@ -44,7 +44,7 @@ export function AppBreadcrumbs() {
       <ol className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
         <li>
           <Link href={`/${locale}/panou`} className="hover:text-foreground">
-            Home
+            Acasă
           </Link>
         </li>
         {crumbs.map((crumb) => (

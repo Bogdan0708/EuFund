@@ -52,8 +52,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }));
 
         const shortcuts = ([
-          { id: 'calls', title: 'Funding calls', type: 'call', href: `/${locale}/finantari/live` },
-          { id: 'docs', title: 'Document evidence upload', type: 'document', href: `/${locale}/documente/incarca` },
+          { id: 'calls', title: 'Apeluri de finanțare', type: 'call', href: `/${locale}/finantari/live` },
+          { id: 'docs', title: 'Încărcare documente justificative', type: 'document', href: `/${locale}/documente/incarca` },
         ] satisfies SearchResult[]).filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
 
         setResults([...items, ...shortcuts].slice(0, 6));
@@ -70,31 +70,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const navItems = useMemo(() => {
     const items = [
-      { href: `/${locale}/panou`, label: 'Dashboard', icon: LayoutDashboard },
-      { href: `/${locale}/finantari/live`, label: 'Calls & Applications', icon: ClipboardList },
-      { href: `/${locale}/proiecte`, label: 'Projects', icon: FolderKanban },
-      { href: `/${locale}/proiecte`, label: 'Tasks & Milestones', icon: Signature },
-      { href: `/${locale}/proiecte`, label: 'Budget & Costs', icon: Wallet },
-      { href: `/${locale}/proiecte`, label: 'Reports', icon: FileText },
-      { href: `/${locale}/documente/incarca`, label: 'Documents', icon: FileText },
-      { href: `/${locale}/audit`, label: 'Audit Log', icon: ShieldCheck },
-      { href: `/${locale}/setari`, label: 'Settings', icon: Settings },
+      { href: `/${locale}/panou`, label: 'Panou de control', icon: LayoutDashboard },
+      { href: `/${locale}/finantari/live`, label: 'Apeluri și aplicații', icon: ClipboardList },
+      { href: `/${locale}/proiecte`, label: 'Proiecte', icon: FolderKanban },
+      { href: `/${locale}/proiecte`, label: 'Sarcini și jaloane', icon: Signature },
+      { href: `/${locale}/proiecte`, label: 'Buget și costuri', icon: Wallet },
+      { href: `/${locale}/proiecte`, label: 'Rapoarte', icon: FileText },
+      { href: `/${locale}/documente/incarca`, label: 'Documente', icon: FileText },
+      { href: `/${locale}/audit`, label: 'Jurnal audit', icon: ShieldCheck },
+      { href: `/${locale}/setari`, label: 'Setări', icon: Settings },
     ];
 
     if (role === 'admin' || role === 'org_admin') {
-      items.splice(7, 0, { href: `/${locale}/aprobari`, label: 'Approvals', icon: Bell });
+      items.splice(7, 0, { href: `/${locale}/aprobari`, label: 'Aprobări', icon: Bell });
     }
 
     return items;
   }, [locale, role]);
 
   const sidebar = (
-    <aside className="w-72 shrink-0 border-r bg-card/90 p-4">
-      <Link href={`/${locale}/panou`} className="mb-6 block rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">
-        EUFund Control Center
+    <aside className="w-72 shrink-0 border-r bg-gradient-to-b from-slate-50 to-white p-4">
+      <Link href={`/${locale}/panou`} className="mb-6 block rounded-xl bg-gradient-to-r from-blue-700 to-cyan-600 px-3 py-3 text-sm font-semibold text-white shadow-md">
+        EUFund Centru de control
       </Link>
 
-      <nav className="space-y-1" aria-label="Primary navigation">
+      <nav className="space-y-1" aria-label="Navigare principală">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href;
@@ -104,10 +104,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               key={`${item.href}-${item.label}`}
               asChild
               variant={active ? 'secondary' : 'ghost'}
-              className="w-full justify-start"
+              className="w-full justify-start rounded-xl"
             >
               <Link href={item.href} onClick={() => setMobileOpen(false)}>
-                <Icon className="mr-2 h-4 w-4" aria-hidden="true" />
+                <span className="mr-2 rounded-md bg-slate-100 p-1">
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                </span>
                 {item.label}
               </Link>
             </Button>
@@ -116,8 +118,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </nav>
 
       <div className="mt-6 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
-        <p className="font-medium text-foreground">Role preview</p>
-        <p className="mt-1">Current: {role}</p>
+        <p className="font-medium text-foreground">Previzualizare rol</p>
+        <p className="mt-1">Curent: {role}</p>
       </div>
     </aside>
   );
@@ -136,7 +138,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <main className="min-w-0 flex-1 p-4 md:p-6">
         <div className="mb-4 flex items-center gap-3 rounded-lg border bg-card/70 p-3">
-          <Button variant="outline" size="icon" onClick={() => setMobileOpen((prev) => !prev)} className="lg:hidden" aria-label="Toggle navigation">
+          <Button variant="outline" size="icon" onClick={() => setMobileOpen((prev) => !prev)} className="lg:hidden" aria-label="Comută navigarea">
             {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </Button>
 
@@ -145,15 +147,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search projects, calls, documents"
+              placeholder="Caută proiecte, apeluri, documente"
               className="pl-9"
-              aria-label="Global search"
+              aria-label="Căutare globală"
             />
             {(query.trim().length >= 2 || searchLoading) && (
               <div className="absolute z-20 mt-1 w-full rounded-lg border bg-card p-2 shadow-lg">
-                {searchLoading && <p className="px-2 py-2 text-xs text-muted-foreground">Searching...</p>}
+                {searchLoading && <p className="px-2 py-2 text-xs text-muted-foreground">Se caută...</p>}
                 {!searchLoading && results.length === 0 && (
-                  <p className="px-2 py-2 text-xs text-muted-foreground">No matches for &quot;{query}&quot;.</p>
+                  <p className="px-2 py-2 text-xs text-muted-foreground">Niciun rezultat pentru &quot;{query}&quot;.</p>
                 )}
                 {!searchLoading && results.map((result) => (
                   <Link
@@ -163,16 +165,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     className="flex items-center justify-between rounded-md px-2 py-2 text-sm hover:bg-muted"
                   >
                     <span>{result.title}</span>
-                    <span className="text-xs text-muted-foreground">{result.type}</span>
+                    <span className="text-xs text-muted-foreground">{result.type === 'project' ? 'proiect' : result.type === 'call' ? 'apel' : 'document'}</span>
                   </Link>
                 ))}
               </div>
             )}
           </div>
 
-          <Button variant="outline" size="sm" aria-label="Notifications">
+          <Button variant="outline" size="sm" aria-label="Notificări">
             <Bell className="mr-2 h-4 w-4" />
-            Alerts
+            Alerte
           </Button>
         </div>
 

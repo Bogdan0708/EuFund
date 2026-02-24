@@ -54,10 +54,10 @@ export default function FundingCallsLivePage() {
       const statusParam = status === 'all' ? '' : `&status=${status}`;
       const res = await fetch(`/api/integrations/funding-calls?limit=50${statusParam}`);
       const payload = await res.json();
-      if (!res.ok) throw new Error(payload?.error || 'Could not fetch funding calls.');
+      if (!res.ok) throw new Error(payload?.error || 'Nu s-au putut prelua apelurile de finanțare.');
       setCalls(payload?.calls || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unexpected error.');
+      setError(err instanceof Error ? err.message : 'Eroare neașteptată.');
     } finally {
       setLoading(false);
     }
@@ -78,42 +78,42 @@ export default function FundingCallsLivePage() {
     ));
   }, [calls, search]);
 
-  if (loading) return <LoadingState label="Loading funding calls..." />;
+  if (loading) return <LoadingState label="Se încarcă apelurile de finanțare..." />;
   if (error) return <ErrorState message={error} onRetry={loadCalls} />;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Funding Calls"
-        description="Browse active programmes and create applications with fewer clicks."
+        title="Apeluri de finanțare"
+        description="Parcurge programele active și creează aplicații cu mai puțini pași."
         rightSlot={
           <Button variant="outline" onClick={loadCalls}>
             <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
+            Actualizează
           </Button>
         }
       />
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader className="space-y-3">
-          <CardTitle className="text-base">Calls filter bar</CardTitle>
+          <CardTitle className="text-base">Bară de filtrare apeluri</CardTitle>
           <div className="grid gap-3 md:grid-cols-2">
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by call title, programme, or identifier"
-              aria-label="Search funding calls"
+              placeholder="Caută după titlu, program sau identificator"
+              aria-label="Caută apeluri de finanțare"
             />
 
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant={status === 'open' ? 'default' : 'outline'} onClick={() => setStatus('open')}>
-                Open
+                Deschise
               </Button>
               <Button size="sm" variant={status === 'forthcoming' ? 'default' : 'outline'} onClick={() => setStatus('forthcoming')}>
-                Forthcoming
+                În curând
               </Button>
               <Button size="sm" variant={status === 'all' ? 'default' : 'outline'} onClick={() => setStatus('all')}>
-                All
+                Toate
               </Button>
             </div>
           </div>
@@ -121,18 +121,18 @@ export default function FundingCallsLivePage() {
 
         <CardContent>
           {filteredCalls.length === 0 ? (
-            <EmptyState title="No calls found" description="Try a different status or search query." />
+            <EmptyState title="Nu au fost găsite apeluri" description="Încearcă alt status sau altă căutare." />
           ) : (
-            <div className="max-h-[520px] overflow-auto rounded-lg border">
+            <div className="max-h-[520px] overflow-auto rounded-xl border bg-white shadow-inner">
               <Table>
                 <TableHeader className="sticky top-0 z-10 bg-card">
                   <TableRow>
-                    <TableHead>Call</TableHead>
+                    <TableHead>Apel</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Programme</TableHead>
-                    <TableHead>Deadline</TableHead>
-                    <TableHead>Budget</TableHead>
-                    <TableHead>Quick actions</TableHead>
+                    <TableHead>Program</TableHead>
+                    <TableHead>Termen</TableHead>
+                    <TableHead>Buget</TableHead>
+                    <TableHead>Acțiuni rapide</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -155,15 +155,15 @@ export default function FundingCallsLivePage() {
                           <Button asChild size="sm" variant="outline">
                             <a href={call.url} target="_blank" rel="noreferrer noopener">
                               <ExternalLink className="mr-1 h-3.5 w-3.5" />
-                              View
+                              Vezi
                             </a>
                           </Button>
                           <Button asChild size="sm" variant="outline">
                             <Link href={`/${locale}/proiecte/nou`}>
-                              Continue
+                              Continuă
                             </Link>
                           </Button>
-                          <Button size="sm">Submit</Button>
+                          <Button size="sm">Depune</Button>
                         </div>
                       </TableCell>
                     </TableRow>

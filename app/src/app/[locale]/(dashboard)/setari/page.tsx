@@ -13,16 +13,16 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Settings"
-        description="Personalize workspace defaults and role-based navigation preview."
+        title="Setări"
+        description="Personalizează setările implicite și previzualizarea navigării pe rol."
       />
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Role preview</CardTitle>
+          <CardTitle className="text-base">Previzualizare rol</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">Changing role updates sidebar visibility for approvals and restricted sections.</p>
+          <p className="text-sm text-muted-foreground">Schimbarea rolului actualizează vizibilitatea în bara laterală pentru aprobări și secțiuni restricționate.</p>
           <div className="flex flex-wrap gap-2">
             {(['admin', 'org_admin', 'project_manager', 'viewer'] as UserRole[]).map((item) => (
               <Button

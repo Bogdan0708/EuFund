@@ -4,7 +4,7 @@ import { AlertTriangle, Inbox, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
-export function LoadingState({ label = 'Loading data...' }: { label?: string }) {
+export function LoadingState({ label = 'Se încarcă datele...' }: { label?: string }) {
   return (
     <Card>
       <CardContent className="flex items-center justify-center gap-2 p-10 text-muted-foreground">
@@ -29,7 +29,7 @@ export function ErrorState({
         <p className="text-sm text-destructive">{message}</p>
         {onRetry && (
           <Button variant="outline" onClick={onRetry}>
-            Retry
+            Reîncearcă
           </Button>
         )}
       </CardContent>

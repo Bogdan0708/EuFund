@@ -40,11 +40,11 @@ export default function DashboardPage() {
       setError(null);
       try {
         const res = await fetch('/api/v1/projects?perPage=25');
-        if (!res.ok) throw new Error('Could not load dashboard data.');
+        if (!res.ok) throw new Error('Nu s-au putut încărca datele panoului.');
         const payload = await res.json();
         setProjects(payload?.data?.items || []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unexpected error.');
+        setError(err instanceof Error ? err.message : 'Eroare neașteptată.');
       } finally {
         setLoading(false);
       }
@@ -62,10 +62,10 @@ export default function DashboardPage() {
     const atRisk = projects.filter((project) => ['respins', 'verificare'].includes(project.status)).length;
 
     const distribution = [
-      { label: 'Draft', value: projects.filter((project) => project.status === 'ciorna').length, color: 'bg-slate-500' },
-      { label: 'In Progress', value: projects.filter((project) => project.status === 'in_lucru').length, color: 'bg-sky-500' },
-      { label: 'Review', value: projects.filter((project) => project.status === 'verificare').length, color: 'bg-amber-500' },
-      { label: 'Approved', value: projects.filter((project) => project.status === 'aprobat').length, color: 'bg-emerald-500' },
+      { label: 'Ciornă', value: projects.filter((project) => project.status === 'ciorna').length, color: 'bg-slate-500' },
+      { label: 'În lucru', value: projects.filter((project) => project.status === 'in_lucru').length, color: 'bg-sky-500' },
+      { label: 'Verificare', value: projects.filter((project) => project.status === 'verificare').length, color: 'bg-amber-500' },
+      { label: 'Aprobat', value: projects.filter((project) => project.status === 'aprobat').length, color: 'bg-emerald-500' },
     ];
 
     return {
@@ -80,9 +80,9 @@ export default function DashboardPage() {
   }, [projects]);
 
   const myActions = [
-    { label: 'Review pending validation files', count: summary.pendingApprovals, href: `/${locale}/aprobari`, icon: CheckCircle2 },
-    { label: 'Upload missing evidence', count: Math.max(1, summary.total - summary.pendingApprovals), href: `/${locale}/documente/incarca`, icon: FileWarning },
-    { label: 'Prepare upcoming milestones', count: summary.upcomingDeadlines, href: `/${locale}/proiecte`, icon: CalendarClock },
+    { label: 'Revizuiește fișierele în verificare', count: summary.pendingApprovals, href: `/${locale}/aprobari`, icon: CheckCircle2 },
+    { label: 'Încarcă dovezile lipsă', count: Math.max(1, summary.total - summary.pendingApprovals), href: `/${locale}/documente/incarca`, icon: FileWarning },
+    { label: 'Pregătește jaloanele următoare', count: summary.upcomingDeadlines, href: `/${locale}/proiecte`, icon: CalendarClock },
   ];
 
   const recentActivity = projects
@@ -94,18 +94,18 @@ export default function DashboardPage() {
       status: project.status,
     }));
 
-  if (loading) return <LoadingState label="Loading dashboard insights..." />;
+  if (loading) return <LoadingState label="Se încarcă indicatorii panoului..." />;
   if (error) return <ErrorState message={error} onRetry={() => window.location.reload()} />;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Programme Dashboard"
-        description="Track portfolio health, approvals, deadlines, and compliance actions in one place."
+        title="Panou programe"
+        description="Urmărește sănătatea portofoliului, aprobările, termenele și acțiunile de conformitate într-un singur loc."
         rightSlot={
           <Button asChild>
             <Link href={`/${locale}/proiecte/nou`}>
-              New Application
+              Aplicație nouă
               <ArrowUpRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
@@ -113,37 +113,37 @@ export default function DashboardPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card>
+        <Card className="border-none bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-md">
           <CardHeader className="pb-2">
-            <CardDescription>Active Projects</CardDescription>
-            <CardTitle className="text-3xl">{summary.total}</CardTitle>
+            <CardDescription className="text-blue-100">Proiecte active</CardDescription>
+            <CardTitle className="text-3xl text-white">{summary.total}</CardTitle>
           </CardHeader>
         </Card>
-        <Card>
+        <Card className="border-none bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-md">
           <CardHeader className="pb-2">
-            <CardDescription>Pending Approvals</CardDescription>
-            <CardTitle className="text-3xl">{summary.pendingApprovals}</CardTitle>
+            <CardDescription className="text-amber-100">Aprobări în așteptare</CardDescription>
+            <CardTitle className="text-3xl text-white">{summary.pendingApprovals}</CardTitle>
           </CardHeader>
         </Card>
-        <Card>
+        <Card className="border-none bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-md">
           <CardHeader className="pb-2">
-            <CardDescription>Upcoming Deadlines</CardDescription>
-            <CardTitle className="text-3xl">{summary.upcomingDeadlines}</CardTitle>
+            <CardDescription className="text-violet-100">Termene apropiate</CardDescription>
+            <CardTitle className="text-3xl text-white">{summary.upcomingDeadlines}</CardTitle>
           </CardHeader>
         </Card>
-        <Card>
+        <Card className="border-none bg-gradient-to-br from-rose-600 to-pink-600 text-white shadow-md">
           <CardHeader className="pb-2">
-            <CardDescription>Budget at Risk</CardDescription>
-            <CardTitle className="text-3xl">{summary.atRisk}</CardTitle>
+            <CardDescription className="text-rose-100">Buget la risc</CardDescription>
+            <CardTitle className="text-3xl text-white">{summary.atRisk}</CardTitle>
           </CardHeader>
         </Card>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 shadow-sm">
           <CardHeader>
-            <CardTitle>Status Distribution</CardTitle>
-            <CardDescription>Live portfolio breakdown by delivery state.</CardDescription>
+            <CardTitle>Distribuție status</CardTitle>
+            <CardDescription>Distribuția live a portofoliului pe stări de livrare.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {summary.distribution.map((item) => {
@@ -165,30 +165,30 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle>Budget Burn Rate</CardTitle>
-            <CardDescription>Planned vs spent budget in current cycle.</CardDescription>
+            <CardTitle>Ritm consum buget</CardTitle>
+            <CardDescription>Buget planificat versus cheltuit în ciclul curent.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="rounded-lg border bg-muted/30 p-3">
-              <p className="text-muted-foreground">Planned</p>
+              <p className="text-muted-foreground">Planificat</p>
               <p className="text-lg font-semibold">{formatCurrency(summary.budgetTotal)}</p>
             </div>
             <div className="rounded-lg border bg-muted/30 p-3">
-              <p className="text-muted-foreground">Spent</p>
+              <p className="text-muted-foreground">Cheltuit</p>
               <p className="text-lg font-semibold">{formatCurrency(summary.budgetSpent)}</p>
             </div>
-            <p className="text-xs text-muted-foreground">Source of truth: portfolio project budget records.</p>
+            <p className="text-xs text-muted-foreground">Sursă de adevăr: înregistrările bugetare ale proiectelor din portofoliu.</p>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle>My Actions</CardTitle>
-            <CardDescription>Priority tasks requiring attention today.</CardDescription>
+            <CardTitle>Acțiunile mele</CardTitle>
+            <CardDescription>Sarcini prioritare care necesită atenție azi.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {myActions.map((action) => {
@@ -206,14 +206,14 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Latest submissions, uploads, and review updates.</CardDescription>
+            <CardTitle>Activitate recentă</CardTitle>
+            <CardDescription>Ultimele depuneri, încărcări și actualizări de verificare.</CardDescription>
           </CardHeader>
           <CardContent>
             {recentActivity.length === 0 ? (
-              <EmptyState title="No activity yet" description="Once a project is created, recent updates appear here." />
+              <EmptyState title="Încă nu există activitate" description="După crearea unui proiect, actualizările recente apar aici." />
             ) : (
               <ul className="space-y-3">
                 {recentActivity.map((activity) => (
@@ -226,7 +226,7 @@ export default function DashboardPage() {
                     </div>
                     <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                       <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
-                      Updated: {activity.updatedAt}
+                      Actualizat: {activity.updatedAt}
                     </p>
                   </li>
                 ))}
@@ -239,10 +239,10 @@ export default function DashboardPage() {
       <div className="rounded-xl border bg-card/90 p-4 text-sm text-muted-foreground">
         <p className="flex items-center gap-2 font-medium text-foreground">
           <ShieldCheck className="h-4 w-4 text-emerald-600" aria-hidden="true" />
-          Trust visuals
+          Indicii de încredere
         </p>
         <p className="mt-1">
-          This dashboard reflects authenticated API data, includes status definitions, and highlights recent update timestamps for compliance traceability.
+          Acest panou reflectă datele API autentificate, include definiții de status și evidențiază momentele ultimei actualizări pentru trasabilitate de conformitate.
         </p>
       </div>
     </div>
