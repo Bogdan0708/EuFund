@@ -1,9 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { formatCurrencyEur, formatDateRo } from '@/lib/utils/romanian';
+import { ExternalLink, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ui/page-states';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { StatusBadge } from '@/components/ui/status-badge';
 
 interface FundingCall {
   identifier: string;
@@ -17,132 +31,149 @@ interface FundingCall {
   url: string;
 }
 
+function formatCurrency(value: number | null) {
+  if (!value) return 'N/A';
+  return new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(value);
+}
+
 export default function FundingCallsLivePage() {
-  const params = useParams<{ locale: string }>();
+  const params = useParams<{ locale?: string }>();
+  const locale = params.locale || 'ro';
+
   const [calls, setCalls] = useState<FundingCall[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'open' | 'forthcoming' | 'all'>('open');
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<'open' | 'forthcoming' | 'all'>('open');
+  const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    loadCalls();
-  }, [filter]);
-
-  const loadCalls = async () => {
+  const loadCalls = useCallback(async () => {
     setLoading(true);
     setError(null);
+
     try {
-      const status = filter === 'all' ? '' : `&status=${filter}`;
-      const res = await fetch(`/api/integrations/funding-calls?limit=50${status}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setCalls(data.calls ?? []);
-    } catch (e: any) {
-      setError(e.message);
+      const statusParam = status === 'all' ? '' : `&status=${status}`;
+      const res = await fetch(`/api/integrations/funding-calls?limit=50${statusParam}`);
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.error || 'Could not fetch funding calls.');
+      setCalls(payload?.calls || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unexpected error.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [status]);
 
-  const statusColors: Record<string, string> = {
-    open: 'bg-green-100 text-green-800',
-    forthcoming: 'bg-yellow-100 text-yellow-800',
-    closed: 'bg-gray-100 text-gray-600',
-  };
+  useEffect(() => {
+    loadCalls();
+  }, [loadCalls]);
 
-  const statusLabels: Record<string, string> = {
-    open: 'Deschis',
-    forthcoming: 'Viitor',
-    closed: 'Închis',
-  };
+  const filteredCalls = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+    if (!normalizedSearch) return calls;
+
+    return calls.filter((call) => (
+      call.title.toLowerCase().includes(normalizedSearch)
+      || call.programme?.toLowerCase().includes(normalizedSearch)
+      || call.identifier.toLowerCase().includes(normalizedSearch)
+    ));
+  }, [calls, search]);
+
+  if (loading) return <LoadingState label="Loading funding calls..." />;
+  if (error) return <ErrorState message={error} onRetry={loadCalls} />;
 
   return (
-    <div className="max-w-5xl mx-auto p-6">
-      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
-        <div className="space-y-3">
-          <h1 className="text-2xl font-bold">Apeluri de Finanțare Active</h1>
-          <p className="text-gray-600 mt-1">
-            Date în timp real de la Portalul de Finanțare al Comisiei Europene
-          </p>
-          <Link
-            href={`/${params.locale || 'ro'}/finantari/potriviri`}
-            className="inline-flex items-center px-4 py-2.5 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors"
-          >
-            🤖 Găsește grantul potrivit cu AI
-          </Link>
-        </div>
-        <button
-          onClick={loadCalls}
-          disabled={loading}
-          className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50 disabled:opacity-50"
-        >
-          🔄 Actualizează
-        </button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Funding Calls"
+        description="Browse active programmes and create applications with fewer clicks."
+        rightSlot={
+          <Button variant="outline" onClick={loadCalls}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+        }
+      />
 
-      <div className="flex gap-2 mb-6">
-        {(['open', 'forthcoming', 'all'] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-4 py-1.5 text-sm rounded-full border ${
-              filter === f ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-gray-50'
-            }`}
-          >
-            {f === 'open' ? 'Deschise' : f === 'forthcoming' ? 'Viitoare' : 'Toate'}
-          </button>
-        ))}
-      </div>
+      <Card>
+        <CardHeader className="space-y-3">
+          <CardTitle className="text-base">Calls filter bar</CardTitle>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search by call title, programme, or identifier"
+              aria-label="Search funding calls"
+            />
 
-      {error && (
-        <div className="p-4 mb-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="text-center py-12 text-gray-500">Se încarcă apelurile...</div>
-      ) : calls.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">Niciun apel găsit</div>
-      ) : (
-        <div className="space-y-4">
-          {calls.map((call) => (
-            <div key={call.identifier} className="p-5 border rounded-xl hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={`px-2 py-0.5 text-xs font-medium rounded ${statusColors[call.status]}`}>
-                      {statusLabels[call.status]}
-                    </span>
-                    {call.programme && (
-                      <span className="px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded">
-                        {call.programme}
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="font-semibold text-gray-900 mb-1">{call.title}</h3>
-                  <p className="text-sm text-gray-600 line-clamp-2">{call.description}</p>
-                  <div className="flex gap-4 mt-2 text-sm text-gray-500">
-                    {call.budget && <span>💰 {formatCurrencyEur(call.budget)}</span>}
-                    {call.deadlineDate && (
-                      <span>📅 Termen: {formatDateRo(call.deadlineDate)}</span>
-                    )}
-                    <span className="text-xs text-gray-400">{call.identifier}</span>
-                  </div>
-                </div>
-                <a
-                  href={call.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 whitespace-nowrap"
-                >
-                  Detalii →
-                </a>
-              </div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant={status === 'open' ? 'default' : 'outline'} onClick={() => setStatus('open')}>
+                Open
+              </Button>
+              <Button size="sm" variant={status === 'forthcoming' ? 'default' : 'outline'} onClick={() => setStatus('forthcoming')}>
+                Forthcoming
+              </Button>
+              <Button size="sm" variant={status === 'all' ? 'default' : 'outline'} onClick={() => setStatus('all')}>
+                All
+              </Button>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          {filteredCalls.length === 0 ? (
+            <EmptyState title="No calls found" description="Try a different status or search query." />
+          ) : (
+            <div className="max-h-[520px] overflow-auto rounded-lg border">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-card">
+                  <TableRow>
+                    <TableHead>Call</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Programme</TableHead>
+                    <TableHead>Deadline</TableHead>
+                    <TableHead>Budget</TableHead>
+                    <TableHead>Quick actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredCalls.map((call) => (
+                    <TableRow key={call.identifier}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{call.title}</p>
+                          <p className="text-xs text-muted-foreground">{call.identifier}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge kind="call" value={call.status} />
+                      </TableCell>
+                      <TableCell>{call.programme || 'N/A'}</TableCell>
+                      <TableCell>{call.deadlineDate ? new Date(call.deadlineDate).toLocaleDateString(locale === 'ro' ? 'ro-RO' : 'en-GB') : 'N/A'}</TableCell>
+                      <TableCell>{formatCurrency(call.budget)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          <Button asChild size="sm" variant="outline">
+                            <a href={call.url} target="_blank" rel="noreferrer noopener">
+                              <ExternalLink className="mr-1 h-3.5 w-3.5" />
+                              View
+                            </a>
+                          </Button>
+                          <Button asChild size="sm" variant="outline">
+                            <Link href={`/${locale}/proiecte/nou`}>
+                              Continue
+                            </Link>
+                          </Button>
+                          <Button size="sm">Submit</Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

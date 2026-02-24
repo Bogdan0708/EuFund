@@ -1,236 +1,271 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Link2, UploadCloud } from 'lucide-react';
 import { csrfFetch } from '@/lib/csrf/client';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { EmptyState } from '@/components/ui/page-states';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { ToastItem, ToastStack } from '@/components/ui/toast-stack';
 
-interface AnalysisResult {
-  analysis: {
-    documentType: string;
-    language: string;
-    summary: string;
-    keyFindings: string[];
-    complianceGaps: Array<{
-      area: string;
-      description: string;
-      severity: 'minor' | 'major' | 'critical';
-      recommendation: string;
-    }>;
-    qualityScore: number;
-    completenessScore: number;
-    suggestions: Array<{
-      section: string;
-      suggestion: string;
-      priority: 'low' | 'medium' | 'high';
-    }>;
-  };
-  piiDetections: Array<{
-    type: string;
-    count: number;
-    severity: 'low' | 'medium' | 'high';
-  }>;
-  gdprCompliant: boolean;
-}
+type EvidenceDocument = {
+  id: string;
+  filename: string;
+  fileSize: number;
+  createdAt: string;
+  status: 'pending' | 'approved' | 'changes';
+  tags: string[];
+  linkedTo: string;
+};
+
+const missingEvidenceByArea = [
+  'Signed declaration for milestone M2',
+  'Timesheets for staff costs Q2',
+  'Procurement proof for equipment package',
+];
 
 export default function DocumentUpload() {
   const [file, setFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<AnalysisResult | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [tagsInput, setTagsInput] = useState('evidence, compliance');
+  const [linkedTo, setLinkedTo] = useState('Milestone M2');
+  const [documents, setDocuments] = useState<EvidenceDocument[]>([]);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const handleFile = useCallback((f: File) => {
-    const allowed = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
-    if (!allowed.includes(f.type)) {
-      setError('Tip de fișier nesuportat. Acceptăm PDF, DOCX, TXT.');
+  const allowed = useMemo(() => [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+    'application/msword',
+  ], []);
+
+  const pushToast = (title: string, type: ToastItem['type']) => {
+    const item = { id: crypto.randomUUID(), title, type };
+    setToasts((prev) => [...prev, item]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((entry) => entry.id !== item.id));
+    }, 3500);
+  };
+
+  const onSelectFile = (selected: File) => {
+    if (!allowed.includes(selected.type)) {
+      setError('Unsupported file type. Upload PDF, DOC, DOCX, or TXT.');
       return;
     }
-    if (f.size > 10 * 1024 * 1024) {
-      setError('Fișierul depășește limita de 10MB.');
+
+    if (selected.size > 50 * 1024 * 1024) {
+      setError('File exceeds 50MB limit.');
       return;
     }
-    setFile(f);
+
     setError(null);
-    setResult(null);
-  }, []);
+    setFile(selected);
+    setUploadProgress(0);
+  };
 
-  const handleSubmit = async () => {
+  const handleUpload = async () => {
     if (!file) return;
-    setLoading(true);
+
+    setUploading(true);
+    setUploadProgress(10);
     setError(null);
+
+    const progressTimer = window.setInterval(() => {
+      setUploadProgress((current) => (current >= 90 ? current : current + 10));
+    }, 180);
 
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('locale', 'ro');
+      formData.append('docType', 'altul');
 
-      const res = await csrfFetch('/api/ai/analyze-document', {
+      const res = await csrfFetch('/api/documents/upload', {
         method: 'POST',
         body: formData,
       });
 
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error?.message || 'Eroare la analiză');
-      setResult(data.data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Eroare necunoscută');
-    } finally {
-      setLoading(false);
-    }
-  };
+      const payload = await res.json();
+      if (!res.ok || !payload.success) {
+        throw new Error(payload?.error?.message || 'Could not upload evidence file.');
+      }
 
-  const severityColor = (s: string) => {
-    switch (s) {
-      case 'critical': case 'high': return 'bg-red-100 text-red-700';
-      case 'major': case 'medium': return 'bg-yellow-100 text-yellow-700';
-      default: return 'bg-green-100 text-green-700';
+      const entry: EvidenceDocument = {
+        id: payload.data.id,
+        filename: payload.data.filename,
+        fileSize: Number(payload.data.fileSize || file.size),
+        createdAt: payload.data.createdAt || new Date().toISOString(),
+        status: 'pending',
+        tags: tagsInput.split(',').map((tag) => tag.trim()).filter(Boolean),
+        linkedTo,
+      };
+
+      setDocuments((previous) => [entry, ...previous]);
+      setFile(null);
+      setUploadProgress(100);
+      pushToast('Evidence uploaded successfully.', 'success');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unexpected upload error.');
+      pushToast('Upload failed. Please retry.', 'warning');
+    } finally {
+      window.clearInterval(progressTimer);
+      setUploading(false);
+      window.setTimeout(() => setUploadProgress(0), 500);
     }
   };
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900">Analiză document</h2>
-      <p className="text-gray-600">Încărcați un document pentru analiza automată de conformitate și calitate.</p>
+      <ToastStack items={toasts} />
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700">{error}</div>
-      )}
+      <Card className="border-amber-200 bg-amber-50/40">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            Missing evidence callouts
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-1 text-sm text-amber-900">
+            {missingEvidenceByArea.map((item) => (
+              <li key={item}>• {item}</li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
 
-      {/* Drop zone */}
-      <div
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
-          dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-        }`}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-        }}
-        onClick={() => document.getElementById('file-input')?.click()}
-      >
-        <input
-          id="file-input"
-          type="file"
-          accept=".pdf,.docx,.txt"
-          className="hidden"
-          onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-        />
-        <div className="text-4xl mb-2">📄</div>
-        {file ? (
-          <div>
-            <p className="font-semibold text-gray-700">{file.name}</p>
-            <p className="text-sm text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
-          </div>
-        ) : (
-          <div>
-            <p className="text-gray-600">Trageți fișierul aici sau faceți clic</p>
-            <p className="text-sm text-gray-400 mt-1">PDF, DOCX sau TXT (max 10MB)</p>
-          </div>
-        )}
-      </div>
-
-      {file && !result && (
-        <button
-          onClick={handleSubmit}
-          disabled={loading}
-          className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
-        >
-          {loading ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
-              Se analizează...
-            </span>
-          ) : (
-            '🔍 Analizează documentul'
-          )}
-        </button>
-      )}
-
-      {result && (
-        <div className="space-y-6">
-          {/* Scores */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white rounded-lg shadow p-4 text-center">
-              <div className="text-3xl font-bold text-blue-600">{result.analysis.qualityScore}</div>
-              <div className="text-sm text-gray-500">Scor calitate</div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Documents & Evidence Upload</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {error && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
             </div>
-            <div className="bg-white rounded-lg shadow p-4 text-center">
-              <div className="text-3xl font-bold text-blue-600">{result.analysis.completenessScore}</div>
-              <div className="text-sm text-gray-500">Scor completitudine</div>
-            </div>
-          </div>
-
-          {/* GDPR Warning */}
-          {!result.gdprCompliant && (
-            <div className="bg-red-50 border border-red-300 rounded-lg p-4">
-              <h4 className="font-semibold text-red-800">⚠️ Atenție GDPR</h4>
-              <p className="text-red-700 text-sm">Documentul conține date personale sensibile.</p>
-              {result.piiDetections.map((pii, i) => (
-                <span key={i} className={`inline-block mr-2 mt-1 px-2 py-0.5 rounded text-xs ${severityColor(pii.severity)}`}>
-                  {pii.type}: {pii.count} detectări
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Summary */}
-          <section className="bg-white rounded-lg shadow p-6">
-            <h4 className="font-semibold text-gray-700 mb-2">Rezumat</h4>
-            <p className="text-gray-600">{result.analysis.summary}</p>
-            <div className="mt-3 flex gap-2">
-              <span className="px-2 py-1 bg-gray-100 rounded text-xs">{result.analysis.documentType}</span>
-              <span className="px-2 py-1 bg-gray-100 rounded text-xs">{result.analysis.language}</span>
-            </div>
-          </section>
-
-          {/* Compliance Gaps */}
-          {result.analysis.complianceGaps.length > 0 && (
-            <section className="bg-white rounded-lg shadow p-6">
-              <h4 className="font-semibold text-gray-700 mb-3">Lacune de conformitate</h4>
-              {result.analysis.complianceGaps.map((gap, i) => (
-                <div key={i} className="border-l-4 border-yellow-400 pl-4 mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded text-xs ${severityColor(gap.severity)}`}>
-                      {gap.severity}
-                    </span>
-                    <span className="font-medium">{gap.area}</span>
-                  </div>
-                  <p className="text-gray-600 text-sm mt-1">{gap.description}</p>
-                  <p className="text-blue-600 text-sm mt-1">💡 {gap.recommendation}</p>
-                </div>
-              ))}
-            </section>
-          )}
-
-          {/* Suggestions */}
-          {result.analysis.suggestions.length > 0 && (
-            <section className="bg-white rounded-lg shadow p-6">
-              <h4 className="font-semibold text-gray-700 mb-3">Sugestii de îmbunătățire</h4>
-              {result.analysis.suggestions.map((s, i) => (
-                <div key={i} className="flex items-start gap-3 mb-3">
-                  <span className={`px-2 py-0.5 rounded text-xs mt-0.5 ${
-                    s.priority === 'high' ? 'bg-red-100 text-red-700'
-                    : s.priority === 'medium' ? 'bg-yellow-100 text-yellow-700'
-                    : 'bg-gray-100 text-gray-700'
-                  }`}>{s.priority}</span>
-                  <div>
-                    <p className="font-medium text-sm">{s.section}</p>
-                    <p className="text-gray-600 text-sm">{s.suggestion}</p>
-                  </div>
-                </div>
-              ))}
-            </section>
           )}
 
           <button
-            onClick={() => { setFile(null); setResult(null); }}
-            className="text-blue-600 hover:text-blue-800"
+            type="button"
+            className={`w-full rounded-xl border-2 border-dashed p-8 text-center transition ${
+              dragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/60'
+            }`}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragOver(false);
+              const selected = event.dataTransfer.files[0];
+              if (selected) onSelectFile(selected);
+            }}
+            onClick={() => document.getElementById('evidence-upload-input')?.click()}
+            aria-label="Upload evidence document"
           >
-            ← Analizează alt document
+            <input
+              id="evidence-upload-input"
+              type="file"
+              className="hidden"
+              accept=".pdf,.doc,.docx,.txt"
+              onChange={(event) => {
+                const selected = event.target.files?.[0];
+                if (selected) onSelectFile(selected);
+              }}
+            />
+            <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
+            <p className="mt-2 text-sm font-medium">Drop files here or click to browse</p>
+            <p className="text-xs text-muted-foreground">Supported: PDF, DOC, DOCX, TXT, max 50MB</p>
           </button>
-        </div>
-      )}
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">Tags (comma separated)</label>
+              <Input
+                value={tagsInput}
+                onChange={(event) => setTagsInput(event.target.value)}
+                placeholder="evidence, invoice, annex"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">Linked milestone/report</label>
+              <Input
+                value={linkedTo}
+                onChange={(event) => setLinkedTo(event.target.value)}
+                placeholder="Milestone M2 or Q2 report"
+              />
+            </div>
+          </div>
+
+          {file && (
+            <div className="rounded-lg border p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">{file.name}</p>
+                  <p className="text-xs text-muted-foreground">{Math.round(file.size / 1024)} KB</p>
+                </div>
+                <Button onClick={handleUpload} disabled={uploading}>
+                  {uploading ? 'Uploading...' : 'Upload evidence'}
+                </Button>
+              </div>
+
+              {uploading && (
+                <div className="mt-3">
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full bg-primary transition-all" style={{ width: `${uploadProgress}%` }} />
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{uploadProgress}% complete</p>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Document list</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {documents.length === 0 ? (
+            <EmptyState title="No uploaded evidence" description="Uploaded documents appear here with status and links." />
+          ) : (
+            <ul className="space-y-3">
+              {documents.map((document) => (
+                <li key={document.id} className="rounded-lg border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="font-medium">{document.filename}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {Math.round(document.fileSize / 1024)} KB • {new Date(document.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    <StatusBadge kind="review" value={document.status} />
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    {document.tags.map((tag) => (
+                      <span key={tag} className="rounded-full bg-muted px-2 py-0.5">#{tag}</span>
+                    ))}
+                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">
+                      <Link2 className="h-3.5 w-3.5" />
+                      {document.linkedTo}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Source of truth: document registry
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

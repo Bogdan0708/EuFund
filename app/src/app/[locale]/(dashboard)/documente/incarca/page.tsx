@@ -1,8 +1,13 @@
 import DocumentUpload from '@/components/ai/DocumentUpload';
+import { PageHeader } from '@/components/ui/page-header';
 
 export default function UploadDocumentPage() {
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4">
+    <div className="space-y-6">
+      <PageHeader
+        title="Documents & Evidence"
+        description="Upload and classify supporting files linked to milestones and reports."
+      />
       <DocumentUpload />
     </div>
   );

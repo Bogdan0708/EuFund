@@ -1,113 +1,284 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { Download, Eye, FileUp, Filter, Plus, Send } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ui/page-states';
+import { StatusBadge } from '@/components/ui/status-badge';
 
 interface Project {
   id: string;
   title: string;
   acronym?: string;
   status: string;
+  updatedAt: string;
   createdAt: string;
+  totalBudget?: string | null;
 }
 
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  ciorna: { label: 'Ciornă', color: 'bg-gray-100 text-gray-700' },
-  in_lucru: { label: 'În lucru', color: 'bg-blue-100 text-blue-700' },
-  verificare: { label: 'Verificare', color: 'bg-yellow-100 text-yellow-700' },
-  finalizat: { label: 'Finalizat', color: 'bg-green-100 text-green-700' },
-  depus: { label: 'Depus', color: 'bg-purple-100 text-purple-700' },
-  aprobat: { label: 'Aprobat', color: 'bg-emerald-100 text-emerald-700' },
-  respins: { label: 'Respins', color: 'bg-red-100 text-red-700' },
-};
+type ColumnKey = 'title' | 'status' | 'budget' | 'updatedAt' | 'actions';
+
+const allColumns: Array<{ key: ColumnKey; label: string }> = [
+  { key: 'title', label: 'Application' },
+  { key: 'status', label: 'Status' },
+  { key: 'budget', label: 'Budget' },
+  { key: 'updatedAt', label: 'Last update' },
+  { key: 'actions', label: 'Quick actions' },
+];
+
+const savedFilters = [
+  { id: 'all', label: 'All applications', status: 'all' },
+  { id: 'review', label: 'Pending review', status: 'verificare' },
+  { id: 'drafts', label: 'Drafts', status: 'ciorna' },
+  { id: 'approved', label: 'Approved', status: 'aprobat' },
+];
+
+function formatCurrency(value: string | null | undefined) {
+  const numeric = Number(value || 0);
+  if (!numeric) return 'N/A';
+  return new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(numeric);
+}
 
 export default function ProjectsPage() {
-  const t = useTranslations('project');
-  const params = useParams();
-  const locale = (params.locale as string) || 'ro';
-  const [projects, setProjects] = useState<Project[]>([]);
+  const params = useParams<{ locale?: string }>();
+  const locale = params.locale || 'ro';
+
+  const [items, setItems] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('all');
+  const [page, setPage] = useState(1);
+  const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(allColumns.map((column) => column.key));
 
   useEffect(() => {
-    async function fetchProjects() {
+    const storedColumns = localStorage.getItem('eufund:applications:columns');
+    if (storedColumns) {
       try {
-        const res = await fetch('/api/v1/projects');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setProjects(data.data?.items || []);
+        const parsed = JSON.parse(storedColumns) as ColumnKey[];
+        if (parsed.length > 0) setVisibleColumns(parsed);
+      } catch {
+        // ignore invalid local storage
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('eufund:applications:columns', JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
+
+  useEffect(() => {
+    const loadProjects = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const query = new URLSearchParams();
+        query.set('perPage', '200');
+        if (search.trim()) query.set('search', search.trim());
+        if (status !== 'all') query.set('status', status);
+
+        const res = await fetch(`/api/v1/projects?${query.toString()}`);
+        if (!res.ok) throw new Error('Could not load applications.');
+        const payload = await res.json();
+        setItems(payload?.data?.items || []);
       } catch (err) {
-        setError('Nu s-au putut încărca proiectele.');
+        setError(err instanceof Error ? err.message : 'Unexpected error.');
       } finally {
         setLoading(false);
       }
-    }
-    fetchProjects();
-  }, []);
+    };
+
+    loadProjects();
+  }, [search, status]);
+
+  const pageSize = 10;
+  const pagedItems = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return items.slice(start, start + pageSize);
+  }, [items, page]);
+
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+
+  useEffect(() => {
+    if (page > pageCount) setPage(1);
+  }, [page, pageCount]);
+
+  const toggleColumn = (column: ColumnKey) => {
+    setVisibleColumns((previous) => {
+      if (previous.includes(column)) {
+        if (previous.length === 1) return previous;
+        return previous.filter((item) => item !== column);
+      }
+      return [...previous, column];
+    });
+  };
+
+  if (loading) return <LoadingState label="Loading applications..." />;
+  if (error) return <ErrorState message={error} onRetry={() => window.location.reload()} />;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">{t('list')}</h1>
-        <Link
-          href={`/${locale}/proiecte/nou`}
-          className="rounded-lg bg-brand-500 px-4 py-2 text-white font-medium hover:bg-brand-600 transition"
-        >
-          + {t('create')}
-        </Link>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Calls & Applications"
+        description="Track draft, submitted, and reviewed applications with fast actions."
+        rightSlot={
+          <Button asChild>
+            <Link href={`/${locale}/proiecte/nou`}>
+              <Plus className="mr-2 h-4 w-4" />
+              New Application
+            </Link>
+          </Button>
+        }
+      />
 
-      {loading && (
-        <div className="rounded-xl bg-white p-8 shadow text-center text-gray-500">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-500 mx-auto mb-4" />
-          <p>Se încarcă proiectele...</p>
-        </div>
-      )}
+      <Card>
+        <CardHeader className="space-y-3">
+          <CardTitle className="text-base">Filter bar</CardTitle>
+          <div className="grid gap-3 md:grid-cols-3">
+            <Input
+              placeholder="Search applications..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              aria-label="Search applications"
+            />
 
-      {error && (
-        <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-red-700">
-          {error}
-        </div>
-      )}
+            <div className="flex flex-wrap gap-2">
+              {savedFilters.map((entry) => (
+                <Button
+                  key={entry.id}
+                  variant={status === entry.status ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setStatus(entry.status)}
+                  className="gap-1"
+                >
+                  <Filter className="h-3.5 w-3.5" />
+                  {entry.label}
+                </Button>
+              ))}
+            </div>
 
-      {!loading && !error && projects.length === 0 && (
-        <div className="rounded-xl bg-white p-8 shadow text-center text-gray-500">
-          <p className="text-5xl mb-4">📁</p>
-          <p>Nu aveți încă niciun proiect.</p>
-          <Link href={`/${locale}/proiecte/nou`} className="text-brand-500 hover:underline mt-2 inline-block">
-            {t('create')}
-          </Link>
-        </div>
-      )}
+            <div className="flex flex-wrap gap-2">
+              {allColumns.map((column) => (
+                <Button
+                  key={column.key}
+                  variant={visibleColumns.includes(column.key) ? 'secondary' : 'outline'}
+                  size="sm"
+                  onClick={() => toggleColumn(column.key)}
+                  aria-pressed={visibleColumns.includes(column.key)}
+                >
+                  {column.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </CardHeader>
 
-      {!loading && !error && projects.length > 0 && (
-        <div className="space-y-3">
-          {projects.map((project) => {
-            const status = STATUS_LABELS[project.status] || { label: project.status, color: 'bg-gray-100 text-gray-700' };
-            return (
-              <Link
-                key={project.id}
-                href={`/${locale}/proiecte/${project.id}`}
-                className="block rounded-xl bg-white p-5 shadow hover:shadow-md transition"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-lg">{project.title}</h3>
-                    {project.acronym && (
-                      <p className="text-sm text-gray-500">{project.acronym}</p>
-                    )}
-                  </div>
-                  <span className={`text-xs font-medium px-3 py-1 rounded-full ${status.color}`}>
-                    {status.label}
-                  </span>
+        <CardContent>
+          {items.length === 0 ? (
+            <EmptyState
+              title="No applications yet"
+              description="Start with a new application or broaden your filters."
+              actionHref={`/${locale}/proiecte/nou`}
+              actionLabel="Create Application"
+            />
+          ) : (
+            <div className="space-y-3">
+              <div className="max-h-[520px] overflow-auto rounded-lg border">
+                <Table>
+                  <TableHeader className="sticky top-0 z-10 bg-card">
+                    <TableRow>
+                      {visibleColumns.includes('title') && <TableHead>Application</TableHead>}
+                      {visibleColumns.includes('status') && <TableHead>Status</TableHead>}
+                      {visibleColumns.includes('budget') && <TableHead>Budget</TableHead>}
+                      {visibleColumns.includes('updatedAt') && <TableHead>Last update</TableHead>}
+                      {visibleColumns.includes('actions') && <TableHead>Quick actions</TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagedItems.map((project) => (
+                      <TableRow key={project.id}>
+                        {visibleColumns.includes('title') && (
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{project.title}</p>
+                              {project.acronym && <p className="text-xs text-muted-foreground">{project.acronym}</p>}
+                            </div>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('status') && (
+                          <TableCell>
+                            <StatusBadge kind="project" value={project.status} />
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('budget') && <TableCell>{formatCurrency(project.totalBudget)}</TableCell>}
+                        {visibleColumns.includes('updatedAt') && (
+                          <TableCell>{new Date(project.updatedAt).toLocaleDateString(locale === 'ro' ? 'ro-RO' : 'en-GB')}</TableCell>
+                        )}
+                        {visibleColumns.includes('actions') && (
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              <Button asChild variant="outline" size="sm">
+                                <Link href={`/${locale}/proiecte/${project.id}`}>
+                                  <Eye className="mr-1 h-3.5 w-3.5" />
+                                  View
+                                </Link>
+                              </Button>
+                              <Button asChild variant="outline" size="sm">
+                                <Link href={`/${locale}/proiecte/${project.id}`}>
+                                  <FileUp className="mr-1 h-3.5 w-3.5" />
+                                  Continue
+                                </Link>
+                              </Button>
+                              <Button variant="outline" size="sm" disabled={project.status === 'depus'}>
+                                <Send className="mr-1 h-3.5 w-3.5" />
+                                Submit
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Showing {pagedItems.length} of {items.length} entries
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
+                    Previous
+                  </Button>
+                  <span className="text-sm">{page} / {pageCount}</span>
+                  <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>
+                    Next
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => alert('Export uses the current filtered view.')}>
+                    <Download className="mr-1 h-3.5 w-3.5" />
+                    Export
+                  </Button>
                 </div>
-              </Link>
-            );
-          })}
-        </div>
-      )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
