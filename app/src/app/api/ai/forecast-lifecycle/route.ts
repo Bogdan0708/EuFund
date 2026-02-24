@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       ...parameters,
     } as LifecyclePredictionInput;
 
-    const requiredFields = [
+    const requiredFields: Array<keyof LifecyclePredictionInput> = [
       'projectTitle',
       'programType',
       'totalBudget',
