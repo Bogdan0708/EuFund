@@ -24,7 +24,7 @@ const deadlineSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withAIAuth(request, async (user) => {
+  return withAIAuth(request, async () => {
   try {
     const body = await request.json();
     const parsed = deadlineSchema.parse(body);

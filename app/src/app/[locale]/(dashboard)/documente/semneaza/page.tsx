@@ -25,9 +25,9 @@ export default function DocumentSigningPage() {
   };
 
   const updateSigner = (idx: number, field: keyof Signer, value: string) => {
-    const updated = [...signers];
-    (updated[idx] as any)[field] = value;
-    setSigners(updated);
+    setSigners((previous) => previous.map((signer, index) => (
+      index === idx ? { ...signer, [field]: value } : signer
+    )));
   };
 
   const removeSigner = (idx: number) => {
@@ -54,8 +54,8 @@ export default function DocumentSigningPage() {
       if (!res.ok) throw new Error(data.error);
       setWorkflowId(data.workflow?.id);
       setStep('sent');
-    } catch (e: any) {
-      setError(e.message);
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'A apărut o eroare la trimitere.');
     } finally {
       setLoading(false);
     }

@@ -91,8 +91,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
       action: 'organization.update',
       resourceType: 'organization',
       resourceId: id,
-      oldValue: sanitizeForAudit(existing as any),
-      newValue: sanitizeForAudit(parsed.data as any),
+      oldValue: sanitizeForAudit(existing as unknown as Record<string, unknown>),
+      newValue: sanitizeForAudit(parsed.data as unknown as Record<string, unknown>),
     });
 
     return NextResponse.json({ success: true, data: updated });

@@ -387,6 +387,7 @@ export function suggestMeetingSlots(input: MeetingInput): MeetingSchedule {
 // ─── Communication Plan Generation ───────────────────────────────
 
 export function generateCommunicationPlan(partners: { name: string; role: UserRole; country: string }[]): CommunicationPlan {
+  void partners;
   return {
     stakeholderGroups: [
       { role: 'coordinator', frequency: 'weekly', channels: ['email', 'platform', 'meeting'], contentLevel: 'detailed', language: 'both' },

@@ -60,7 +60,7 @@ const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondar
 
 export function ExpenseTracking({
   expenses, categories, partners, budgetRemaining, currency,
-  onSubmitExpense, onApprove, onReject, onUploadReceipt, canApprove,
+  onSubmitExpense, onApprove, onReject, canApprove,
 }: ExpenseTrackingProps) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<NewExpenseData>({

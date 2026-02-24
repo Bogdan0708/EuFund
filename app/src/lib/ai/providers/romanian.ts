@@ -80,17 +80,15 @@ export class RomanianProvider extends BaseAIProvider {
 
       return this.createResponse(content, 'rollama3-8b-instruct', tokensUsed, startTime);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof AIProviderError) throw error;
       this.handleError(error);
     }
   }
 
   public async generateObject<T>(
-    request: AIRequest & { schema: any }
+    request: AIRequest & { schema: unknown }
   ): Promise<AIResponse & { object: T }> {
-    const startTime = Date.now();
-    
     try {
       // Romanian models might not be as good at structured output
       // Add stronger JSON formatting instructions
@@ -121,7 +119,7 @@ IMPORTANT: Răspunsul trebuie să fie doar obiectul JSON, fără text suplimenta
         }
         
         parsedObject = JSON.parse(jsonString);
-      } catch (parseError) {
+      } catch {
         throw new AIProviderError(
           this.provider,
           'parse-error',
@@ -132,13 +130,14 @@ IMPORTANT: Răspunsul trebuie să fie doar obiectul JSON, fără text suplimenta
 
       return { ...textResponse, object: parsedObject };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof AIProviderError) throw error;
       this.handleError(error);
     }
   }
 
   public async embed(text: string): Promise<number[]> {
+    void text;
     // OpenLLM-Ro doesn't provide embeddings
     throw new AIProviderError(
       this.provider,

@@ -59,7 +59,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
         address: companyData.address ? companyData.address : org.address,
         foundedDate: companyData.foundedDate || org.foundedDate,
         metadata: {
-          ...(org.metadata as any || {}),
+          ...(org.metadata as Record<string, unknown> || {}),
           onrcVerified: true,
           onrcVerifiedAt: new Date().toISOString(),
           onrcStatus: companyData.status,

@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     await handleWebhookEvent(event);
 
     return NextResponse.json({ received: true });
-  } catch (_error) {
+  } catch {
     return NextResponse.json({ error: 'Invalid webhook signature or payload' }, { status: 400 });
   }
 }

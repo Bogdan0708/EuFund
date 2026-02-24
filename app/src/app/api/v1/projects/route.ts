@@ -9,10 +9,11 @@ import { createProjectSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole, getPaginationParams } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
-import { eq, and, isNull, ilike, inArray, desc, count, sql } from 'drizzle-orm';
+import { eq, and, isNull, ilike, inArray, desc, count } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'projects-api' });
+type ProjectStatus = typeof projects.$inferSelect.status;
 
 export async function GET(req: NextRequest) {
   try {
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
       conditions.push(eq(projects.orgId, orgId));
     }
     if (status) {
-      conditions.push(eq(projects.status, status as any));
+      conditions.push(eq(projects.status, status as ProjectStatus));
     }
     if (search) {
       conditions.push(ilike(projects.title, `%${search}%`));

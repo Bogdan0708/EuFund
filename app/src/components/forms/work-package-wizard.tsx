@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import type { CreateWorkPackageInput, Milestone, Deliverable } from '@/types/work-packages';
+import type { CreateWorkPackageInput } from '@/types/work-packages';
 
 interface WorkPackageWizardProps {
   existingWorkPackages?: { id: string; name: string }[];

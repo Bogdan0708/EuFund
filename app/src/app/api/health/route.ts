@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +13,7 @@ async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise
   ]);
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   const healthCheck = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
         SERVICE_CHECK_TIMEOUT_MS
       );
       healthCheck.services.database = dbCheck === 'timeout' ? 'timeout' : 'healthy';
-    } catch (error) {
+    } catch {
       healthCheck.services.database = 'timeout';
       healthCheck.status = 'degraded';
     }
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
         SERVICE_CHECK_TIMEOUT_MS
       );
       healthCheck.services.redis = redisCheck;
-    } catch (error) {
+    } catch {
       healthCheck.services.redis = 'timeout';
       healthCheck.status = 'degraded';
     }
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
       } else {
         healthCheck.services.ai = 'not_configured';
       }
-    } catch (error) {
+    } catch {
       healthCheck.services.ai = 'error';
     }
 

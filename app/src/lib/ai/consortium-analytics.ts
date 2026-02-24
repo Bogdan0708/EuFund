@@ -2,8 +2,6 @@
 // Partner performance tracking, collaboration health, capability
 // gap analysis, and Romanian consortium context intelligence.
 
-import { aiGenerateObject } from './client';
-import { z } from 'zod';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -420,8 +418,6 @@ function analyzeCapabilityGaps(
   requiredCapabilities: string[]
 ): SkillGap[] {
   const gaps: SkillGap[] = [];
-  const allCapabilities = partners.flatMap(p => p.capabilities);
-
   for (const required of requiredCapabilities) {
     const coveringPartners = partners
       .filter(p => p.capabilities.some(c =>

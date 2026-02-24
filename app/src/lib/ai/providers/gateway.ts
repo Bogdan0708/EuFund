@@ -94,14 +94,14 @@ export class AIGatewayProvider extends BaseAIProvider {
         timestamp: new Date()
       };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof AIProviderError) throw error;
       this.handleError(error);
     }
   }
 
   public async generateObject<T>(
-    request: AIRequest & { schema: any }
+    request: AIRequest & { schema: unknown }
   ): Promise<AIResponse & { object: T }> {
     const startTime = Date.now();
     
@@ -182,7 +182,7 @@ export class AIGatewayProvider extends BaseAIProvider {
         object: result.object as T
       };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof AIProviderError) throw error;
       this.handleError(error);
     }
@@ -208,7 +208,7 @@ export class AIGatewayProvider extends BaseAIProvider {
       const data = await response.json();
       return data.result?.embedding || [];
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.handleError(error);
     }
   }

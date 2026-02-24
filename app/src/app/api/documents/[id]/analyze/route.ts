@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       content = buffer.toString('utf-8');
     } else if (doc.mimeType === 'application/pdf') {
       const pdfParseModule = await import('pdf-parse');
-      const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+      const pdfParse = ('default' in pdfParseModule ? pdfParseModule.default : pdfParseModule) as (input: Buffer) => Promise<{ text: string }>;
       const pdf = await pdfParse(buffer);
       content = pdf.text;
     } else if (doc.mimeType?.includes('wordprocessingml')) {

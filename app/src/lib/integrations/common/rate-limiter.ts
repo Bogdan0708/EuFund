@@ -56,9 +56,13 @@ export async function withRateLimit<T>(
     try {
       recordRequest(key);
       return await fn();
-    } catch (error: any) {
-      const isRateLimit = error?.status === 429 || error?.message?.includes('rate limit');
-      const isRetryable = isRateLimit || error?.status === 503 || error?.status === 502;
+    } catch (error: unknown) {
+      const status = typeof error === 'object' && error !== null && 'status' in error
+        ? (error as { status?: number }).status
+        : undefined;
+      const message = error instanceof Error ? error.message : '';
+      const isRateLimit = status === 429 || message.includes('rate limit');
+      const isRetryable = isRateLimit || status === 503 || status === 502;
 
       if (!isRetryable || attempt === cfg.maxRetries) throw error;
 

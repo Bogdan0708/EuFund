@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -161,7 +161,7 @@ function AuditTrail({ entries, language }: { entries: AuditEntry[]; language: 'r
 
 export default function AdvancedReports({ reportType, audienceType, language }: AdvancedReportsProps) {
   const [activeTab, setActiveTab] = useState('summary');
-  const [generating, setGenerating] = useState(false);
+  void reportType;
 
   const sections: ReportSection[] = [
     { id: '1', title: 'Rezumat Executiv', titleEn: 'Executive Summary', status: 'complete', aiGenerated: true, lastUpdated: '14 feb 2026', wordCount: 850 },
@@ -187,10 +187,8 @@ export default function AdvancedReports({ reportType, audienceType, language }: 
     { id: '4', action: 'export', user: 'Maria P.', timestamp: '2026-02-13 15:00', section: 'Complet', detail: 'Exportat raport PDF pentru audit EC' },
   ];
 
-  const handleGenerate = async (sectionId: string) => {
-    setGenerating(true);
+  const handleGenerate = async () => {
     // Would call AI generation API
-    setTimeout(() => setGenerating(false), 2000);
   };
 
   const labels = {

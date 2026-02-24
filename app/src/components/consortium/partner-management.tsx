@@ -35,7 +35,7 @@ const CAPABILITIES = [
 ];
 
 export function PartnerManagement({
-  partners, onAddPartner, onRemovePartner, onRoleChange, onBudgetChange,
+  partners, onAddPartner, onRemovePartner, onRoleChange,
 }: PartnerManagementProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [formData, setFormData] = useState<AddPartnerData>({

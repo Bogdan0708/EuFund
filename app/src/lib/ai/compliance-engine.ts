@@ -247,7 +247,7 @@ const PROGRAM_CRITERIA: Record<string, {
   },
   pnrr: {
     eligibility: {
-      'PNRR Alignment': (input) => ({
+      'PNRR Alignment': () => ({
         score: 50,
         status: 'partial' as const,
         evidence: ['PNRR alignment requires detailed assessment'],

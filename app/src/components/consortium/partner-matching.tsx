@@ -160,7 +160,8 @@ function PartnerRecommendationCard({ partner, onAdd }: { partner: RecommendedPar
 }
 
 function BudgetImpactCalculator({ partners }: { partners: Partner[] }) {
-  const totalBudget = useMemo(() => partners.reduce((sum, p) => sum + ((p as any).budgetImpact || 150000), 0), [partners]);
+  const getBudgetImpact = (partner: Partner): number => ('budgetImpact' in partner ? Number(partner.budgetImpact || 0) : 150000);
+  const totalBudget = useMemo(() => partners.reduce((sum, partner) => sum + getBudgetImpact(partner), 0), [partners]);
 
   return (
     <Card>
@@ -172,7 +173,7 @@ function BudgetImpactCalculator({ partners }: { partners: Partner[] }) {
           {partners.map((p) => (
             <div key={p.id} className="flex justify-between text-sm">
               <span>{p.name} ({p.country})</span>
-              <span className="font-mono">{((p as any).budgetImpact || 150000).toLocaleString()}€</span>
+              <span className="font-mono">{getBudgetImpact(p).toLocaleString()}€</span>
             </div>
           ))}
           <hr />
@@ -195,12 +196,12 @@ export default function PartnerMatching({ currentProject, existingPartners, requ
   const [filterCountry, setFilterCountry] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
 
-  const mockRecommendations: RecommendedPartner[] = matchResults?.recommendations ?? [
+  const mockRecommendations: RecommendedPartner[] = useMemo(() => (matchResults?.recommendations ?? [
     { id: 'r1', name: 'Fraunhofer-Gesellschaft', country: 'DE', type: 'research', capabilities: ['AI', 'IoT', 'Industry 4.0', 'Machine Learning'], matchScore: 94, matchReasons: ['Completează lacuna AI/ML', 'Experiență H2020 extinsă', 'Prezență în Europa de Vest'], budgetImpact: 280000, pastProjects: 45 },
     { id: 'r2', name: 'Universitatea Politehnica București', country: 'RO', type: 'university', capabilities: ['Robotics', 'Software Engineering', 'Data Science'], matchScore: 88, matchReasons: ['Partener local România', 'Cost-eficient', 'Experiență POCIDIF'], budgetImpact: 120000, onrcStatus: 'verified', sicapScore: 87, pastProjects: 12 },
     { id: 'r3', name: 'TU Delft', country: 'NL', type: 'university', capabilities: ['Sustainability', 'Green Tech', 'Circular Economy'], matchScore: 82, matchReasons: ['Competențe sustenabilitate', 'Excelență academică', 'Rețea extinsă'], budgetImpact: 195000, pastProjects: 28 },
     { id: 'r4', name: 'INRIA', country: 'FR', type: 'research', capabilities: ['AI', 'Cybersecurity', 'HPC', 'Quantum Computing'], matchScore: 79, matchReasons: ['Capabilitate HPC', 'Experiență coordonare', 'Reputație excelentă'], budgetImpact: 245000, pastProjects: 38 },
-  ];
+  ]), [matchResults?.recommendations]);
 
   const filtered = useMemo(() => {
     return mockRecommendations.filter((p) => {

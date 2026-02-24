@@ -1,6 +1,6 @@
 // ─── POST /api/ai/forecast-lifecycle ─────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { predictLifecycle, quickLifecycleCheck } from '@/lib/ai/lifecycle-prediction';
+import { predictLifecycle, quickLifecycleCheck, type LifecyclePredictionInput } from '@/lib/ai/lifecycle-prediction';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const input = {
       projectId,
       ...parameters,
-    } as Record<string, unknown>;
+    } as LifecyclePredictionInput;
 
     const requiredFields = [
       'projectTitle',
@@ -43,11 +43,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (input.quick === true) {
-      const result = quickLifecycleCheck(input as any);
+      const result = quickLifecycleCheck(input);
       return NextResponse.json({ success: true, data: result });
     }
 
-    const result = await predictLifecycle(input as any);
+    const result = await predictLifecycle(input);
 
     await logAudit({
       action: 'ai.generate',

@@ -4,7 +4,6 @@
 import OpenAI from 'openai';
 import { BaseAIProvider } from './base';
 import { AIProvider, AIRequest, AIResponse, AIProviderError } from '../types';
-import { z } from 'zod';
 
 export class OpenAIProvider extends BaseAIProvider {
   public readonly provider = AIProvider.OPENAI;
@@ -34,23 +33,22 @@ export class OpenAIProvider extends BaseAIProvider {
       const response = await this.withTimeout(
         this.client.chat.completions.create({
           model,
-          messages: messages as any,
+          messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
           max_tokens: request.maxTokens || 2048,
           temperature: request.temperature || 0.7,
           stream: false
         })
       );
 
-      const completionResponse = response as any;
-      const content = completionResponse.choices[0]?.message?.content || '';
+      const content = response.choices[0]?.message?.content || '';
       const tokensUsed = {
-        input: completionResponse.usage?.prompt_tokens || 0,
-        output: completionResponse.usage?.completion_tokens || 0
+        input: response.usage?.prompt_tokens || 0,
+        output: response.usage?.completion_tokens || 0
       };
 
       return this.createResponse(content, model, tokensUsed, startTime);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error.status === 429) {
         throw new AIProviderError(this.provider, 'rate-limit', 'Rate limit exceeded', true);
       }
@@ -66,7 +64,7 @@ export class OpenAIProvider extends BaseAIProvider {
   }
 
   public async generateObject<T>(
-    request: AIRequest & { schema: any }
+    request: AIRequest & { schema: unknown }
   ): Promise<AIResponse & { object: T }> {
     const startTime = Date.now();
     
@@ -86,7 +84,7 @@ export class OpenAIProvider extends BaseAIProvider {
       const response = await this.withTimeout(
         this.client.chat.completions.create({
           model,
-          messages: messages as any,
+          messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
           max_tokens: request.maxTokens || 2048,
           temperature: request.temperature || 0.3, // Lower temperature for structured output
           response_format: { type: 'json_object' },
@@ -94,17 +92,16 @@ export class OpenAIProvider extends BaseAIProvider {
         })
       );
 
-      const completionResponse = response as any;
-      const content = completionResponse.choices[0]?.message?.content || '{}';
+      const content = response.choices[0]?.message?.content || '{}';
       const tokensUsed = {
-        input: completionResponse.usage?.prompt_tokens || 0,
-        output: completionResponse.usage?.completion_tokens || 0
+        input: response.usage?.prompt_tokens || 0,
+        output: response.usage?.completion_tokens || 0
       };
 
       let parsedObject: T;
       try {
         parsedObject = JSON.parse(content);
-      } catch (parseError) {
+      } catch {
         throw new AIProviderError(
           this.provider,
           'parse-error',
@@ -116,7 +113,7 @@ export class OpenAIProvider extends BaseAIProvider {
       const aiResponse = this.createResponse(content, model, tokensUsed, startTime);
       return { ...aiResponse, object: parsedObject };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof AIProviderError) throw error;
       this.handleError(error);
     }
@@ -133,7 +130,7 @@ export class OpenAIProvider extends BaseAIProvider {
 
       return response.data[0]?.embedding || [];
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.handleError(error);
     }
   }

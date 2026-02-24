@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export interface Partner {
@@ -62,7 +61,6 @@ export function PartnerDashboard({
   const [activeTab, setActiveTab] = useState('overview');
   const totalBudget = partners.reduce((s, p) => s + p.budgetAllocated, 0);
   const totalSpent = partners.reduce((s, p) => s + p.budgetSpent, 0);
-  const coordinator = partners.find(p => p.role === 'coordinator');
 
   return (
     <div className="space-y-6">

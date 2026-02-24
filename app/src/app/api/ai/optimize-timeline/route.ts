@@ -1,7 +1,7 @@
 import { withAIAuth } from '@/lib/middleware/auth';
 // ─── Timeline Optimization API ───────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { optimizeTimeline, analyzeScenario, quickFeasibilityCheck, type TimelineOptimizationInput, type WhatIfScenario } from '@/lib/ai/timeline-optimizer';
+import { optimizeTimeline, analyzeScenario, type TimelineOptimizationInput, type WhatIfScenario } from '@/lib/ai/timeline-optimizer';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
 
@@ -44,7 +44,7 @@ const timelineSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withAIAuth(request, async (user) => {
+  return withAIAuth(request, async () => {
     const req = request;
   try {
     const body = await req.json();

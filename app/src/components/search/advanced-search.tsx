@@ -45,13 +45,13 @@ function SemanticSearchBar({ onSearch, aiPowered, semanticSearch }: { onSearch: 
   const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const mockSuggestions = [
+  const mockSuggestions = useMemo(() => [
     'proiecte AI în Horizon Europe',
     'parteneri cercetare din Germania',
     'oportunități finanțare Green Deal',
     'cele mai bune practici management consorțiu',
     'buget eligibil echipamente HPC',
-  ];
+  ], []);
 
   useEffect(() => {
     if (query.length > 2) {
@@ -61,7 +61,7 @@ function SemanticSearchBar({ onSearch, aiPowered, semanticSearch }: { onSearch: 
     } else {
       setShowSuggestions(false);
     }
-  }, [query]);
+  }, [query, mockSuggestions]);
 
   const handleSearch = () => {
     onSearch(query);
@@ -173,12 +173,12 @@ export default function AdvancedSearch({ searchType, aiPowered, semanticSearch }
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const mockResults: SearchResult[] = [
+  const mockResults: SearchResult[] = useMemo(() => [
     { id: '1', title: 'HORIZON-CL4-2024-DATA-01 — AI for Manufacturing', type: 'opportunity', description: 'Apel pentru proiecte de inteligență artificială aplicate în industria prelucrătoare', relevanceScore: 94, metadata: { Buget: '5M€', Deadline: '2026-04-15' }, highlights: ['<em>AI</em> aplicat în <em>manufacturing</em> cu focus pe sustenabilitate'], tags: ['AI', 'Industry 4.0', 'Horizon Europe'] },
     { id: '2', title: 'Fraunhofer-Gesellschaft', type: 'partner', description: 'Institut german de cercetare aplicată — lider european în AI și IoT', relevanceScore: 88, metadata: { Țara: 'DE', Tip: 'Cercetare', Proiecte: '45' }, highlights: [], tags: ['AI', 'IoT', 'Cercetare'] },
     { id: '3', title: 'SmartCity-RO: Orașe Inteligente România', type: 'project', description: 'Proiect POCIDIF pentru digitalizarea serviciilor publice din orașe românești', relevanceScore: 76, metadata: { Status: 'Activ', Buget: '2.1M€' }, highlights: ['Digitalizare servicii publice cu <em>AI</em>'], tags: ['Smart City', 'România', 'POCIDIF'] },
     { id: '4', title: 'Best Practices: Consortium Management in H2020', type: 'article', description: 'Ghid detaliat pentru managementul eficient al consorțiilor în programele cadru europene', relevanceScore: 71, metadata: { Autor: 'EC Guide', An: '2024' }, highlights: [], tags: ['Management', 'Best Practices', 'Consorțiu'] },
-  ];
+  ], []);
 
   const opportunities: OpportunityAlert[] = [
     { id: '1', title: 'HORIZON-CL4-2026-AI-01', programme: 'Horizon Europe', deadline: '2026-04-15', budget: '5-8M€', matchScore: 92, status: 'new' },
@@ -200,7 +200,7 @@ export default function AdvancedSearch({ searchType, aiPowered, semanticSearch }
       }));
       setIsSearching(false);
     }, 800);
-  }, [searchType]);
+  }, [searchType, mockResults]);
 
   return (
     <div className="space-y-6">

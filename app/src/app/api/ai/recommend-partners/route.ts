@@ -28,7 +28,7 @@ const inputSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withAIAuth(request, async (user) => {
+  return withAIAuth(request, async () => {
   try {
     const body = await request.json();
     const parsed = inputSchema.safeParse(body);
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(), { status: 400 });
     }
 
-    const input = parsed.data as any;
+    const input = parsed.data;
 
     if (input.quick) {
       const result = quickPartnerMatch(input.requiredCapabilities, input.sector);

@@ -19,7 +19,7 @@ export default async function LocaleLayout({
   children: React.ReactNode;
   params: { locale: string };
 }) {
-  if (!locales.includes(locale as any)) notFound();
+  if (!locales.includes(locale as (typeof locales)[number])) notFound();
 
   const [messages, nonce] = await Promise.all([getMessages(), getNonce()]);
 

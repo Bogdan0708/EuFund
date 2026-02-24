@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import { getAIOrchestrator, createDefaultConfig } from './orchestrator';
-import { TaskType, AIRequest, AIResponse } from './types';
+import { TaskType, AIRequest } from './types';
 
 // ─── Backward Compatibility Interface ────────────────────────────────
 
@@ -81,7 +81,7 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: AIGenerateObje
 }> {
   const orchestrator = getAIOrchestrator(createDefaultConfig());
   
-  const request: AIRequest & { schema: any } = {
+  const request: AIRequest & { schema: unknown } = {
     taskType: opts.taskType || TaskType.SIMPLE_TEXT_GENERATION,
     prompt: opts.prompt,
     systemPrompt: opts.system,
@@ -432,7 +432,10 @@ Generate a proposal optimized for Romanian applicants, including:
  * Legacy Romanian BERT query (maintained for backward compatibility)
  * Now routes through the multi-provider system
  */
-export async function queryRomanianBert(text: string, task: 'ner' | 'classification' | 'similarity' = 'ner'): Promise<any> {
+export async function queryRomanianBert(
+  text: string,
+  task: 'ner' | 'classification' | 'similarity' = 'ner'
+): Promise<{ analysis: string; confidence: number; provider?: string }> {
   // Convert to new system
   const taskTypeMap = {
     'ner': TaskType.ROMANIAN_NER,

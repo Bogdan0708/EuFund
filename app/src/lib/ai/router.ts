@@ -6,7 +6,6 @@ import {
   TaskType, 
   AIRequest, 
   RoutingDecision,
-  TaskCharacteristics,
   RomanianLanguageContext,
   OptimizationStrategy
 } from './types';
@@ -14,7 +13,6 @@ import {
   PROVIDER_CAPABILITIES,
   TASK_CHARACTERISTICS,
   OPTIMIZATION_RULES,
-  getProviderRanking,
   getRomanianProviderRanking,
   estimateCost
 } from './provider-matrix';
@@ -234,7 +232,7 @@ export class AIRouter {
   ): AIProvider[] {
     // Start with providers that support this task type
     let candidates = Object.entries(PROVIDER_CAPABILITIES)
-      .filter(([_, cap]) => cap.taskTypes.includes(taskType))
+      .filter(([, cap]) => cap.taskTypes.includes(taskType))
       .map(([provider]) => provider as AIProvider);
     
     // Apply Romanian optimization if needed
@@ -372,7 +370,7 @@ export class AIRouter {
     }
   }
 
-  public reportFailure(provider: AIProvider, error: Error): void {
+  public reportFailure(provider: AIProvider): void {
     if (!this.config.enableCircuitBreaker) return;
     
     const state = this.circuitBreakerStates.get(provider) || { failures: 0 };

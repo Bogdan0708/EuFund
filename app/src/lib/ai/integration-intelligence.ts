@@ -227,6 +227,7 @@ export function quickIntelligenceSummary(sector: string): {
   romanianParticipation: string;
   keyAdvice: string[];
 } {
+  void sector;
   const relevantPrograms = Object.entries(EU_FUNDING_LANDSCAPE)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 5)

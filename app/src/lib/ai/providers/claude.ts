@@ -55,7 +55,7 @@ export class ClaudeProvider extends BaseAIProvider {
 
       return this.createResponse(content, model, tokensUsed, startTime);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error.status === 429) {
         throw new AIProviderError(this.provider, 'rate-limit', 'Rate limit exceeded', true);
       }
@@ -71,7 +71,7 @@ export class ClaudeProvider extends BaseAIProvider {
   }
 
   public async generateObject<T>(
-    request: AIRequest & { schema: any }
+    request: AIRequest & { schema: unknown }
   ): Promise<AIResponse & { object: T }> {
     const startTime = Date.now();
     
@@ -112,7 +112,7 @@ export class ClaudeProvider extends BaseAIProvider {
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         const jsonString = jsonMatch ? jsonMatch[0] : content;
         parsedObject = JSON.parse(jsonString);
-      } catch (parseError) {
+      } catch {
         throw new AIProviderError(
           this.provider,
           'parse-error',
@@ -124,13 +124,14 @@ export class ClaudeProvider extends BaseAIProvider {
       const aiResponse = this.createResponse(content, model, tokensUsed, startTime);
       return { ...aiResponse, object: parsedObject };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof AIProviderError) throw error;
       this.handleError(error);
     }
   }
 
   public async embed(text: string): Promise<number[]> {
+    void text;
     // Claude doesn't provide embeddings, so we throw an error
     throw new AIProviderError(
       this.provider,

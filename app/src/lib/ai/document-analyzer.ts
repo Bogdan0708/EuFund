@@ -3,7 +3,6 @@
 
 import { z } from 'zod';
 import { aiGenerateObject } from './client';
-import { normalizeDiacritics } from '@/lib/utils/romanian';
 import { wrapUserInput, sanitizeForAI, AI_INPUT_LIMITS } from './sanitize';
 import { logger } from '@/lib/logger';
 

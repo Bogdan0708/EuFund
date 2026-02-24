@@ -54,7 +54,7 @@ const fullAnalysisSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withAIAuth(request, async (user) => {
+  return withAIAuth(request, async () => {
   try {
     const body = await request.json();
 
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
       const result = getProjectHealthQuick(
         parsed.projectId,
         parsed.projectTitle,
-        parsed.workPackages as any,
+        parsed.workPackages,
         parsed.deadline,
         parsed.budget,
         parsed.spentBudget,
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     const parsed = fullAnalysisSchema.parse(body);
-    const result = await analyzeProject(parsed as any as ProjectAnalysisRequest);
+    const result = await analyzeProject(parsed as ProjectAnalysisRequest);
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     if (error instanceof z.ZodError) {

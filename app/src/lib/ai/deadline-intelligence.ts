@@ -4,7 +4,6 @@
 
 import { z } from 'zod';
 import { aiGenerateObject } from './client';
-import { AI_CONFIG } from './config';
 
 // ─── Types ───────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 import { withAIAuth } from '@/lib/middleware/auth';
 // ─── Project Health Monitoring API ───────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { getProjectHealthQuick, getAdvancedProjectHealth, analyzeProject, type ProjectAnalysisRequest } from '@/lib/ai/project-intelligence';
+import { getProjectHealthQuick } from '@/lib/ai/project-intelligence';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
 
@@ -43,7 +43,7 @@ const healthSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  return withAIAuth(request, async (user) => {
+  return withAIAuth(request, async () => {
     const req = request;
   const projectId = req.nextUrl.searchParams.get('projectId');
   if (!projectId) {
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  return withAIAuth(request, async (user) => {
+  return withAIAuth(request, async () => {
     const req = request;
   try {
     const body = await req.json();
@@ -66,13 +66,22 @@ export async function POST(request: NextRequest) {
 
     const { mode, projectId, projectTitle, workPackages, deadline, budget, spentBudget } = parsed.data;
 
+    const normalizedWorkPackages = workPackages.map((workPackage) => ({
+      ...workPackage,
+      deliverables: workPackage.deliverables.map((deliverable) => ({
+        name: deliverable.name,
+        dueDate: deliverable.dueDate,
+        completed: deliverable.status === 'completed',
+      })),
+    }));
+
     if (mode === 'quick') {
-      const result = getProjectHealthQuick(projectId, projectTitle, workPackages as any, deadline ?? '', budget, spentBudget);
+      const result = getProjectHealthQuick(projectId, projectTitle, normalizedWorkPackages, deadline ?? '', budget, spentBudget);
       return NextResponse.json({ success: true, data: result });
     }
 
     // Advanced mode - would need full ProjectAnalysisRequest; for now return quick + supplementary
-    const quickHealth = getProjectHealthQuick(projectId, projectTitle, workPackages as any, deadline ?? '', budget, spentBudget);
+    const quickHealth = getProjectHealthQuick(projectId, projectTitle, normalizedWorkPackages, deadline ?? '', budget, spentBudget);
     return NextResponse.json({
       success: true,
       data: {

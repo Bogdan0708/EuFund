@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -268,6 +268,8 @@ function VersionHistory({ changes }: { changes: DocumentChange[] }) {
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function RealTimeWorkspace({ projectId, userRole, partnerOrganizations }: RealTimeWorkspaceProps) {
+  void projectId;
+  void userRole;
   const [activeTab, setActiveTab] = useState('editor');
   const [userLanguage] = useState<'ro' | 'en'>('ro');
 

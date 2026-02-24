@@ -8,7 +8,7 @@ import { aiGenerateObject } from './client';
 import { hybridSearch } from '@/lib/rag/pipeline';
 import { normalizeDiacritics } from '@/lib/utils/romanian';
 import { analyzeCompliance, type ComplianceAnalysis } from './compliance-engine';
-import { EU_PROGRAMS, type EUProgramKey, getProgramInfo, getProposalSections } from './eu-knowledge-base';
+import { type EUProgramKey, getProgramInfo, getProposalSections } from './eu-knowledge-base';
 
 // ─── Enhanced Types ──────────────────────────────────────────────
 
@@ -372,7 +372,7 @@ Budget must be distributed across programme cost categories.`;
             role: p.role,
           })),
         } : undefined,
-        program: input.programType as any,
+        program: input.programType,
         locale: input.locale,
       });
     } catch { /* compliance optional */ }

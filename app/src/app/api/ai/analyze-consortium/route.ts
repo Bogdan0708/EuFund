@@ -51,7 +51,7 @@ const consortiumSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withAIAuth(request, async (user) => {
+  return withAIAuth(request, async () => {
     const req = request;
   try {
     const body = await req.json();

@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(), { status: 400 });
     }
 
-    const input = parsed.data as any;
+    const input = parsed.data;
 
     if (input.quick) {
       const result = quickSuccessPrediction(input);

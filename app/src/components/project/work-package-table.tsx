@@ -3,18 +3,14 @@
 import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import type { WorkPackage, WorkPackageStatus } from '@/types/work-packages';
+import type { WorkPackage } from '@/types/work-packages';
 
 interface WorkPackageTableProps {
   workPackages: WorkPackage[];
-  onProgressUpdate?: (wpId: string, progress: number) => void;
-  onBudgetAdjust?: (wpId: string, amount: number) => void;
-  onStatusChange?: (wpId: string, status: WorkPackageStatus) => void;
   onRowClick?: (wp: WorkPackage) => void;
 }
 
@@ -40,7 +36,7 @@ function getProgress(wp: WorkPackage): number {
 }
 
 export function WorkPackageTable({
-  workPackages, onProgressUpdate, onBudgetAdjust, onStatusChange, onRowClick,
+  workPackages, onRowClick,
 }: WorkPackageTableProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');

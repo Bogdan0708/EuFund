@@ -15,10 +15,11 @@ export interface AuthUser {
 export async function getUser(): Promise<AuthUser | null> {
   const session = await auth();
   if (!session?.user?.email) return null;
+  const user = session.user as { id?: string; email: string; name?: string | null };
   return {
-    id: (session.user as any).id,
-    email: session.user.email,
-    name: session.user.name || null,
+    id: user.id ?? '',
+    email: user.email,
+    name: user.name || null,
   };
 }
 

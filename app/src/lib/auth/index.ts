@@ -68,7 +68,7 @@ export const {
     },
     async session({ session, token }) {
       if (session.user && token.userId) {
-        (session.user as any).id = token.userId;
+        (session.user as { id?: string }).id = String(token.userId);
       }
       return session;
     },

@@ -2,8 +2,6 @@
 // Multi-currency analysis, EU funding rules engine, predictive
 // budget analytics, and Romanian financial context.
 
-import { aiGenerateObject } from './client';
-import { z } from 'zod';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -351,7 +349,7 @@ function calculateInflationImpact(input: BudgetIntelligenceInput): InflationImpa
 
 // ─── Cost Optimization ───────────────────────────────────────────
 
-function generateCostOptimizations(input: BudgetIntelligenceInput, burnRate: BurnRateAnalysis): CostRecommendation[] {
+function generateCostOptimizations(input: BudgetIntelligenceInput): CostRecommendation[] {
   const recommendations: CostRecommendation[] = [];
   const totalBudget = input.totalBudget;
 
@@ -541,7 +539,7 @@ export async function analyzeBudget(input: BudgetIntelligenceInput): Promise<Bud
   const currencyRisk = assessCurrencyRisk(input);
   const inflationImpact = calculateInflationImpact(input);
   const complianceStatus = validateCostCompliance(input.categories, input.totalBudget, input.coFinancingRate);
-  const costOptimization = generateCostOptimizations(input, burnRateAnalysis);
+  const costOptimization = generateCostOptimizations(input);
   const riskAnalysis = identifyBudgetRisks(input, burnRateAnalysis, currencyRisk, inflationImpact);
   const auditReadiness = assessAuditReadiness(input, complianceStatus);
 

@@ -9,7 +9,7 @@ import { organizations, projects } from '@/lib/db/schema';
 import { updateProjectSectionSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
-import { logAudit, sanitizeForAudit } from '@/lib/legal/audit';
+import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -103,7 +103,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       'totalBudget', 'euContribution', 'nationalContrib', 'ownContrib', 'callId',
     ] as const;
 
-    const updateData: Record<string, any> = { updatedAt: new Date() };
+    const updateData: Record<string, unknown> = { updatedAt: new Date() };
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         updateData[field] = body[field];

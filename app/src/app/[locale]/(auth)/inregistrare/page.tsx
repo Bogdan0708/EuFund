@@ -17,7 +17,6 @@ export default function RegisterPage() {
   const t = useTranslations('auth');
   const params = useParams();
   const locale = (params.locale as string) || 'ro';
-  const tv = useTranslations('validation');
   const te = useTranslations('errors');
   const [serverError, setServerError] = useState('');
   const [success, setSuccess] = useState(false);

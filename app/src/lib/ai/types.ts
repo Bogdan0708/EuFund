@@ -88,7 +88,7 @@ export interface AIRequest {
   userId: string;
   language?: 'ro' | 'en' | 'auto';
   structuredOutput?: boolean;
-  schema?: any;
+  schema?: unknown;
   priority: 'low' | 'normal' | 'high';
   cacheKey?: string;
 }
@@ -175,7 +175,7 @@ export interface OptimizationStrategy {
 export interface AIProviderInterface {
   provider: AIProvider;
   generateText(request: AIRequest): Promise<AIResponse>;
-  generateObject<T>(request: AIRequest & { schema: any }): Promise<AIResponse & { object: T }>;
+  generateObject<T>(request: AIRequest & { schema: unknown }): Promise<AIResponse & { object: T }>;
   embed(text: string): Promise<number[]>;
   isHealthy(): Promise<boolean>;
   getCapabilities(): ProviderCapability;

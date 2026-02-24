@@ -2,7 +2,7 @@
 // Generates EU funding proposals with Romanian templates
 
 import { z } from 'zod';
-import { aiGenerate, aiGenerateObject } from './client';
+import { aiGenerateObject } from './client';
 import { hybridSearch } from '@/lib/rag/pipeline';
 import { normalizeDiacritics } from '@/lib/utils/romanian';
 import { sanitizeForAI, wrapUserInput, AI_INPUT_LIMITS } from './sanitize';

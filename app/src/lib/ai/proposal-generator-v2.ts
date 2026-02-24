@@ -5,9 +5,7 @@ import { z } from 'zod';
 import { 
   aiGenerateObject, 
   TaskType, 
-  analyzeRomanianContent,
-  aiGenerateRomanianEUProposal,
-  type AIRequest 
+  analyzeRomanianContent
 } from './client-v2';
 import { hybridSearch } from '@/lib/rag/pipeline';
 import { normalizeDiacritics } from '@/lib/utils/romanian';
@@ -330,11 +328,12 @@ Generate the title, acronym, summary, context, objectives, methodology with work
       romanianAnalysis: romanianAnalysis.isRomanian ? romanianAnalysis : undefined,
     };
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     log.error({ error }, 'Enhanced proposal generation error');
     
     // Graceful fallback: Re-throw with enhanced context
-    throw new Error(`Enhanced proposal generation failed: ${error.message}. Provider routing and Romanian optimization encountered issues.`);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Enhanced proposal generation failed: ${message}. Provider routing and Romanian optimization encountered issues.`);
   }
 }
 

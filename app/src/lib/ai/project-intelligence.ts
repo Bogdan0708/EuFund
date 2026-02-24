@@ -2,7 +2,7 @@
 // Centralized AI coordination: health monitoring, predictive analytics,
 // and unified project analysis orchestrating all AI features.
 
-import { analyzeDeadlines, quickRiskCheck, type ProjectDeadlineInput, type WorkPackageStatus } from './deadline-intelligence';
+import { analyzeDeadlines, quickRiskCheck, type WorkPackageStatus } from './deadline-intelligence';
 import { assessRisk, type RiskAssessmentInput, type RiskAssessment } from './risk-assessment';
 import { analyzeCompliance, type ComplianceCheckInput, type ComplianceAnalysis } from './compliance-engine';
 import { EU_PROGRAMS, type EUProgramKey } from './eu-knowledge-base';
@@ -168,7 +168,7 @@ export async function analyzeProject(request: ProjectAnalysisRequest): Promise<F
           role: p.role,
         })),
       } : undefined,
-      program: request.programType as any,
+      program: request.programType,
       dataProtection: request.dataProtection,
       ethics: request.ethics,
       locale: request.locale,
@@ -235,7 +235,7 @@ export async function analyzeProject(request: ProjectAnalysisRequest): Promise<F
       ...(compliance?.improvementPlan.slice(0, 2).map(s => s.action) || []),
     ].slice(0, 5),
     nextActions: [
-      ...(risk?.actionPlan.slice(0, 3).map(a => ({ action: a.action, priority: a.priority as any, owner: a.responsible })) || []),
+      ...(risk?.actionPlan.slice(0, 3).map(a => ({ action: a.action, priority: a.priority, owner: a.responsible })) || []),
     ],
   };
 
@@ -387,7 +387,7 @@ export async function getAdvancedProjectHealth(
   consortiumData?: { overallScore: number; atRiskPartners: number; partnerCount: number },
   budgetData?: { overallHealth: number; burnRate: number; forecastAccuracy: number },
 ): Promise<ProjectHealthAnalysis> {
-  const { health, risk, deadlines } = projectAnalysis;
+  const { health } = projectAnalysis;
 
   const timelineHealth = {
     score: timelineData?.feasibilityScore ?? health.dimensions.timeline.score,

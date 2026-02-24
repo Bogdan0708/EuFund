@@ -6,7 +6,7 @@ import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { validateCompliance } from '@/lib/ai/compliance-validator';
 import { logAudit } from '@/lib/legal/audit';
-import { listComplianceChecks, createComplianceCheck, getComplianceOverview } from '@/lib/services/compliance';
+import { listComplianceChecks, getComplianceOverview } from '@/lib/services/compliance';
 import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 

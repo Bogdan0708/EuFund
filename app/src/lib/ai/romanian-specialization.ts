@@ -330,7 +330,7 @@ export interface RomanianPerformanceMetrics {
   averageLatencyImprovement: number;
 }
 
-let performanceMetrics: RomanianPerformanceMetrics = {
+const performanceMetrics: RomanianPerformanceMetrics = {
   languageDetectionAccuracy: 0,
   culturalContextAccuracy: 0,
   romanianProviderUsage: 0,

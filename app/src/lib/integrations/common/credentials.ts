@@ -15,6 +15,9 @@ function getEnvCredential(provider: string): ApiCredential | null {
   const prefix = provider.toUpperCase().replace(/-/g, '_');
   const apiKey = process.env[`${prefix}_API_KEY`];
   const baseUrl = process.env[`${prefix}_BASE_URL`];
+  const rawEnvironment = process.env[`${prefix}_ENV`];
+  const environment: ApiCredential['environment'] =
+    rawEnvironment === 'sandbox' || rawEnvironment === 'test' ? rawEnvironment : 'production';
 
   if (!baseUrl) return null;
 
@@ -23,7 +26,7 @@ function getEnvCredential(provider: string): ApiCredential | null {
     apiKey: apiKey ?? undefined,
     apiSecret: process.env[`${prefix}_API_SECRET`] ?? undefined,
     baseUrl,
-    environment: (process.env[`${prefix}_ENV`] as any) ?? 'production',
+    environment,
   };
 }
 

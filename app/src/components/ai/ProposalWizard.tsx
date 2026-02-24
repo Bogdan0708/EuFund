@@ -41,7 +41,34 @@ export default function ProposalWizard() {
     duration: '',
   });
 
-  const mapEnhancedProposal = (proposal: any): ProposalOutput => {
+  type EnhancedProposalPayload = {
+    title?: string;
+    acronym?: string;
+    executive_summary?: string;
+    context?: string;
+    objectives?: { general?: string; specific?: string[] };
+    methodology?: {
+      approach?: string;
+      work_packages?: Array<{
+        title?: string;
+        objectives?: string[];
+        startMonth?: number | string;
+        endMonth?: number | string;
+        deliverables?: Array<{ title?: string }>;
+      }>;
+    };
+    budget?: {
+      justification?: string;
+      cost_breakdown?: Array<{ category?: string; amount?: number | string; justification?: string }>;
+    };
+    impact?: {
+      kpis?: Array<{ indicator?: string; baseline?: string; target?: string; source?: string }>;
+      sustainability?: string;
+    };
+    risks?: Array<{ description?: string; probability?: string; impact?: string; mitigation?: string }>;
+  };
+
+  const mapEnhancedProposal = (proposal: EnhancedProposalPayload): ProposalOutput => {
     const probabilityMap: Record<string, 'scăzut' | 'mediu' | 'ridicat'> = {
       low: 'scăzut',
       medium: 'mediu',
@@ -59,29 +86,29 @@ export default function ProposalWizard() {
       },
       methodology: {
         approach: proposal.methodology?.approach || '',
-        workPackages: (proposal.methodology?.work_packages || []).map((wp: any) => ({
+        workPackages: (proposal.methodology?.work_packages || []).map((wp) => ({
           name: wp.title,
           description: (wp.objectives || []).join(' | '),
           duration: `${wp.startMonth}-${wp.endMonth} luni`,
-          deliverables: (wp.deliverables || []).map((d: any) => d.title),
+          deliverables: (wp.deliverables || []).map((d) => d.title || ''),
         })),
       },
       budget: {
         summary: proposal.budget?.justification || '',
-        categories: (proposal.budget?.cost_breakdown || []).map((cat: any) => ({
-          name: cat.category,
+        categories: (proposal.budget?.cost_breakdown || []).map((cat) => ({
+          name: cat.category || '',
           amount: Number(cat.amount) || 0,
           justification: cat.justification || '',
         })),
       },
-      indicators: (proposal.impact?.kpis || []).map((kpi: any) => ({
-        name: kpi.indicator,
+      indicators: (proposal.impact?.kpis || []).map((kpi) => ({
+        name: kpi.indicator || '',
         baseline: kpi.baseline,
         target: kpi.target,
         source: kpi.source,
       })),
       sustainability: proposal.impact?.sustainability || '',
-      risks: (proposal.risks || []).map((risk: any) => ({
+      risks: (proposal.risks || []).map((risk) => ({
         description: risk.description || '',
         probability: probabilityMap[risk.probability] || 'mediu',
         impact: probabilityMap[risk.impact] || 'mediu',

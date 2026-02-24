@@ -10,7 +10,6 @@ interface GanttChartProps {
   data: GanttData;
   onTaskUpdate?: (taskId: string, updates: { startDate: string; endDate: string }) => void;
   onTaskClick?: (task: TimelineItem) => void;
-  locale?: string;
 }
 
 type ViewMode = 'months' | 'weeks' | 'days';
@@ -86,7 +85,7 @@ function generateTimeHeaders(start: string, end: string, mode: ViewMode) {
   return headers;
 }
 
-export function GanttChart({ data, onTaskUpdate, onTaskClick, locale = 'ro' }: GanttChartProps) {
+export function GanttChart({ data, onTaskUpdate, onTaskClick }: GanttChartProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('months');
   const [dragState, setDragState] = useState<{
     taskId: string;
@@ -99,18 +98,11 @@ export function GanttChart({ data, onTaskUpdate, onTaskClick, locale = 'ro' }: G
   const [hoveredTask, setHoveredTask] = useState<string | null>(null);
 
   const { projectStartDate, projectEndDate } = data;
-  if (!projectStartDate || !projectEndDate) {
-    return (
-      <Card>
-        <CardContent className="p-8 text-center text-muted-foreground">
-          Nu există date de timeline pentru acest proiect. Adăugați pachete de lucru cu date.
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const paddedStart = addDays(projectStartDate, -7);
-  const paddedEnd = addDays(projectEndDate, 14);
+  const hasTimelineData = Boolean(projectStartDate && projectEndDate);
+  const safeProjectStartDate = projectStartDate || new Date().toISOString().split('T')[0];
+  const safeProjectEndDate = projectEndDate || safeProjectStartDate;
+  const paddedStart = addDays(safeProjectStartDate, -7);
+  const paddedEnd = addDays(safeProjectEndDate, 14);
   const totalDays = daysBetween(paddedStart, paddedEnd);
   const dayWidth = viewMode === 'days' ? 30 : viewMode === 'weeks' ? 8 : 3;
   const chartWidth = totalDays * dayWidth;
@@ -203,7 +195,15 @@ export function GanttChart({ data, onTaskUpdate, onTaskClick, locale = 'ro' }: G
     };
   }, [dragState, dayWidth, onTaskUpdate]);
 
-  let rowIndex = 0;
+  if (!hasTimelineData) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center text-muted-foreground">
+          Nu există date de timeline pentru acest proiect. Adăugați pachete de lucru cu date.
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="overflow-hidden">
@@ -326,7 +326,6 @@ export function GanttChart({ data, onTaskUpdate, onTaskClick, locale = 'ro' }: G
                 </svg>
 
                 {data.workPackages.map(wp => {
-                  rowIndex++;
                   const wpLeft = daysBetween(paddedStart, wp.startDate || paddedStart) * dayWidth;
                   const wpWidth = Math.max(
                     daysBetween(wp.startDate || paddedStart, wp.endDate || paddedEnd) * dayWidth,
@@ -344,7 +343,6 @@ export function GanttChart({ data, onTaskUpdate, onTaskClick, locale = 'ro' }: G
                       </div>
                       {/* Task bars */}
                       {wp.tasks.map(task => {
-                        rowIndex++;
                         const left = daysBetween(paddedStart, task.startDate) * dayWidth;
                         const width = Math.max(daysBetween(task.startDate, task.endDate) * dayWidth, dayWidth);
                         const progressWidth = (width * task.progressPercentage) / 100;

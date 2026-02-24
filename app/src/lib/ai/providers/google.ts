@@ -59,7 +59,7 @@ export class GoogleProvider extends BaseAIProvider {
 
       return this.createResponse(content, this.selectModel(request), tokensUsed, startTime);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error.message?.includes('quota')) {
         throw new AIProviderError(this.provider, 'rate-limit', 'Rate limit exceeded', true);
       }
@@ -75,7 +75,7 @@ export class GoogleProvider extends BaseAIProvider {
   }
 
   public async generateObject<T>(
-    request: AIRequest & { schema: any }
+    request: AIRequest & { schema: unknown }
   ): Promise<AIResponse & { object: T }> {
     const startTime = Date.now();
     
@@ -117,7 +117,7 @@ export class GoogleProvider extends BaseAIProvider {
         }
         
         parsedObject = JSON.parse(jsonString);
-      } catch (parseError) {
+      } catch {
         throw new AIProviderError(
           this.provider,
           'parse-error',
@@ -129,7 +129,7 @@ export class GoogleProvider extends BaseAIProvider {
       const aiResponse = this.createResponse(content, this.selectModel(request), tokensUsed, startTime);
       return { ...aiResponse, object: parsedObject };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof AIProviderError) throw error;
       this.handleError(error);
     }
@@ -145,7 +145,7 @@ export class GoogleProvider extends BaseAIProvider {
 
       return result.embedding?.values || [];
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.handleError(error);
     }
   }

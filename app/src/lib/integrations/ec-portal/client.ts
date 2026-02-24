@@ -149,16 +149,19 @@ async function fetchECPage({
 }
 
 // Helper to extract first value from EC metadata field (arrays of strings)
-function metaVal(field: any): string {
+function metaVal(field: unknown): string {
   if (!field) return '';
   if (Array.isArray(field)) return field[0] ?? '';
-  if (typeof field === 'object' && field.value) return field.value;
+  if (typeof field === 'object' && field !== null && 'value' in field) {
+    const value = (field as { value?: unknown }).value;
+    return typeof value === 'string' ? value : '';
+  }
   return String(field);
 }
 
-function parseECResults(data: any): ECFundingCall[] {
-  const results = data?.results ?? [];
-  return results.map((r: any) => {
+function parseECResults(data: unknown): ECFundingCall[] {
+  const results = (data as { results?: Array<{ metadata?: Record<string, unknown>; reference?: string; content?: string; summary?: string }> })?.results ?? [];
+  return results.map((r) => {
     const m = r.metadata ?? {};
     const identifier = metaVal(m.identifier) || r.reference || '';
     const title = metaVal(m.title) || r.content || r.summary || '';

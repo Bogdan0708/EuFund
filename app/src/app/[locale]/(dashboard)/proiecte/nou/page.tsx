@@ -45,7 +45,7 @@ export default function NewProjectPage() {
         const body = await res.json().catch(() => null);
         setSubmitError(body?.error?.message || `Eroare ${res.status}`);
       }
-    } catch (err) {
+    } catch {
       setSubmitError('Eroare de conexiune. Încercați din nou.');
     }
   };

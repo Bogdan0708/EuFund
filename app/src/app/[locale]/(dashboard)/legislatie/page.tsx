@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslations } from 'next-intl';
 
 interface SearchResult {
   celex: string;
@@ -12,7 +11,6 @@ interface SearchResult {
 }
 
 export default function LegislatiePage() {
-  const t = useTranslations('legislation');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -27,8 +25,8 @@ export default function LegislatiePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setResults(data.results ?? []);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'A apărut o eroare la căutare.');
     } finally {
       setLoading(false);
     }
@@ -103,7 +101,7 @@ export default function LegislatiePage() {
       )}
 
       {results.length === 0 && !loading && query && (
-        <p className="text-gray-500 text-center py-8">Niciun rezultat găsit pentru „{query}"</p>
+        <p className="text-gray-500 text-center py-8">Niciun rezultat găsit pentru „{query}&quot;</p>
       )}
     </div>
   );

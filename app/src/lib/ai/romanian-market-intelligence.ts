@@ -385,7 +385,7 @@ export async function analyzeRomanianContext(input: RomanianIntelligenceInput): 
   }
 
   // Filter relevant procurement risks
-  let relevantProcurementRisks = input.hasPublicProcurement ? [...PROCUREMENT_RISKS] : [];
+  const relevantProcurementRisks = input.hasPublicProcurement ? [...PROCUREMENT_RISKS] : [];
 
   // Filter relevant regulations
   const relevantRegulations = REGULATORY_FRAMEWORK.filter(r => r.actionRequired || r.impactLevel === 'high');

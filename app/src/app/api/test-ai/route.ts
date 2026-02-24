@@ -1,5 +1,5 @@
 // ─── AI Integration Test Endpoint ────────────────────────────────────
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { 
   getAIHealthStatus, 
   aiGenerate, 
@@ -8,7 +8,42 @@ import {
   analyzeRomanianContent 
 } from '@/lib/ai';
 
-export async function GET(request: NextRequest) {
+type GenerationTest = {
+  success: boolean;
+  error?: string;
+  text?: string;
+  provider?: string;
+  tokensUsed?: number;
+  cached?: boolean;
+};
+
+type RomanianDetectionTest = {
+  success: boolean;
+  error?: string;
+  text?: string;
+  analysis?: {
+    isRomanian: boolean;
+    confidence: number;
+    culturalContext: string;
+    features: {
+      hasDiacritics: boolean;
+      hasEUTerms: boolean;
+      hasLegalTerms: boolean;
+    };
+    recommendations: string[];
+  };
+};
+
+type RomanianGenerationTest = {
+  success: boolean;
+  error?: string;
+  text?: string;
+  provider?: string;
+  tokensUsed?: number;
+  romanianOptimization?: boolean;
+};
+
+export async function GET() {
   if (process.env.NODE_ENV === 'production') {
       return NextResponse.json({ error: 'Not available' }, { status: 404 });
     }
@@ -17,7 +52,7 @@ export async function GET(request: NextRequest) {
     const health = await getAIHealthStatus();
     
     // Test 2: Simple generation (with fallback to existing system)
-    let generationTest = { success: false, error: 'Not attempted' };
+    let generationTest: GenerationTest = { success: false, error: 'Not attempted' };
     
     try {
       const result = await aiGenerate({
@@ -35,7 +70,7 @@ export async function GET(request: NextRequest) {
         provider: result.provider,
         tokensUsed: result.tokensUsed,
         cached: result.cached
-      } as any;
+      };
     } catch (error: unknown) {
       generationTest = {
         success: false,
@@ -44,7 +79,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Test 3: Romanian language detection
-    let romanianTest = { success: false, error: 'Not attempted' };
+    let romanianTest: RomanianDetectionTest = { success: false, error: 'Not attempted' };
     
     try {
       const romanianText = 'Proiectul nostru vizează dezvoltarea unei platforme digitale pentru accesarea fondurilor europene în România prin programul PNRR.';
@@ -60,7 +95,7 @@ export async function GET(request: NextRequest) {
           features: analysis.features,
           recommendations: analysis.recommendations.slice(0, 3) // Limit for response size
         }
-      } as any;
+      };
     } catch (error: unknown) {
       romanianTest = {
         success: false,
@@ -69,7 +104,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Test 4: Romanian generation (if standard generation worked)
-    let romanianGenerationTest = { success: false, error: 'Skipped - standard generation failed' };
+    let romanianGenerationTest: RomanianGenerationTest = { success: false, error: 'Skipped - standard generation failed' };
     
     if (generationTest.success) {
       try {
@@ -88,7 +123,7 @@ export async function GET(request: NextRequest) {
           provider: result.provider,
           tokensUsed: result.tokensUsed,
           romanianOptimization: result.romanianOptimization
-        } as any;
+        };
       } catch (error: unknown) {
         romanianGenerationTest = {
           success: false,

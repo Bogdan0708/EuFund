@@ -390,11 +390,9 @@ export function getProviderRanking(
   prioritizeCost: boolean = false,
   prioritizeSpeed: boolean = false
 ): AIProvider[] {
-  const taskChar = TASK_CHARACTERISTICS[taskType];
-  
   // Filter providers that support this task type
   const supportedProviders = Object.entries(PROVIDER_CAPABILITIES)
-    .filter(([_, cap]) => cap.taskTypes.includes(taskType))
+    .filter(([, cap]) => cap.taskTypes.includes(taskType))
     .map(([provider]) => provider as AIProvider);
   
   // Apply optimization rules

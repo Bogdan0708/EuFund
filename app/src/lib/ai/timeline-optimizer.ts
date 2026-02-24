@@ -2,8 +2,6 @@
 // Critical path analysis, resource leveling, bottleneck detection,
 // what-if scenario planning, and Romanian holiday-aware scheduling.
 
-import { aiGenerateObject } from './client';
-import { z } from 'zod';
 
 // ─── Types ───────────────────────────────────────────────────────
 

@@ -260,13 +260,14 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Pro
   // On downgrade, reset API call counter to prevent overuse at new tier limit
   const isDowngrade = await checkIfDowngrade(userIdFromMetadata, customerId, resolvedTier);
 
+  const periodEndUnix = (subscription as { current_period_end?: number }).current_period_end;
   const updateValues = {
     tier: resolvedTier,
     stripeSubscriptionId: subscription.id,
     stripeCustomerId: customerId,
     subscriptionStatus: mapStripeStatus(subscription.status),
-    subscriptionPeriodEnd: (subscription as any).current_period_end
-      ? new Date((subscription as any).current_period_end * 1000)
+    subscriptionPeriodEnd: periodEndUnix
+      ? new Date(periodEndUnix * 1000)
       : null,
     ...(isDowngrade ? { apiCallsThisMonth: 0 } : {}),
     updatedAt: new Date(),
@@ -286,12 +287,13 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Pro
   const customerId = typeof subscription.customer === 'string' ? subscription.customer : null;
   const userIdFromMetadata = subscription.metadata?.userId;
 
+  const periodEndUnix = (subscription as { current_period_end?: number }).current_period_end;
   const updateValues = {
     tier: 'free' as const,
     stripeSubscriptionId: null,
     subscriptionStatus: 'canceled' as const,
-    subscriptionPeriodEnd: (subscription as any).current_period_end
-      ? new Date((subscription as any).current_period_end * 1000)
+    subscriptionPeriodEnd: periodEndUnix
+      ? new Date(periodEndUnix * 1000)
       : null,
     updatedAt: new Date(),
   };

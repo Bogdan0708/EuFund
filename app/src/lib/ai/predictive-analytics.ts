@@ -300,7 +300,7 @@ ${input.objectives?.length ? `Objectives:\n${input.objectives.map(o => `- ${o}`)
 
 Provide comprehensive success prediction with actionable improvement recommendations.`;
 
-  const { object: aiPrediction, tokensUsed } = await aiGenerateObject({
+  const { object: aiPrediction } = await aiGenerateObject({
     system: systemPrompt,
     prompt,
     schema: predictionSchema,

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { useState, useEffect, useMemo } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -126,8 +126,10 @@ function CriticalFactorsDisplay({ factors }: { factors: SuccessFactor[] }) {
 }
 
 function ImprovementRecommendations({ recommendations }: { recommendations: Recommendation[] }) {
-  const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-  const sorted = useMemo(() => [...recommendations].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]), [recommendations]);
+  const sorted = useMemo(() => {
+    const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+    return [...recommendations].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+  }, [recommendations]);
 
   const priorityLabels: Record<string, string> = { critical: 'Critic', high: 'Ridicat', medium: 'Mediu', low: 'Scăzut' };
   const priorityColors: Record<string, string> = { critical: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200', high: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200', medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200', low: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' };
@@ -244,8 +246,9 @@ function RomanianContextPanel({ indicators }: { indicators: RomanianIndicator[] 
 
 export default function PredictiveDashboard({ projectId, showSuccessPrediction, showPartnerRecommendations, showLifecycleForecasting }: PredictiveDashboardProps) {
   const { data: prediction, isLoading: predLoading, error: predError } = useSuccessPrediction(projectId);
-  const { data: forecast, isLoading: forecastLoading } = useLifecycleForecasting(projectId);
+  const { data: forecast } = useLifecycleForecasting(projectId);
   const [activeTab, setActiveTab] = useState('overview');
+  void showPartnerRecommendations;
 
   // WebSocket for live updates
   const [wsConnected, setWsConnected] = useState(false);
@@ -366,7 +369,7 @@ export default function PredictiveDashboard({ projectId, showSuccessPrediction, 
                     { name: 'Evaluare EC', progress: 0, deadline: '2026-06-01', risk: 'medium' },
                     { name: 'Negociere Grant', progress: 0, deadline: '2026-09-01', risk: 'low' },
                     { name: 'Implementare Faza 1', progress: 0, deadline: '2027-03-01', risk: 'high' },
-                  ]).map((phase: any) => (
+                  ]).map((phase: { name: string; progress: number; deadline: string; risk: 'low' | 'medium' | 'high' }) => (
                     <div key={phase.name} className="space-y-1">
                       <div className="flex justify-between text-sm">
                         <span className="font-medium">{phase.name}</span>

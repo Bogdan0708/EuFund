@@ -28,7 +28,7 @@ export abstract class BaseAIProvider implements AIProviderInterface {
   }
 
   public abstract generateText(request: AIRequest): Promise<AIResponse>;
-  public abstract generateObject<T = any>(request: AIRequest & { schema: any }): Promise<AIResponse & { object: T }>;
+  public abstract generateObject<T = unknown>(request: AIRequest & { schema: unknown }): Promise<AIResponse & { object: T }>;
   public abstract embed(text: string): Promise<number[]>;
   public abstract isHealthy(): Promise<boolean>;
 
@@ -84,7 +84,7 @@ export abstract class BaseAIProvider implements AIProviderInterface {
     return `${this.provider}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  protected handleError(error: any, retryable: boolean = true): never {
+  protected handleError(error: unknown, retryable: boolean = true): never {
     const message = error?.message || 'Unknown error';
     throw new AIProviderError(this.provider, 'unknown', message, retryable);
   }

@@ -12,6 +12,8 @@ import { AICache, getAICache, shouldCache } from './cache';
 import { 
   optimizeForRomanianContext, 
   recordRomanianPerformance,
+  analyzeRomanianContext,
+  getRomanianPerformanceMetrics,
   type RomanianOptimizedRequest 
 } from './romanian-specialization';
 import { 
@@ -20,7 +22,6 @@ import {
   AIResponse, 
   RoutingDecision, 
   AIProviderError,
-  AIRateLimitError,
   UsageMetrics,
   AIRouterConfig
 } from './types';
@@ -50,8 +51,6 @@ export class AIOrchestrator {
   }
 
   public async generateText(request: AIRequest): Promise<AIResponse> {
-    const startTime = Date.now();
-    
     try {
       // 1. Romanian Context Optimization
       const optimizedRequest = optimizeForRomanianContext(request);
@@ -61,7 +60,7 @@ export class AIOrchestrator {
       if (shouldCache(optimizedRequest) && this.cache.isEnabled()) {
         const cached = await this.cache.get(optimizedRequest);
         if (cached) {
-          this.recordUsage(optimizedRequest, cached, true);
+          this.recordUsage(optimizedRequest, cached);
           return cached;
         }
       }
@@ -78,7 +77,7 @@ export class AIOrchestrator {
       }
       
       // 6. Record metrics and Romanian performance
-      this.recordUsage(optimizedRequest, response, false);
+      this.recordUsage(optimizedRequest, response);
       this.router.reportSuccess(routing.selectedProvider);
       
       // 7. Romanian performance tracking
@@ -93,7 +92,7 @@ export class AIOrchestrator {
       
       return response;
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       log.error({ error }, 'AI Orchestrator error');
       
       // Record failure for circuit breaker
@@ -106,21 +105,19 @@ export class AIOrchestrator {
   }
 
   public async generateObject<T>(
-    request: AIRequest & { schema: any }
+    request: AIRequest & { schema: unknown }
   ): Promise<AIResponse & { object: T }> {
-    const startTime = Date.now();
-    
     try {
       // Structured output is generally not cached due to complexity
       const routing = await this.router.routeRequest(request);
       const response = await this.executeObjectWithFallback(request, routing) as AIResponse & { object: T };
       
-      this.recordUsage(request, response, false);
+      this.recordUsage(request, response);
       this.router.reportSuccess(routing.selectedProvider);
       
       return response;
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       log.error({ error }, 'AI Orchestrator structured error');
       
       if (error instanceof AIProviderError) {
@@ -143,7 +140,7 @@ export class AIOrchestrator {
 
       return await providerInstance.embed(text);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       log.error({ error }, 'AI Orchestrator embedding error');
       throw error;
     }
@@ -158,7 +155,7 @@ export class AIOrchestrator {
     }>;
     cache: {
       enabled: boolean;
-      stats: any;
+      stats: unknown;
     };
   }> {
     const providers = [];
@@ -204,11 +201,11 @@ export class AIOrchestrator {
   }
 
   public getRomanianPerformanceMetrics() {
-    return require('./romanian-specialization').getRomanianPerformanceMetrics();
+    return getRomanianPerformanceMetrics();
   }
 
   public analyzeRomanianContent(text: string) {
-    return require('./romanian-specialization').analyzeRomanianContext(text);
+    return analyzeRomanianContext(text);
   }
 
   private async executeWithFallback(
@@ -228,7 +225,7 @@ export class AIOrchestrator {
 
       try {
         return await provider.generateText(request);
-      } catch (error: any) {
+      } catch (error: unknown) {
         lastError = error;
         
         // Don't retry on non-retryable errors
@@ -237,7 +234,8 @@ export class AIOrchestrator {
         }
         
         // Continue to next provider
-        log.warn({ provider: providerType, error: error.message }, 'Provider failed, trying next');
+        const message = error instanceof Error ? error.message : 'Unknown provider error';
+        log.warn({ provider: providerType, error: message }, 'Provider failed, trying next');
       }
     }
 
@@ -245,7 +243,7 @@ export class AIOrchestrator {
   }
 
   private async executeObjectWithFallback<T>(
-    request: AIRequest & { schema: any }, 
+    request: AIRequest & { schema: unknown }, 
     routing: RoutingDecision
   ): Promise<AIResponse & { object: T }> {
     const providers = [
@@ -261,14 +259,15 @@ export class AIOrchestrator {
 
       try {
         return await provider.generateObject<T>(request) as AIResponse & { object: T };
-      } catch (error: any) {
+      } catch (error: unknown) {
         lastError = error;
         
         if (error instanceof AIProviderError && !error.retryable) {
           throw error;
         }
         
-        log.warn({ provider: providerType, error: error.message }, 'Provider failed for structured output, trying next');
+        const message = error instanceof Error ? error.message : 'Unknown provider error';
+        log.warn({ provider: providerType, error: message }, 'Provider failed for structured output, trying next');
       }
     }
 
@@ -342,7 +341,7 @@ export class AIOrchestrator {
     }
   }
 
-  private recordUsage(request: AIRequest, response: AIResponse, cached: boolean): void {
+  private recordUsage(request: AIRequest, response: AIResponse): void {
     if (!this.config.enableMetrics) return;
 
     const key = `${response.provider}:${request.taskType}:24h`;

@@ -9,16 +9,13 @@ import { organizationSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, getPaginationParams } from '@/lib/auth/helpers';
 import { logAudit, sanitizeForAudit } from '@/lib/legal/audit';
-import { eq, and, isNull, ilike, count, desc } from 'drizzle-orm';
+import { eq, and, isNull, count, desc } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
   try {
     const user = await requireAuth();
     const { page, perPage, offset } = getPaginationParams(req);
-    const url = new URL(req.url);
-    const search = url.searchParams.get('search') || undefined;
-    const orgType = url.searchParams.get('orgType') || undefined;
 
     // Get orgs where user is a member
     const baseConditions = [
@@ -154,7 +151,7 @@ export async function POST(req: NextRequest) {
       action: 'organization.create',
       resourceType: 'organization',
       resourceId: org.id,
-      newValue: sanitizeForAudit(data as any),
+      newValue: sanitizeForAudit(data as unknown as Record<string, unknown>),
       metadata: { cui: data.cui },
     });
 

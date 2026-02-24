@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
 export interface BudgetCategory {
@@ -148,7 +148,6 @@ export function BudgetDashboard({ data, showForecast }: BudgetDashboardProps) {
           </CardHeader>
           <CardContent className="space-y-3">
             {data.categories.map(cat => {
-              const pct = cat.allocated > 0 ? (cat.spent / cat.allocated) * 100 : 0;
               return (
                 <div key={cat.id} className="space-y-1">
                   <div className="flex justify-between items-center text-sm">

@@ -97,7 +97,7 @@ export async function searchEURLex(query: string, options: {
         }
 
         const data = await response.json();
-        return (data.results?.bindings ?? []).map((b: any) => ({
+        return (data.results?.bindings ?? []).map((b: { [key: string]: { value?: string } | undefined }) => ({
           celex: b.celex?.value ?? '',
           title: normalizeDiacritics(b.title?.value ?? ''),
           titleRo: language === 'ro' ? normalizeDiacritics(b.title?.value ?? '') : undefined,
