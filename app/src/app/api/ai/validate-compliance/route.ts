@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
           overallScore: result.overallScore,
           deterministicResults: result.deterministicResults,
           aiResults: result.aiResults,
+          dnshAssessment: result.dnshAssessment,
           sourceTrace: result.sourceTrace,
           recommendations: result.recommendations,
           metadata: {

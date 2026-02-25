@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { RuleResult } from '@/lib/rules/eligibility';
 import type { AIComplianceCheck, ComplianceSourceTrace } from '@/lib/ai/compliance-validator';
+import type { DNSHAssessment } from '@/lib/rules/dnsh';
 
 interface ComplianceExplainabilityData {
   overallScore: number;
@@ -11,6 +12,7 @@ interface ComplianceExplainabilityData {
   deterministicResults: RuleResult[];
   sourceTrace: ComplianceSourceTrace[];
   recommendations: string[];
+  dnshAssessment?: DNSHAssessment;
 }
 
 export function ComplianceExplainabilityPanel({ data }: { data: ComplianceExplainabilityData }) {
@@ -46,6 +48,33 @@ export function ComplianceExplainabilityPanel({ data }: { data: ComplianceExplai
           {data.evaluatedAt ? <p>Ultima analiză: {new Date(data.evaluatedAt).toLocaleString('ro-RO')}</p> : null}
         </CardContent>
       </Card>
+
+      {data.dnshAssessment ? (
+        <Card className="border-emerald-200/80 bg-emerald-50/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Evaluare DNSH</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={statusVariant(data.dnshAssessment.status)}>
+                {data.dnshAssessment.status === 'pass' ? 'Conform DNSH' : data.dnshAssessment.status === 'warning' ? 'Risc DNSH mediu' : 'Risc DNSH ridicat'}
+              </Badge>
+              <Badge variant="outline">Scor {data.dnshAssessment.score}/100</Badge>
+              <span className="text-xs text-muted-foreground">{data.dnshAssessment.legalReference}</span>
+            </div>
+            <p className="text-muted-foreground">{data.dnshAssessment.finding}</p>
+            {data.dnshAssessment.missingEvidence.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {data.dnshAssessment.missingEvidence.map((item) => (
+                  <span key={item} className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
+                    Lipsă: {item}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

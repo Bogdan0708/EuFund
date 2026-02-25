@@ -47,6 +47,7 @@ export async function GET(req: NextRequest, { params }: Params) {
             createdAt: latestReport.createdAt,
             overallScore: latestReport.overallScore,
             items: latestReport.items,
+            dnshAssessment: (latestReport.items as { dnshAssessment?: unknown })?.dnshAssessment || null,
           }
           : null,
       },
@@ -156,6 +157,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
         overallScore: result.overallScore,
         deterministicResults: result.deterministicResults,
         aiResults: result.aiResults,
+        dnshAssessment: result.dnshAssessment,
         sourceTrace: result.sourceTrace,
         recommendations: result.recommendations,
         evaluatedAt: result.evaluatedAt,
