@@ -12,6 +12,17 @@ const log = logger.child({ component: 'project-mysmis-export-api' });
 
 type Params = { params: { id: string } };
 
+function normalizeAddress(address: unknown): string | null {
+  if (!address) return null;
+  if (typeof address === 'string') return address;
+  if (typeof address !== 'object') return null;
+
+  const parts = ['street', 'city', 'county', 'postalCode']
+    .map((key) => (address as Record<string, unknown>)[key])
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  return parts.length > 0 ? parts.join(', ') : JSON.stringify(address);
+}
+
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
@@ -65,7 +76,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         cui: organization?.cui,
         regCom: organization?.regCom,
         orgType: organization?.orgType,
-        address: organization?.address,
+        address: normalizeAddress(organization?.address),
         nutsRegion: organization?.nutsRegion,
       },
       call: call
@@ -101,7 +112,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     await logAudit({
       userId: user.id,
-      action: 'project.mysmis_export_prepare',
+      action: 'project.export',
       resourceType: 'project',
       resourceId: id,
       metadata: {
