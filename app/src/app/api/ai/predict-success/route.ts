@@ -1,11 +1,12 @@
 // ─── POST /api/ai/predict-success ────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { predictProposalSuccess, quickSuccessPrediction } from '@/lib/ai/predictive-analytics';
+import { predictProposalSuccess, quickSuccessPrediction, type ProposalSuccessPrediction } from '@/lib/ai/predictive-analytics';
 import { type EUProgramKey } from '@/lib/ai/eu-knowledge-base';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
+import { withEUAIActCompliance } from '@/lib/ai/eu-ai-act';
 import { logger } from '@/lib/logger';
 
 const euProgramKeys = ['horizon_europe', 'life_plus', 'interreg', 'erdf', 'pocidif', 'pnrr', 'general'] as const;
@@ -37,38 +38,61 @@ const inputSchema = z.object({
 
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
-  try {
-    const body = await request.json();
-    const parsed = inputSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(), { status: 400 });
+    try {
+      const body = await request.json();
+      const parsed = inputSchema.safeParse(body);
+      if (!parsed.success) {
+        return NextResponse.json(Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(), { status: 400 });
+      }
+
+      const input = parsed.data as typeof parsed.data & { programType: EUProgramKey };
+
+      const runWithCompliance = withEUAIActCompliance<typeof input>(
+        'predict-success',
+        async (payload) => {
+          if (payload.quick) {
+            const quickResult = quickSuccessPrediction(payload);
+            return { result: quickResult, confidence: 0.4 };
+          }
+
+          const fullResult = await predictProposalSuccess(payload);
+          const confidenceMap: Record<ProposalSuccessPrediction['confidenceLevel'], number> = {
+            high: 0.9,
+            medium: 0.7,
+            low: 0.45,
+          };
+          return { result: fullResult, confidence: confidenceMap[fullResult.confidenceLevel] };
+        },
+      );
+
+      const execution = await runWithCompliance(input, user.id);
+      const result = execution.result as ProposalSuccessPrediction | ReturnType<typeof quickSuccessPrediction>;
+
+      if (!input.quick) {
+        const fullResult = result as ProposalSuccessPrediction;
+        await logAudit({
+          action: 'ai.generate',
+          resourceType: 'success_prediction',
+          userId: user.id,
+          metadata: {
+            successProbability: fullResult.successProbability,
+            confidence: fullResult.confidenceLevel,
+            userTier: user.tier,
+          },
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: result,
+        metadata: {
+          aiAct: execution.metadata,
+        },
+      });
+    } catch (error) {
+      if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
+      logger.error({ error: error }, '[predict-success]');
+      return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
     }
-
-    const input = parsed.data as typeof parsed.data & { programType: EUProgramKey };
-
-    if (input.quick) {
-      const result = quickSuccessPrediction(input);
-      return NextResponse.json({ success: true, data: result });
-    }
-
-    const result = await predictProposalSuccess(input);
-
-    await logAudit({
-      action: 'ai.generate',
-      resourceType: 'success_prediction',
-      userId: user.id,
-      metadata: { 
-        successProbability: result.successProbability, 
-        confidence: result.confidenceLevel,
-        userTier: user.tier 
-      },
-    });
-
-    return NextResponse.json({ success: true, data: result });
-  } catch (error) {
-    if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
-    logger.error({ error: error }, '[predict-success]');
-    return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
-  }
   });
 }

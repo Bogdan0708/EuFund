@@ -4,6 +4,7 @@ import { validateCompliance } from '@/lib/ai/compliance-validator';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
+import { withEUAIActCompliance } from '@/lib/ai/eu-ai-act';
 import { validateComplianceSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
 
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const result = await validateCompliance({
+      const validationInput = {
         project: {
           title: parsed.data.proposalText.slice(0, 120),
           summary: parsed.data.proposalText,
@@ -31,8 +32,18 @@ export async function POST(request: NextRequest) {
         call: {
           eligibleTypes: parsed.data.regulations,
         },
-        locale: 'ro',
-      });
+        locale: 'ro' as const,
+      };
+
+      const runWithCompliance = withEUAIActCompliance<typeof validationInput>(
+        'validate-compliance',
+        async (payload) => {
+          const result = await validateCompliance(payload);
+          return { result, confidence: result.overallScore / 100 };
+        },
+      );
+      const execution = await runWithCompliance(validationInput, user.id);
+      const result = execution.result as Awaited<ReturnType<typeof validateCompliance>>;
 
       await logAudit({
         userId: user.id,
@@ -57,6 +68,7 @@ export async function POST(request: NextRequest) {
             tokensUsed: result.tokensUsed,
             ragSourcesUsed: result.ragSources,
             validatedAt: new Date().toISOString(),
+            aiAct: execution.metadata,
           },
         },
       });

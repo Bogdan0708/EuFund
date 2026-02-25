@@ -4,6 +4,7 @@ import { matchGrants, type FundingCall } from '@/lib/ai/grant-matcher';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
+import { withEUAIActCompliance } from '@/lib/ai/eu-ai-act';
 import { matchGrantsSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
 
@@ -92,8 +93,19 @@ export async function POST(request: NextRequest) {
         locale: 'ro' as const,
       };
 
-      // In production, fetch calls from DB. For now use demo data.
-      const result = await matchGrants(matcherInput, DEMO_CALLS);
+      const runWithCompliance = withEUAIActCompliance<typeof matcherInput>(
+        'match-grants',
+        async (payload) => {
+          const result = await matchGrants(payload, DEMO_CALLS);
+          const topScore = result.matches[0]?.overallScore ?? 0;
+          return {
+            result,
+            confidence: Math.max(0.3, Math.min(0.95, topScore / 100)),
+          };
+        },
+      );
+      const execution = await runWithCompliance(matcherInput, user.id);
+      const result = execution.result as Awaited<ReturnType<typeof matchGrants>>;
 
       await logAudit({
         userId: user.id,
@@ -115,6 +127,7 @@ export async function POST(request: NextRequest) {
             tokensUsed: result.tokensUsed,
             callsEvaluated: DEMO_CALLS.length,
             matchedAt: new Date().toISOString(),
+            aiAct: execution.metadata,
           },
         },
       });
