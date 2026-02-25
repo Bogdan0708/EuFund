@@ -21,6 +21,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const params = useParams<{ locale?: string }>();
   const pathname = usePathname();
   const locale = params.locale || 'ro';
+  const switchLocale = locale === 'ro' ? 'en' : 'ro';
+  const switchedPath = `/${switchLocale}${pathname.replace(/^\/(ro|en)/, '')}`;
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [role, setRole] = useState<UserRole>('project_manager');
@@ -88,6 +90,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return items;
   }, [locale, role]);
 
+  const roleLabel: Record<UserRole, string> = {
+    admin: 'Administrator platformă',
+    org_admin: 'Administrator organizație',
+    project_manager: 'Manager proiect',
+    viewer: 'Vizualizare',
+  };
+
   const sidebar = (
     <aside className="w-72 shrink-0 border-r bg-gradient-to-b from-slate-50 to-white p-4">
       <Link href={`/${locale}/panou`} className="mb-6 block rounded-xl bg-gradient-to-r from-blue-700 to-cyan-600 px-3 py-3 text-sm font-semibold text-white shadow-md">
@@ -119,7 +128,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <div className="mt-6 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
         <p className="font-medium text-foreground">Previzualizare rol</p>
-        <p className="mt-1">Curent: {role}</p>
+        <p className="mt-1">Curent: {roleLabel[role]}</p>
       </div>
     </aside>
   );
@@ -175,6 +184,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Button variant="outline" size="sm" aria-label="Notificări">
             <Bell className="mr-2 h-4 w-4" />
             Alerte
+          </Button>
+
+          <Button asChild variant="outline" size="sm" aria-label="Comută limba">
+            <Link href={switchedPath}>{locale === 'ro' ? 'EN' : 'RO'}</Link>
           </Button>
         </div>
 

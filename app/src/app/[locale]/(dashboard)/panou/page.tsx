@@ -18,8 +18,8 @@ interface Project {
   totalBudget?: string | number | null;
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('en-IE', {
+function formatCurrency(value: number, locale: string) {
+  return new Intl.NumberFormat(locale === 'ro' ? 'ro-RO' : 'en-GB', {
     style: 'currency',
     currency: 'EUR',
     maximumFractionDigits: 0,
@@ -173,11 +173,11 @@ export default function DashboardPage() {
           <CardContent className="space-y-2 text-sm">
             <div className="rounded-lg border bg-muted/30 p-3">
               <p className="text-muted-foreground">Planificat</p>
-              <p className="text-lg font-semibold">{formatCurrency(summary.budgetTotal)}</p>
+              <p className="text-lg font-semibold">{formatCurrency(summary.budgetTotal, locale)}</p>
             </div>
             <div className="rounded-lg border bg-muted/30 p-3">
               <p className="text-muted-foreground">Cheltuit</p>
-              <p className="text-lg font-semibold">{formatCurrency(summary.budgetSpent)}</p>
+              <p className="text-lg font-semibold">{formatCurrency(summary.budgetSpent, locale)}</p>
             </div>
             <p className="text-xs text-muted-foreground">Sursă de adevăr: înregistrările bugetare ale proiectelor din portofoliu.</p>
           </CardContent>

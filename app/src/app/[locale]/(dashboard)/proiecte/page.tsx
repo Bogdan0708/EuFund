@@ -46,10 +46,14 @@ const savedFilters = [
   { id: 'approved', label: 'Aprobate', status: 'aprobat' },
 ];
 
-function formatCurrency(value: string | null | undefined) {
+function formatCurrency(value: string | null | undefined, locale: string) {
   const numeric = Number(value || 0);
   if (!numeric) return 'N/A';
-  return new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(numeric);
+  return new Intl.NumberFormat(locale === 'ro' ? 'ro-RO' : 'en-GB', {
+    style: 'currency',
+    currency: 'EUR',
+    maximumFractionDigits: 0,
+  }).format(numeric);
 }
 
 export default function ProjectsPage() {
@@ -224,7 +228,7 @@ export default function ProjectsPage() {
                             <StatusBadge kind="project" value={project.status} />
                           </TableCell>
                         )}
-                        {visibleColumns.includes('budget') && <TableCell>{formatCurrency(project.totalBudget)}</TableCell>}
+                        {visibleColumns.includes('budget') && <TableCell>{formatCurrency(project.totalBudget, locale)}</TableCell>}
                         {visibleColumns.includes('updatedAt') && (
                           <TableCell>{new Date(project.updatedAt).toLocaleDateString(locale === 'ro' ? 'ro-RO' : 'en-GB')}</TableCell>
                         )}

@@ -31,9 +31,13 @@ interface FundingCall {
   url: string;
 }
 
-function formatCurrency(value: number | null) {
+function formatCurrency(value: number | null, locale: string) {
   if (!value) return 'N/A';
-  return new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(value);
+  return new Intl.NumberFormat(locale === 'ro' ? 'ro-RO' : 'en-GB', {
+    style: 'currency',
+    currency: 'EUR',
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 export default function FundingCallsLivePage() {
@@ -149,7 +153,7 @@ export default function FundingCallsLivePage() {
                       </TableCell>
                       <TableCell>{call.programme || 'N/A'}</TableCell>
                       <TableCell>{call.deadlineDate ? new Date(call.deadlineDate).toLocaleDateString(locale === 'ro' ? 'ro-RO' : 'en-GB') : 'N/A'}</TableCell>
-                      <TableCell>{formatCurrency(call.budget)}</TableCell>
+                      <TableCell>{formatCurrency(call.budget, locale)}</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           <Button asChild size="sm" variant="outline">
