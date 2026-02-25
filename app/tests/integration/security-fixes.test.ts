@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
-import type { NextAuthRequest } from 'next-auth';
+type NextAuthRequest = NextRequest & { auth?: { user?: { id?: string; email?: string } } | null };
 import { ZodError } from 'zod';
 
 // Helper to create mock Next.js requests
@@ -140,7 +140,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
 
       const { default: middleware } = await import('@/middleware');
       const request = createNextRequest('/');
-      const response = await middleware(request);
+      const response = await middleware(request) as NextResponse;
 
       expect(response.headers.get('Strict-Transport-Security')).toBe(
         'max-age=31536000; includeSubDomains; preload'
@@ -156,7 +156,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
 
       const { default: middleware } = await import('@/middleware');
       const request = createNextRequest('/');
-      const response = await middleware(request);
+      const response = await middleware(request) as NextResponse;
 
       expect(response.headers.has('Strict-Transport-Security')).toBe(false);
     });
@@ -170,7 +170,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
 
       const { default: middleware } = await import('@/middleware');
       const request = createNextRequest('/');
-      const response = await middleware(request);
+      const response = await middleware(request) as NextResponse;
 
       const nonce = response.headers.get('x-nonce');
       const cspHeader = response.headers.get('Content-Security-Policy');
@@ -191,7 +191,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
       
       const { default: middleware } = await import('@/middleware');
       const request = createNextRequest('/ro/dashboard');
-      const response = await middleware(request);
+      const response = await middleware(request) as NextResponse;
 
       // Check for redirect status code
       expect(response.status).toBe(307); // Next.js redirect is 302 Found
@@ -208,7 +208,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
 
       const { default: middleware } = await import('@/middleware');
       const request = createNextRequest('/en/dashboard');
-      const response = await middleware(request);
+      const response = await middleware(request) as NextResponse;
 
       expect(response.status).toBe(307);
       expect(response.headers.get('Location')).toContain('/en/login');

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
-import type { NextAuthRequest } from 'next-auth';
+type NextAuthRequest = NextRequest & { auth?: { user?: { id?: string; email?: string } } | null };
 
 function createNextRequest(
   url: string,
@@ -61,7 +61,7 @@ describe('Security Integration Tests', () => {
       });
       request.auth = { user: { id: '1', email: 'test@example.com' } } as any;
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.status).toBe(403);
       const json = await response.json();
@@ -78,7 +78,7 @@ describe('Security Integration Tests', () => {
       });
       request.auth = { user: { id: '1', email: 'test@example.com' } } as any;
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.status).toBe(403);
       const json = await response.json();
@@ -93,7 +93,7 @@ describe('Security Integration Tests', () => {
       });
       request.auth = { user: { id: '1', email: 'test@example.com' } } as any;
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.status).toBe(403);
       const json = await response.json();
@@ -107,7 +107,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.status).not.toBe(403);
       expect(response.headers.has('x-nonce')).toBe(true);
@@ -129,7 +129,7 @@ describe('Security Integration Tests', () => {
       });
       request.auth = { user: { id: '1', email: 'test@example.com' } } as any;
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect([200, 404]).toContain(response.status);
     });
@@ -149,7 +149,7 @@ describe('Security Integration Tests', () => {
       });
       request.auth = { user: { id: '1', email: 'test@example.com' } } as any;
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.status).toBe(403);
       const json = await response.json();
@@ -164,7 +164,7 @@ describe('Security Integration Tests', () => {
         body: { username: 'test', password: 'test' },
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.status).not.toBe(403);
     });
@@ -176,7 +176,7 @@ describe('Security Integration Tests', () => {
         method: 'POST',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.status).not.toBe(403);
     });
@@ -208,7 +208,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.headers.get('X-Frame-Options')).toBe('DENY');
     });
@@ -220,7 +220,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
     });
@@ -232,7 +232,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       const referrerPolicy = response.headers.get('Referrer-Policy');
       expect(referrerPolicy).toBeTruthy();
@@ -246,7 +246,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       const csp = response.headers.get('Content-Security-Policy');
       expect(csp).toBeTruthy();
@@ -262,7 +262,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       const nonce = response.headers.get('x-nonce');
       expect(nonce).toBeTruthy();
@@ -276,7 +276,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       const setCookie = response.headers.get('Set-Cookie');
       if (setCookie) {
@@ -293,7 +293,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.headers.get('X-XSS-Protection')).toBe('1; mode=block');
     });
@@ -305,7 +305,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       const permissionsPolicy = response.headers.get('Permissions-Policy');
       expect(permissionsPolicy).toBeTruthy();
@@ -342,7 +342,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.status).toBe(401);
       const json = await response.json();
@@ -364,7 +364,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.status).toBe(401);
       const json = await response.json();
@@ -385,7 +385,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.status).not.toBe(401);
     });
@@ -404,7 +404,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.status).not.toBe(401);
     });
@@ -423,7 +423,7 @@ describe('Security Integration Tests', () => {
         method: 'GET',
       });
 
-      const response = await middlewareFunc(request);
+      const response = await middlewareFunc(request) as NextResponse;
 
       expect(response.status).not.toBe(401);
     });
