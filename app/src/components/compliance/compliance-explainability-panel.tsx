@@ -24,6 +24,7 @@ export function ComplianceExplainabilityPanel({ data }: { data: ComplianceExplai
     const severity = { fail: 0, warning: 1, pass: 2 };
     return severity[left.status] - severity[right.status];
   });
+  const sourceByIndex = new Map(data.sourceTrace.map((source) => [source.sourceIndex, source]));
 
   return (
     <div className="space-y-4">
@@ -55,12 +56,15 @@ export function ComplianceExplainabilityPanel({ data }: { data: ComplianceExplai
             <p className="text-sm text-muted-foreground">Nu au fost găsite surse legislative pentru această analiză.</p>
           ) : (
             data.sourceTrace.map((source) => (
-              <div key={source.sourceId} className="rounded-xl border bg-muted/30 p-3 text-sm">
+              <div id={`sursa-${source.sourceIndex}`} key={source.sourceId} className="rounded-xl border bg-muted/30 p-3 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-medium">[Sursa {source.sourceIndex}] {source.title}</p>
                   <Badge variant="outline">Relevanță {Math.round(source.score * 100)}%</Badge>
                 </div>
                 <p className="mt-2 text-muted-foreground">{source.snippet}...</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Ancoră citare: <code>#sursa-{source.sourceIndex}</code>
+                </p>
                 {source.sourceUrl ? (
                   <a
                     className="mt-2 inline-flex items-center gap-1 text-xs text-sky-700 hover:underline"
@@ -109,11 +113,20 @@ export function ComplianceExplainabilityPanel({ data }: { data: ComplianceExplai
                       Referință legală lipsă
                     </span>
                   )}
-                  {(item.citations || []).map((citation) => (
-                    <span key={citation} className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-700">
-                      [Sursa {citation}]
-                    </span>
-                  ))}
+                  {(item.citations || []).map((citation) => {
+                    const citedSource = sourceByIndex.get(citation);
+                    return (
+                      <a
+                        key={citation}
+                        className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-700 hover:bg-sky-100 hover:underline"
+                        href={`#sursa-${citation}`}
+                        aria-label={`Navighează la sursa ${citation}`}
+                        title={citedSource ? `${citedSource.title}` : `Sursa ${citation}`}
+                      >
+                        [Sursa {citation}]
+                      </a>
+                    );
+                  })}
                 </div>
               </div>
             ))
