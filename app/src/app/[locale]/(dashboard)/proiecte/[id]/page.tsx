@@ -14,6 +14,7 @@ import { GanttChart } from '@/components/project/gantt-chart';
 import { WorkPackageDashboard } from '@/components/project/work-package-dashboard';
 import { WorkPackageTable } from '@/components/project/work-package-table';
 import { ComplianceExplainabilityPanel } from '@/components/compliance/compliance-explainability-panel';
+import { MySMISFieldMapping } from '@/components/integrations/mysmis-field-mapping';
 import type { GanttData } from '@/types/timeline';
 import type { Milestone, WorkPackage } from '@/types/work-packages';
 import type { RuleResult } from '@/lib/rules/eligibility';
@@ -572,6 +573,14 @@ export default function ProjectDetailPage() {
                     </ul>
                   </div>
                 ) : null}
+
+                <MySMISFieldMapping
+                  missingRequired={mysmisData.missingRequired}
+                  onResolve={(field) => {
+                    const action = resolveMissingFieldAction(field);
+                    if (action) action();
+                  }}
+                />
               </CardContent>
             </Card>
           ) : null}
