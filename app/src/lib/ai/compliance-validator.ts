@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { aiGenerateObject } from './client';
 import { runEligibilityRules, type RuleContext, type RuleResult } from '@/lib/rules/eligibility';
 import { hybridSearch } from '@/lib/rag/pipeline';
+import { assessDNSH, type DNSHAssessment } from '@/lib/rules/dnsh';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ export interface ComplianceResult {
   overallScore: number;
   deterministicResults: RuleResult[];
   aiResults: AIComplianceCheck[];
+  dnshAssessment: DNSHAssessment;
   ragSources: number;
   sourceTrace: ComplianceSourceTrace[];
   tokensUsed: number;
@@ -180,6 +182,29 @@ Check all compliance aspects and provide recommendations.`;
     };
   });
 
+  const dnshAssessment = assessDNSH({
+    title: input.project.title,
+    summary: input.project.summary,
+    objectives: input.project.objectives,
+    methodology: input.project.methodology,
+    locale: input.locale,
+  });
+
+  const dnshCitations = sourceTrace
+    .filter((source) => /dnsh|do no significant harm|taxonomy|climate|mediu/i.test(source.snippet))
+    .slice(0, 2)
+    .map((source) => source.sourceIndex);
+
+  normalizedChecks.push({
+    area: 'DNSH',
+    status: dnshAssessment.status,
+    finding: dnshAssessment.finding,
+    recommendation: dnshAssessment.recommendation,
+    legalReference: dnshAssessment.legalReference,
+    confidence: Math.max(0.45, Math.min(0.95, dnshAssessment.score / 100)),
+    citations: dnshCitations,
+  });
+
   // Combine scores: 50% deterministic, 50% AI
   const aiPassRate = normalizedChecks.length > 0
     ? normalizedChecks.filter((c) => c.status === 'pass').length / normalizedChecks.length * 100
@@ -191,6 +216,7 @@ Check all compliance aspects and provide recommendations.`;
     overallScore,
     deterministicResults,
     aiResults: normalizedChecks,
+    dnshAssessment,
     ragSources: ragResults.length,
     sourceTrace,
     tokensUsed,
