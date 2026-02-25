@@ -111,6 +111,7 @@ export default function ProjectDetailPage() {
   const [mysmisData, setMysmisData] = useState<MySMISExportData | null>(null);
   const [mysmisLoading, setMysmisLoading] = useState(false);
   const [mysmisError, setMysmisError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'gantt' | 'packages' | 'compliance'>('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -287,6 +288,33 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const scrollToTarget = (targetId: string) => {
+    window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
+
+  const resolveMissingFieldAction = (field: string) => {
+    if (field === 'Titlu proiect' || field === 'Rezumat proiect') {
+      return () => {
+        setActiveTab('overview');
+        scrollToTarget('fix-project-details');
+      };
+    }
+    if (field === 'Buget total proiect') {
+      return () => {
+        setActiveTab('overview');
+        scrollToTarget('fix-budget-summary');
+      };
+    }
+    if (field === 'Nume organizație' || field === 'CUI organizație') {
+      return () => {
+        router.push(`/${locale}/setari`);
+      };
+    }
+    return null;
+  };
+
   if (loading) return <LoadingState label="Se încarcă prezentarea proiectului..." />;
   if (error || !project) return <ErrorState message={error || 'Proiectul nu a fost găsit.'} onRetry={loadProject} />;
 
@@ -335,7 +363,7 @@ export default function ProjectDetailPage() {
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="shadow-sm">
+        <Card id="fix-budget-summary" className="shadow-sm">
           <CardHeader>
             <CardTitle className="text-base">Situație jaloane</CardTitle>
           </CardHeader>
@@ -398,7 +426,7 @@ export default function ProjectDetailPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'overview' | 'gantt' | 'packages' | 'compliance')}>
         <TabsList className="w-full justify-start overflow-auto">
           <TabsTrigger value="overview">Prezentare</TabsTrigger>
           <TabsTrigger value="gantt">Cronologie</TabsTrigger>
@@ -407,7 +435,7 @@ export default function ProjectDetailPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          <Card className="shadow-sm">
+          <Card id="fix-project-details" className="shadow-sm">
             <CardHeader>
               <CardTitle className="text-base">Detalii proiect</CardTitle>
             </CardHeader>
@@ -488,7 +516,7 @@ export default function ProjectDetailPage() {
           ) : null}
 
           {!mysmisLoading && mysmisData ? (
-            <Card className="border-indigo-200/70 bg-indigo-50/30">
+            <Card id="fix-mysmis-card" className="border-indigo-200/70 bg-indigo-50/30">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">Pachet MySMIS 2021+</CardTitle>
               </CardHeader>
@@ -518,9 +546,19 @@ export default function ProjectDetailPage() {
                   <div>
                     <p className="font-medium">Câmpuri obligatorii lipsă:</p>
                     <ul className="mt-1 space-y-1 text-muted-foreground">
-                      {mysmisData.missingRequired.map((item) => (
-                        <li key={item}>• {item}</li>
-                      ))}
+                      {mysmisData.missingRequired.map((item) => {
+                        const action = resolveMissingFieldAction(item);
+                        return (
+                          <li key={item} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-amber-300/60 bg-amber-50/40 px-2 py-1">
+                            <span>• {item}</span>
+                            {action ? (
+                              <Button variant="outline" size="sm" onClick={action}>
+                                Mergi la câmp
+                              </Button>
+                            ) : null}
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 ) : null}

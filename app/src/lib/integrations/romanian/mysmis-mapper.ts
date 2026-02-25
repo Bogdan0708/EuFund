@@ -78,7 +78,121 @@ function toXmlNode(key: string, value: unknown): string {
 }
 
 export function serializeMySMISPayloadToXml(payload: Record<string, unknown>): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>${toXmlNode('MySMISExport', payload)}`;
+  const exportPayload = payload as {
+    schemaVersion?: string;
+    generatedAt?: string;
+    project?: {
+      localProjectId?: string;
+      title?: string;
+      acronym?: string;
+      status?: string;
+      summary?: string;
+      sustainability?: string;
+      timeline?: { startDate?: string; endDate?: string; durationMonths?: number };
+      financials?: { totalBudget?: number; euContribution?: number; ownContribution?: number };
+      objectives?: string[];
+      methodology?: string[];
+    };
+    applicant?: {
+      name?: string;
+      cui?: string;
+      regCom?: string;
+      legalType?: string;
+      address?: string;
+      nutsRegion?: string;
+    };
+    call?: {
+      callCode?: string;
+      title?: string;
+      deadline?: string;
+      guideUrl?: string;
+    };
+    compliance?: {
+      overallScore?: number;
+      evaluatedAt?: string;
+      dnshStatus?: string;
+      dnshScore?: number;
+      highRiskFindings?: string[];
+    };
+    workPackages?: Array<{
+      localWorkPackageId?: string;
+      name?: string;
+      description?: string;
+      startDate?: string;
+      endDate?: string;
+      budgetAllocated?: number;
+      status?: string;
+      milestones?: unknown[];
+      deliverables?: unknown[];
+    }>;
+  };
+
+  const workPackagesXml = (exportPayload.workPackages || [])
+    .map((workPackage, index) => {
+      const milestones = Array.isArray(workPackage.milestones) ? workPackage.milestones : [];
+      const deliverables = Array.isArray(workPackage.deliverables) ? workPackage.deliverables : [];
+      return `
+      <WorkPackage index="${index + 1}">
+        ${toXmlNode('LocalWorkPackageId', workPackage.localWorkPackageId || '')}
+        ${toXmlNode('Name', workPackage.name || '')}
+        ${toXmlNode('Description', workPackage.description || '')}
+        ${toXmlNode('StartDate', workPackage.startDate || '')}
+        ${toXmlNode('EndDate', workPackage.endDate || '')}
+        ${toXmlNode('BudgetAllocated', workPackage.budgetAllocated || 0)}
+        ${toXmlNode('Status', workPackage.status || '')}
+        <Milestones>${milestones.map((milestone) => toXmlNode('Milestone', milestone)).join('')}</Milestones>
+        <Deliverables>${deliverables.map((deliverable) => toXmlNode('Deliverable', deliverable)).join('')}</Deliverables>
+      </WorkPackage>`;
+    })
+    .join('');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<MySMIS2021PlusSubmission version="${escapeXml(exportPayload.schemaVersion || 'mysmis-2021-plus-v1')}" generatedAt="${escapeXml(exportPayload.generatedAt || new Date().toISOString())}">
+  <Applicant>
+    ${toXmlNode('Name', exportPayload.applicant?.name || '')}
+    ${toXmlNode('CUI', exportPayload.applicant?.cui || '')}
+    ${toXmlNode('RegCom', exportPayload.applicant?.regCom || '')}
+    ${toXmlNode('LegalType', exportPayload.applicant?.legalType || '')}
+    ${toXmlNode('Address', exportPayload.applicant?.address || '')}
+    ${toXmlNode('NUTSRegion', exportPayload.applicant?.nutsRegion || '')}
+  </Applicant>
+  <Call>
+    ${toXmlNode('CallCode', exportPayload.call?.callCode || '')}
+    ${toXmlNode('Title', exportPayload.call?.title || '')}
+    ${toXmlNode('Deadline', exportPayload.call?.deadline || '')}
+    ${toXmlNode('GuideUrl', exportPayload.call?.guideUrl || '')}
+  </Call>
+  <Project>
+    ${toXmlNode('LocalProjectId', exportPayload.project?.localProjectId || '')}
+    ${toXmlNode('Title', exportPayload.project?.title || '')}
+    ${toXmlNode('Acronym', exportPayload.project?.acronym || '')}
+    ${toXmlNode('Status', exportPayload.project?.status || '')}
+    ${toXmlNode('Summary', exportPayload.project?.summary || '')}
+    ${toXmlNode('Sustainability', exportPayload.project?.sustainability || '')}
+    <Timeline>
+      ${toXmlNode('StartDate', exportPayload.project?.timeline?.startDate || '')}
+      ${toXmlNode('EndDate', exportPayload.project?.timeline?.endDate || '')}
+      ${toXmlNode('DurationMonths', exportPayload.project?.timeline?.durationMonths || 0)}
+    </Timeline>
+    <Financials>
+      ${toXmlNode('TotalBudget', exportPayload.project?.financials?.totalBudget || 0)}
+      ${toXmlNode('EUContribution', exportPayload.project?.financials?.euContribution || 0)}
+      ${toXmlNode('OwnContribution', exportPayload.project?.financials?.ownContribution || 0)}
+    </Financials>
+    <Objectives>${(exportPayload.project?.objectives || []).map((objective) => toXmlNode('Objective', objective)).join('')}</Objectives>
+    <Methodology>${(exportPayload.project?.methodology || []).map((step) => toXmlNode('Step', step)).join('')}</Methodology>
+  </Project>
+  <ComplianceSnapshot>
+    ${toXmlNode('OverallScore', exportPayload.compliance?.overallScore || 0)}
+    ${toXmlNode('EvaluatedAt', exportPayload.compliance?.evaluatedAt || '')}
+    ${toXmlNode('DNSHStatus', exportPayload.compliance?.dnshStatus || '')}
+    ${toXmlNode('DNSHScore', exportPayload.compliance?.dnshScore || 0)}
+    <HighRiskFindings>${(exportPayload.compliance?.highRiskFindings || []).map((item) => toXmlNode('Finding', item)).join('')}</HighRiskFindings>
+  </ComplianceSnapshot>
+  <WorkPackages>
+    ${workPackagesXml}
+  </WorkPackages>
+</MySMIS2021PlusSubmission>`;
 }
 
 function ensureStringArray(value: unknown): string[] {
