@@ -46,11 +46,22 @@ export interface ComplianceResult {
   deterministicResults: RuleResult[];
   aiResults: AIComplianceCheck[];
   ragSources: number;
+  sourceTrace: ComplianceSourceTrace[];
   tokensUsed: number;
   recommendations: string[];
+  evaluatedAt: string;
 }
 
 // ─── AI Compliance Schema ────────────────────────────────────────
+
+export interface ComplianceSourceTrace {
+  sourceIndex: number;
+  sourceId: string;
+  title: string;
+  sourceUrl?: string;
+  snippet: string;
+  score: number;
+}
 
 const aiComplianceSchema = z.object({
   checks: z.array(z.object({
@@ -59,12 +70,14 @@ const aiComplianceSchema = z.object({
     finding: z.string(),
     recommendation: z.string(),
     legalReference: z.string().optional(),
+    confidence: z.number().min(0).max(1).optional(),
+    citations: z.array(z.number().int().min(1)).max(5).optional(),
   })),
   overallAssessment: z.string(),
   recommendations: z.array(z.string()),
 });
 
-type AIComplianceCheck = z.infer<typeof aiComplianceSchema>['checks'][number];
+export type AIComplianceCheck = z.infer<typeof aiComplianceSchema>['checks'][number];
 
 // ─── Validator ───────────────────────────────────────────────────
 
@@ -96,6 +109,15 @@ export async function validateCompliance(input: ComplianceInput): Promise<Compli
     ? ragResults.map((r, i) => `[Sursa ${i + 1}] ${r.content.substring(0, 500)}`).join('\n\n')
     : '';
 
+  const sourceTrace: ComplianceSourceTrace[] = ragResults.map((source, index) => ({
+    sourceIndex: index + 1,
+    sourceId: source.id,
+    title: typeof source.metadata.title === 'string' ? source.metadata.title : `Document ${index + 1}`,
+    sourceUrl: typeof source.metadata.sourceUrl === 'string' ? source.metadata.sourceUrl : undefined,
+    snippet: source.content.substring(0, 260),
+    score: Math.round(source.score * 1000) / 1000,
+  }));
+
   // Step 3: AI compliance check
   const systemPrompt = isRo
     ? `Ești un expert în conformitate juridică pentru fonduri europene. Verifici proiecte din perspectiva:
@@ -104,14 +126,20 @@ export async function validateCompliance(input: ComplianceInput): Promise<Compli
 - Eligibilitate cheltuieli
 - GDPR și protecția datelor
 - Legislația românească relevantă (OUG, HG)
-Oferă evaluări concrete și referințe juridice.${ragContext ? `\n\nContext legislativ relevant:\n${ragContext}` : ''}`
+Oferă evaluări concrete și referințe juridice.
+Pentru fiecare verificare, include:
+- confidence: scor între 0 și 1
+- citations: lista numerelor de surse folosite (de ex. [1, 3], corespondente [Sursa N]).${ragContext ? `\n\nContext legislativ relevant:\n${ragContext}` : ''}`
     : `You are an EU funding legal compliance expert. Check projects for:
 - CPR Regulation (2021/1060)
 - State aid rules
 - Expenditure eligibility
 - GDPR and data protection
 - Relevant Romanian legislation
-Provide concrete assessments and legal references.${ragContext ? `\n\nRelevant legal context:\n${ragContext}` : ''}`;
+Provide concrete assessments and legal references.
+For each check include:
+- confidence: score between 0 and 1
+- citations: source indexes used (e.g. [1, 3], matching [Sursa N]).${ragContext ? `\n\nRelevant legal context:\n${ragContext}` : ''}`;
 
   const prompt = isRo
     ? `Verifică conformitatea următorului proiect:
@@ -142,9 +170,19 @@ Check all compliance aspects and provide recommendations.`;
     temperature: 0.2,
   });
 
+  const normalizedChecks = aiResult.checks.map((check) => {
+    const defaultConfidence = check.status === 'pass' ? 0.75 : check.status === 'warning' ? 0.62 : 0.7;
+    const uniqueCitations = [...new Set((check.citations || []).filter((idx) => idx >= 1 && idx <= sourceTrace.length))];
+    return {
+      ...check,
+      confidence: typeof check.confidence === 'number' ? check.confidence : defaultConfidence,
+      citations: uniqueCitations,
+    };
+  });
+
   // Combine scores: 50% deterministic, 50% AI
-  const aiPassRate = aiResult.checks.length > 0
-    ? aiResult.checks.filter((c) => c.status === 'pass').length / aiResult.checks.length * 100
+  const aiPassRate = normalizedChecks.length > 0
+    ? normalizedChecks.filter((c) => c.status === 'pass').length / normalizedChecks.length * 100
     : 100;
 
   const overallScore = Math.round(ruleScore * 0.5 + aiPassRate * 0.5);
@@ -152,9 +190,11 @@ Check all compliance aspects and provide recommendations.`;
   return {
     overallScore,
     deterministicResults,
-    aiResults: aiResult.checks,
+    aiResults: normalizedChecks,
     ragSources: ragResults.length,
+    sourceTrace,
     tokensUsed,
     recommendations: aiResult.recommendations,
+    evaluatedAt: new Date().toISOString(),
   };
 }

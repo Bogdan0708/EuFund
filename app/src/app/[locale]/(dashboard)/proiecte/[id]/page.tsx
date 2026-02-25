@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { CalendarDays, CheckCircle2, CircleDashed, Clock3, FileCheck2, Shield } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Clock3, FileCheck2, PlayCircle, Shield } from 'lucide-react';
 import { csrfFetch } from '@/lib/csrf/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,8 +13,38 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { GanttChart } from '@/components/project/gantt-chart';
 import { WorkPackageDashboard } from '@/components/project/work-package-dashboard';
 import { WorkPackageTable } from '@/components/project/work-package-table';
+import { ComplianceExplainabilityPanel } from '@/components/compliance/compliance-explainability-panel';
 import type { GanttData } from '@/types/timeline';
 import type { Milestone, WorkPackage } from '@/types/work-packages';
+import type { RuleResult } from '@/lib/rules/eligibility';
+
+interface AIComplianceCheck {
+  area: string;
+  status: 'pass' | 'fail' | 'warning';
+  finding: string;
+  recommendation: string;
+  legalReference?: string;
+  confidence?: number;
+  citations?: number[];
+}
+
+interface ComplianceSourceTrace {
+  sourceIndex: number;
+  sourceId: string;
+  title: string;
+  sourceUrl?: string;
+  snippet: string;
+  score: number;
+}
+
+interface ComplianceExplainabilityData {
+  overallScore: number;
+  evaluatedAt?: string;
+  aiResults: AIComplianceCheck[];
+  deterministicResults: RuleResult[];
+  sourceTrace: ComplianceSourceTrace[];
+  recommendations: string[];
+}
 
 interface Project {
   id: string;
@@ -59,6 +89,9 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [workPackages, setWorkPackages] = useState<WorkPackage[]>([]);
   const [ganttData, setGanttData] = useState<GanttData | null>(null);
+  const [complianceData, setComplianceData] = useState<ComplianceExplainabilityData | null>(null);
+  const [complianceLoading, setComplianceLoading] = useState(false);
+  const [complianceError, setComplianceError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,6 +120,23 @@ export default function ProjectDetailPage() {
 
       setWorkPackages(wpRes.ok ? unwrapApiData<WorkPackage[]>(wpPayload) : []);
       setGanttData(timelineRes.ok ? unwrapApiData<GanttData>(timelinePayload) : null);
+
+      const complianceRes = await fetch(`/api/v1/projects/${projectId}/compliance`);
+      if (complianceRes.ok) {
+        const compliancePayload = await complianceRes.json();
+        const latestReport = compliancePayload?.data?.latestReport;
+        const reportItems = latestReport?.items;
+        if (reportItems && typeof reportItems === 'object') {
+          setComplianceData({
+            overallScore: Number(reportItems.overallScore || latestReport.overallScore || 0),
+            evaluatedAt: reportItems.evaluatedAt || latestReport.createdAt,
+            aiResults: Array.isArray(reportItems.aiResults) ? reportItems.aiResults : [],
+            deterministicResults: Array.isArray(reportItems.deterministicResults) ? reportItems.deterministicResults : [],
+            sourceTrace: Array.isArray(reportItems.sourceTrace) ? reportItems.sourceTrace : [],
+            recommendations: Array.isArray(reportItems.recommendations) ? reportItems.recommendations : [],
+          });
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Eroare neașteptată la încărcarea datelor proiectului.');
     } finally {
@@ -140,6 +190,33 @@ export default function ProjectDetailPage() {
       body: JSON.stringify(updates),
     });
     loadProject();
+  };
+
+  const runComplianceCheck = async () => {
+    setComplianceLoading(true);
+    setComplianceError(null);
+    try {
+      const response = await csrfFetch(`/api/v1/projects/${projectId}/compliance`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error('Analiza de conformitate nu a putut fi finalizată.');
+      }
+      const payload = await response.json();
+      const data = payload?.data;
+      setComplianceData({
+        overallScore: Number(data?.overallScore || 0),
+        evaluatedAt: data?.evaluatedAt || new Date().toISOString(),
+        aiResults: Array.isArray(data?.aiResults) ? data.aiResults : [],
+        deterministicResults: Array.isArray(data?.deterministicResults) ? data.deterministicResults : [],
+        sourceTrace: Array.isArray(data?.sourceTrace) ? data.sourceTrace : [],
+        recommendations: Array.isArray(data?.recommendations) ? data.recommendations : [],
+      });
+    } catch (err) {
+      setComplianceError(err instanceof Error ? err.message : 'A apărut o eroare la rularea verificării.');
+    } finally {
+      setComplianceLoading(false);
+    }
   };
 
   if (loading) return <LoadingState label="Se încarcă prezentarea proiectului..." />;
@@ -300,17 +377,34 @@ export default function ProjectDetailPage() {
           />
         </TabsContent>
 
-        <TabsContent value="compliance">
-          <Card className="shadow-sm">
-            <CardHeader>
+        <TabsContent value="compliance" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-3">
               <CardTitle className="text-base">Indicii de conformitate și audit</CardTitle>
+              <Button onClick={runComplianceCheck} disabled={complianceLoading} className="inline-flex items-center gap-2">
+                <PlayCircle className="h-4 w-4" />
+                {complianceLoading ? 'Se rulează analiza...' : 'Rulează verificare AI'}
+              </Button>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-muted-foreground">
-              <p className="flex items-center gap-2"><CircleDashed className="h-4 w-4" /> Folosește asistentul de raportare pentru depuneri și trasabilitatea dovezilor.</p>
-              <p className="flex items-center gap-2"><CircleDashed className="h-4 w-4" /> Încarcă fișiere justificative în Documente cu legare la jaloane.</p>
-              <p className="flex items-center gap-2"><CircleDashed className="h-4 w-4" /> Verifică jurnalul de audit pentru istoricul și aprobările proiectului.</p>
+            <CardContent className="text-sm text-muted-foreground">
+              Analiza include reguli deterministe, constatări AI cu nivel de încredere și citări către sursele legislative.
             </CardContent>
           </Card>
+
+          {complianceError ? <ErrorState message={complianceError} onRetry={runComplianceCheck} /> : null}
+
+          {complianceLoading ? <LoadingState label="Se pregătește raportul de explicabilitate..." /> : null}
+
+          {!complianceLoading && complianceData ? (
+            <ComplianceExplainabilityPanel data={complianceData} />
+          ) : null}
+
+          {!complianceLoading && !complianceData ? (
+            <EmptyState
+              title="Nu există încă un raport explicabil"
+              description="Rulează verificarea AI pentru a vedea constatări, încredere, referințe legale și surse."
+            />
+          ) : null}
         </TabsContent>
       </Tabs>
     </div>

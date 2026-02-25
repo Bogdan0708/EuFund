@@ -63,11 +63,12 @@ export async function POST(request: NextRequest) {
           overallScore: result.overallScore,
           deterministicResults: result.deterministicResults,
           aiResults: result.aiResults,
+          sourceTrace: result.sourceTrace,
           recommendations: result.recommendations,
           metadata: {
             tokensUsed: result.tokensUsed,
             ragSourcesUsed: result.ragSources,
-            validatedAt: new Date().toISOString(),
+            validatedAt: result.evaluatedAt,
             aiAct: execution.metadata,
           },
         },

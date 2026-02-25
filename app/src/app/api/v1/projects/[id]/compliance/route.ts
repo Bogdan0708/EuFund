@@ -7,7 +7,7 @@ import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { validateCompliance } from '@/lib/ai/compliance-validator';
 import { logAudit } from '@/lib/legal/audit';
 import { listComplianceChecks, getComplianceOverview } from '@/lib/services/compliance';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, desc } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'compliance-api' });
@@ -26,14 +26,30 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (!project) throw Errors.notFound('project', id);
     await requireOrgRole(user.id, project.orgId, 'viewer');
 
-    const [checks, overview] = await Promise.all([
+    const [checks, overview, latestReport] = await Promise.all([
       listComplianceChecks(id),
       getComplianceOverview(id),
+      db.query.complianceReports.findFirst({
+        where: eq(complianceReports.projectId, id),
+        orderBy: desc(complianceReports.createdAt),
+      }),
     ]);
 
     return NextResponse.json({
       success: true,
-      data: { checks, overview, lastAiScore: project.complianceScore },
+      data: {
+        checks,
+        overview,
+        lastAiScore: project.complianceScore,
+        latestReport: latestReport
+          ? {
+            id: latestReport.id,
+            createdAt: latestReport.createdAt,
+            overallScore: latestReport.overallScore,
+            items: latestReport.items,
+          }
+          : null,
+      },
     });
   } catch (error) {
     if (error instanceof FondEUError) {
@@ -140,7 +156,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
         overallScore: result.overallScore,
         deterministicResults: result.deterministicResults,
         aiResults: result.aiResults,
+        sourceTrace: result.sourceTrace,
         recommendations: result.recommendations,
+        evaluatedAt: result.evaluatedAt,
       },
     });
   } catch (error) {
