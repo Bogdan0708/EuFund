@@ -40,6 +40,13 @@ export interface MySMISExportInput {
     milestones?: unknown;
     deliverables?: unknown;
   }>;
+  compliance?: {
+    overallScore?: number | null;
+    evaluatedAt?: string | null;
+    dnshStatus?: 'pass' | 'warning' | 'fail' | null;
+    dnshScore?: number | null;
+    highRiskFindings?: string[];
+  } | null;
 }
 
 export interface MySMISExportResult {
@@ -47,6 +54,31 @@ export interface MySMISExportResult {
   missingRequired: string[];
   warnings: string[];
   payload: Record<string, unknown>;
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function toXmlNode(key: string, value: unknown): string {
+  if (value === null || value === undefined) return `<${key}></${key}>`;
+  if (Array.isArray(value)) {
+    return `<${key}>${value.map((item) => toXmlNode('item', item)).join('')}</${key}>`;
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+    return `<${key}>${entries.map(([childKey, childValue]) => toXmlNode(childKey, childValue)).join('')}</${key}>`;
+  }
+  return `<${key}>${escapeXml(String(value))}</${key}>`;
+}
+
+export function serializeMySMISPayloadToXml(payload: Record<string, unknown>): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>${toXmlNode('MySMISExport', payload)}`;
 }
 
 function ensureStringArray(value: unknown): string[] {
@@ -82,6 +114,9 @@ export function mapProjectToMySMIS(input: MySMISExportInput): MySMISExportResult
   }
   if (input.workPackages.length === 0) {
     warnings.push('Nu există pachete de lucru definite.');
+  }
+  if (!input.compliance?.overallScore) {
+    warnings.push('Nu există un scor de conformitate recent inclus în pachet.');
   }
 
   const objectives = ensureStringArray(input.project.sectionObjectives);
@@ -123,6 +158,13 @@ export function mapProjectToMySMIS(input: MySMISExportInput): MySMISExportResult
       title: input.call?.titleRo || null,
       deadline: input.call?.submissionEnd || null,
       guideUrl: input.call?.guideUrl || null,
+    },
+    compliance: {
+      overallScore: input.compliance?.overallScore || null,
+      evaluatedAt: input.compliance?.evaluatedAt || null,
+      dnshStatus: input.compliance?.dnshStatus || null,
+      dnshScore: input.compliance?.dnshScore || null,
+      highRiskFindings: input.compliance?.highRiskFindings || [],
     },
     workPackages: input.workPackages.map((wp) => ({
       localWorkPackageId: wp.id,

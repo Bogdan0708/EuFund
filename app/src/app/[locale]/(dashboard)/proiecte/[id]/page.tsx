@@ -268,6 +268,25 @@ export default function ProjectDetailPage() {
     URL.revokeObjectURL(href);
   };
 
+  const downloadMySMISXml = async () => {
+    try {
+      const response = await fetch(`/api/v1/projects/${projectId}/mysmis-export?format=xml`);
+      if (!response.ok) {
+        throw new Error('Nu am putut genera fișierul XML pentru MySMIS.');
+      }
+      const xml = await response.text();
+      const blob = new Blob([xml], { type: 'application/xml' });
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = href;
+      link.download = `mysmis-export-${projectId}.xml`;
+      link.click();
+      URL.revokeObjectURL(href);
+    } catch (err) {
+      setMysmisError(err instanceof Error ? err.message : 'Eroare la descărcarea XML MySMIS.');
+    }
+  };
+
   if (loading) return <LoadingState label="Se încarcă prezentarea proiectului..." />;
   if (error || !project) return <ErrorState message={error || 'Proiectul nu a fost găsit.'} onRetry={loadProject} />;
 
@@ -482,7 +501,19 @@ export default function ProjectDetailPage() {
                     <Download className="h-3.5 w-3.5" />
                     Descarcă JSON
                   </Button>
+                  <Button variant="outline" size="sm" onClick={downloadMySMISXml} className="inline-flex items-center gap-2">
+                    <Download className="h-3.5 w-3.5" />
+                    Descarcă XML
+                  </Button>
                 </div>
+                {typeof (mysmisData.payload as { compliance?: { overallScore?: number; dnshStatus?: string } })?.compliance?.overallScore === 'number' ? (
+                  <p className="text-xs text-muted-foreground">
+                    Snapshot conformitate inclus: scor {Number((mysmisData.payload as { compliance?: { overallScore?: number } })?.compliance?.overallScore || 0)}
+                    {((mysmisData.payload as { compliance?: { dnshStatus?: string } })?.compliance?.dnshStatus)
+                      ? ` • DNSH ${String((mysmisData.payload as { compliance?: { dnshStatus?: string } })?.compliance?.dnshStatus)}`
+                      : ''}
+                  </p>
+                ) : null}
                 {mysmisData.missingRequired.length > 0 ? (
                   <div>
                     <p className="font-medium">Câmpuri obligatorii lipsă:</p>

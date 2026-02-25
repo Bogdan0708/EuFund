@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { callsForProposals, organizations, projects, workPackages } from '@/lib/db/schema';
+import { callsForProposals, complianceReports, organizations, projects, workPackages } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { logger } from '@/lib/logger';
 import { logAudit } from '@/lib/legal/audit';
-import { mapProjectToMySMIS } from '@/lib/integrations/romanian/mysmis-mapper';
+import { mapProjectToMySMIS, serializeMySMISPayloadToXml } from '@/lib/integrations/romanian/mysmis-mapper';
 
 const log = logger.child({ component: 'project-mysmis-export-api' });
 
 type Params = { params: { id: string } };
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
     const { id } = params;
@@ -24,13 +24,24 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     await requireOrgRole(user.id, project.orgId, 'project_manager');
 
-    const [organization, call, packages] = await Promise.all([
+    const [organization, call, packages, latestComplianceReport] = await Promise.all([
       db.query.organizations.findFirst({ where: eq(organizations.id, project.orgId) }),
       project.callId
         ? db.query.callsForProposals.findFirst({ where: eq(callsForProposals.id, project.callId) })
         : Promise.resolve(null),
       db.query.workPackages.findMany({ where: eq(workPackages.projectId, project.id) }),
+      db.query.complianceReports.findFirst({
+        where: eq(complianceReports.projectId, project.id),
+        orderBy: desc(complianceReports.createdAt),
+      }),
     ]);
+
+    const reportItems = (latestComplianceReport?.items || {}) as {
+      aiResults?: Array<{ area?: string; status?: string }>;
+      dnshAssessment?: { status?: 'pass' | 'warning' | 'fail'; score?: number };
+      evaluatedAt?: string;
+      overallScore?: number;
+    };
 
     const mapped = mapProjectToMySMIS({
       project: {
@@ -76,6 +87,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
         milestones: item.milestones,
         deliverables: item.deliverables,
       })),
+      compliance: {
+        overallScore: latestComplianceReport?.overallScore ? Number(latestComplianceReport.overallScore) : Number(project.complianceScore || reportItems.overallScore || 0) || null,
+        evaluatedAt: reportItems.evaluatedAt || latestComplianceReport?.createdAt?.toISOString() || null,
+        dnshStatus: reportItems.dnshAssessment?.status || null,
+        dnshScore: reportItems.dnshAssessment?.score || null,
+        highRiskFindings: (reportItems.aiResults || [])
+          .filter((item) => item.status === 'fail')
+          .slice(0, 5)
+          .map((item) => item.area || 'constatare'),
+      },
     });
 
     await logAudit({
@@ -87,8 +108,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
         ready: mapped.ready,
         missingRequiredCount: mapped.missingRequired.length,
         warningCount: mapped.warnings.length,
+        format: new URL(req.url).searchParams.get('format') || 'json',
       },
     });
+
+    const format = new URL(req.url).searchParams.get('format');
+    if (format === 'xml') {
+      const xml = serializeMySMISPayloadToXml(mapped.payload);
+      return new NextResponse(xml, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/xml; charset=utf-8',
+          'Content-Disposition': `attachment; filename=\"mysmis-export-${id}.xml\"`,
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,
