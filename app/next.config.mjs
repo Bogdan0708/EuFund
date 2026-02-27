@@ -20,6 +20,7 @@ const nextConfig = {
       optimizeCss: false,
     }),
     optimizePackageImports: ['@/components', '@/lib'],
+    instrumentationHook: true,
   },
 
   compiler: {
@@ -60,4 +61,21 @@ const nextConfig = {
   },
 };
 
-export default withNextIntl(nextConfig);
+const finalConfig = withNextIntl(nextConfig);
+
+let exportedConfig = finalConfig;
+
+if (process.env.SENTRY_DSN) {
+  try {
+    const { withSentryConfig } = await import('@sentry/nextjs');
+    exportedConfig = withSentryConfig(finalConfig, {
+      silent: true,
+      disableServerWebpackPlugin: !isProd,
+      disableClientWebpackPlugin: !isProd,
+    });
+  } catch {
+    // @sentry/nextjs not installed — continue without Sentry build integration
+  }
+}
+
+export default exportedConfig;

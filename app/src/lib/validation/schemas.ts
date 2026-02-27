@@ -64,6 +64,39 @@ export const validateComplianceSchema = z.object({
   regulations: z.array(z.string().min(1)).min(1),
 });
 
+export const checkEligibilitySchema = z.object({
+  organization: z.object({
+    orgType: z.string().min(1),
+    orgSize: z.string().optional(),
+    caenPrimary: z.string().optional(),
+    caenSecondary: z.array(z.string()).optional(),
+    nutsRegion: z.string().optional(),
+    employeeCount: z.number().optional(),
+    annualRevenue: z.number().optional(),
+    foundedDate: z.string().optional(),
+  }),
+  project: z.object({
+    totalBudget: z.number().optional(),
+    ownContrib: z.number().optional(),
+    durationMonths: z.number().optional(),
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
+  }),
+  call: z.object({
+    eligibleTypes: z.array(z.string()).optional(),
+    eligibleRegions: z.array(z.string()).optional(),
+    eligibleCaen: z.array(z.string()).optional(),
+    budgetMin: z.number().optional(),
+    budgetMax: z.number().optional(),
+    cofinancingRate: z.number().optional(),
+    durationMin: z.number().optional(),
+    durationMax: z.number().optional(),
+    submissionEnd: z.string().optional(),
+  }),
+});
+
+export type CheckEligibilityInput = z.infer<typeof checkEligibilitySchema>;
+
 export type AnalyzeDocumentInput = z.infer<typeof analyzeDocumentSchema>;
 export type ForecastLifecycleInput = z.infer<typeof forecastLifecycleSchema>;
 export type GenerateProposalInput = z.infer<typeof generateProposalSchema>;

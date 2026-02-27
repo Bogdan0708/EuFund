@@ -440,12 +440,27 @@ export const auditLog = pgTable('audit_log', {
   ipAddress: inet('ip_address'),
   userAgent: text('user_agent'),
   metadata: jsonb('metadata').default({}), // Extra context (consent_id, legal_basis, etc.)
+  entryHash: varchar('entry_hash', { length: 64 }),
+  previousHash: varchar('previous_hash', { length: 64 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   userIdx: index('idx_audit_user').on(table.userId),
   resourceIdx: index('idx_audit_resource').on(table.resourceType, table.resourceId),
   createdIdx: index('idx_audit_created').on(table.createdAt),
+  hashChainIdx: index('idx_audit_hash_chain').on(table.createdAt, table.entryHash),
 }));
+
+// ─── Feature Flags ──────────────────────────────────────────────
+export const featureFlags = pgTable('feature_flags', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  key: varchar('key', { length: 100 }).unique().notNull(),
+  description: text('description'),
+  enabled: boolean('enabled').notNull().default(false),
+  targeting: jsonb('targeting').default({}), // { tiers?: string[], userIds?: string[], percentage?: number }
+  createdBy: uuid('created_by').references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
 
 // ─── AI Reviews (EU AI Act Art. 14 — Human Oversight) ──────────
 export const aiReviewStatusEnum = pgEnum('ai_review_status', [
