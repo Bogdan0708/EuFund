@@ -16,6 +16,7 @@ import { requireAuth } from '@/lib/auth/helpers';
 import { Errors, FondEUError } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
+import { getVectorStore } from '@/lib/vectors/store';
 
 const log = logger.child({ component: 'auth-account-delete' });
 const DELETED_SENTINEL = 'deleted-user';
@@ -64,6 +65,14 @@ export async function DELETE(req: NextRequest) {
       resourceId: user.id,
       metadata: { anonymizedUserHash: userHash },
     });
+
+    // Delete user data from vector store (RAG points)
+    try {
+      await getVectorStore().deleteByFilter({ userId: user.id });
+    } catch (error) {
+      log.error({ error, userId: user.id }, 'Failed to delete user vector data during account erasure');
+      // Continue with DB erasure even if vector deletion fails (best effort for RAG)
+    }
 
     await db.transaction(async (tx) => {
       await tx.delete(consentRecords).where(eq(consentRecords.userId, user.id));

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { projects } from '@/lib/db/schema';
+import { orgMembers, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { updateTimelineItem, deleteTimelineItem, updateTimelineProgress } from '@/lib/services/timeline';
@@ -45,6 +45,28 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const cleanUpdates = Object.fromEntries(
       Object.entries(updates).filter(([, v]) => v !== undefined)
     );
+
+    if (cleanUpdates.assignedTo) {
+      const membership = await db.query.orgMembers.findFirst({
+        where: and(
+          eq(orgMembers.orgId, project.orgId),
+          eq(orgMembers.userId, cleanUpdates.assignedTo as string),
+        ),
+      });
+
+      if (!membership) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'assignedTo must be a member of the project organization',
+            },
+          },
+          { status: 400 },
+        );
+      }
+    }
 
     const item = await updateTimelineItem(id, itemId, cleanUpdates);
     if (!item) throw Errors.notFound('timeline_item', itemId);

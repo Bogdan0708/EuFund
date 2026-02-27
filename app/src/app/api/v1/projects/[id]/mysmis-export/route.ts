@@ -7,6 +7,7 @@ import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { logger } from '@/lib/logger';
 import { logAudit } from '@/lib/legal/audit';
 import { mapProjectToMySMIS, serializeMySMISPayloadToXml } from '@/lib/integrations/romanian/mysmis-mapper';
+import { validateMySMISPayload } from '@/lib/integrations/romanian/mysmis-contract';
 
 const log = logger.child({ component: 'project-mysmis-export-api' });
 
@@ -110,15 +111,36 @@ export async function GET(req: NextRequest, { params }: Params) {
       },
     });
 
+    const contractValidation = validateMySMISPayload(mapped.payload);
+    const strict = new URL(req.url).searchParams.get('strict') === 'true';
+    const ready = mapped.ready && contractValidation.valid;
+    const contractWarnings = contractValidation.warnings.filter((warning) => !mapped.warnings.includes(warning));
+
+    if (strict && !contractValidation.valid) {
+      return NextResponse.json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Payload MySMIS invalid',
+          details: {
+            schemaVersion: 'mysmis-2021-plus-v1',
+            contractErrors: contractValidation.errors,
+          },
+        },
+      }, { status: 422 });
+    }
+
     await logAudit({
       userId: user.id,
       action: 'project.export',
       resourceType: 'project',
       resourceId: id,
       metadata: {
-        ready: mapped.ready,
+        ready,
         missingRequiredCount: mapped.missingRequired.length,
-        warningCount: mapped.warnings.length,
+        warningCount: mapped.warnings.length + contractWarnings.length,
+        contractValid: contractValidation.valid,
+        contractErrorCount: contractValidation.errors.length,
         format: new URL(req.url).searchParams.get('format') || 'json',
       },
     });
@@ -139,9 +161,14 @@ export async function GET(req: NextRequest, { params }: Params) {
       success: true,
       data: {
         projectId: id,
-        ready: mapped.ready,
+        ready,
         missingRequired: mapped.missingRequired,
-        warnings: mapped.warnings,
+        warnings: [...mapped.warnings, ...contractWarnings],
+        contractValidation: {
+          valid: contractValidation.valid,
+          errors: contractValidation.errors,
+          warnings: contractValidation.warnings,
+        },
         payload: mapped.payload,
       },
     });

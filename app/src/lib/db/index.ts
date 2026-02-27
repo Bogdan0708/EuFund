@@ -1,4 +1,5 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
+import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import * as schema from './schema';
 
@@ -29,3 +30,17 @@ const client = socketPath
 export const db = drizzle(client, { schema });
 export type Database = typeof db;
 export { schema };
+
+/**
+ * Execute DB operations in a transaction-bound RLS context.
+ * Ensures `app.current_user_id` is set on the same connection before tenant-scoped queries.
+ */
+export async function withUserRLS<T>(
+  userId: string,
+  fn: (tx: Parameters<Parameters<Database['transaction']>[0]>[0]) => Promise<T>,
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.current_user_id', ${userId}, true)`);
+    return fn(tx);
+  });
+}

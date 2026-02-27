@@ -1,7 +1,7 @@
 // ─── Auth Helper Utilities ───────────────────────────────────────
 import { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { orgMembers } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { Errors } from '@/lib/errors';
@@ -44,11 +44,13 @@ export async function requireOrgRole(
     viewer: 1,
   };
 
-  const membership = await db.query.orgMembers.findFirst({
-    where: and(
-      eq(orgMembers.orgId, orgId),
-      eq(orgMembers.userId, userId),
-    ),
+  const membership = await withUserRLS(userId, async (tx) => {
+    return tx.query.orgMembers.findFirst({
+      where: and(
+        eq(orgMembers.orgId, orgId),
+        eq(orgMembers.userId, userId),
+      ),
+    });
   });
 
   if (!membership) {

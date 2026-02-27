@@ -1,3 +1,5 @@
+import { stripDiacritics } from '@/lib/utils/romanian';
+
 export interface MySMISExportInput {
   project: {
     id: string;
@@ -57,7 +59,9 @@ export interface MySMISExportResult {
 }
 
 function escapeXml(value: string): string {
-  return value
+  // Strip diacritics first for maximum compatibility with legacy MySMIS backend parsers
+  const stripped = stripDiacritics(value);
+  return stripped
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

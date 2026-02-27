@@ -3,8 +3,6 @@
  * Error tracking and performance monitoring
  */
 
-// import * as Sentry from '@sentry/nextjs';
-
 export const sentryConfig = {
   dsn: process.env.SENTRY_DSN || '',
   environment: process.env.NODE_ENV || 'development',
@@ -61,12 +59,22 @@ export const sentryConfig = {
 /**
  * Initialize Sentry (call in instrumentation.ts)
  */
-export function initSentry() {
+let initialized = false;
+
+export async function initSentry() {
+  if (initialized) return;
+
   if (!sentryConfig.dsn) {
     console.warn('Sentry DSN not configured - error tracking disabled');
     return;
   }
 
-  // Sentry.init(sentryConfig);
-  console.log('Sentry initialized:', sentryConfig.environment, sentryConfig.release);
+  try {
+    const Sentry = await import('@sentry/nextjs');
+    Sentry.init(sentryConfig as never);
+    initialized = true;
+    console.log('Sentry initialized:', sentryConfig.environment, sentryConfig.release);
+  } catch (error) {
+    console.warn('Sentry package unavailable - skipping initialization', error);
+  }
 }

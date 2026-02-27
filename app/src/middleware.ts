@@ -3,6 +3,7 @@
 import { auth } from '@/lib/auth/edge';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { trackRequest } from '@/lib/monitoring/metrics';
 
 // Edge-safe logger (no pino in Edge runtime)
 const makeLog = (ctx: Record<string, unknown> = {}) => ({
@@ -88,10 +89,19 @@ function validateCSRF(req: NextRequest): boolean {
 }
 
 export default auth(async (req) => {
+  const startedAt = Date.now();
   const requestId = crypto.randomUUID();
   const log = baseLog.child({ requestId });
   const pathname = req.nextUrl.pathname;
   const isPublic = publicPaths.some(path => pathname.startsWith(path));
+  const finalizeResponse = (response: NextResponse) => {
+    try {
+      trackRequest(req.method, pathname, response.status, Date.now() - startedAt);
+    } catch {
+      // Metrics are best-effort and must not block request handling.
+    }
+    return response;
+  };
 
   // Get client IP for security logging
   const ip = req.ip ?? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? '127.0.0.1';
@@ -112,14 +122,14 @@ export default auth(async (req) => {
         { status: 401 }
       );
       response.headers.set('x-request-id', requestId);
-      return response;
+      return finalizeResponse(response);
     }
 
     // Redirect to login for web pages
     const loginUrl = pathname.startsWith('/en') ? '/en/login' : '/ro/autentificare';
     const response = NextResponse.redirect(new URL(loginUrl, req.url));
     response.headers.set('x-request-id', requestId);
-    return response;
+    return finalizeResponse(response);
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -147,14 +157,14 @@ export default auth(async (req) => {
           { status: 403 }
         );
         response.headers.set('x-request-id', requestId);
-        return response;
+        return finalizeResponse(response);
       }
 
       // Redirect web pages to verification prompt
       const verifyUrl = pathname.startsWith('/en') ? '/en/verificare-email' : '/ro/verificare-email';
       const response = NextResponse.redirect(new URL(verifyUrl, req.url));
       response.headers.set('x-request-id', requestId);
-      return response;
+      return finalizeResponse(response);
     }
   }
 
@@ -184,7 +194,7 @@ export default auth(async (req) => {
           { status: 403 }
         );
         response.headers.set('x-request-id', requestId);
-        return response;
+        return finalizeResponse(response);
       }
     }
   }
@@ -262,7 +272,7 @@ export default auth(async (req) => {
     response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   }
 
-  return response;
+  return finalizeResponse(response);
 });
 
 // Configure which routes to run middleware on

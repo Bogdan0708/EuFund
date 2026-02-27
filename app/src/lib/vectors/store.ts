@@ -23,6 +23,7 @@ interface VectorStore {
   upsert(docs: VectorDocument[]): Promise<void>;
   search(query: string, topK?: number, filter?: Record<string, unknown>): Promise<SearchResult[]>;
   delete(ids: string[]): Promise<void>;
+  deleteByFilter(filter: Record<string, unknown>): Promise<void>;
   count(): Promise<number>;
 }
 
@@ -47,17 +48,25 @@ class MemoryVectorStore implements VectorStore {
     }
   }
 
-  async search(query: string, topK = 5): Promise<SearchResult[]> {
+  async search(query: string, topK = 5, filter?: Record<string, unknown>): Promise<SearchResult[]> {
     if (this.documents.size === 0) return [];
 
     const { embedding: queryEmb } = await aiEmbed(query);
 
-    const scored = Array.from(this.documents.values()).map((doc) => ({
-      id: doc.id,
-      content: doc.content,
-      metadata: doc.metadata,
-      score: cosineSimilarity(queryEmb, doc.embedding),
-    }));
+    const scored = Array.from(this.documents.values())
+      .filter((doc) => {
+        if (!filter) return true;
+        for (const [fKey, fVal] of Object.entries(filter)) {
+          if (doc.metadata[fKey] !== fVal) return false;
+        }
+        return true;
+      })
+      .map((doc) => ({
+        id: doc.id,
+        content: doc.content,
+        metadata: doc.metadata,
+        score: cosineSimilarity(queryEmb, doc.embedding),
+      }));
 
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, topK);
@@ -65,6 +74,21 @@ class MemoryVectorStore implements VectorStore {
 
   async delete(ids: string[]): Promise<void> {
     for (const id of ids) this.documents.delete(id);
+  }
+
+  async deleteByFilter(filter: Record<string, unknown>): Promise<void> {
+    const toDelete: string[] = [];
+    for (const [id, doc] of this.documents.entries()) {
+      let matches = true;
+      for (const [fKey, fVal] of Object.entries(filter)) {
+        if (doc.metadata[fKey] !== fVal) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) toDelete.push(id);
+    }
+    for (const id of toDelete) this.documents.delete(id);
   }
 
   async count(): Promise<number> {
@@ -154,6 +178,20 @@ class QdrantVectorStore implements VectorStore {
     await this.qdrantFetch(`/collections/${this.collection}/points/delete`, {
       method: 'POST',
       body: JSON.stringify({ points: ids }),
+    });
+  }
+
+  async deleteByFilter(filter: Record<string, unknown>): Promise<void> {
+    const must = Object.entries(filter).map(([key, value]) => ({
+      key,
+      match: { value },
+    }));
+
+    await this.qdrantFetch(`/collections/${this.collection}/points/delete`, {
+      method: 'POST',
+      body: JSON.stringify({
+        filter: { must },
+      }),
     });
   }
 

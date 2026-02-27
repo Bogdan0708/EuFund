@@ -14,6 +14,23 @@ export function normalizeDiacritics(text: string): string {
 }
 
 /**
+ * Strip Romanian diacritics entirely.
+ * Useful for legacy government systems (like some MySMIS modules) 
+ * that don't support UTF-8 correctly.
+ */
+export function stripDiacritics(text: string): string {
+  return text
+    .replace(/[ăâ]/g, 'a')
+    .replace(/[ĂÂ]/g, 'A')
+    .replace(/[î]/g, 'i')
+    .replace(/[Î]/g, 'I')
+    .replace(/[șş]/g, 's')
+    .replace(/[ȘŞ]/g, 'S')
+    .replace(/[țţ]/g, 't')
+    .replace(/[ȚŢ]/g, 'T');
+}
+
+/**
  * Format number in Romanian style: 1.234,56
  */
 export function formatNumberRo(value: number, decimals = 2): string {

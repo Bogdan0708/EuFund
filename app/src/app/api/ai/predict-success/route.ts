@@ -73,25 +73,24 @@ export async function POST(request: NextRequest) {
       const result = execution.result as ProposalSuccessPrediction | ReturnType<typeof quickSuccessPrediction>;
       const oversightRequired = execution.metadata?.oversightRequired === true;
 
-      if (!input.quick) {
-        const fullResult = result as ProposalSuccessPrediction;
-        await logAudit({
-          action: 'ai.generate',
-          resourceType: 'success_prediction',
-          userId: user.id,
-          metadata: {
-            successProbability: fullResult.successProbability,
-            confidence: fullResult.confidenceLevel,
-            userTier: user.tier,
-            oversightRequired,
-          },
-        });
-      }
+      const fullResult = result as ProposalSuccessPrediction;
+      await logAudit({
+        action: 'ai.generate',
+        resourceType: 'success_prediction',
+        userId: user.id,
+        metadata: {
+          successProbability: fullResult.successProbability ?? null,
+          confidence: fullResult.confidenceLevel ?? (input.quick ? 'low' : null),
+          userTier: user.tier,
+          oversightRequired,
+          quickMode: input.quick === true,
+        },
+      });
 
       const { sanitized: data } = sanitizeAIResponseDeep(result);
 
       // EU AI Act Art. 14: High-risk results require human oversight
-      if (oversightRequired && !input.quick) {
+      if (oversightRequired) {
         const membership = await db.query.orgMembers.findFirst({
           where: eq(orgMembers.userId, user.id),
         });
@@ -112,6 +111,7 @@ export async function POST(request: NextRequest) {
             success: true,
             status: 'pending_review',
             reviewId: review.id,
+            reviewUrl: `/api/v1/organizations/${membership.orgId}/ai-reviews?status=pending_review`,
             message: 'Rezultatul necesită aprobarea unui administrator conform EU AI Act Art. 14.',
             messageEn: 'Result requires administrator approval per EU AI Act Art. 14.',
             metadata: {

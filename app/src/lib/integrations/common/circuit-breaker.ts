@@ -1,5 +1,6 @@
 // ─── Circuit Breaker ─────────────────────────────────────────────
 // Prevents cascading failures when external APIs are down
+import { trackExternalAPI } from '@/lib/monitoring/metrics';
 
 export type CircuitState = 'closed' | 'open' | 'half-open';
 
@@ -59,12 +60,16 @@ export async function withCircuitBreaker<T>(
   const state = getCircuitState(key);
 
   if (state === 'open') {
+    trackExternalAPI(key, false, 0);
     throw new CircuitOpenError(key);
   }
 
   if (state === 'half-open' && circuit.halfOpenAttempts >= cfg.halfOpenRequests) {
+    trackExternalAPI(key, false, 0);
     throw new CircuitOpenError(key);
   }
+
+  const startedAt = Date.now();
 
   try {
     if (state === 'half-open') circuit.halfOpenAttempts++;
@@ -73,6 +78,7 @@ export async function withCircuitBreaker<T>(
     circuit.state = 'closed';
     circuit.failures = 0;
     circuit.halfOpenAttempts = 0;
+    trackExternalAPI(key, true, Date.now() - startedAt);
     return result;
   } catch (error) {
     circuit.failures++;
@@ -80,6 +86,7 @@ export async function withCircuitBreaker<T>(
     if (circuit.failures >= cfg.failureThreshold) {
       circuit.state = 'open';
     }
+    trackExternalAPI(key, false, Date.now() - startedAt);
     throw error;
   }
 }

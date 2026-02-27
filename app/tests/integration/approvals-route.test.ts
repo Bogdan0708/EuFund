@@ -18,6 +18,30 @@ describe('POST /api/v1/approvals', () => {
     }));
 
     vi.doMock('@/lib/db', () => ({
+      withUserRLS: vi.fn(async (_userId: string, fn: (tx: any) => Promise<unknown>) => fn({
+        query: {
+          projects: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: '123e4567-e89b-42d3-a456-426614174999',
+              orgId: '123e4567-e89b-42d3-a456-426614174001',
+              status: 'verificare',
+              metadata: {},
+            }),
+          },
+          orgMembers: {
+            findFirst: vi.fn().mockResolvedValue({
+              orgId: '123e4567-e89b-42d3-a456-426614174001',
+              role: 'org_admin',
+            }),
+          },
+        },
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn(),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({ set: updateSet }),
+      })),
       db: {
         query: {
           projects: {
@@ -84,6 +108,30 @@ describe('POST /api/v1/approvals', () => {
     }));
 
     vi.doMock('@/lib/db', () => ({
+      withUserRLS: vi.fn(async (_userId: string, fn: (tx: any) => Promise<unknown>) => fn({
+        query: {
+          projects: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: '123e4567-e89b-42d3-a456-426614174999',
+              orgId: '123e4567-e89b-42d3-a456-426614174001',
+              status: 'verificare',
+              metadata: {},
+            }),
+          },
+          orgMembers: {
+            findFirst: vi.fn().mockResolvedValue({
+              orgId: '123e4567-e89b-42d3-a456-426614174001',
+              role: 'org_admin',
+            }),
+          },
+        },
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn(),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({ set: updateSet }),
+      })),
       db: {
         query: {
           projects: {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { auditLog, orgMembers, users } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { getPaginationParams, requireAuth, requireOrgRole } from '@/lib/auth/helpers';
@@ -15,11 +15,13 @@ async function resolveAdminOrgId(userId: string, requestedOrgId: string | null):
     return requestedOrgId;
   }
 
-  const adminMembership = await db.query.orgMembers.findFirst({
-    where: and(
-      eq(orgMembers.userId, userId),
-      inArray(orgMembers.role, ['admin', 'org_admin']),
-    ),
+  const adminMembership = await withUserRLS(userId, async (tx) => {
+    return tx.query.orgMembers.findFirst({
+      where: and(
+        eq(orgMembers.userId, userId),
+        inArray(orgMembers.role, ['admin', 'org_admin']),
+      ),
+    });
   });
 
   if (!adminMembership) {
@@ -41,10 +43,12 @@ export async function GET(req: NextRequest) {
     const fromDate = url.searchParams.get('from');
     const toDate = url.searchParams.get('to');
 
-    const members = await db
-      .select({ userId: orgMembers.userId })
-      .from(orgMembers)
-      .where(eq(orgMembers.orgId, orgId));
+    const members = await withUserRLS(user.id, async (tx) => {
+      return tx
+        .select({ userId: orgMembers.userId })
+        .from(orgMembers)
+        .where(eq(orgMembers.orgId, orgId));
+    });
 
     const memberUserIds = members.map((m) => m.userId);
     if (memberUserIds.length === 0) {
@@ -62,27 +66,29 @@ export async function GET(req: NextRequest) {
     if (toDate) conditions.push(lte(auditLog.createdAt, new Date(toDate)));
     const whereClause = and(...conditions);
 
-    const [countResult, entries] = await Promise.all([
-      db.select({ count: sql<number>`count(*)` }).from(auditLog).where(whereClause),
-      db
-        .select({
-          id: auditLog.id,
-          userId: auditLog.userId,
-          action: auditLog.action,
-          resourceType: auditLog.resourceType,
-          resourceId: auditLog.resourceId,
-          metadata: auditLog.metadata,
-          createdAt: auditLog.createdAt,
-          userName: users.fullName,
-          userEmail: users.email,
-        })
-        .from(auditLog)
-        .leftJoin(users, eq(auditLog.userId, users.id))
-        .where(whereClause)
-        .orderBy(desc(auditLog.createdAt))
-        .limit(perPage)
-        .offset(offset),
-    ]);
+    const [countResult, entries] = await withUserRLS(user.id, async (tx) => {
+      return Promise.all([
+        tx.select({ count: sql<number>`count(*)` }).from(auditLog).where(whereClause),
+        tx
+          .select({
+            id: auditLog.id,
+            userId: auditLog.userId,
+            action: auditLog.action,
+            resourceType: auditLog.resourceType,
+            resourceId: auditLog.resourceId,
+            metadata: auditLog.metadata,
+            createdAt: auditLog.createdAt,
+            userName: users.fullName,
+            userEmail: users.email,
+          })
+          .from(auditLog)
+          .leftJoin(users, eq(auditLog.userId, users.id))
+          .where(whereClause)
+          .orderBy(desc(auditLog.createdAt))
+          .limit(perPage)
+          .offset(offset),
+      ]);
+    });
 
     const total = Number(countResult[0]?.count ?? 0);
     return NextResponse.json({

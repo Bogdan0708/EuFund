@@ -1,14 +1,14 @@
 // ─── Document Analysis API ───────────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { documents } from '@/lib/db/schema';
+import { withUserRLS } from '@/lib/db';
+import { documents, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth } from '@/lib/auth/helpers';
+import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { analyzeDocument } from '@/lib/ai/document-analyzer';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
 import { readFile } from 'fs/promises';
-import { join } from 'path';
+import { resolve, sep } from 'path';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'documents-analyze-api' });
@@ -17,21 +17,64 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 
 type Params = { params: { id: string } };
 
+async function resolveDocumentAccess(
+  userId: string,
+  doc: typeof documents.$inferSelect,
+  minRole: Parameters<typeof requireOrgRole>[2] = 'viewer',
+): Promise<void> {
+  if (doc.orgId) {
+    await requireOrgRole(userId, doc.orgId, minRole);
+    return;
+  }
+
+  if (doc.projectId) {
+    const project = await withUserRLS(userId, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, doc.projectId), isNull(projects.deletedAt)),
+        columns: { orgId: true },
+      });
+    });
+
+    if (!project) {
+      throw Errors.notFound('project', doc.projectId);
+    }
+
+    await requireOrgRole(userId, project.orgId, minRole);
+    return;
+  }
+
+  if (doc.uploadedBy !== userId) {
+    throw Errors.forbidden();
+  }
+}
+
+function resolveStoragePath(storagePath: string): string {
+  const baseDir = resolve(UPLOAD_DIR);
+  const targetPath = resolve(baseDir, storagePath);
+  if (targetPath !== baseDir && !targetPath.startsWith(`${baseDir}${sep}`)) {
+    throw Errors.forbidden();
+  }
+  return targetPath;
+}
+
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
     const { id } = params;
 
-    const doc = await db.query.documents.findFirst({
-      where: and(eq(documents.id, id), isNull(documents.deletedAt)),
+    const doc = await withUserRLS(user.id, async (tx) => {
+      return tx.query.documents.findFirst({
+        where: and(eq(documents.id, id), isNull(documents.deletedAt)),
+      });
     });
 
     if (!doc) {
       throw Errors.notFound('document', id);
     }
+    await resolveDocumentAccess(user.id, doc, 'project_manager');
 
     // Read file content
-    const filePath = join(UPLOAD_DIR, doc.storagePath);
+    const filePath = resolveStoragePath(doc.storagePath);
     const buffer = await readFile(filePath);
 
     let content: string;
@@ -65,14 +108,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     });
 
     // Update document with AI analysis
-    await db
-      .update(documents)
-      .set({
-        aiSummary: result.analysis.summary || null,
-        extractedData: result.analysis,
-        ocrText: content.substring(0, 50000), // Store first 50k chars
-      })
-      .where(eq(documents.id, id));
+    await withUserRLS(user.id, async (tx) => {
+      await tx
+        .update(documents)
+        .set({
+          aiSummary: result.analysis.summary || null,
+          extractedData: result.analysis,
+          ocrText: content.substring(0, 50000), // Store first 50k chars
+        })
+        .where(eq(documents.id, id));
+    });
 
     await logAudit({
       userId: user.id,

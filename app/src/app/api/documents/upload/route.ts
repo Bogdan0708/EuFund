@@ -1,7 +1,7 @@
 // ─── Document Upload API ─────────────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { documents, docTypeEnum } from '@/lib/db/schema';
+import { withUserRLS } from '@/lib/db';
+import { documents, docTypeEnum, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
@@ -9,6 +9,7 @@ import { createHash } from 'crypto';
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import { join, basename } from 'path';
 import { logger } from '@/lib/logger';
+import { and, eq, isNull } from 'drizzle-orm';
 
 const log = logger.child({ component: 'documents-upload-api' });
 
@@ -56,9 +57,36 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verify org access if orgId provided
+    let resolvedOrgId = orgId || undefined;
     if (orgId) {
       await requireOrgRole(user.id, orgId, 'project_manager');
+    }
+
+    if (projectId) {
+      const project = await withUserRLS(user.id, async (tx) => {
+        return tx.query.projects.findFirst({
+          where: and(eq(projects.id, projectId), isNull(projects.deletedAt)),
+          columns: { id: true, orgId: true },
+        });
+      });
+
+      if (!project) {
+        return NextResponse.json(
+          Errors.notFound('project', projectId).toResponse('ro'),
+          { status: 404 },
+        );
+      }
+
+      await requireOrgRole(user.id, project.orgId, 'project_manager');
+
+      if (orgId && orgId !== project.orgId) {
+        return NextResponse.json(
+          Errors.validation('orgId', 'Proiectul nu aparține organizației selectate.', 'Project does not belong to selected organization.').toResponse('ro'),
+          { status: 400 },
+        );
+      }
+
+      resolvedOrgId = project.orgId;
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -89,12 +117,12 @@ export async function POST(req: NextRequest) {
 
     let doc: typeof documents.$inferSelect | undefined;
     try {
-      await db.transaction(async (tx) => {
+      await withUserRLS(user.id, async (tx) => {
         await mkdir(join(UPLOAD_DIR, dateDir), { recursive: true });
         await writeFile(fullPath, buffer);
 
         const [inserted] = await tx.insert(documents).values({
-          orgId: orgId || undefined,
+          orgId: resolvedOrgId,
           projectId: projectId || undefined,
           uploadedBy: user.id,
           docType,
