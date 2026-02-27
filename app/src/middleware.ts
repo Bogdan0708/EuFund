@@ -122,6 +122,42 @@ export default auth(async (req) => {
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // 2b. EMAIL VERIFICATION ENFORCEMENT
+  // ═══════════════════════════════════════════════════════════════════
+  if (!isPublic && req.auth?.user && !req.auth.user.emailVerified) {
+    // Allow auth-related routes and the verification page itself
+    const verificationExempt = [
+      '/api/auth/',
+      '/ro/verifica-email', '/en/verify-email',
+      '/ro/verificare-email', '/en/verificare-email',
+    ];
+    const isVerificationExempt = verificationExempt.some(p => pathname.startsWith(p));
+
+    if (!isVerificationExempt) {
+      if (pathname.startsWith('/api/')) {
+        log.warn({ ip, path: pathname }, '[middleware] Unverified email — API access blocked');
+        const response = NextResponse.json(
+          {
+            error: 'Email verification required',
+            code: 'EMAIL_NOT_VERIFIED',
+            messageRo: 'Trebuie să vă verificați adresa de email.',
+            messageEn: 'You must verify your email address.',
+          },
+          { status: 403 }
+        );
+        response.headers.set('x-request-id', requestId);
+        return response;
+      }
+
+      // Redirect web pages to verification prompt
+      const verifyUrl = pathname.startsWith('/en') ? '/en/verificare-email' : '/ro/verificare-email';
+      const response = NextResponse.redirect(new URL(verifyUrl, req.url));
+      response.headers.set('x-request-id', requestId);
+      return response;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // 3. CSRF PROTECTION (state-changing operations)
   // ═══════════════════════════════════════════════════════════════════
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {

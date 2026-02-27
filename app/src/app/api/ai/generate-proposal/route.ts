@@ -6,6 +6,7 @@ import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
 import { generateProposalSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
+import { factCheckGeneratedContent } from '@/lib/ai/fact-checker';
 
 const PROGRAM_MAP: Record<string, 'horizon_europe' | 'interreg' | 'life_plus' | 'pocidif' | 'pnrr' | 'general'> = {
   horizon_europe: 'horizon_europe',
@@ -53,15 +54,22 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      const factCheck = factCheckGeneratedContent(result.proposal, { expectedProgram: programType });
+
       return NextResponse.json({
         success: true,
         data: {
-          proposal: result.proposal,
+          proposal: factCheck.annotated,
           metadata: {
             tokensUsed: result.tokensUsed,
             ragSourcesUsed: result.ragSourcesUsed,
             generatedAt: new Date().toISOString(),
             mode: 'validated',
+            factCheck: {
+              confidenceScore: factCheck.confidenceScore,
+              references: factCheck.references,
+              unverifiableClaims: factCheck.unverifiableClaims,
+            },
           },
         },
       });
@@ -75,5 +83,5 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-  });
+  }, { feature: 'proposal' });
 }

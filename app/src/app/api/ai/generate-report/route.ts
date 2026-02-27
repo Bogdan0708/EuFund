@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateReport, type ReportInput } from '@/lib/ai/reporting-engine';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 const reportSchema = z.object({
   projectId: z.string(),
@@ -62,7 +63,8 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await generateReport(parsed.data as ReportInput);
-    return NextResponse.json({ success: true, data: result });
+    const { sanitized: data } = sanitizeAIResponseDeep(result);
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     logger.error({ error: error }, 'Report generation error:');
     return NextResponse.json(
@@ -70,5 +72,5 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
-});
+}, { feature: 'document' });
 }

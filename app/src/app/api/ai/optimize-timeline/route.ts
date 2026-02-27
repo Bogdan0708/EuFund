@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { optimizeTimeline, analyzeScenario, type TimelineOptimizationInput, type WhatIfScenario } from '@/lib/ai/timeline-optimizer';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 const timelineSchema = z.object({
   projectId: z.string(),
@@ -57,11 +58,13 @@ export async function POST(request: NextRequest) {
 
     if (parsed.data.scenario) {
       const scenarioResult = await analyzeScenario(input, parsed.data.scenario as WhatIfScenario);
-      return NextResponse.json({ success: true, data: { scenario: scenarioResult } });
+      const { sanitized: scenario } = sanitizeAIResponseDeep(scenarioResult);
+      return NextResponse.json({ success: true, data: { scenario } });
     }
 
     const result = await optimizeTimeline(input);
-    return NextResponse.json({ success: true, data: result });
+    const { sanitized: data } = sanitizeAIResponseDeep(result);
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     logger.error({ error: error }, 'Timeline optimization error:');
     return NextResponse.json(

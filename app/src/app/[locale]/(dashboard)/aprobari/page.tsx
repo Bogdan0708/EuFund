@@ -1,15 +1,29 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
-import { StatusBadge } from '@/components/ui/status-badge';
+import { requireUser, getUserOrganizations } from '@/lib/auth/session';
+import { ApprovalsClient } from './approvals-client';
 
-const approvalItems = [
-  { id: 'A-102', title: 'Raport narativ T1', owner: 'Partener Regiunea Nord', status: 'pending' as const },
-  { id: 'A-103', title: 'Pachet facturi echipamente', owner: 'Birou Central', status: 'changes' as const },
-  { id: 'A-104', title: 'Notă finalizare jalon M3', owner: 'Auditor extern', status: 'approved' as const },
-];
+export default async function ApprovalsPage() {
+  const user = await requireUser();
+  const orgs = await getUserOrganizations(user.id);
+  const org = orgs[0];
 
-export default function ApprovalsPage() {
+  let pendingProjects: Array<{
+    id: string;
+    title: string;
+    acronym: string | null;
+    updatedAt: string | null;
+    createdByName: string | null;
+  }> = [];
+
+  if (org?.id) {
+    const res = await fetch(`/api/v1/approvals?orgId=${org.id}&perPage=50`, { cache: 'no-store' });
+    if (res.ok) {
+      const payload = await res.json();
+      pendingProjects = payload?.data ?? [];
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -21,19 +35,14 @@ export default function ApprovalsPage() {
         <CardHeader>
           <CardTitle className="text-base">Acțiuni în așteptare</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {approvalItems.map((item) => (
-            <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
-              <div>
-                <p className="font-medium">{item.title}</p>
-                <p className="text-xs text-muted-foreground">{item.id} • {item.owner}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <StatusBadge kind="review" value={item.status} />
-                <Button size="sm" variant="outline">Deschide</Button>
-              </div>
-            </div>
-          ))}
+        <CardContent>
+          {org?.id ? (
+            <ApprovalsClient orgId={org.id} initialProjects={pendingProjects} />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Nicio organizație disponibilă pentru aprobare.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

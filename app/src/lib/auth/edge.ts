@@ -22,6 +22,7 @@ interface EdgeSession {
     id?: string;
     email?: string;
     name?: string;
+    emailVerified?: boolean;
   };
 }
 
@@ -54,6 +55,7 @@ export async function getEdgeSession(req: NextRequest): Promise<EdgeSession | nu
         id: (payload.userId || payload.sub) as string | undefined,
         email: payload.email as string | undefined,
         name: payload.name as string | undefined,
+        emailVerified: payload.emailVerified as boolean | undefined,
       },
     };
   } catch {

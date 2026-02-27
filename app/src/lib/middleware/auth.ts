@@ -1,11 +1,13 @@
 // ─── Authentication Middleware for AI Endpoints ───────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { checkRateLimit, isRedisAvailable } from '@/lib/redis/client';
+import { checkRateLimit, getRedis, isRedisAvailable } from '@/lib/redis/client';
 import { db, schema } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { eq } from 'drizzle-orm';
 import { LRUCache } from 'lru-cache';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
+import { AI_CONFIG } from '@/lib/ai/config';
 
 export type UserTier = 'free' | 'pro' | 'enterprise';
 
@@ -55,13 +57,88 @@ export interface AuthenticatedUser {
 // Rate limits by tier (requests per hour)
 const RATE_LIMITS: Record<UserTier, number> = {
   free: 10,      // 10 AI requests per hour
-  pro: 100,      // 100 AI requests per hour  
+  pro: 100,      // 100 AI requests per hour
   enterprise: 1000 // 1000 AI requests per hour
 };
 
+// Per-feature daily limits (from AI_CONFIG.rateLimits)
+export type AIFeature = 'proposal' | 'document' | 'grant' | 'compliance';
+
+const FEATURE_DAILY_LIMITS: Record<AIFeature, number> = {
+  proposal: AI_CONFIG.rateLimits.proposalGenerationsPerDay,
+  document: AI_CONFIG.rateLimits.documentAnalysesPerDay,
+  grant: AI_CONFIG.rateLimits.grantMatchesPerDay,
+  compliance: AI_CONFIG.rateLimits.complianceChecksPerDay,
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+async function checkFeatureDailyLimit(
+  userId: string,
+  feature: AIFeature,
+  limit: number
+): Promise<{ allowed: boolean; remaining: number; resetTime: number }> {
+  const redis = getRedis();
+  if (!redis) {
+    return { allowed: false, remaining: 0, resetTime: Date.now() + DAY_MS };
+  }
+
+  const now = new Date();
+  const day = now.toISOString().slice(0, 10);
+  const redisKey = `ai_usage:${userId}:${feature}:${day}`;
+  const endOfDayUtc = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    23,
+    59,
+    59,
+    999
+  ));
+
+  try {
+    const current = await redis.incr(redisKey);
+    if (current === 1) {
+      const ttlSeconds = Math.max(1, Math.ceil((endOfDayUtc.getTime() - Date.now()) / 1000));
+      await redis.expire(redisKey, ttlSeconds);
+    }
+
+    return {
+      allowed: current <= limit,
+      remaining: Math.max(0, limit - current),
+      resetTime: endOfDayUtc.getTime(),
+    };
+  } catch (error) {
+    log.error({ error, userId, feature }, '[auth] feature daily rate limit check failed');
+    return { allowed: false, remaining: 0, resetTime: endOfDayUtc.getTime() };
+  }
+}
+
+async function sanitizeAIJsonResponse(response: NextResponse): Promise<NextResponse> {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    return response;
+  }
+
+  try {
+    const payload = await response.clone().json();
+    const { sanitized } = sanitizeAIResponseDeep(payload);
+
+    const sanitizedResponse = NextResponse.json(sanitized, { status: response.status });
+    for (const [key, value] of response.headers.entries()) {
+      if (key.toLowerCase() === 'content-length' || key.toLowerCase() === 'content-type') continue;
+      sanitizedResponse.headers.set(key, value);
+    }
+    return sanitizedResponse;
+  } catch {
+    return response;
+  }
+}
+
 export async function withAIAuth(
   request: NextRequest,
-  handler: (user: AuthenticatedUser) => Promise<NextResponse>
+  handler: (user: AuthenticatedUser) => Promise<NextResponse>,
+  options?: { feature?: AIFeature }
 ): Promise<NextResponse> {
   try {
     // Check authentication
@@ -107,8 +184,8 @@ export async function withAIAuth(
 
     if (!rateLimit.allowed) {
       return NextResponse.json(
-        { 
-          error: 'Rate limit exceeded', 
+        {
+          error: 'Rate limit exceeded',
           code: 'RATE_LIMIT_EXCEEDED',
           tier: user.tier,
           limit: RATE_LIMITS[user.tier],
@@ -118,8 +195,28 @@ export async function withAIAuth(
       );
     }
 
+    // Per-feature daily rate limit
+    if (options?.feature) {
+      const featureLimit = FEATURE_DAILY_LIMITS[options.feature];
+      const featureRate = await checkFeatureDailyLimit(user.id, options.feature, featureLimit);
+
+      if (!featureRate.allowed) {
+        return NextResponse.json(
+          {
+            error: 'Daily feature limit exceeded',
+            code: 'FEATURE_LIMIT_EXCEEDED',
+            feature: options.feature,
+            limit: featureLimit,
+            resetTime: featureRate.resetTime,
+          },
+          { status: 429 }
+        );
+      }
+    }
+
     // Add rate limit headers
-    const response = await handler(user);
+    let response = await handler(user);
+    response = await sanitizeAIJsonResponse(response);
     response.headers.set('X-RateLimit-Limit', RATE_LIMITS[user.tier].toString());
     response.headers.set('X-RateLimit-Remaining', rateLimit.remaining.toString());
     response.headers.set('X-RateLimit-Reset', rateLimit.resetTime.toString());

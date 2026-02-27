@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getProjectHealthQuick } from '@/lib/ai/project-intelligence';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 const healthSchema = z.object({
   projectId: z.string(),
@@ -77,21 +78,24 @@ export async function POST(request: NextRequest) {
 
     if (mode === 'quick') {
       const result = getProjectHealthQuick(projectId, projectTitle, normalizedWorkPackages, deadline ?? '', budget, spentBudget);
-      return NextResponse.json({ success: true, data: result });
+      const { sanitized: data } = sanitizeAIResponseDeep(result);
+      return NextResponse.json({ success: true, data });
     }
 
     // Advanced mode - would need full ProjectAnalysisRequest; for now return quick + supplementary
     const quickHealth = getProjectHealthQuick(projectId, projectTitle, normalizedWorkPackages, deadline ?? '', budget, spentBudget);
+    const advancedData = {
+      ...quickHealth,
+      advancedMetrics: {
+        timeline: parsed.data.timelineData,
+        consortium: parsed.data.consortiumData,
+        budget: parsed.data.budgetData,
+      },
+    };
+    const { sanitized: data } = sanitizeAIResponseDeep(advancedData);
     return NextResponse.json({
       success: true,
-      data: {
-        ...quickHealth,
-        advancedMetrics: {
-          timeline: parsed.data.timelineData,
-          consortium: parsed.data.consortiumData,
-          budget: parsed.data.budgetData,
-        },
-      },
+      data,
     });
   } catch (error) {
     logger.error({ error: error }, 'Project health error:');

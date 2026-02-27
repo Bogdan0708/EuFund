@@ -4,7 +4,7 @@ import { aiGenerate } from '@/lib/ai/client';
 import { withAIAuth } from '@/lib/middleware/auth';
 import { Errors } from '@/lib/errors';
 import { logger } from '@/lib/logger';
-import { sanitizeForAI, wrapUserInput, AI_INPUT_LIMITS } from '@/lib/ai/sanitize';
+import { sanitizeForAI, sanitizeAIOutput, wrapUserInput, AI_INPUT_LIMITS } from '@/lib/ai/sanitize';
 
 const SYSTEM_PROMPT = 'Ești un asistent expert în fonduri europene pentru organizații din România. Răspunzi concis, practic și la obiect. Cunoști programele: Horizon Europe, LIFE+, Interreg, POCIDIF, PNRR și alte programe UE. Răspunzi în limba română dacă nu ți se cere altfel.';
 
@@ -68,10 +68,13 @@ export async function POST(request: NextRequest) {
         temperature: 0.3,
       });
 
+      const { sanitized: answer, piiRedacted } = sanitizeAIOutput(response.text.trim());
+
       return NextResponse.json({
         success: true,
         data: {
-          answer: response.text.trim(),
+          answer,
+          ...(piiRedacted.length > 0 && { piiRedacted }),
         },
       });
     } catch (error) {

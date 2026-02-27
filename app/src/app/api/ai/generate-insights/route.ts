@@ -7,6 +7,7 @@ import { type EUProgramKey } from '@/lib/ai/eu-knowledge-base';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 const euProgramKeys = ['horizon_europe', 'life_plus', 'interreg', 'erdf', 'pocidif', 'pnrr', 'general'] as const;
 
@@ -32,7 +33,7 @@ const inputSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withAIAuth(request, async () => {
+  return withAIAuth(request, async (user) => {
   try {
     const body = await request.json();
     const parsed = inputSchema.safeParse(body);
@@ -50,12 +51,14 @@ export async function POST(request: NextRequest) {
     const result = await generateKnowledgeRecommendations(input);
 
     await logAudit({
+      userId: user.id,
       action: 'ai.generate',
       resourceType: 'knowledge_insights',
       metadata: { qualityScore: result.overallQualityScore, readiness: result.readinessLevel },
     });
 
-    return NextResponse.json({ success: true, data: result });
+    const { sanitized: data } = sanitizeAIResponseDeep(result);
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
     logger.error({ error: error }, '[generate-insights]');

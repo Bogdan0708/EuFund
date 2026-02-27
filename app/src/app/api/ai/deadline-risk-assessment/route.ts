@@ -5,6 +5,7 @@ import { analyzeDeadlines, quickRiskCheck } from '@/lib/ai/deadline-intelligence
 import { assessRisk } from '@/lib/ai/risk-assessment';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 const deadlineSchema = z.object({
   type: z.enum(['deadline', 'risk', 'quick']),
@@ -34,7 +35,8 @@ export async function POST(request: NextRequest) {
         parsed.workPackages || [],
         parsed.submissionDeadline || parsed.projectEnd || new Date().toISOString(),
       );
-      return NextResponse.json({ success: true, data: result });
+      const { sanitized: data } = sanitizeAIResponseDeep(result);
+      return NextResponse.json({ success: true, data });
     }
 
     if (parsed.type === 'deadline') {
@@ -47,7 +49,8 @@ export async function POST(request: NextRequest) {
         workPackages: parsed.workPackages || [],
         locale: parsed.locale,
       });
-      return NextResponse.json({ success: true, data: result });
+      const { sanitized: data } = sanitizeAIResponseDeep(result);
+      return NextResponse.json({ success: true, data });
     }
 
     if (parsed.type === 'risk') {
@@ -59,7 +62,8 @@ export async function POST(request: NextRequest) {
         romanianContext: parsed.romanianContext,
         locale: parsed.locale,
       });
-      return NextResponse.json({ success: true, data: result });
+      const { sanitized: data } = sanitizeAIResponseDeep(result);
+      return NextResponse.json({ success: true, data });
     }
 
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 });

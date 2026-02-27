@@ -6,6 +6,7 @@ import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
 import { forecastLifecycleSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
@@ -48,14 +49,15 @@ export async function POST(request: NextRequest) {
       action: 'ai.generate',
       resourceType: 'lifecycle_prediction',
       userId: user.id,
-      metadata: { 
-        projectId: input.projectId, 
+      metadata: {
+        projectId: input.projectId,
         health: result.overallProjectHealth,
-        userTier: user.tier 
+        userTier: user.tier
       },
     });
 
-    return NextResponse.json({ success: true, data: result });
+    const { sanitized: data } = sanitizeAIResponseDeep(result);
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
     logger.error({ error: error }, '[forecast-lifecycle]');

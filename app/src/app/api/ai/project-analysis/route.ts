@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { analyzeProject, getProjectHealthQuick, type ProjectAnalysisRequest } from '@/lib/ai/project-intelligence';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 const quickAnalysisSchema = z.object({
   mode: z.literal('quick'),
@@ -68,12 +69,14 @@ export async function POST(request: NextRequest) {
         parsed.budget,
         parsed.spentBudget,
       );
-      return NextResponse.json({ success: true, data: result });
+      const { sanitized: data } = sanitizeAIResponseDeep(result);
+      return NextResponse.json({ success: true, data });
     }
 
     const parsed = fullAnalysisSchema.parse(body);
     const result = await analyzeProject(parsed as ProjectAnalysisRequest);
-    return NextResponse.json({ success: true, data: result });
+    const { sanitized: data } = sanitizeAIResponseDeep(result);
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

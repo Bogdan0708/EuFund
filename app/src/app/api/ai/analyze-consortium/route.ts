@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { analyzeConsortium, type ConsortiumAnalysisInput } from '@/lib/ai/consortium-analytics';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 const consortiumSchema = z.object({
   projectId: z.string(),
@@ -61,7 +62,8 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await analyzeConsortium(parsed.data as ConsortiumAnalysisInput);
-    return NextResponse.json({ success: true, data: result });
+    const { sanitized: data } = sanitizeAIResponseDeep(result);
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     logger.error({ error: error }, 'Consortium analysis error:');
     return NextResponse.json(

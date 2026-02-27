@@ -7,6 +7,7 @@ import { type EUProgramKey } from '@/lib/ai/eu-knowledge-base';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 const euProgramKeys = ['horizon_europe', 'life_plus', 'interreg', 'erdf', 'pocidif', 'pnrr', 'general'] as const;
 
@@ -43,7 +44,8 @@ export async function POST(request: NextRequest) {
 
     if (input.quick) {
       const result = quickPartnerMatch(input.requiredCapabilities, input.sector);
-      return NextResponse.json({ success: true, data: { recommendedPartners: result } });
+      const { sanitized: recommendedPartners } = sanitizeAIResponseDeep(result);
+      return NextResponse.json({ success: true, data: { recommendedPartners } });
     }
 
     const result = await recommendPartners(input);
@@ -54,11 +56,12 @@ export async function POST(request: NextRequest) {
       metadata: { partnersRecommended: result.recommendedPartners.length },
     });
 
-    return NextResponse.json({ success: true, data: result });
+    const { sanitized: data } = sanitizeAIResponseDeep(result);
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
     logger.error({ error: error }, '[recommend-partners]');
     return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
   }
-});
+}, { feature: 'grant' });
 }

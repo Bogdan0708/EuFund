@@ -7,6 +7,7 @@ import { withAIAuth } from '@/lib/middleware/auth';
 import { withEUAIActCompliance } from '@/lib/ai/eu-ai-act';
 import { matchGrantsSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 // Seed data for demo - in production this comes from the database
 const DEMO_CALLS: FundingCall[] = [
@@ -119,10 +120,11 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      const { sanitized: matches } = sanitizeAIResponseDeep(result.matches);
       return NextResponse.json({
         success: true,
         data: {
-          matches: result.matches,
+          matches,
           metadata: {
             tokensUsed: result.tokensUsed,
             callsEvaluated: DEMO_CALLS.length,
@@ -138,5 +140,5 @@ export async function POST(request: NextRequest) {
       logger.error({ error: error }, '[match-grants]');
       return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
     }
-  });
+  }, { feature: 'grant' });
 }

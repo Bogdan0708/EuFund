@@ -145,8 +145,9 @@ export class AICache {
   }
 
   private generateCacheKey(request: AIRequest): string {
-    // Create a cache key based on request content
+    // Create a cache key based on request content — includes userId for tenant isolation
     const keyData = {
+      userId: request.userId,
       taskType: request.taskType,
       prompt: request.prompt,
       systemPrompt: request.systemPrompt || '',
@@ -163,7 +164,7 @@ export class AICache {
       .digest('hex')
       .substring(0, 16); // Use first 16 chars of hash
 
-    return `ai_cache:${request.taskType}:${hash}`;
+    return `ai_cache:${request.userId}:${request.taskType}:${hash}`;
   }
 
   private getTTL(request: AIRequest): number {

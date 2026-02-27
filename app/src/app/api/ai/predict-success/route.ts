@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
 import { withEUAIActCompliance } from '@/lib/ai/eu-ai-act';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 const euProgramKeys = ['horizon_europe', 'life_plus', 'interreg', 'erdf', 'pocidif', 'pnrr', 'general'] as const;
 
@@ -82,9 +83,10 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      const { sanitized: data } = sanitizeAIResponseDeep(result);
       return NextResponse.json({
         success: true,
-        data: result,
+        data,
         metadata: {
           aiAct: execution.metadata,
         },

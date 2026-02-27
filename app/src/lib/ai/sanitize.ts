@@ -1,5 +1,9 @@
-// ─── AI Prompt Injection Protection ─────────────────────────────
+// ─── AI Prompt Injection Protection & Output Sanitization ───────
 // Sanitizes and wraps user input to prevent prompt injection attacks.
+// Also sanitizes AI output to strip leaked PII (GDPR data minimization).
+
+import DOMPurify from 'isomorphic-dompurify';
+import { stripPII } from './eu-ai-act';
 
 /**
  * Maximum allowed lengths for various AI input fields.
@@ -90,4 +94,65 @@ export function sanitizeForAI(
   const injectionDetected = detectInjectionAttempt(text);
 
   return { sanitized: wrapped, injectionDetected };
+}
+
+/**
+ * Strip HTML/XSS from AI-generated text.
+ * Uses DOMPurify in text-only mode (ALLOWED_TAGS: []) so all markup is removed.
+ * This prevents stored-XSS if AI output is ever rendered with dangerouslySetInnerHTML.
+ */
+export function sanitizeHTML(text: string): string {
+  return DOMPurify.sanitize(text, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+}
+
+/**
+ * Sanitize AI-generated output before returning to the user.
+ * 1. Strips HTML/XSS tags (defense-in-depth against stored XSS)
+ * 2. Strips PII that the model may have echoed or hallucinated
+ *    (emails, phone numbers, CNP, CUI, IBAN, credit cards, IPs).
+ */
+export function sanitizeAIOutput(
+  text: string,
+  options?: { stripPII?: boolean }
+): { sanitized: string; piiRedacted: string[] } {
+  // Always strip HTML/XSS first
+  const output = sanitizeHTML(text);
+
+  if (options?.stripPII === false) {
+    return { sanitized: output, piiRedacted: [] };
+  }
+
+  const { cleaned, redactions } = stripPII(output);
+  return { sanitized: cleaned, piiRedacted: redactions };
+}
+
+/**
+ * Recursively sanitize all string values in a structured AI response.
+ * Walks objects and arrays, running stripPII on every string leaf.
+ * Returns a deep copy — the original is not mutated.
+ */
+export function sanitizeAIResponseDeep<T>(data: T): { sanitized: T; piiRedacted: string[] } {
+  const allRedactions: string[] = [];
+
+  function walk(node: unknown): unknown {
+    if (typeof node === 'string') {
+      const htmlClean = sanitizeHTML(node);
+      const { cleaned, redactions } = stripPII(htmlClean);
+      if (redactions.length > 0) allRedactions.push(...redactions);
+      return cleaned;
+    }
+    if (Array.isArray(node)) {
+      return node.map(walk);
+    }
+    if (node !== null && typeof node === 'object' && !(node instanceof Date)) {
+      const out: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(node as Record<string, unknown>)) {
+        out[key] = walk(val);
+      }
+      return out;
+    }
+    return node;
+  }
+
+  return { sanitized: walk(data) as T, piiRedacted: allRedactions };
 }

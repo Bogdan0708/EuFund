@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { analyzeBudget, type BudgetIntelligenceInput } from '@/lib/ai/budget-intelligence';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 const budgetSchema = z.object({
   projectId: z.string(),
@@ -51,7 +52,8 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await analyzeBudget(parsed.data as BudgetIntelligenceInput);
-    return NextResponse.json({ success: true, data: result });
+    const { sanitized: data } = sanitizeAIResponseDeep(result);
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     logger.error({ error: error }, 'Budget analysis error:');
     return NextResponse.json(

@@ -7,6 +7,8 @@ import { withAIAuth } from '@/lib/middleware/auth';
 import { withEUAIActCompliance } from '@/lib/ai/eu-ai-act';
 import { validateComplianceSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
+import { checkFacts } from '@/lib/ai/fact-checker';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
@@ -57,20 +59,26 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      const complianceData = {
+        overallScore: result.overallScore,
+        deterministicResults: result.deterministicResults,
+        aiResults: result.aiResults,
+        dnshAssessment: result.dnshAssessment,
+        sourceTrace: result.sourceTrace,
+        recommendations: result.recommendations,
+      };
+      const { sanitized: sanitizedData } = sanitizeAIResponseDeep(complianceData);
+      const factCheck = checkFacts(JSON.stringify(complianceData));
       return NextResponse.json({
         success: true,
         data: {
-          overallScore: result.overallScore,
-          deterministicResults: result.deterministicResults,
-          aiResults: result.aiResults,
-          dnshAssessment: result.dnshAssessment,
-          sourceTrace: result.sourceTrace,
-          recommendations: result.recommendations,
+          ...sanitizedData,
           metadata: {
             tokensUsed: result.tokensUsed,
             ragSourcesUsed: result.ragSources,
             validatedAt: result.evaluatedAt,
             aiAct: execution.metadata,
+            ...(!factCheck.passed && { factCheckWarnings: factCheck.warnings }),
           },
         },
       });
@@ -81,5 +89,5 @@ export async function POST(request: NextRequest) {
       logger.error({ error: error }, '[validate-compliance]');
       return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
     }
-  });
+  }, { feature: 'compliance' });
 }

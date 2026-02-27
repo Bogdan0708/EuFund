@@ -6,6 +6,7 @@ import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 const inputSchema = z.object({
   projectBudget: z.number().nonnegative(),
@@ -45,7 +46,8 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      return NextResponse.json({ success: true, data: result });
+      const { sanitized: data } = sanitizeAIResponseDeep(result);
+      return NextResponse.json({ success: true, data });
     } catch (error) {
       if (error instanceof FondEUError) return NextResponse.json(error.toResponse(), { status: error.statusCode });
       logger.error({ error: error }, '[market-intelligence]');

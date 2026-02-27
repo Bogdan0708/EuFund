@@ -5,6 +5,7 @@ import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
 import { logger } from '@/lib/logger';
+import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
@@ -91,15 +92,18 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const { sanitized: analysis, piiRedacted } = sanitizeAIResponseDeep(result.analysis);
+
     return NextResponse.json({
       success: true,
       data: {
-        analysis: result.analysis,
+        analysis,
         piiDetections: result.piiDetections,
         gdprCompliant: result.gdprCompliant,
         metadata: {
           tokensUsed: result.tokensUsed,
           analyzedAt: new Date().toISOString(),
+          ...(piiRedacted.length > 0 && { piiRedacted }),
         },
       },
     });
@@ -110,5 +114,5 @@ export async function POST(request: NextRequest) {
       logger.error({ error: error }, '[analyze-document]');
       return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
     }
-  });
+  }, { feature: 'document' });
 }

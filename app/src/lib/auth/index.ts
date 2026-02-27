@@ -47,6 +47,7 @@ export const {
           id: user.id,
           email: user.email,
           name: user.fullName,
+          emailVerified: user.emailVerified ?? false,
         };
       },
     }),
@@ -60,9 +61,20 @@ export const {
     maxAge: 24 * 60 * 60, // 24 hours
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.userId = user.id;
+        token.emailVerified = (user as { emailVerified?: boolean }).emailVerified ?? false;
+      }
+      // Refresh emailVerified from DB on session update
+      if (trigger === 'update' && token.userId) {
+        const dbUser = await db.query.users.findFirst({
+          where: eq(users.id, String(token.userId)),
+          columns: { emailVerified: true },
+        });
+        if (dbUser) {
+          token.emailVerified = dbUser.emailVerified;
+        }
       }
       return token;
     },
