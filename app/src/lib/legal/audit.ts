@@ -56,7 +56,9 @@ export type AuditAction =
   | 'gdpr.consent_update'
   // System
   | 'system.retention_cleanup'
-  | 'system.feature_flag_change';
+  | 'system.feature_flag_change'
+  | 'system.program_change'
+  | 'system.call_change';
 
 export interface AuditEntry {
   userId?: string;
