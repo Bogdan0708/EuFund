@@ -48,6 +48,7 @@ export const {
           email: user.email,
           name: user.fullName,
           emailVerified: user.emailVerified ?? false,
+          isPlatformAdmin: user.isPlatformAdmin ?? false,
         };
       },
     }),
@@ -64,23 +65,26 @@ export const {
     async jwt({ token, user, trigger }) {
       if (user) {
         token.userId = user.id;
-        token.emailVerified = (user as { emailVerified?: boolean }).emailVerified ?? false;
+        token.emailVerified = (user as any).emailVerified ?? false;
+        token.isPlatformAdmin = (user as any).isPlatformAdmin ?? false;
       }
-      // Refresh emailVerified from DB on session update
+      // Refresh flags from DB on session update
       if (trigger === 'update' && token.userId) {
         const dbUser = await db.query.users.findFirst({
           where: eq(users.id, String(token.userId)),
-          columns: { emailVerified: true },
+          columns: { emailVerified: true, isPlatformAdmin: true },
         });
         if (dbUser) {
           token.emailVerified = dbUser.emailVerified;
+          token.isPlatformAdmin = dbUser.isPlatformAdmin;
         }
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.userId) {
-        (session.user as { id?: string }).id = String(token.userId);
+        (session.user as any).id = String(token.userId);
+        (session.user as any).isPlatformAdmin = !!token.isPlatformAdmin;
       }
       return session;
     },

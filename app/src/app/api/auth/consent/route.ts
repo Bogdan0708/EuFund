@@ -13,6 +13,14 @@ import { z } from 'zod';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'consent' });
+const CONSENT_VERSION = process.env.CONSENT_POLICY_VERSION || process.env.NEXT_PUBLIC_CONSENT_POLICY_VERSION || 'v1';
+
+function requestContext(request: NextRequest): { ipAddress?: string; userAgent?: string } {
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  const ipAddress = forwardedFor?.split(',')[0]?.trim() || undefined;
+  const userAgent = request.headers.get('user-agent') || undefined;
+  return { ipAddress, userAgent };
+}
 
 export async function GET() {
   try {
@@ -42,50 +50,90 @@ export async function GET() {
   }
 }
 
-const withdrawSchema = z.object({
+const consentSchema = z.object({
   consentType: z.enum(['marketing', 'analytics']),
+  status: z.enum(['granted', 'withdrawn']).optional().default('withdrawn'),
 });
 
 export async function PATCH(request: NextRequest) {
   try {
     const user = await requireAuth();
+    const context = requestContext(request);
     const body = await request.json();
-    const parsed = withdrawSchema.safeParse(body);
+    const parsed = consentSchema.safeParse(body);
 
     if (!parsed.success) {
       throw Errors.validation('body', 'Tip consimțământ invalid', 'Invalid consent type');
     }
 
-    const { consentType } = parsed.data;
+    const { consentType, status } = parsed.data;
 
-    // Find active consent of this type
-    const existing = await db.query.consentRecords.findFirst({
-      where: and(
-        eq(consentRecords.userId, user.id),
-        eq(consentRecords.consentType, consentType),
-        eq(consentRecords.status, 'granted'),
-      ),
+    const latest = await db.query.consentRecords.findFirst({
+      where: and(eq(consentRecords.userId, user.id), eq(consentRecords.consentType, consentType)),
+      orderBy: (records, { desc }) => [desc(records.grantedAt)],
     });
 
-    if (!existing) {
-      throw Errors.notFound('consent_record', consentType);
+    if (status === 'granted') {
+      if (latest?.status !== 'granted') {
+        const [created] = await db.insert(consentRecords).values({
+          userId: user.id,
+          consentType,
+          status: 'granted',
+          version: CONSENT_VERSION,
+          grantedAt: new Date(),
+          ipAddress: context.ipAddress,
+          userAgent: context.userAgent,
+        }).returning();
+
+        await logAudit({
+          userId: user.id,
+          action: 'consent.grant',
+          resourceType: 'consent',
+          resourceId: created.id,
+          metadata: { consentType, ...context },
+        });
+      }
+      return NextResponse.json({
+        success: true,
+        data: { consentType, status: 'granted' },
+      });
     }
 
-    await db
-      .update(consentRecords)
-      .set({
-        status: 'withdrawn',
-        withdrawnAt: new Date(),
-      })
-      .where(eq(consentRecords.id, existing.id));
+    let mutated = false;
+    let resourceId = latest?.id;
 
-    await logAudit({
-      userId: user.id,
-      action: 'consent.withdraw',
-      resourceType: 'consent',
-      resourceId: existing.id,
-      metadata: { consentType },
-    });
+    if (latest?.status === 'granted') {
+      await db
+        .update(consentRecords)
+        .set({
+          status: 'withdrawn',
+          withdrawnAt: new Date(),
+        })
+        .where(eq(consentRecords.id, latest.id));
+      mutated = true;
+    } else if (!latest) {
+      const [created] = await db.insert(consentRecords).values({
+        userId: user.id,
+        consentType,
+        status: 'withdrawn',
+        version: CONSENT_VERSION,
+        withdrawnAt: new Date(),
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+      }).returning();
+      resourceId = created.id;
+      mutated = true;
+    }
+
+    if (mutated) {
+      await logAudit({
+        userId: user.id,
+        action: 'consent.withdraw',
+        resourceType: 'consent',
+        resourceId,
+        metadata: { consentType, ...context },
+      });
+    }
 
     return NextResponse.json({
       success: true,

@@ -22,7 +22,9 @@ export async function GET() {
     services: {
       database: 'checking...',
       redis: 'checking...',
-      ai: 'checking...'
+      ai: 'checking...',
+      storage: 'checking...',
+      sentry: 'checking...',
     },
     uptime: process.uptime(),
     memory: process.memoryUsage(),
@@ -74,6 +76,20 @@ export async function GET() {
       }
     } catch {
       healthCheck.services.ai = 'error';
+    }
+
+    // Storage backend check
+    try {
+      healthCheck.services.storage = process.env.GCS_BUCKET ? 'gcs_configured' : 'local_fs';
+    } catch {
+      healthCheck.services.storage = 'error';
+    }
+
+    // Sentry configuration check
+    try {
+      healthCheck.services.sentry = process.env.SENTRY_DSN ? 'configured' : 'not_configured';
+    } catch {
+      healthCheck.services.sentry = 'error';
     }
 
     const hasTimeouts = [healthCheck.services.database, healthCheck.services.redis]

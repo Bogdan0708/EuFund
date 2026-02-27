@@ -6,13 +6,10 @@ import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
-import { readFile } from 'fs/promises';
-import { resolve, sep } from 'path';
+import { computeSha256, deleteObject, getObjectBuffer, getSignedDownloadUrl } from '@/lib/storage/gcs';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'documents-api' });
-
-const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 
 type Params = { params: { id: string } };
 
@@ -49,15 +46,6 @@ async function resolveDocumentAccess(
   }
 }
 
-function resolveStoragePath(storagePath: string): string {
-  const baseDir = resolve(UPLOAD_DIR);
-  const targetPath = resolve(baseDir, storagePath);
-  if (targetPath !== baseDir && !targetPath.startsWith(`${baseDir}${sep}`)) {
-    throw Errors.forbidden();
-  }
-  return targetPath;
-}
-
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
@@ -77,8 +65,26 @@ export async function GET(req: NextRequest, { params }: Params) {
     await resolveDocumentAccess(user.id, doc, 'viewer');
 
     if (download) {
-      const filePath = resolveStoragePath(doc.storagePath);
-      const fileBuffer = await readFile(filePath);
+      const signedUrl = await getSignedDownloadUrl(
+        doc.storagePath,
+        doc.filename || 'document',
+        doc.mimeType || 'application/octet-stream',
+      );
+      if (signedUrl) {
+        await logAudit({
+          userId: user.id,
+          action: 'document.download',
+          resourceType: 'document',
+          resourceId: id,
+          metadata: { mode: 'signed_url' },
+        });
+        return NextResponse.redirect(signedUrl);
+      }
+
+      const fileBuffer = await getObjectBuffer(doc.storagePath);
+      if (doc.checksumSha256 && computeSha256(fileBuffer) !== doc.checksumSha256) {
+        throw Errors.internal('Checksum mismatch for stored document');
+      }
 
       await logAudit({
         userId: user.id,
@@ -87,7 +93,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         resourceId: id,
       });
 
-      return new NextResponse(fileBuffer, {
+      return new NextResponse(new Uint8Array(fileBuffer), {
         headers: {
           'Content-Type': doc.mimeType || 'application/octet-stream',
           'Content-Disposition': `attachment; filename="${doc.filename}"`,
@@ -142,11 +148,21 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
         .where(eq(documents.id, id));
     });
 
+    // Best-effort object deletion; DB soft-delete remains source of truth.
+    let storageDeleted = true;
+    try {
+      await deleteObject(doc.storagePath);
+    } catch (storageError) {
+      storageDeleted = false;
+      log.warn({ storageError, documentId: id }, '[documents:delete] storage cleanup failed');
+    }
+
     await logAudit({
       userId: user.id,
       action: 'document.delete',
       resourceType: 'document',
       resourceId: id,
+      metadata: { storageDeleted },
     });
 
     return NextResponse.json({ success: true, message: 'Documentul a fost șters.' });

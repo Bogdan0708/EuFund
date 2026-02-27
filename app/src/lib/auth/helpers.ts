@@ -2,7 +2,7 @@
 import { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
 import { withUserRLS } from '@/lib/db';
-import { orgMembers } from '@/lib/db/schema';
+import { orgMembers, users } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { Errors } from '@/lib/errors';
 
@@ -12,6 +12,7 @@ export interface SessionUser {
   id: string;
   email: string;
   name?: string;
+  isPlatformAdmin?: boolean;
 }
 
 /**
@@ -26,7 +27,31 @@ export async function requireAuth(): Promise<SessionUser> {
     id: session.user.id,
     email: session.user.email,
     name: session.user.name || undefined,
+    isPlatformAdmin: (session.user as any).isPlatformAdmin || false,
   };
+}
+
+/**
+ * Require platform admin privileges, or throw 403
+ */
+export async function requirePlatformAdmin(): Promise<SessionUser> {
+  const user = await requireAuth();
+  
+  // First check session flag for speed
+  if (user.isPlatformAdmin) return user;
+
+  // Verify against database for critical actions
+  const dbUser = await withUserRLS(user.id, async (tx) => {
+    return tx.query.users.findFirst({
+      where: eq(users.id, user.id),
+    });
+  });
+
+  if (!dbUser?.isPlatformAdmin) {
+    throw Errors.forbidden('Platform admin privileges required');
+  }
+
+  return { ...user, isPlatformAdmin: true };
 }
 
 /**

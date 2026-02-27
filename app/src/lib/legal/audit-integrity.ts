@@ -3,7 +3,7 @@
 
 import { db } from '@/lib/db';
 import { auditLog } from '@/lib/db/schema';
-import { asc, and, gte, lte } from 'drizzle-orm';
+import { asc, desc, and, gte, lte, lt } from 'drizzle-orm';
 import { computeEntryHash } from './audit';
 
 export interface ChainVerificationResult {
@@ -44,8 +44,8 @@ export async function verifyAuditChainIntegrity(options?: {
         entryHash: auditLog.entryHash,
       })
       .from(auditLog)
-      .where(lte(auditLog.createdAt, options.from))
-      .orderBy(asc(auditLog.createdAt))
+      .where(lt(auditLog.createdAt, options.from))
+      .orderBy(desc(auditLog.createdAt))
       .limit(1);
     if (preceding?.entryHash) {
       lastHash = preceding.entryHash;

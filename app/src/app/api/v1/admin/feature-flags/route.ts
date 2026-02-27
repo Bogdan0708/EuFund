@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq, inArray } from 'drizzle-orm';
-import { db, withUserRLS } from '@/lib/db';
-import { featureFlags, orgMembers } from '@/lib/db/schema';
+import { and, eq } from 'drizzle-orm';
+import { db } from '@/lib/db';
+import { featureFlags } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth } from '@/lib/auth/helpers';
+import { requirePlatformAdmin } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
@@ -22,28 +22,12 @@ const createFlagSchema = z.object({
   }).optional(),
 });
 
-async function requireAdmin(userId: string): Promise<void> {
-  const adminMembership = await withUserRLS(userId, async (tx) => {
-    return tx.query.orgMembers.findFirst({
-      where: and(
-        eq(orgMembers.userId, userId),
-        inArray(orgMembers.role, ['admin', 'org_admin']),
-      ),
-    });
-  });
-
-  if (!adminMembership) {
-    throw Errors.forbidden();
-  }
-}
-
 /**
  * GET /api/v1/admin/feature-flags — list all flags
  */
 export async function GET() {
   try {
-    const user = await requireAuth();
-    await requireAdmin(user.id);
+    const user = await requirePlatformAdmin();
 
     const flags = await db.select().from(featureFlags);
 
@@ -62,8 +46,7 @@ export async function GET() {
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireAuth();
-    await requireAdmin(user.id);
+    const user = await requirePlatformAdmin();
 
     const body = await req.json();
     const parsed = createFlagSchema.safeParse(body);

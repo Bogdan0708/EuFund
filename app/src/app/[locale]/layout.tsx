@@ -4,6 +4,7 @@ import { getMessages } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { locales } from '@/lib/i18n';
 import AuthSessionProvider from '@/components/providers/session-provider';
+import { CookieConsentBanner } from '@/components/ui/cookie-consent';
 import { getNonce } from '@/lib/security/nonce';
 import '@/app/globals.css';
 
@@ -34,6 +35,7 @@ export default async function LocaleLayout({
         <AuthSessionProvider>
           <NextIntlClientProvider messages={messages}>
             {children}
+            <CookieConsentBanner />
           </NextIntlClientProvider>
         </AuthSessionProvider>
       </body>

@@ -49,6 +49,7 @@ export const users = pgTable('users', {
   emailVerified: boolean('email_verified').default(false),
   mfaEnabled: boolean('mfa_enabled').default(false),
   mfaSecret: varchar('mfa_secret', { length: 255 }),
+  isPlatformAdmin: boolean('is_platform_admin').default(false),
   dateOfBirth: date('date_of_birth'), // For age verification (Law 190/2018)
   ageVerified: boolean('age_verified').default(false), // 16+ confirmed
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),

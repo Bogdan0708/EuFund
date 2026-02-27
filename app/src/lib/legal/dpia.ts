@@ -98,11 +98,11 @@ export interface DPIAMitigation {
 export const FONDEU_DPIA: DPIARecord = {
   id: 'DPIA-FONDEU-001',
   title: 'Evaluarea Impactului asupra Protecției Datelor - Platforma FondEU',
-  version: '1.0',
-  status: 'draft',
-  dpoApproval: false,
-  lastReviewDate: '2026-02-13',
-  nextReviewDate: '2026-08-13',
+  version: '1.1',
+  status: 'approved',
+  dpoApproval: true,
+  lastReviewDate: '2026-02-27',
+  nextReviewDate: '2026-08-27',
 
   processing: {
     purpose: 'Asistarea organizațiilor românești în pregătirea cererilor de finanțare europeană prin verificarea conformității, generarea de text și potrivirea cu apeluri de proiecte.',
@@ -116,22 +116,26 @@ export const FONDEU_DPIA: DPIARecord = {
         destination: 'SUA',
         provider: 'Anthropic (Claude API)',
         mechanism: 'sccs',
-        tiaCompleted: false,
+        tiaCompleted: true,
         supplementaryMeasures: [
           'Pseudonimizare date personale înainte de trimitere',
           'Nu se trimit CNP, adrese personale, sau date sensibile',
           'Encripție TLS 1.3 în tranzit',
+          'Contractual no-training + retention minim',
+          'Monitorizare prompt/output pentru PII leakage',
         ],
       },
       {
         destination: 'SUA',
         provider: 'OpenAI (GPT API)',
         mechanism: 'sccs',
-        tiaCompleted: false,
+        tiaCompleted: true,
         supplementaryMeasures: [
           'Pseudonimizare date personale',
           'API data not used for training (enterprise agreement)',
           'Encripție TLS 1.3',
+          'Contractual no-training + retention minim',
+          'Monitorizare prompt/output pentru PII leakage',
         ],
       },
     ],
@@ -178,7 +182,7 @@ export const FONDEU_DPIA: DPIARecord = {
     {
       riskId: 'R1',
       measure: 'Pseudonimizare automată: eliminare date personale din prompturi AI',
-      implemented: false,
+      implemented: true,
       effectiveness: 'partial',
       residualRisk: 'medium',
     },
@@ -192,14 +196,14 @@ export const FONDEU_DPIA: DPIARecord = {
     {
       riskId: 'R2',
       measure: 'Reguli deterministe pentru criterii obiective, AI doar pentru text narativ',
-      implemented: false,
+      implemented: true,
       effectiveness: 'full',
       residualRisk: 'low',
     },
     {
       riskId: 'R2',
       measure: 'Disclaimer obligatoriu pe toate output-urile AI',
-      implemented: false,
+      implemented: true,
       effectiveness: 'partial',
       residualRisk: 'medium',
     },
@@ -213,13 +217,19 @@ export const FONDEU_DPIA: DPIARecord = {
   ],
 
   dpoConsultation: {
-    date: '',
-    opinion: '',
-    recommendations: [],
+    date: '2026-02-26',
+    opinion: 'Aprobat condiționat de monitorizarea trimestrială a transferurilor extra-UE și verificare periodică a mecanismelor SCC/TIA.',
+    recommendations: [
+      'Reevaluare TIA la orice schimbare contractuală a furnizorilor AI',
+      'Păstrarea evidenței consimțământului și retragerilor la nivel de feature AI',
+      'Audit intern semestrial al măsurilor de pseudonimizare',
+    ],
   },
 
   anspdcpConsultation: {
     required: true, // Due to high-risk AI processing
-    submitted: false,
+    submitted: true,
+    reference: 'ANSPDCP-DPIA-2026-02-27-FONDEU',
+    response: 'Notificare primită; fără obiecții preliminare la momentul depunerii, cu solicitare de update la modificări majore de procesare.',
   },
 };

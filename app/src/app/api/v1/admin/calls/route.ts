@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { db, withUserRLS } from '@/lib/db';
-import { callsForProposals, orgMembers } from '@/lib/db/schema';
+import { db } from '@/lib/db';
+import { callsForProposals } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth } from '@/lib/auth/helpers';
+import { requirePlatformAdmin } from '@/lib/auth/helpers';
 import { logAudit, sanitizeForAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
 
@@ -42,23 +42,9 @@ const updateCallSchema = createCallSchema.partial().extend({
   id: z.string().uuid(),
 });
 
-async function requireAdmin(userId: string): Promise<void> {
-  const adminMembership = await withUserRLS(userId, async (tx) => {
-    return tx.query.orgMembers.findFirst({
-      where: and(
-        eq(orgMembers.userId, userId),
-        inArray(orgMembers.role, ['admin', 'org_admin']),
-      ),
-    });
-  });
-
-  if (!adminMembership) throw Errors.forbidden();
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireAuth();
-    await requireAdmin(user.id);
+    const user = await requirePlatformAdmin();
 
     const programId = req.nextUrl.searchParams.get('programId');
     const calls = await db.query.callsForProposals.findMany({
@@ -78,8 +64,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireAuth();
-    await requireAdmin(user.id);
+    const user = await requirePlatformAdmin();
 
     const body = await req.json();
     const parsed = createCallSchema.safeParse(body);
@@ -138,8 +123,7 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const user = await requireAuth();
-    await requireAdmin(user.id);
+    const user = await requirePlatformAdmin();
 
     const body = await req.json();
     const parsed = updateCallSchema.safeParse(body);

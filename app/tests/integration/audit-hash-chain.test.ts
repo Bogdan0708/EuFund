@@ -7,6 +7,7 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn((...args: any[]) => ({ type: 'and', args })),
   gte: vi.fn((col: any, val: any) => ({ type: 'gte', col, val })),
   lte: vi.fn((col: any, val: any) => ({ type: 'lte', col, val })),
+  lt: vi.fn((col: any, val: any) => ({ type: 'lt', col, val })),
   eq: vi.fn((col: any, val: any) => ({ type: 'eq', col, val })),
 }));
 
@@ -290,6 +291,80 @@ describe('Audit Hash Chain', () => {
       expect(result.isIntact).toBe(false);
       expect(result.brokenLinks).toHaveLength(1);
       expect(result.brokenLinks[0].entryId).toBe('entry-1');
+    });
+
+    it('should verify chain integrity across 1000 entries', async () => {
+      const { computeEntryHash } = await import('@/lib/legal/audit');
+
+      const baseTs = new Date('2026-02-27T10:00:00.000Z').getTime();
+      const entries: Array<{
+        id: string;
+        userId: string;
+        action: string;
+        resourceType: string;
+        resourceId: string;
+        oldValue: null;
+        newValue: null;
+        ipAddress: null;
+        entryHash: string;
+        previousHash: string | null;
+        createdAt: Date;
+      }> = [];
+
+      let previousHash: string | null = null;
+      for (let i = 0; i < 1000; i++) {
+        const id = `entry-${i + 1}`;
+        const createdAt = new Date(baseTs + i * 1000).toISOString();
+        const entryHash = computeEntryHash({
+          id,
+          userId: 'user-1',
+          action: 'project.update',
+          resourceType: 'project',
+          resourceId: 'project-1',
+          oldValue: null,
+          newValue: null,
+          ipAddress: null,
+          createdAt,
+          previousHash,
+        });
+
+        entries.push({
+          id,
+          userId: 'user-1',
+          action: 'project.update',
+          resourceType: 'project',
+          resourceId: 'project-1',
+          oldValue: null,
+          newValue: null,
+          ipAddress: null,
+          entryHash,
+          previousHash,
+          createdAt: new Date(createdAt),
+        });
+        previousHash = entryHash;
+      }
+
+      mockSelect.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({
+                offset: vi.fn()
+                  .mockResolvedValueOnce(entries)
+                  .mockResolvedValueOnce([]),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const { verifyAuditChainIntegrity } = await import('@/lib/legal/audit-integrity');
+      const result = await verifyAuditChainIntegrity({ batchSize: 1000 });
+
+      expect(result.isIntact).toBe(true);
+      expect(result.totalChecked).toBe(1000);
+      expect(result.validEntries).toBe(1000);
+      expect(result.brokenLinks).toHaveLength(0);
     });
   });
 });

@@ -1,8 +1,7 @@
 let initAttempted = false;
 
 async function importSentryOptional() {
-  // Keep Sentry optional at build-time until @sentry/nextjs is installed in this repo.
-  return new Function('return import("@sentry/nextjs")')() as Promise<{
+  return import('@sentry/nextjs') as Promise<{
     init: (config: Record<string, unknown>) => void;
     captureException: (error: unknown, context?: Record<string, unknown>) => void;
   }>;
@@ -13,10 +12,15 @@ export async function initSentryIfConfigured(): Promise<void> {
   initAttempted = true;
 
   try {
+    const release = process.env.APP_VERSION
+      || process.env.GITHUB_SHA
+      || process.env.VERCEL_GIT_COMMIT_SHA
+      || undefined;
     const Sentry = await importSentryOptional();
     Sentry.init({
       dsn: process.env.SENTRY_DSN,
       environment: process.env.NODE_ENV || 'development',
+      release,
       tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
       sendDefaultPii: false,
     });

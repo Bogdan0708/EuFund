@@ -7,13 +7,10 @@ import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { analyzeDocument } from '@/lib/ai/document-analyzer';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
-import { readFile } from 'fs/promises';
-import { resolve, sep } from 'path';
+import { computeSha256, getObjectBuffer } from '@/lib/storage/gcs';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'documents-analyze-api' });
-
-const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 
 type Params = { params: { id: string } };
 
@@ -49,15 +46,6 @@ async function resolveDocumentAccess(
   }
 }
 
-function resolveStoragePath(storagePath: string): string {
-  const baseDir = resolve(UPLOAD_DIR);
-  const targetPath = resolve(baseDir, storagePath);
-  if (targetPath !== baseDir && !targetPath.startsWith(`${baseDir}${sep}`)) {
-    throw Errors.forbidden();
-  }
-  return targetPath;
-}
-
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
@@ -74,9 +62,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
     await resolveDocumentAccess(user.id, doc, 'project_manager');
 
-    // Read file content
-    const filePath = resolveStoragePath(doc.storagePath);
-    const buffer = await readFile(filePath);
+    // Read file content and verify integrity before analysis.
+    const buffer = await getObjectBuffer(doc.storagePath);
+    if (doc.checksumSha256 && computeSha256(buffer) !== doc.checksumSha256) {
+      throw Errors.internal('Checksum mismatch for stored document');
+    }
 
     let content: string;
     if (doc.mimeType === 'text/plain') {

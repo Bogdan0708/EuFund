@@ -5,15 +5,13 @@ import { documents, docTypeEnum, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
-import { createHash } from 'crypto';
-import { writeFile, mkdir, unlink } from 'fs/promises';
-import { join, basename } from 'path';
+import { basename } from 'path';
+import { buildObjectPath, computeSha256, deleteObject, putObject } from '@/lib/storage/gcs';
 import { logger } from '@/lib/logger';
 import { and, eq, isNull } from 'drizzle-orm';
 
 const log = logger.child({ component: 'documents-upload-api' });
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const ALLOWED_TYPES = [
   'application/pdf',
@@ -98,7 +96,16 @@ export async function POST(req: NextRequest) {
       'd0cf11e0': ['application/msword'],       // OLE2 Compound Document (.doc)
     };
     const detectedTypes = Object.entries(MAGIC_BYTES).find(([magic]) => magicHex.startsWith(magic));
-    if (file.type !== 'text/plain' && !detectedTypes) {
+    if (file.type === 'text/plain') {
+      // Reject obvious binary payloads masquerading as text.
+      const probe = buffer.subarray(0, Math.min(buffer.length, 2048));
+      if (probe.includes(0x00)) {
+        return NextResponse.json(
+          Errors.validation('file', 'Fișierul text conține bytes binari invalizi.', 'Text file contains invalid binary bytes.').toResponse('ro'),
+          { status: 400 },
+        );
+      }
+    } else if (!detectedTypes || !detectedTypes[1].includes(file.type)) {
       return NextResponse.json(
         Errors.validation('file', 'Conținutul fișierului nu corespunde tipului declarat', 'File content does not match declared type').toResponse('ro'),
         { status: 400 },
@@ -106,21 +113,16 @@ export async function POST(req: NextRequest) {
     }
 
     const safeName = basename(file.name).replace(/[^a-zA-Z0-9._-]/g, '_');
-    const checksum = createHash('sha256').update(buffer).digest('hex');
+    const checksum = computeSha256(buffer);
 
-    // Store file + DB insert in one transactional flow; on DB failure remove file.
-    const dateDir = new Date().toISOString().split('T')[0];
+    // Store file + DB insert in one transactional flow; on DB failure remove blob.
     const fileId = crypto.randomUUID();
-    const ext = safeName.split('.').pop() || 'bin';
-    const storagePath = join(dateDir, `${fileId}.${ext}`);
-    const fullPath = join(UPLOAD_DIR, storagePath);
+    const storagePath = buildObjectPath(fileId, safeName);
+    const persistedPath = await putObject(storagePath, buffer, file.type);
 
     let doc: typeof documents.$inferSelect | undefined;
     try {
       await withUserRLS(user.id, async (tx) => {
-        await mkdir(join(UPLOAD_DIR, dateDir), { recursive: true });
-        await writeFile(fullPath, buffer);
-
         const [inserted] = await tx.insert(documents).values({
           orgId: resolvedOrgId,
           projectId: projectId || undefined,
@@ -129,14 +131,14 @@ export async function POST(req: NextRequest) {
           filename: safeName,
           mimeType: file.type,
           fileSize: file.size,
-          storagePath,
+          storagePath: persistedPath,
           checksumSha256: checksum,
         }).returning();
 
         doc = inserted;
       });
     } catch (txError) {
-      await unlink(fullPath).catch(() => undefined);
+      await deleteObject(persistedPath);
       throw txError;
     }
 

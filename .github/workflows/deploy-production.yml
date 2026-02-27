@@ -83,7 +83,8 @@ jobs:
             --region "$REGION" \
             --platform managed \
             --allow-unauthenticated \
-            --update-secrets DATABASE_URL=DATABASE_URL:latest,NEXTAUTH_SECRET=NEXTAUTH_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,REDIS_URL=REDIS_URL:latest
+            --set-env-vars APP_VERSION=${IMAGE_TAG},GITHUB_SHA=${{ github.sha }},GCS_BUCKET=${{ vars.GCS_BUCKET }},GCS_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCS_KEY_FILENAME=${{ vars.GCS_KEY_FILENAME }},STORAGE_STRICT_GCS=true \
+            --update-secrets DATABASE_URL=DATABASE_URL:latest,NEXTAUTH_SECRET=NEXTAUTH_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,REDIS_URL=REDIS_URL:latest,SENTRY_DSN=SENTRY_DSN:latest
 
       - name: Rollback to previous serving revision
         if: ${{ inputs.rollback == true }}
@@ -115,11 +116,13 @@ jobs:
           PROD_URL="${{ vars.PRODUCTION_URL }}"
           for i in {1..15}; do
             STATUS=$(curl -sf "$PROD_URL/api/health" | jq -r '.status' || echo "unreachable")
-            if [ "$STATUS" == "healthy" ]; then
+            STORAGE=$(curl -sf "$PROD_URL/api/health" | jq -r '.services.storage' || echo "unreachable")
+            SENTRY=$(curl -sf "$PROD_URL/api/health" | jq -r '.services.sentry' || echo "unreachable")
+            if [ "$STATUS" == "healthy" ] && [ "$STORAGE" != "error" ] && [ "$SENTRY" != "error" ]; then
               echo "Production healthy!"
               exit 0
             fi
-            echo "Attempt $i: $STATUS"
+            echo "Attempt $i: status=$STATUS storage=$STORAGE sentry=$SENTRY"
             sleep 20
           done
           echo "Production health check failed - consider rollback"

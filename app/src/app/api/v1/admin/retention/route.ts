@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { withUserRLS } from '@/lib/db';
-import { orgMembers } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth } from '@/lib/auth/helpers';
+import { requirePlatformAdmin } from '@/lib/auth/helpers';
 import { runRetentionCleanup } from '@/lib/legal/retention-cleanup';
 import { logger } from '@/lib/logger';
 
@@ -15,21 +14,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireAuth();
-
-    // Require admin role
-    const adminMembership = await withUserRLS(user.id, async (tx) => {
-      return tx.query.orgMembers.findFirst({
-        where: and(
-          eq(orgMembers.userId, user.id),
-          inArray(orgMembers.role, ['admin', 'org_admin']),
-        ),
-      });
-    });
-
-    if (!adminMembership) {
-      throw Errors.forbidden();
-    }
+    const user = await requirePlatformAdmin();
 
     const url = new URL(req.url);
     const dryRun = url.searchParams.get('dryRun') !== 'false';

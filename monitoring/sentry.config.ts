@@ -6,7 +6,7 @@
 export const sentryConfig = {
   dsn: process.env.SENTRY_DSN || '',
   environment: process.env.NODE_ENV || 'development',
-  release: process.env.APP_VERSION || '1.0.0',
+  release: process.env.APP_VERSION || process.env.GITHUB_SHA || process.env.VERCEL_GIT_COMMIT_SHA || '1.0.0',
 
   // Performance monitoring
   tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
