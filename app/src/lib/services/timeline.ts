@@ -1,13 +1,23 @@
-import { db } from '@/lib/db';
+import { db, withUserRLS } from '@/lib/db';
+import type { Database } from '@/lib/db';
 import { projectTimelines, workPackages } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import type { CreateTimelineInput, GanttData } from '@/types/timeline';
 
-export async function getProjectTimeline(projectId: string): Promise<GanttData> {
-  const wps = await db.query.workPackages.findMany({
-    where: eq(workPackages.projectId, projectId),
-    with: { timelineItems: true },
-    orderBy: (wp, { asc }) => [asc(wp.startDate)],
+type RLSExecutor = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+async function runWithContext<T>(userId: string | undefined, fn: (executor: RLSExecutor) => Promise<T>): Promise<T> {
+  if (userId) return withUserRLS(userId, fn);
+  return fn(db as unknown as RLSExecutor);
+}
+
+export async function getProjectTimeline(projectId: string, userId?: string): Promise<GanttData> {
+  const wps = await runWithContext(userId, async (executor) => {
+    return executor.query.workPackages.findMany({
+      where: eq(workPackages.projectId, projectId),
+      with: { timelineItems: true },
+      orderBy: (wp, { asc }) => [asc(wp.startDate)],
+    });
   });
 
   let projectStart = '';
@@ -56,25 +66,28 @@ export async function getProjectTimeline(projectId: string): Promise<GanttData> 
   };
 }
 
-export async function createTimelineItem(projectId: string, input: CreateTimelineInput) {
-  const [item] = await db.insert(projectTimelines).values({
-    projectId,
-    workPackageId: input.workPackageId,
-    taskName: input.taskName,
-    startDate: input.startDate,
-    endDate: input.endDate,
-    dependencies: input.dependencies || [],
-    progressPercentage: input.progressPercentage || 0,
-    assignedTo: input.assignedTo,
-    riskLevel: input.riskLevel || 'low',
-  }).returning();
-  return item;
+export async function createTimelineItem(projectId: string, input: CreateTimelineInput, userId?: string) {
+  return runWithContext(userId, async (executor) => {
+    const [item] = await executor.insert(projectTimelines).values({
+      projectId,
+      workPackageId: input.workPackageId,
+      taskName: input.taskName,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      dependencies: input.dependencies || [],
+      progressPercentage: input.progressPercentage || 0,
+      assignedTo: input.assignedTo,
+      riskLevel: input.riskLevel || 'low',
+    }).returning();
+    return item;
+  });
 }
 
 export async function updateTimelineItem(
   projectId: string,
   itemId: string,
-  updates: Partial<CreateTimelineInput>
+  updates: Partial<CreateTimelineInput>,
+  userId?: string,
 ) {
   const updateData: Record<string, unknown> = {};
   if (updates.taskName !== undefined) updateData.taskName = updates.taskName;
@@ -87,35 +100,42 @@ export async function updateTimelineItem(
   if (updates.workPackageId !== undefined) updateData.workPackageId = updates.workPackageId;
   updateData.updatedAt = new Date();
 
-  const [item] = await db.update(projectTimelines)
-    .set(updateData)
-    .where(and(
-      eq(projectTimelines.id, itemId),
-      eq(projectTimelines.projectId, projectId)
-    ))
-    .returning();
-  return item;
+  return runWithContext(userId, async (executor) => {
+    const [item] = await executor.update(projectTimelines)
+      .set(updateData)
+      .where(and(
+        eq(projectTimelines.id, itemId),
+        eq(projectTimelines.projectId, projectId)
+      ))
+      .returning();
+    return item;
+  });
 }
 
-export async function deleteTimelineItem(projectId: string, itemId: string) {
-  await db.delete(projectTimelines)
-    .where(and(
-      eq(projectTimelines.id, itemId),
-      eq(projectTimelines.projectId, projectId)
-    ));
+export async function deleteTimelineItem(projectId: string, itemId: string, userId?: string) {
+  await runWithContext(userId, async (executor) => {
+    await executor.delete(projectTimelines)
+      .where(and(
+        eq(projectTimelines.id, itemId),
+        eq(projectTimelines.projectId, projectId)
+      ));
+  });
 }
 
 export async function updateTimelineProgress(
   projectId: string,
   itemId: string,
-  progressPercentage: number
+  progressPercentage: number,
+  userId?: string,
 ) {
-  const [item] = await db.update(projectTimelines)
-    .set({ progressPercentage, updatedAt: new Date() })
-    .where(and(
-      eq(projectTimelines.id, itemId),
-      eq(projectTimelines.projectId, projectId)
-    ))
-    .returning();
-  return item;
+  return runWithContext(userId, async (executor) => {
+    const [item] = await executor.update(projectTimelines)
+      .set({ progressPercentage, updatedAt: new Date() })
+      .where(and(
+        eq(projectTimelines.id, itemId),
+        eq(projectTimelines.projectId, projectId)
+      ))
+      .returning();
+    return item;
+  });
 }

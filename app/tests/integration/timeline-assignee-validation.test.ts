@@ -16,6 +16,20 @@ describe('Timeline assignee org validation', () => {
       createTimelineItem,
     }));
     vi.doMock('@/lib/db', () => ({
+      withUserRLS: vi.fn(async (_userId: string, fn: (tx: any) => Promise<unknown>) => fn({
+        query: {
+          projects: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: 'p1',
+              orgId: 'org-1',
+              deletedAt: null,
+            }),
+          },
+          orgMembers: {
+            findFirst: vi.fn().mockResolvedValue(null),
+          },
+        },
+      })),
       db: {
         query: {
           projects: {
@@ -71,6 +85,20 @@ describe('Timeline assignee org validation', () => {
       updateTimelineProgress: vi.fn(),
     }));
     vi.doMock('@/lib/db', () => ({
+      withUserRLS: vi.fn(async (_userId: string, fn: (tx: any) => Promise<unknown>) => fn({
+        query: {
+          projects: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: 'p1',
+              orgId: 'org-1',
+              deletedAt: null,
+            }),
+          },
+          orgMembers: {
+            findFirst: vi.fn().mockResolvedValue(null),
+          },
+        },
+      })),
       db: {
         query: {
           projects: {

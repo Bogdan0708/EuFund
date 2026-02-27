@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { callsForProposals, complianceReports, organizations, projects, workPackages } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
@@ -29,24 +29,28 @@ export async function GET(req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
 
     await requireOrgRole(user.id, project.orgId, 'project_manager');
 
-    const [organization, call, packages, latestComplianceReport] = await Promise.all([
-      db.query.organizations.findFirst({ where: eq(organizations.id, project.orgId) }),
-      project.callId
-        ? db.query.callsForProposals.findFirst({ where: eq(callsForProposals.id, project.callId) })
-        : Promise.resolve(null),
-      db.query.workPackages.findMany({ where: eq(workPackages.projectId, project.id) }),
-      db.query.complianceReports.findFirst({
-        where: eq(complianceReports.projectId, project.id),
-        orderBy: desc(complianceReports.createdAt),
-      }),
-    ]);
+    const [organization, call, packages, latestComplianceReport] = await withUserRLS(user.id, async (tx) => {
+      return Promise.all([
+        tx.query.organizations.findFirst({ where: eq(organizations.id, project.orgId) }),
+        project.callId
+          ? tx.query.callsForProposals.findFirst({ where: eq(callsForProposals.id, project.callId) })
+          : Promise.resolve(null),
+        tx.query.workPackages.findMany({ where: eq(workPackages.projectId, project.id) }),
+        tx.query.complianceReports.findFirst({
+          where: eq(complianceReports.projectId, project.id),
+          orderBy: desc(complianceReports.createdAt),
+        }),
+      ]);
+    });
 
     const reportItems = (latestComplianceReport?.items || {}) as {
       aiResults?: Array<{ area?: string; status?: string }>;

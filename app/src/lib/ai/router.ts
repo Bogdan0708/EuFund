@@ -17,6 +17,9 @@ import {
   estimateCost
 } from './provider-matrix';
 import { LRUCache } from 'lru-cache';
+import { logger } from '@/lib/logger';
+
+const log = logger.child({ component: 'ai-router' });
 
 // ─── Language Detection ──────────────────────────────────────────────
 
@@ -52,12 +55,12 @@ export function detectRomanianContext(text: string): RomanianLanguageContext {
   
   let culturalContext: 'formal' | 'academic' | 'bureaucratic' | 'business' | 'casual' = 'casual';
   
-  if (formalIndicators.some(indicator => text.includes(indicator))) {
-    culturalContext = 'formal';
+  if (legalIndicators.some(indicator => text.includes(indicator))) {
+    culturalContext = 'bureaucratic';
   } else if (academicIndicators.some(indicator => text.includes(indicator))) {
     culturalContext = 'academic';
-  } else if (legalIndicators.some(indicator => text.includes(indicator))) {
-    culturalContext = 'bureaucratic';
+  } else if (formalIndicators.some(indicator => text.includes(indicator))) {
+    culturalContext = 'formal';
   } else if (words.length > 100) {
     culturalContext = 'business';
   }
@@ -169,6 +172,15 @@ export class AIRouter {
       model: this.getModelForProvider(s.provider, request.taskType)
     }));
     
+    log.info({
+      selectedProvider: selected.provider,
+      taskType: request.taskType,
+      complexity: complexityAnalysis.complexity,
+      userTier: request.userTier,
+      reasoning: selected.reasoning,
+      confidence: selected.score.toFixed(2)
+    }, 'AI Routing Decision');
+
     return {
       selectedProvider: selected.provider,
       selectedModel: this.getModelForProvider(selected.provider, request.taskType),

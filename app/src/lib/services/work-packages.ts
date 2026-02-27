@@ -1,41 +1,55 @@
-import { db } from '@/lib/db';
+import { db, withUserRLS } from '@/lib/db';
+import type { Database } from '@/lib/db';
 import { workPackages } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import type { CreateWorkPackageInput, UpdateWorkPackageInput } from '@/types/work-packages';
 
-export async function listWorkPackages(projectId: string) {
-  return db.query.workPackages.findMany({
-    where: eq(workPackages.projectId, projectId),
-    with: { timelineItems: true, leadPartner: true },
-    orderBy: (wp, { asc }) => [asc(wp.startDate)],
+type RLSExecutor = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+async function runWithContext<T>(userId: string | undefined, fn: (executor: RLSExecutor) => Promise<T>): Promise<T> {
+  if (userId) return withUserRLS(userId, fn);
+  return fn(db as unknown as RLSExecutor);
+}
+
+export async function listWorkPackages(projectId: string, userId?: string) {
+  return runWithContext(userId, async (executor) => {
+    return executor.query.workPackages.findMany({
+      where: eq(workPackages.projectId, projectId),
+      with: { timelineItems: true, leadPartner: true },
+      orderBy: (wp, { asc }) => [asc(wp.startDate)],
+    });
   });
 }
 
-export async function getWorkPackage(projectId: string, wpId: string) {
-  return db.query.workPackages.findFirst({
-    where: and(eq(workPackages.id, wpId), eq(workPackages.projectId, projectId)),
-    with: { timelineItems: true, leadPartner: true },
+export async function getWorkPackage(projectId: string, wpId: string, userId?: string) {
+  return runWithContext(userId, async (executor) => {
+    return executor.query.workPackages.findFirst({
+      where: and(eq(workPackages.id, wpId), eq(workPackages.projectId, projectId)),
+      with: { timelineItems: true, leadPartner: true },
+    });
   });
 }
 
-export async function createWorkPackage(projectId: string, input: CreateWorkPackageInput) {
-  const [wp] = await db.insert(workPackages).values({
-    projectId,
-    name: input.name,
-    description: input.description,
-    startDate: input.startDate,
-    endDate: input.endDate,
-    budgetAllocated: input.budgetAllocated?.toString(),
-    status: input.status || 'planned',
-    leadPartnerId: input.leadPartnerId,
-    dependencies: input.dependencies || [],
-    milestones: input.milestones || [],
-    deliverables: input.deliverables || [],
-  }).returning();
-  return wp;
+export async function createWorkPackage(projectId: string, input: CreateWorkPackageInput, userId?: string) {
+  return runWithContext(userId, async (executor) => {
+    const [wp] = await executor.insert(workPackages).values({
+      projectId,
+      name: input.name,
+      description: input.description,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      budgetAllocated: input.budgetAllocated?.toString(),
+      status: input.status || 'planned',
+      leadPartnerId: input.leadPartnerId,
+      dependencies: input.dependencies || [],
+      milestones: input.milestones || [],
+      deliverables: input.deliverables || [],
+    }).returning();
+    return wp;
+  });
 }
 
-export async function updateWorkPackage(projectId: string, wpId: string, input: UpdateWorkPackageInput) {
+export async function updateWorkPackage(projectId: string, wpId: string, input: UpdateWorkPackageInput, userId?: string) {
   const values: Record<string, unknown> = { updatedAt: new Date() };
   if (input.name !== undefined) values.name = input.name;
   if (input.description !== undefined) values.description = input.description;
@@ -49,17 +63,21 @@ export async function updateWorkPackage(projectId: string, wpId: string, input: 
   if (input.milestones !== undefined) values.milestones = input.milestones;
   if (input.deliverables !== undefined) values.deliverables = input.deliverables;
 
-  const [wp] = await db.update(workPackages)
-    .set(values)
-    .where(and(eq(workPackages.id, wpId), eq(workPackages.projectId, projectId)))
-    .returning();
-  return wp;
+  return runWithContext(userId, async (executor) => {
+    const [wp] = await executor.update(workPackages)
+      .set(values)
+      .where(and(eq(workPackages.id, wpId), eq(workPackages.projectId, projectId)))
+      .returning();
+    return wp;
+  });
 }
 
-export async function deleteWorkPackage(projectId: string, wpId: string) {
+export async function deleteWorkPackage(projectId: string, wpId: string, userId?: string) {
   // Timeline items cascade via FK
-  const [wp] = await db.delete(workPackages)
-    .where(and(eq(workPackages.id, wpId), eq(workPackages.projectId, projectId)))
-    .returning();
-  return wp;
+  return runWithContext(userId, async (executor) => {
+    const [wp] = await executor.delete(workPackages)
+      .where(and(eq(workPackages.id, wpId), eq(workPackages.projectId, projectId)))
+      .returning();
+    return wp;
+  });
 }

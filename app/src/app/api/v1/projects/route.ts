@@ -3,7 +3,7 @@
 // POST /api/v1/projects - Create new project
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { projects, orgMembers, organizations } from '@/lib/db/schema';
 import { createProjectSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
@@ -25,10 +25,12 @@ export async function GET(req: NextRequest) {
     const orgId = url.searchParams.get('orgId') || undefined;
 
     // Get user's org IDs
-    const userOrgs = await db
-      .select({ orgId: orgMembers.orgId })
-      .from(orgMembers)
-      .where(eq(orgMembers.userId, user.id));
+    const userOrgs = await withUserRLS(user.id, async (tx) => {
+      return tx
+        .select({ orgId: orgMembers.orgId })
+        .from(orgMembers)
+        .where(eq(orgMembers.userId, user.id));
+    });
 
     const orgIds = userOrgs.map((o) => o.orgId);
 
@@ -60,28 +62,30 @@ export async function GET(req: NextRequest) {
 
     const whereClause = and(...conditions);
 
-    const [results, totalResult] = await Promise.all([
-      db
-        .select({
-          id: projects.id,
-          orgId: projects.orgId,
-          callId: projects.callId,
-          title: projects.title,
-          acronym: projects.acronym,
-          status: projects.status,
-          totalBudget: projects.totalBudget,
-          complianceScore: projects.complianceScore,
-          matchScore: projects.matchScore,
-          createdAt: projects.createdAt,
-          updatedAt: projects.updatedAt,
-        })
-        .from(projects)
-        .where(whereClause)
-        .orderBy(desc(projects.updatedAt))
-        .limit(perPage)
-        .offset(offset),
-      db.select({ total: count() }).from(projects).where(whereClause),
-    ]);
+    const [results, totalResult] = await withUserRLS(user.id, async (tx) => {
+      return Promise.all([
+        tx
+          .select({
+            id: projects.id,
+            orgId: projects.orgId,
+            callId: projects.callId,
+            title: projects.title,
+            acronym: projects.acronym,
+            status: projects.status,
+            totalBudget: projects.totalBudget,
+            complianceScore: projects.complianceScore,
+            matchScore: projects.matchScore,
+            createdAt: projects.createdAt,
+            updatedAt: projects.updatedAt,
+          })
+          .from(projects)
+          .where(whereClause)
+          .orderBy(desc(projects.updatedAt))
+          .limit(perPage)
+          .offset(offset),
+        tx.select({ total: count() }).from(projects).where(whereClause),
+      ]);
+    });
 
     const total = totalResult[0]?.total || 0;
 
@@ -120,22 +124,27 @@ export async function POST(req: NextRequest) {
     // Resolve orgId: use provided, or find user's first org, or create a default
     let orgId = data.orgId;
     if (!orgId) {
-      const userOrg = await db.query.orgMembers.findFirst({
-        where: eq(orgMembers.userId, user.id),
+      const userOrg = await withUserRLS(user.id, async (tx) => {
+        return tx.query.orgMembers.findFirst({
+          where: eq(orgMembers.userId, user.id),
+        });
       });
       if (userOrg) {
         orgId = userOrg.orgId;
       } else {
         // Auto-create a personal organization for the user
-        const [newOrg] = await db.insert(organizations).values({
-          name: `Organizația lui ${user.name || 'Utilizator'}`,
-          orgType: 'srl',
-          orgSize: 'micro',
-        }).returning();
-        await db.insert(orgMembers).values({
-          orgId: newOrg.id,
-          userId: user.id,
-          role: 'org_admin',
+        const newOrg = await withUserRLS(user.id, async (tx) => {
+          const [createdOrg] = await tx.insert(organizations).values({
+            name: `Organizația lui ${user.name || 'Utilizator'}`,
+            orgType: 'srl',
+            orgSize: 'micro',
+          }).returning();
+          await tx.insert(orgMembers).values({
+            orgId: createdOrg.id,
+            userId: user.id,
+            role: 'org_admin',
+          });
+          return createdOrg;
         });
         orgId = newOrg.id;
       }
@@ -145,18 +154,21 @@ export async function POST(req: NextRequest) {
     }
 
     // Insert project
-    const [project] = await db.insert(projects).values({
-      orgId,
-      callId: data.callId,
-      createdBy: user.id,
-      title: data.title,
-      acronym: data.acronym,
-      status: 'ciorna',
-      currentVersion: 1,
-      startDate: data.startDate,
-      endDate: data.endDate,
-      durationMonths: data.durationMonths,
-    }).returning();
+    const project = await withUserRLS(user.id, async (tx) => {
+      const [createdProject] = await tx.insert(projects).values({
+        orgId,
+        callId: data.callId,
+        createdBy: user.id,
+        title: data.title,
+        acronym: data.acronym,
+        status: 'ciorna',
+        currentVersion: 1,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        durationMonths: data.durationMonths,
+      }).returning();
+      return createdProject;
+    });
 
     await logAudit({
       userId: user.id,

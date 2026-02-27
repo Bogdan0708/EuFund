@@ -7,6 +7,7 @@ export { ClaudeProvider, createClaudeProvider } from './claude';
 export { GoogleProvider, createGoogleProvider } from './google';
 export { RomanianProvider, createRomanianProvider } from './romanian';
 export { AIGatewayProvider, createAIGatewayProvider } from './gateway';
+export { PerplexityProvider, createPerplexityProvider } from './perplexity';
 
 // Provider factory function for easy initialization
 import { AIProvider, ProviderConfig } from '../types';
@@ -16,6 +17,7 @@ import { ClaudeProvider } from './claude';
 import { GoogleProvider } from './google';
 import { RomanianProvider } from './romanian';
 import { AIGatewayProvider } from './gateway';
+import { PerplexityProvider } from './perplexity';
 
 export function createProvider(config: ProviderConfig): BaseAIProvider {
   const { provider, apiKey, baseURL, timeout } = config;
@@ -48,6 +50,9 @@ export function createProvider(config: ProviderConfig): BaseAIProvider {
         baseURL: baseURL!,
         timeout
       });
+    
+    case AIProvider.PERPLEXITY:
+      return new PerplexityProvider(providerConfig);
     
     default:
       throw new Error(`Unknown provider: ${provider}`);

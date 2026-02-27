@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { projects, complianceChecks } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
@@ -17,8 +17,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
     await requireOrgRole(user.id, project.orgId, 'project_manager');
@@ -26,12 +28,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     const body = await req.json();
     const programId = body.programId || 'general';
 
-    const existingChecks = await listComplianceChecks(id);
+    const existingChecks = await listComplianceChecks(id, user.id);
 
     // Look up organization
     const { organizations } = await import('@/lib/db/schema');
-    const org = await db.query.organizations.findFirst({
-      where: eq(organizations.id, project.orgId),
+    const org = await withUserRLS(user.id, async (tx) => {
+      return tx.query.organizations.findFirst({
+        where: eq(organizations.id, project.orgId),
+      });
     });
 
     // Build compliance input
@@ -57,25 +61,28 @@ export async function POST(req: NextRequest, { params }: Params) {
     const analysis = await analyzeCompliance(complianceInput);
 
     // Store compliance checks in database
-    const storedChecks = [];
-    for (const [criterionName, criterion] of Object.entries(analysis.criteriaScores)) {
-      const [check] = await db.insert(complianceChecks).values({
-        projectId: id,
-        criterionName,
-        requirementText: criterion.gaps.join('; ') || null,
-        complianceScore: Math.round(criterion.score),
-        status: criterion.status === 'compliant' ? 'passed' : criterion.status === 'partial' ? 'warning' : 'failed',
-        assessorNotes: criterion.recommendations.join('; ') || null,
-        assessedAt: new Date(),
-      }).returning();
-      storedChecks.push(check);
-    }
+    const storedChecks = await withUserRLS(user.id, async (tx) => {
+      const checks = [];
+      for (const [criterionName, criterion] of Object.entries(analysis.criteriaScores)) {
+        const [check] = await tx.insert(complianceChecks).values({
+          projectId: id,
+          criterionName,
+          requirementText: criterion.gaps.join('; ') || null,
+          complianceScore: Math.round(criterion.score),
+          status: criterion.status === 'compliant' ? 'passed' : criterion.status === 'partial' ? 'warning' : 'failed',
+          assessorNotes: criterion.recommendations.join('; ') || null,
+          assessedAt: new Date(),
+        }).returning();
+        checks.push(check);
+      }
 
-    // Update project compliance score
-    await db.update(projects).set({
-      complianceScore: String(analysis.overallScore),
-      lastComplianceCheck: new Date(),
-    }).where(eq(projects.id, id));
+      await tx.update(projects).set({
+        complianceScore: String(analysis.overallScore),
+        lastComplianceCheck: new Date(),
+      }).where(eq(projects.id, id));
+
+      return checks;
+    });
 
     return NextResponse.json({
       success: true,

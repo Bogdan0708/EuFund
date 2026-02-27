@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
@@ -20,13 +20,15 @@ const createSchema = z.object({
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, params.id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, params.id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', params.id);
 
     await requireOrgRole(user.id, project.orgId, 'viewer');
-    const tasks = await listGhidComplianceTasks(project.id);
+    const tasks = await listGhidComplianceTasks(project.id, user.id);
 
     return NextResponse.json({
       success: true,
@@ -51,8 +53,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, params.id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, params.id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', params.id);
 
@@ -69,7 +73,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     const generated = generateComplianceTasksFromGhid(project.id, parsed.data.ghidText);
-    const persisted = await saveGhidComplianceTasks(project.id, generated.tasks);
+    const persisted = await saveGhidComplianceTasks(project.id, generated.tasks, user.id);
 
     await logAudit({
       userId: user.id,
@@ -100,4 +104,3 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
   }
 }
-

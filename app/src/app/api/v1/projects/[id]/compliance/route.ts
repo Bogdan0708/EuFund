@@ -1,6 +1,6 @@
 // ─── Project Compliance Check API ────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { projects, organizations, complianceReports, callsForProposals } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
@@ -20,18 +20,22 @@ export async function GET(req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
     await requireOrgRole(user.id, project.orgId, 'viewer');
 
     const [checks, overview, latestReport] = await Promise.all([
-      listComplianceChecks(id),
-      getComplianceOverview(id),
-      db.query.complianceReports.findFirst({
-        where: eq(complianceReports.projectId, id),
-        orderBy: desc(complianceReports.createdAt),
+      listComplianceChecks(id, user.id),
+      getComplianceOverview(id, user.id),
+      withUserRLS(user.id, async (tx) => {
+        return tx.query.complianceReports.findFirst({
+          where: eq(complianceReports.projectId, id),
+          orderBy: desc(complianceReports.createdAt),
+        });
       }),
     ]);
 
@@ -67,22 +71,28 @@ export async function POST(_req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
 
     await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     // Fetch organization and call data
-    const org = await db.query.organizations.findFirst({
-      where: eq(organizations.id, project.orgId),
+    const org = await withUserRLS(user.id, async (tx) => {
+      return tx.query.organizations.findFirst({
+        where: eq(organizations.id, project.orgId),
+      });
     });
 
     let call = null;
     if (project.callId) {
-      call = await db.query.callsForProposals.findFirst({
-        where: eq(callsForProposals.id, project.callId),
+      call = await withUserRLS(user.id, async (tx) => {
+        return tx.query.callsForProposals.findFirst({
+          where: eq(callsForProposals.id, project.callId as string),
+        });
       });
     }
 
@@ -123,24 +133,27 @@ export async function POST(_req: NextRequest, { params }: Params) {
     });
 
     // Save compliance report
-    const [report] = await db.insert(complianceReports).values({
-      projectId: id,
-      generatedBy: user.id,
-      overallScore: String(result.overallScore),
-      items: result,
-      modelUsed: 'gpt-4o',
-      tokensUsed: result.tokensUsed,
-    }).returning();
+    const report = await withUserRLS(user.id, async (tx) => {
+      const [createdReport] = await tx.insert(complianceReports).values({
+        projectId: id,
+        generatedBy: user.id,
+        overallScore: String(result.overallScore),
+        items: result,
+        modelUsed: 'gpt-4o',
+        tokensUsed: result.tokensUsed,
+      }).returning();
 
-    // Update project compliance score
-    await db
-      .update(projects)
-      .set({
-        complianceScore: String(result.overallScore),
-        lastComplianceCheck: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(projects.id, id));
+      await tx
+        .update(projects)
+        .set({
+          complianceScore: String(result.overallScore),
+          lastComplianceCheck: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(projects.id, id));
+
+      return createdReport;
+    });
 
     await logAudit({
       userId: user.id,

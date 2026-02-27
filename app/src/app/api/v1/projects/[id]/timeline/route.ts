@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { orgMembers, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
@@ -14,13 +14,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
     await requireOrgRole(user.id, project.orgId, 'viewer');
 
-    const timeline = await getProjectTimeline(id);
+    const timeline = await getProjectTimeline(id, user.id);
     return NextResponse.json({ success: true, data: timeline });
   } catch (error) {
     if (error instanceof FondEUError) {
@@ -36,8 +38,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
     await requireOrgRole(user.id, project.orgId, 'project_manager');
@@ -54,11 +58,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     if (body.assignedTo) {
-      const membership = await db.query.orgMembers.findFirst({
-        where: and(
-          eq(orgMembers.orgId, project.orgId),
-          eq(orgMembers.userId, body.assignedTo),
-        ),
+      const membership = await withUserRLS(user.id, async (tx) => {
+        return tx.query.orgMembers.findFirst({
+          where: and(
+            eq(orgMembers.orgId, project.orgId),
+            eq(orgMembers.userId, body.assignedTo),
+          ),
+        });
       });
 
       if (!membership) {
@@ -75,7 +81,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       }
     }
 
-    const item = await createTimelineItem(id, body);
+    const item = await createTimelineItem(id, body, user.id);
     return NextResponse.json({ success: true, data: item }, { status: 201 });
   } catch (error) {
     if (error instanceof FondEUError) {

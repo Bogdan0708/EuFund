@@ -40,7 +40,7 @@ async function requireAdmin(userId: string): Promise<void> {
 /**
  * GET /api/v1/admin/feature-flags — list all flags
  */
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const user = await requireAuth();
     await requireAdmin(user.id);

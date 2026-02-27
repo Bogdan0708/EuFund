@@ -28,15 +28,16 @@ async function resolveDocumentAccess(
   }
 
   if (doc.projectId) {
+    const projectId = doc.projectId;
     const project = await withUserRLS(userId, async (tx) => {
       return tx.query.projects.findFirst({
-        where: and(eq(projects.id, doc.projectId), isNull(projects.deletedAt)),
+        where: and(eq(projects.id, projectId), isNull(projects.deletedAt)),
         columns: { orgId: true },
       });
     });
 
     if (!project) {
-      throw Errors.notFound('project', doc.projectId);
+      throw Errors.notFound('project', projectId);
     }
 
     await requireOrgRole(userId, project.orgId, minRole);

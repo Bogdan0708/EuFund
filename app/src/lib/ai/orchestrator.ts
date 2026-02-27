@@ -8,6 +8,7 @@ import { ClaudeProvider } from './providers/claude';
 import { GoogleProvider } from './providers/google';
 import { RomanianProvider } from './providers/romanian';
 import { AIGatewayProvider } from './providers/gateway';
+import { PerplexityProvider } from './providers/perplexity';
 import { AICache, getAICache, shouldCache } from './cache';
 import { 
   optimizeForRomanianContext, 
@@ -327,6 +328,14 @@ export class AIOrchestrator {
             });
             break;
 
+          case AIProvider.PERPLEXITY:
+            provider = new PerplexityProvider({
+              apiKey: config.apiKey,
+              baseURL: config.baseURL,
+              timeout: config.timeout
+            });
+            break;
+
           default:
             log.warn(`Unknown provider type: ${providerType}`);
             continue;
@@ -419,11 +428,11 @@ export function createDefaultConfig(): AIRouterConfig {
       [AIProvider.AI_GATEWAY]: {
         provider: AIProvider.AI_GATEWAY,
         model: 'auto',
-        apiKey: process.env.AI_GATEWAY_API_KEY || '',
+        apiKey: process.env.AI_GATEWAY_API_KEY || process.env.AI_GATEWAY_KEY || '',
         baseURL: process.env.AI_GATEWAY_URL || 'https://ai-gateway-382299704849.europe-west2.run.app',
         timeout: 30000,
         maxRetries: 3,
-        enabled: !!process.env.AI_GATEWAY_API_KEY
+        enabled: !!(process.env.AI_GATEWAY_API_KEY || process.env.AI_GATEWAY_KEY)
       },
       [AIProvider.PERPLEXITY]: {
         provider: AIProvider.PERPLEXITY,

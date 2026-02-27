@@ -1,6 +1,6 @@
 // ─── Project Comments API ────────────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { projectComments, projects, users } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
@@ -19,27 +19,31 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
 
     await requireOrgRole(user.id, project.orgId, 'viewer');
 
-    const comments = await db
-      .select({
-        id: projectComments.id,
-        section: projectComments.section,
-        content: projectComments.content,
-        resolved: projectComments.resolved,
-        createdAt: projectComments.createdAt,
-        userId: projectComments.userId,
-        userName: users.fullName,
-      })
-      .from(projectComments)
-      .innerJoin(users, eq(projectComments.userId, users.id))
-      .where(eq(projectComments.projectId, id))
-      .orderBy(desc(projectComments.createdAt));
+    const comments = await withUserRLS(user.id, async (tx) => {
+      return tx
+        .select({
+          id: projectComments.id,
+          section: projectComments.section,
+          content: projectComments.content,
+          resolved: projectComments.resolved,
+          createdAt: projectComments.createdAt,
+          userId: projectComments.userId,
+          userName: users.fullName,
+        })
+        .from(projectComments)
+        .innerJoin(users, eq(projectComments.userId, users.id))
+        .where(eq(projectComments.projectId, id))
+        .orderBy(desc(projectComments.createdAt));
+    });
 
     return NextResponse.json({ success: true, data: comments });
   } catch (error) {
@@ -55,8 +59,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
 
@@ -71,12 +77,15 @@ export async function POST(req: NextRequest, { params }: Params) {
       );
     }
 
-    const [comment] = await db.insert(projectComments).values({
-      projectId: id,
-      userId: user.id,
-      section: parsed.data.section,
-      content: parsed.data.content,
-    }).returning();
+    const comment = await withUserRLS(user.id, async (tx) => {
+      const [createdComment] = await tx.insert(projectComments).values({
+        projectId: id,
+        userId: user.id,
+        section: parsed.data.section,
+        content: parsed.data.content,
+      }).returning();
+      return createdComment;
+    });
 
     return NextResponse.json({ success: true, data: comment }, { status: 201 });
   } catch (error) {

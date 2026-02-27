@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
@@ -14,13 +14,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id, wpId } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
     await requireOrgRole(user.id, project.orgId, 'viewer');
 
-    const wp = await getWorkPackage(id, wpId);
+    const wp = await getWorkPackage(id, wpId, user.id);
     if (!wp) throw Errors.notFound('work_package', wpId);
 
     return NextResponse.json({ success: true, data: wp });
@@ -38,14 +40,16 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id, wpId } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
     await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     const body = await req.json();
-    const wp = await updateWorkPackage(id, wpId, body);
+    const wp = await updateWorkPackage(id, wpId, body, user.id);
     if (!wp) throw Errors.notFound('work_package', wpId);
 
     return NextResponse.json({ success: true, data: wp });
@@ -63,13 +67,15 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id, wpId } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
     await requireOrgRole(user.id, project.orgId, 'project_manager');
 
-    const wp = await deleteWorkPackage(id, wpId);
+    const wp = await deleteWorkPackage(id, wpId, user.id);
     if (!wp) throw Errors.notFound('work_package', wpId);
 
     return NextResponse.json({ success: true, data: { deleted: true } });

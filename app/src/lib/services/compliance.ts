@@ -1,8 +1,16 @@
-import { db } from '@/lib/db';
+import { db, withUserRLS } from '@/lib/db';
+import type { Database } from '@/lib/db';
 import { auditLog, complianceChecks } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import type { CreateComplianceCheckInput, UpdateComplianceCheckInput, ComplianceOverview } from '@/types/compliance';
 import type { ComplianceTask } from '@/lib/compliance/ghid-task-generator';
+
+type RLSExecutor = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+async function runWithContext<T>(userId: string | undefined, fn: (executor: RLSExecutor) => Promise<T>): Promise<T> {
+  if (userId) return withUserRLS(userId, fn);
+  return fn(db as unknown as RLSExecutor);
+}
 
 const GHID_TASK_MARKER = '[ghid-task]';
 
@@ -43,27 +51,31 @@ function parseGhidMetadata(notes: string | null): GhidTaskMetadata | null {
   }
 }
 
-export async function listComplianceChecks(projectId: string) {
-  return db.query.complianceChecks.findMany({
-    where: eq(complianceChecks.projectId, projectId),
-    orderBy: (c, { desc }) => [desc(c.createdAt)],
+export async function listComplianceChecks(projectId: string, userId?: string) {
+  return runWithContext(userId, async (executor) => {
+    return executor.query.complianceChecks.findMany({
+      where: eq(complianceChecks.projectId, projectId),
+      orderBy: (c, { desc }) => [desc(c.createdAt)],
+    });
   });
 }
 
-export async function createComplianceCheck(projectId: string, input: CreateComplianceCheckInput) {
-  const [check] = await db.insert(complianceChecks).values({
-    projectId,
-    criterionName: input.criterionName,
-    requirementText: input.requirementText,
-    complianceScore: input.complianceScore,
-    status: input.status || 'pending',
-    evidenceDocuments: input.evidenceDocuments || [],
-    assessorNotes: input.assessorNotes,
-  }).returning();
-  return check;
+export async function createComplianceCheck(projectId: string, input: CreateComplianceCheckInput, userId?: string) {
+  return runWithContext(userId, async (executor) => {
+    const [check] = await executor.insert(complianceChecks).values({
+      projectId,
+      criterionName: input.criterionName,
+      requirementText: input.requirementText,
+      complianceScore: input.complianceScore,
+      status: input.status || 'pending',
+      evidenceDocuments: input.evidenceDocuments || [],
+      assessorNotes: input.assessorNotes,
+    }).returning();
+    return check;
+  });
 }
 
-export async function updateComplianceCheck(projectId: string, checkId: string, input: UpdateComplianceCheckInput) {
+export async function updateComplianceCheck(projectId: string, checkId: string, input: UpdateComplianceCheckInput, userId?: string) {
   const values: Record<string, unknown> = { updatedAt: new Date() };
   if (input.complianceScore !== undefined) values.complianceScore = input.complianceScore;
   if (input.status !== undefined) values.status = input.status;
@@ -71,15 +83,17 @@ export async function updateComplianceCheck(projectId: string, checkId: string, 
   if (input.assessorNotes !== undefined) values.assessorNotes = input.assessorNotes;
   if (input.status === 'compliant' || input.status === 'non_compliant') values.assessedAt = new Date();
 
-  const [check] = await db.update(complianceChecks)
-    .set(values)
-    .where(and(eq(complianceChecks.id, checkId), eq(complianceChecks.projectId, projectId)))
-    .returning();
-  return check;
+  return runWithContext(userId, async (executor) => {
+    const [check] = await executor.update(complianceChecks)
+      .set(values)
+      .where(and(eq(complianceChecks.id, checkId), eq(complianceChecks.projectId, projectId)))
+      .returning();
+    return check;
+  });
 }
 
-export async function getComplianceOverview(projectId: string): Promise<ComplianceOverview> {
-  const checks = await listComplianceChecks(projectId);
+export async function getComplianceOverview(projectId: string, userId?: string): Promise<ComplianceOverview> {
+  const checks = await listComplianceChecks(projectId, userId);
   const checksByStatus: Record<string, number> = {};
   let totalScore = 0;
   let scoredCount = 0;
@@ -105,11 +119,13 @@ export async function getComplianceOverview(projectId: string): Promise<Complian
   };
 }
 
-export async function saveGhidComplianceTasks(projectId: string, tasks: ComplianceTask[]) {
+export async function saveGhidComplianceTasks(projectId: string, tasks: ComplianceTask[], userId?: string) {
   if (tasks.length === 0) return [];
 
-  const existing = await db.query.complianceChecks.findMany({
-    where: eq(complianceChecks.projectId, projectId),
+  const existing = await runWithContext(userId, async (executor) => {
+    return executor.query.complianceChecks.findMany({
+      where: eq(complianceChecks.projectId, projectId),
+    });
   });
 
   const existingRequirementSet = new Set(
@@ -132,13 +148,17 @@ export async function saveGhidComplianceTasks(projectId: string, tasks: Complian
     }));
 
   if (toInsert.length === 0) return [];
-  return db.insert(complianceChecks).values(toInsert).returning();
+  return runWithContext(userId, async (executor) => {
+    return executor.insert(complianceChecks).values(toInsert).returning();
+  });
 }
 
-export async function listGhidComplianceTasks(projectId: string) {
-  const checks = await db.query.complianceChecks.findMany({
-    where: eq(complianceChecks.projectId, projectId),
-    orderBy: (c, { desc }) => [desc(c.createdAt)],
+export async function listGhidComplianceTasks(projectId: string, userId?: string) {
+  const checks = await runWithContext(userId, async (executor) => {
+    return executor.query.complianceChecks.findMany({
+      where: eq(complianceChecks.projectId, projectId),
+      orderBy: (c, { desc }) => [desc(c.createdAt)],
+    });
   });
 
   return checks
@@ -158,21 +178,23 @@ export async function listGhidComplianceTasks(projectId: string) {
     }));
 }
 
-export async function getGhidEvidenceCoverage(projectId: string) {
+export async function getGhidEvidenceCoverage(projectId: string, userId?: string) {
   const [tasks, ledgerRows] = await Promise.all([
-    listGhidComplianceTasks(projectId),
-    db
-      .select({
-        id: auditLog.id,
-        metadata: auditLog.metadata,
-        createdAt: auditLog.createdAt,
-      })
-      .from(auditLog)
-      .where(and(
-        eq(auditLog.action, 'project.evidence_append'),
-        eq(auditLog.resourceType, 'project'),
-        eq(auditLog.resourceId, projectId),
-      )),
+    listGhidComplianceTasks(projectId, userId),
+    runWithContext(userId, async (executor) => {
+      return executor
+        .select({
+          id: auditLog.id,
+          metadata: auditLog.metadata,
+          createdAt: auditLog.createdAt,
+        })
+        .from(auditLog)
+        .where(and(
+          eq(auditLog.action, 'project.evidence_append'),
+          eq(auditLog.resourceType, 'project'),
+          eq(auditLog.resourceId, projectId),
+        ));
+    }),
   ]);
 
   const evidenceByObligation = new Map<string, Array<{ id: string; createdAt: Date | null; evidenceType?: string }>>();

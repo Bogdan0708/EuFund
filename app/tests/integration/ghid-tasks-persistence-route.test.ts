@@ -9,6 +9,13 @@ describe('/api/v1/projects/[id]/compliance/ghid-tasks', () => {
       requireOrgRole: vi.fn().mockResolvedValue('project_manager'),
     }));
     vi.doMock('@/lib/db', () => ({
+      withUserRLS: vi.fn(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => fn({
+        query: {
+          projects: {
+            findFirst: vi.fn().mockResolvedValue({ id: '123e4567-e89b-42d3-a456-426614174000', orgId: 'org-1' }),
+          },
+        },
+      })),
       db: {
         query: {
           projects: {
@@ -44,4 +51,3 @@ describe('/api/v1/projects/[id]/compliance/ghid-tasks', () => {
     expect(json.data.generated).toBeGreaterThan(0);
   });
 });
-

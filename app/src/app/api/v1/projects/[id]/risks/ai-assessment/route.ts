@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { projects, riskAssessments } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
@@ -16,16 +16,18 @@ export async function POST(req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
     await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     // Gather context for AI analysis
     const [existingRisks, workPackages] = await Promise.all([
-      listRisks(id),
-      listWorkPackages(id),
+      listRisks(id, user.id),
+      listWorkPackages(id, user.id),
     ]);
 
     // Calculate elapsed months
@@ -68,19 +70,22 @@ export async function POST(req: NextRequest, { params }: Params) {
     const assessment = await assessRisk(riskInput);
 
     // Store individual risks in risk_assessments table
-    const storedRisks = [];
-    for (const entry of assessment.riskMatrix.slice(0, 10)) {
-      const [risk] = await db.insert(riskAssessments).values({
-        projectId: id,
-        riskType: entry.category,
-        description: entry.risk,
-        probability: entry.probability,
-        impact: entry.impact,
-        mitigationStrategy: entry.response,
-        status: 'identified',
-      }).returning();
-      storedRisks.push(risk);
-    }
+    const storedRisks = await withUserRLS(user.id, async (tx) => {
+      const created = [];
+      for (const entry of assessment.riskMatrix.slice(0, 10)) {
+        const [risk] = await tx.insert(riskAssessments).values({
+          projectId: id,
+          riskType: entry.category,
+          description: entry.risk,
+          probability: entry.probability,
+          impact: entry.impact,
+          mitigationStrategy: entry.response,
+          status: 'identified',
+        }).returning();
+        created.push(risk);
+      }
+      return created;
+    });
 
     return NextResponse.json({
       success: true,

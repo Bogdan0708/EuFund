@@ -4,7 +4,7 @@
 // DELETE /api/v1/projects/[id] - Soft delete project
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { organizations, projects } from '@/lib/db/schema';
 import { updateProjectSectionSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
@@ -20,8 +20,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
 
     if (!project) {
@@ -30,9 +32,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     await requireOrgRole(user.id, project.orgId, 'viewer');
 
-    const organization = await db.query.organizations.findFirst({
-      where: eq(organizations.id, project.orgId),
-      columns: { name: true },
+    const organization = await withUserRLS(user.id, async (tx) => {
+      return tx.query.organizations.findFirst({
+        where: eq(organizations.id, project.orgId),
+        columns: { name: true },
+      });
     });
 
     return NextResponse.json({
@@ -53,8 +57,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
 
     if (!project) {
@@ -77,14 +83,17 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
       const sectionKey = `section${parsed.data.section.charAt(0).toUpperCase() + parsed.data.section.slice(1)}` as keyof typeof projects;
 
-      const [updated] = await db
-        .update(projects)
-        .set({
-          [sectionKey]: parsed.data.content,
-          updatedAt: new Date(),
-        })
-        .where(eq(projects.id, id))
-        .returning();
+      const updated = await withUserRLS(user.id, async (tx) => {
+        const [projectUpdated] = await tx
+          .update(projects)
+          .set({
+            [sectionKey]: parsed.data.content,
+            updatedAt: new Date(),
+          })
+          .where(eq(projects.id, id))
+          .returning();
+        return projectUpdated;
+      });
 
       await logAudit({
         userId: user.id,
@@ -110,11 +119,14 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    const [updated] = await db
-      .update(projects)
-      .set(updateData)
-      .where(eq(projects.id, id))
-      .returning();
+    const updated = await withUserRLS(user.id, async (tx) => {
+      const [projectUpdated] = await tx
+        .update(projects)
+        .set(updateData)
+        .where(eq(projects.id, id))
+        .returning();
+      return projectUpdated;
+    });
 
     await logAudit({
       userId: user.id,
@@ -140,8 +152,10 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
 
     if (!project) {
@@ -150,10 +164,12 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
     await requireOrgRole(user.id, project.orgId, 'org_admin');
 
-    await db
-      .update(projects)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(projects.id, id));
+    await withUserRLS(user.id, async (tx) => {
+      await tx
+        .update(projects)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        .where(eq(projects.id, id));
+    });
 
     await logAudit({
       userId: user.id,

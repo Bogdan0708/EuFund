@@ -1,6 +1,6 @@
 // ─── Project Versions API ────────────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { projectVersions, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
@@ -14,18 +14,22 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
 
     await requireOrgRole(user.id, project.orgId, 'viewer');
 
-    const versions = await db
-      .select()
-      .from(projectVersions)
-      .where(eq(projectVersions.projectId, id))
-      .orderBy(desc(projectVersions.versionNumber));
+    const versions = await withUserRLS(user.id, async (tx) => {
+      return tx
+        .select()
+        .from(projectVersions)
+        .where(eq(projectVersions.projectId, id))
+        .orderBy(desc(projectVersions.versionNumber));
+    });
 
     return NextResponse.json({ success: true, data: versions });
   } catch (error) {
@@ -41,8 +45,10 @@ export async function POST(_req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
 
@@ -51,32 +57,35 @@ export async function POST(_req: NextRequest, { params }: Params) {
     const nextVersion = (project.currentVersion || 1) + 1;
 
     // Snapshot current state
-    const [version] = await db.insert(projectVersions).values({
-      projectId: id,
-      versionNumber: nextVersion,
-      changedBy: user.id,
-      snapshot: {
-        title: project.title,
-        acronym: project.acronym,
-        sectionSummary: project.sectionSummary,
-        sectionContext: project.sectionContext,
-        sectionObjectives: project.sectionObjectives,
-        sectionMethodology: project.sectionMethodology,
-        sectionBudget: project.sectionBudget,
-        sectionIndicators: project.sectionIndicators,
-        sectionSustainability: project.sectionSustainability,
-        sectionPartnership: project.sectionPartnership,
-        sectionRisks: project.sectionRisks,
-        totalBudget: project.totalBudget,
-      },
-      changeSummary: `Versiunea ${nextVersion} salvată de utilizator`,
-    }).returning();
+    const version = await withUserRLS(user.id, async (tx) => {
+      const [createdVersion] = await tx.insert(projectVersions).values({
+        projectId: id,
+        versionNumber: nextVersion,
+        changedBy: user.id,
+        snapshot: {
+          title: project.title,
+          acronym: project.acronym,
+          sectionSummary: project.sectionSummary,
+          sectionContext: project.sectionContext,
+          sectionObjectives: project.sectionObjectives,
+          sectionMethodology: project.sectionMethodology,
+          sectionBudget: project.sectionBudget,
+          sectionIndicators: project.sectionIndicators,
+          sectionSustainability: project.sectionSustainability,
+          sectionPartnership: project.sectionPartnership,
+          sectionRisks: project.sectionRisks,
+          totalBudget: project.totalBudget,
+        },
+        changeSummary: `Versiunea ${nextVersion} salvată de utilizator`,
+      }).returning();
 
-    // Update current version number
-    await db
-      .update(projects)
-      .set({ currentVersion: nextVersion, updatedAt: new Date() })
-      .where(eq(projects.id, id));
+      await tx
+        .update(projects)
+        .set({ currentVersion: nextVersion, updatedAt: new Date() })
+        .where(eq(projects.id, id));
+
+      return createdVersion;
+    });
 
     await logAudit({
       userId: user.id,

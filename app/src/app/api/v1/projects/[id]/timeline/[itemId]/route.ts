@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { orgMembers, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
@@ -14,8 +14,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id, itemId } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
     await requireOrgRole(user.id, project.orgId, 'project_manager');
@@ -24,7 +26,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
     // If only progress_percentage is provided, use the dedicated function
     if (body.progress_percentage !== undefined && Object.keys(body).length === 1) {
-      const item = await updateTimelineProgress(id, itemId, body.progress_percentage);
+      const item = await updateTimelineProgress(id, itemId, body.progress_percentage, user.id);
       if (!item) throw Errors.notFound('timeline_item', itemId);
       return NextResponse.json({ success: true, data: item });
     }
@@ -47,11 +49,13 @@ export async function PUT(req: NextRequest, { params }: Params) {
     );
 
     if (cleanUpdates.assignedTo) {
-      const membership = await db.query.orgMembers.findFirst({
-        where: and(
-          eq(orgMembers.orgId, project.orgId),
-          eq(orgMembers.userId, cleanUpdates.assignedTo as string),
-        ),
+      const membership = await withUserRLS(user.id, async (tx) => {
+        return tx.query.orgMembers.findFirst({
+          where: and(
+            eq(orgMembers.orgId, project.orgId),
+            eq(orgMembers.userId, cleanUpdates.assignedTo as string),
+          ),
+        });
       });
 
       if (!membership) {
@@ -68,7 +72,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    const item = await updateTimelineItem(id, itemId, cleanUpdates);
+    const item = await updateTimelineItem(id, itemId, cleanUpdates, user.id);
     if (!item) throw Errors.notFound('timeline_item', itemId);
     return NextResponse.json({ success: true, data: item });
   } catch (error) {
@@ -85,13 +89,15 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     const user = await requireAuth();
     const { id, itemId } = params;
 
-    const project = await db.query.projects.findFirst({
-      where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, id), isNull(projects.deletedAt)),
+      });
     });
     if (!project) throw Errors.notFound('project', id);
     await requireOrgRole(user.id, project.orgId, 'project_manager');
 
-    await deleteTimelineItem(id, itemId);
+    await deleteTimelineItem(id, itemId, user.id);
     return NextResponse.json({ success: true, data: { message: 'Timeline item deleted' } });
   } catch (error) {
     if (error instanceof FondEUError) {
