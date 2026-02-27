@@ -1,4 +1,4 @@
-CREATE TABLE "feature_flags" (
+CREATE TABLE IF NOT EXISTS "feature_flags" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "key" varchar(100) UNIQUE NOT NULL,
   "description" text,

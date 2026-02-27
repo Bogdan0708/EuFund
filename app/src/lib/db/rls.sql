@@ -19,7 +19,7 @@ CREATE POLICY projects_org_isolation ON projects
     FOR ALL
     USING (org_id IN (
         SELECT om.org_id FROM org_members om
-        WHERE om.user_id = current_setting('app.user_id', true)::uuid
+        WHERE om.user_id = current_setting('app.current_user_id', true)::uuid
     ));
 
 -- Documents: same org isolation
@@ -28,7 +28,7 @@ CREATE POLICY documents_org_isolation ON documents
     USING (
         org_id IN (
             SELECT om.org_id FROM org_members om
-            WHERE om.user_id = current_setting('app.user_id', true)::uuid
+            WHERE om.user_id = current_setting('app.current_user_id', true)::uuid
         )
         OR org_id IS NULL -- system documents
     );
@@ -38,7 +38,7 @@ CREATE POLICY orgs_member_access ON organizations
     FOR ALL
     USING (id IN (
         SELECT om.org_id FROM org_members om
-        WHERE om.user_id = current_setting('app.user_id', true)::uuid
+        WHERE om.user_id = current_setting('app.current_user_id', true)::uuid
     ));
 
 -- Org Members: can see members of their orgs
@@ -46,18 +46,27 @@ CREATE POLICY org_members_access ON org_members
     FOR ALL
     USING (org_id IN (
         SELECT om2.org_id FROM org_members om2
-        WHERE om2.user_id = current_setting('app.user_id', true)::uuid
+        WHERE om2.user_id = current_setting('app.current_user_id', true)::uuid
     ));
 
 -- Notifications: users can only see their own
 CREATE POLICY notifications_user_only ON notifications
     FOR ALL
-    USING (user_id = current_setting('app.user_id', true)::uuid);
+    USING (user_id = current_setting('app.current_user_id', true)::uuid);
 
 -- Consent records: users can only see their own
 CREATE POLICY consent_user_only ON consent_records
     FOR ALL
-    USING (user_id = current_setting('app.user_id', true)::uuid);
+    USING (user_id = current_setting('app.current_user_id', true)::uuid);
+
+-- AI reviews: users can only see reviews in their org
+ALTER TABLE ai_reviews ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ai_reviews_org_isolation ON ai_reviews
+    FOR ALL
+    USING (org_id IN (
+        SELECT om.org_id FROM org_members om
+        WHERE om.user_id = current_setting('app.current_user_id', true)::uuid
+    ));
 
 -- Audit log: append-only (no UPDATE/DELETE), admin-only SELECT
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
@@ -70,7 +79,7 @@ CREATE POLICY audit_admin_read ON audit_log
     USING (
         EXISTS (
             SELECT 1 FROM org_members om
-            WHERE om.user_id = current_setting('app.user_id', true)::uuid
+            WHERE om.user_id = current_setting('app.current_user_id', true)::uuid
             AND om.role = 'admin'
         )
     );

@@ -9,7 +9,7 @@ describe('/api/v1/admin/programs', () => {
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-viewer', email: 'viewer@test.com', isPlatformAdmin: false }),
       requirePlatformAdmin: vi.fn().mockImplementation(async () => {
         const { Errors } = await import('@/lib/errors');
-        throw Errors.forbidden('Platform admin privileges required');
+        throw Errors.forbidden();
       }),
     }));
     vi.doMock('@/lib/db', () => ({
@@ -39,7 +39,7 @@ describe('/api/v1/admin/programs', () => {
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-org-admin', email: 'orgadmin@test.com', isPlatformAdmin: false }),
       requirePlatformAdmin: vi.fn().mockImplementation(async () => {
         const { Errors } = await import('@/lib/errors');
-        throw Errors.forbidden('Platform admin privileges required');
+        throw Errors.forbidden();
       }),
     }));
     vi.doMock('@/lib/db', () => ({

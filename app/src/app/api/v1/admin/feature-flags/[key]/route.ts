@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { featureFlags } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';

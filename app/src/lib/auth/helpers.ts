@@ -15,6 +15,10 @@ export interface SessionUser {
   isPlatformAdmin?: boolean;
 }
 
+type SessionUserWithFlags = {
+  isPlatformAdmin?: boolean;
+};
+
 /**
  * Get the authenticated user from the session, or throw 401
  */
@@ -27,7 +31,7 @@ export async function requireAuth(): Promise<SessionUser> {
     id: session.user.id,
     email: session.user.email,
     name: session.user.name || undefined,
-    isPlatformAdmin: (session.user as any).isPlatformAdmin || false,
+    isPlatformAdmin: (session.user as SessionUserWithFlags).isPlatformAdmin || false,
   };
 }
 
@@ -36,11 +40,8 @@ export async function requireAuth(): Promise<SessionUser> {
  */
 export async function requirePlatformAdmin(): Promise<SessionUser> {
   const user = await requireAuth();
-  
-  // First check session flag for speed
-  if (user.isPlatformAdmin) return user;
 
-  // Verify against database for critical actions
+  // Always verify against database to prevent stale-session privilege drift.
   const dbUser = await withUserRLS(user.id, async (tx) => {
     return tx.query.users.findFirst({
       where: eq(users.id, user.id),
@@ -48,7 +49,7 @@ export async function requirePlatformAdmin(): Promise<SessionUser> {
   });
 
   if (!dbUser?.isPlatformAdmin) {
-    throw Errors.forbidden('Platform admin privileges required');
+    throw Errors.forbidden();
   }
 
   return { ...user, isPlatformAdmin: true };

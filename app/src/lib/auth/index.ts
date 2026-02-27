@@ -9,6 +9,16 @@ import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'auth' });
 
+type AuthUserClaims = {
+  emailVerified?: boolean;
+  isPlatformAdmin?: boolean;
+};
+
+type SessionUserClaims = {
+  id?: string;
+  isPlatformAdmin?: boolean;
+};
+
 export const {
   handlers: { GET, POST },
   auth,
@@ -64,9 +74,10 @@ export const {
   callbacks: {
     async jwt({ token, user, trigger }) {
       if (user) {
+        const authUser = user as AuthUserClaims;
         token.userId = user.id;
-        token.emailVerified = (user as any).emailVerified ?? false;
-        token.isPlatformAdmin = (user as any).isPlatformAdmin ?? false;
+        token.emailVerified = authUser.emailVerified ?? false;
+        token.isPlatformAdmin = authUser.isPlatformAdmin ?? false;
       }
       // Refresh flags from DB on session update
       if (trigger === 'update' && token.userId) {
@@ -83,8 +94,9 @@ export const {
     },
     async session({ session, token }) {
       if (session.user && token.userId) {
-        (session.user as any).id = String(token.userId);
-        (session.user as any).isPlatformAdmin = !!token.isPlatformAdmin;
+        const sessionUser = session.user as SessionUserClaims;
+        sessionUser.id = String(token.userId);
+        sessionUser.isPlatformAdmin = !!token.isPlatformAdmin;
       }
       return session;
     },

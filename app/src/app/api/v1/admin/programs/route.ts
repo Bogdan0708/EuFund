@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { fundingPrograms } from '@/lib/db/schema';
@@ -33,7 +33,7 @@ const updateProgramSchema = createProgramSchema.partial().extend({
 
 export async function GET() {
   try {
-    const user = await requirePlatformAdmin();
+    await requirePlatformAdmin();
 
     const programs = await db.query.fundingPrograms.findMany({
       orderBy: (p, { desc }) => [desc(p.createdAt)],

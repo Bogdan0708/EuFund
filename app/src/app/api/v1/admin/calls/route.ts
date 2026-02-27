@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { callsForProposals } from '@/lib/db/schema';
@@ -44,7 +44,7 @@ const updateCallSchema = createCallSchema.partial().extend({
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await requirePlatformAdmin();
+    await requirePlatformAdmin();
 
     const programId = req.nextUrl.searchParams.get('programId');
     const calls = await db.query.callsForProposals.findMany({

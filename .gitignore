@@ -38,6 +38,9 @@ infrastructure/terraform/*.tfvars
 
 audits/
 .abacusai/
+.pnpm-store/
+audit_bundle/
+today_changes.patch
 
 # Docker env
 .env.docker

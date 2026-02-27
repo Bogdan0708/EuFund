@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
-import { withUserRLS } from '@/lib/db';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requirePlatformAdmin } from '@/lib/auth/helpers';
 import { runRetentionCleanup } from '@/lib/legal/retention-cleanup';
@@ -14,7 +12,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = await requirePlatformAdmin();
+    await requirePlatformAdmin();
 
     const url = new URL(req.url);
     const dryRun = url.searchParams.get('dryRun') !== 'false';
