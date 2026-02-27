@@ -127,11 +127,11 @@ export function checkHumanOversight(feature: string, confidence: number): Oversi
 
 const PII_PATTERNS: Array<{ name: string; pattern: RegExp; replacement: string }> = [
   { name: 'email', pattern: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, replacement: '[EMAIL_REDACTED]' },
-  { name: 'phone_intl', pattern: /\+?[0-9]{1,4}[\s.-]?\(?[0-9]{1,4}\)?[\s.-]?[0-9]{2,4}[\s.-]?[0-9]{2,4}[\s.-]?[0-9]{0,4}/g, replacement: '[PHONE_REDACTED]' },
   { name: 'romanian_cnp', pattern: /\b[1-8]\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{6}\b/g, replacement: '[CNP_REDACTED]' },
   { name: 'romanian_cui', pattern: /\bRO?\d{2,10}\b/gi, replacement: '[CUI_REDACTED]' },
   { name: 'iban', pattern: /\b[A-Z]{2}\d{2}[A-Z0-9]{4,30}\b/g, replacement: '[IBAN_REDACTED]' },
   { name: 'credit_card', pattern: /\b(?:\d{4}[\s-]?){3}\d{4}\b/g, replacement: '[CARD_REDACTED]' },
+  { name: 'phone_intl', pattern: /\+?[0-9]{1,4}[\s.-]?\(?[0-9]{1,4}\)?[\s.-]?[0-9]{2,4}[\s.-]?[0-9]{2,4}[\s.-]?[0-9]{0,4}/g, replacement: '[PHONE_REDACTED]' },
   { name: 'ip_address', pattern: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, replacement: '[IP_REDACTED]' },
 ];
 

@@ -36,6 +36,7 @@ export type AuditAction =
   | 'project.version_save'
   | 'project.export'
   | 'project.status_change'
+  | 'project.evidence_append'
   // Documents
   | 'document.upload'
   | 'document.delete'

@@ -47,6 +47,7 @@ const publicPaths = [
   '/api/auth',
   '/api/health',
   '/api/csp-report', // CSP violation reporting endpoint
+  '/api/metrics',    // Prometheus scrape endpoint
   '/ro/autentificare',
   '/ro/inregistrare',
   '/en/autentificare',

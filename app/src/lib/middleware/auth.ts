@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import { LRUCache } from 'lru-cache';
 import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 import { AI_CONFIG } from '@/lib/ai/config';
+import { trackRequest, metrics } from '@/lib/monitoring/metrics';
 
 export type UserTier = 'free' | 'pro' | 'enterprise';
 
@@ -215,11 +216,17 @@ export async function withAIAuth(
     }
 
     // Add rate limit headers
+    const startTime = Date.now();
     let response = await handler(user);
     response = await sanitizeAIJsonResponse(response);
     response.headers.set('X-RateLimit-Limit', RATE_LIMITS[user.tier].toString());
     response.headers.set('X-RateLimit-Remaining', rateLimit.remaining.toString());
     response.headers.set('X-RateLimit-Reset', rateLimit.resetTime.toString());
+
+    // Track metrics
+    const durationMs = Date.now() - startTime;
+    trackRequest(request.method, request.nextUrl.pathname, response.status, durationMs);
+    metrics.inc('ai_requests_total', { feature: options?.feature ?? 'general', tier: user.tier });
 
     return response;
 

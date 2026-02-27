@@ -62,6 +62,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
     it('should return 429 when rate limit is exceeded', async () => {
       // Mock the rate limit checker to return 'denied'
       vi.doMock('@/lib/redis/client', () => ({
+        isRedisAvailable: vi.fn().mockResolvedValue(true),
         checkRateLimit: vi.fn().mockResolvedValue({
           allowed: false,
           remaining: 0,
@@ -98,6 +99,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
       const resetTime = new Date(Date.now() + 3600 * 1000);
       // Mock rate limit to return 'allowed'
       vi.doMock('@/lib/redis/client', () => ({
+        isRedisAvailable: vi.fn().mockResolvedValue(true),
         checkRateLimit: vi.fn().mockResolvedValue({
           allowed: true,
           remaining: 9,
@@ -134,7 +136,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
       // Set NODE_ENV to production for this test
       process.env = { ...originalEnv, NODE_ENV: 'production' };
       
-      vi.doMock('@/lib/auth', () => ({
+      vi.doMock('@/lib/auth/edge', () => ({
         auth: (handler: Function) => handler,
       }));
 
@@ -150,7 +152,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
     it('should NOT set Strict-Transport-Security (HSTS) header in development', async () => {
       process.env = { ...originalEnv, NODE_ENV: 'development' };
 
-      vi.doMock('@/lib/auth', () => ({
+      vi.doMock('@/lib/auth/edge', () => ({
         auth: (handler: Function) => handler,
       }));
 
@@ -164,7 +166,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
 
   describe('CSP Nonce Verification', () => {
     it.todo('should ensure the x-nonce header matches the nonce in the CSP header — requires full next-auth middleware mock', async () => {
-       vi.doMock('@/lib/auth', () => ({
+       vi.doMock('@/lib/auth/edge', () => ({
         auth: (handler: Function) => handler,
       }));
 
@@ -182,7 +184,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
 
   describe('Unauthenticated Page Redirect', () => {
     it('should redirect to the /ro/autentificare for unauthenticated requests to protected RO pages', async () => {
-       vi.doMock('@/lib/auth', () => ({
+       vi.doMock('@/lib/auth/edge', () => ({
         auth: (handler: Function) => (req: NextAuthRequest) => {
           req.auth = null; // Simulate no session
           return handler(req);
@@ -199,7 +201,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
     });
 
     it('should redirect to the /en/login for unauthenticated requests to protected EN pages', async () => {
-       vi.doMock('@/lib/auth', () => ({
+       vi.doMock('@/lib/auth/edge', () => ({
         auth: (handler: Function) => (req: NextAuthRequest) => {
           req.auth = null; // Simulate no session
           return handler(req);

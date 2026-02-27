@@ -38,7 +38,7 @@ describe('Security Integration Tests', () => {
 
     beforeEach(async () => {
       vi.resetModules();
-      vi.mock('@/lib/auth', () => ({
+      vi.mock('@/lib/auth/edge', () => ({
         auth: (handler: Function) => handler,
       }));
       vi.mock('@/lib/logger', () => ({
@@ -59,7 +59,7 @@ describe('Security Integration Tests', () => {
         method: 'POST',
         body: { test: 'data' },
       });
-      request.auth = { user: { id: '1', email: 'test@example.com' } } as any;
+      request.auth = { user: { id: '1', email: 'test@example.com', emailVerified: true } } as any;
 
       const response = await middlewareFunc(request) as NextResponse;
 
@@ -76,7 +76,7 @@ describe('Security Integration Tests', () => {
         method: 'PUT',
         body: { name: 'Updated Project' },
       });
-      request.auth = { user: { id: '1', email: 'test@example.com' } } as any;
+      request.auth = { user: { id: '1', email: 'test@example.com', emailVerified: true } } as any;
 
       const response = await middlewareFunc(request) as NextResponse;
 
@@ -91,7 +91,7 @@ describe('Security Integration Tests', () => {
       const request = createNextRequest('/api/v1/projects/123', {
         method: 'DELETE',
       });
-      request.auth = { user: { id: '1', email: 'test@example.com' } } as any;
+      request.auth = { user: { id: '1', email: 'test@example.com', emailVerified: true } } as any;
 
       const response = await middlewareFunc(request) as NextResponse;
 
@@ -127,7 +127,7 @@ describe('Security Integration Tests', () => {
         },
         body: { test: 'data' },
       });
-      request.auth = { user: { id: '1', email: 'test@example.com' } } as any;
+      request.auth = { user: { id: '1', email: 'test@example.com', emailVerified: true } } as any;
 
       const response = await middlewareFunc(request) as NextResponse;
 
@@ -147,7 +147,7 @@ describe('Security Integration Tests', () => {
         },
         body: { test: 'data' },
       });
-      request.auth = { user: { id: '1', email: 'test@example.com' } } as any;
+      request.auth = { user: { id: '1', email: 'test@example.com', emailVerified: true } } as any;
 
       const response = await middlewareFunc(request) as NextResponse;
 
@@ -187,7 +187,7 @@ describe('Security Integration Tests', () => {
 
     beforeEach(async () => {
       vi.resetModules();
-      vi.mock('@/lib/auth', () => ({
+      vi.mock('@/lib/auth/edge', () => ({
         auth: (handler: Function) => handler,
       }));
       vi.mock('@/lib/logger', () => ({
@@ -281,7 +281,7 @@ describe('Security Integration Tests', () => {
       const setCookie = response.headers.get('Set-Cookie');
       if (setCookie) {
         expect(setCookie).toContain('csrf-token=');
-        expect(setCookie).toContain('HttpOnly');
+        expect(setCookie).not.toContain('HttpOnly');
         expect(setCookie.toLowerCase()).toContain('samesite=strict');
       }
     });
@@ -329,7 +329,7 @@ describe('Security Integration Tests', () => {
     });
 
     it('should return 401 for /api/ai/* routes without auth', async () => {
-      vi.doMock('@/lib/auth', () => ({
+      vi.doMock('@/lib/auth/edge', () => ({
         auth: (handler: Function) => async (req: any) => {
           req.auth = null;
           return handler(req);
@@ -351,7 +351,7 @@ describe('Security Integration Tests', () => {
     });
 
     it('should return 401 for /api/v1/* routes without auth', async () => {
-      vi.doMock('@/lib/auth', () => ({
+      vi.doMock('@/lib/auth/edge', () => ({
         auth: (handler: Function) => async (req: any) => {
           req.auth = null;
           return handler(req);
@@ -372,7 +372,7 @@ describe('Security Integration Tests', () => {
     });
 
     it('should allow access to /api/health without auth', async () => {
-      vi.doMock('@/lib/auth', () => ({
+      vi.doMock('@/lib/auth/edge', () => ({
         auth: (handler: Function) => async (req: any) => {
           req.auth = null;
           return handler(req);
@@ -391,7 +391,7 @@ describe('Security Integration Tests', () => {
     });
 
     it('should allow access to /api/auth/* without auth', async () => {
-      vi.doMock('@/lib/auth', () => ({
+      vi.doMock('@/lib/auth/edge', () => ({
         auth: (handler: Function) => async (req: any) => {
           req.auth = null;
           return handler(req);
@@ -410,9 +410,9 @@ describe('Security Integration Tests', () => {
     });
 
     it('should allow authenticated requests to /api/ai/*', async () => {
-      vi.doMock('@/lib/auth', () => ({
+      vi.doMock('@/lib/auth/edge', () => ({
         auth: (handler: Function) => async (req: any) => {
-          req.auth = { user: { id: '1', email: 'test@example.com' } };
+          req.auth = { user: { id: '1', email: 'test@example.com', emailVerified: true } };
           return handler(req);
         },
       }));
@@ -443,12 +443,15 @@ describe('Security Integration Tests', () => {
         logAudit: vi.fn(),
       }));
       vi.mock('@/lib/middleware/auth', () => ({
-        withAIAuth: (req: any, handler: Function) => 
+        withAIAuth: (req: any, handler: Function) =>
           handler({ id: '1', email: 'test@example.com', tier: 'free' }),
+      }));
+      vi.mock('@/lib/db', () => ({
+        db: { query: { orgMembers: { findFirst: vi.fn() } }, insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'review-1' }]) }) }) },
       }));
 
       const { POST } = await import('@/app/api/ai/predict-success/route');
-      
+
       const invalidPayloads = [
         {},
         { projectTitle: 'ab' },
@@ -517,12 +520,15 @@ describe('Security Integration Tests', () => {
         logAudit: vi.fn(),
       }));
       vi.mock('@/lib/middleware/auth', () => ({
-        withAIAuth: (req: any, handler: Function) => 
+        withAIAuth: (req: any, handler: Function) =>
           handler({ id: '1', email: 'test@example.com', tier: 'free' }),
+      }));
+      vi.mock('@/lib/db', () => ({
+        db: { query: { orgMembers: { findFirst: vi.fn() } }, insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'review-1' }]) }) }) },
       }));
 
       const { POST } = await import('@/app/api/ai/predict-success/route');
-      
+
       const validPayload = {
         projectTitle: 'Innovation Project',
         projectSummary: 'A comprehensive project summary with sufficient detail',

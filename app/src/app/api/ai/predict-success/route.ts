@@ -9,6 +9,9 @@ import { withAIAuth } from '@/lib/middleware/auth';
 import { withEUAIActCompliance } from '@/lib/ai/eu-ai-act';
 import { logger } from '@/lib/logger';
 import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
+import { db } from '@/lib/db';
+import { aiReviews, orgMembers } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
 const euProgramKeys = ['horizon_europe', 'life_plus', 'interreg', 'erdf', 'pocidif', 'pnrr', 'general'] as const;
 
@@ -68,6 +71,7 @@ export async function POST(request: NextRequest) {
 
       const execution = await runWithCompliance(input, user.id);
       const result = execution.result as ProposalSuccessPrediction | ReturnType<typeof quickSuccessPrediction>;
+      const oversightRequired = execution.metadata?.oversightRequired === true;
 
       if (!input.quick) {
         const fullResult = result as ProposalSuccessPrediction;
@@ -79,11 +83,44 @@ export async function POST(request: NextRequest) {
             successProbability: fullResult.successProbability,
             confidence: fullResult.confidenceLevel,
             userTier: user.tier,
+            oversightRequired,
           },
         });
       }
 
       const { sanitized: data } = sanitizeAIResponseDeep(result);
+
+      // EU AI Act Art. 14: High-risk results require human oversight
+      if (oversightRequired && !input.quick) {
+        const membership = await db.query.orgMembers.findFirst({
+          where: eq(orgMembers.userId, user.id),
+        });
+
+        if (membership) {
+          const [review] = await db.insert(aiReviews).values({
+            orgId: membership.orgId,
+            requestedBy: user.id,
+            feature: 'predict-success',
+            riskLevel: 'high',
+            inputSummary: `${input.projectTitle} — ${input.programType}`,
+            resultData: data,
+            resultMetadata: execution.metadata ?? {},
+            status: 'pending_review',
+          }).returning({ id: aiReviews.id });
+
+          return NextResponse.json({
+            success: true,
+            status: 'pending_review',
+            reviewId: review.id,
+            message: 'Rezultatul necesită aprobarea unui administrator conform EU AI Act Art. 14.',
+            messageEn: 'Result requires administrator approval per EU AI Act Art. 14.',
+            metadata: {
+              aiAct: execution.metadata,
+            },
+          });
+        }
+      }
+
       return NextResponse.json({
         success: true,
         data,

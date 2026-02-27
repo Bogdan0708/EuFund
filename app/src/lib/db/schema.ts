@@ -447,6 +447,31 @@ export const auditLog = pgTable('audit_log', {
   createdIdx: index('idx_audit_created').on(table.createdAt),
 }));
 
+// ─── AI Reviews (EU AI Act Art. 14 — Human Oversight) ──────────
+export const aiReviewStatusEnum = pgEnum('ai_review_status', [
+  'pending_review', 'approved', 'rejected',
+]);
+
+export const aiReviews = pgTable('ai_reviews', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id),
+  requestedBy: uuid('requested_by').notNull().references(() => users.id),
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  feature: varchar('feature', { length: 100 }).notNull(), // e.g. 'predict-success', 'match-grants'
+  riskLevel: varchar('risk_level', { length: 20 }).notNull(), // 'high', 'limited'
+  inputSummary: text('input_summary'), // Brief description of what was analyzed
+  resultData: jsonb('result_data').notNull(), // The AI output stored for review
+  resultMetadata: jsonb('result_metadata').default({}), // AI Act metadata (confidence, disclaimers)
+  status: aiReviewStatusEnum('status').default('pending_review'),
+  reviewNote: text('review_note'), // Reviewer's comment
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+}, (table) => ({
+  orgIdx: index('idx_ai_reviews_org').on(table.orgId),
+  statusIdx: index('idx_ai_reviews_status').on(table.status),
+  requestedByIdx: index('idx_ai_reviews_requested_by').on(table.requestedBy),
+}));
+
 // ─── Work Packages ──────────────────────────────────────────────
 export const workPackages = pgTable('work_packages', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -606,4 +631,9 @@ export const emailVerificationTokensRelations = relations(emailVerificationToken
 
 export const passwordResetTokensRelations = relations(passwordResetTokens, ({ one }) => ({
   user: one(users, { fields: [passwordResetTokens.userId], references: [users.id] }),
+}));
+
+export const aiReviewsRelations = relations(aiReviews, ({ one }) => ({
+  organization: one(organizations, { fields: [aiReviews.orgId], references: [organizations.id] }),
+  requestedByUser: one(users, { fields: [aiReviews.requestedBy], references: [users.id] }),
 }));
