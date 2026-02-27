@@ -40,6 +40,7 @@ function getDb() {
 
 // Lazy proxy — defers connection until first property access at runtime.
 // This allows Next.js build to import this module without DATABASE_URL.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const db: ReturnType<typeof drizzle<typeof schema>> = new Proxy({} as any, {
   get(_target, prop, receiver) {
     return Reflect.get(getDb(), prop, receiver);
