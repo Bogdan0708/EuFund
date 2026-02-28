@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
         organizationType: organization.orgType,
         sector: organization.sector,
         locale,
+        callId,
       });
       const factCheck = factCheckGeneratedContent(proposal.proposal, {
         expectedProgram: PROGRAM_MAP[call.program.code] ?? 'general',

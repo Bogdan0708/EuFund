@@ -20,6 +20,7 @@ export const proposalInputSchema = z.object({
   duration: z.number().optional(), // months
   partners: z.array(z.string()).optional(),
   locale: z.enum(['ro', 'en']).default('ro'),
+  callId: z.string().uuid().optional(),
 });
 
 export type ProposalInput = z.infer<typeof proposalInputSchema>;
@@ -126,7 +127,8 @@ export async function generateProposal(input: ProposalInput): Promise<{
   const ragResults = await hybridSearch({
     query: input.projectIdea,
     locale: input.locale,
-    topK: 3,
+    topK: 5,
+    filter: input.callId ? { callId: input.callId } : undefined
   });
 
   const ragContext = ragResults.length > 0

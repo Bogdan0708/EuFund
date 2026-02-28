@@ -2,11 +2,41 @@
 // Run: npx tsx src/lib/db/seed.ts
 
 import { db } from './index';
-import { fundingPrograms, callsForProposals, legislationDocuments } from './schema';
+import { fundingPrograms, callsForProposals, legislationDocuments, sourceConnectors } from './schema';
 import { logger } from '@/lib/logger';
 
 async function seed() {
   console.log('🌱 Seeding database...');
+
+  // ─── Source Connectors ───────────────────────────────────────
+  const connectors = await db.insert(sourceConnectors).values([
+    {
+      slug: 'ec-portal',
+      name: 'EU Funding & Tenders Portal',
+      accessMethod: 'api',
+      baseUrl: 'https://ec.europa.eu/info/funding-tenders/opportunities/portal',
+    },
+    {
+      slug: 'oportunitati-gov',
+      name: 'Oportunități UE (Gov.ro)',
+      accessMethod: 'html',
+      baseUrl: 'https://oportunitati-ue.gov.ro',
+    },
+    {
+      slug: 'fonduri-structurale',
+      name: 'Fonduri Structurale',
+      accessMethod: 'html',
+      baseUrl: 'https://www.fonduri-structurale.ro',
+    },
+    {
+      slug: 'mipe-pnrr',
+      name: 'MIPE / PNRR',
+      accessMethod: 'html',
+      baseUrl: 'https://mfe.gov.ro/pnrr',
+    }
+  ]).onConflictDoNothing().returning();
+
+  console.log(`✅ Registered ${connectors.length} source connectors`);
 
   // ─── Funding Programs ───────────────────────────────────────
   const programs = await db.insert(fundingPrograms).values([
