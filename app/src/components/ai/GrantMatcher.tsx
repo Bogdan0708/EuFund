@@ -1,10 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { csrfFetch } from '@/lib/csrf/client';
 
 interface MatchResult {
+  id?: string;
   call: {
+    id?: string;
     callCode: string;
     titleRo: string;
     programName: string;
@@ -28,6 +32,8 @@ const ORG_TYPES = [
 ];
 
 export default function GrantMatcher() {
+  const params = useParams<{ locale?: string }>();
+  const locale = params?.locale || 'ro';
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [matches, setMatches] = useState<MatchResult[] | null>(null);
@@ -46,15 +52,13 @@ export default function GrantMatcher() {
     setError(null);
 
     try {
-      const res = await csrfFetch('/api/ai/match-grants', {
+      const res = await csrfFetch('/api/ai/wizard/match-calls', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectIdea: form.projectIdea,
           organization: {
             orgType: form.orgType,
-            nutsRegion: form.nutsRegion || undefined,
-            caenPrimary: form.caenPrimary || undefined,
           },
           budget: form.budget ? Number(form.budget) : undefined,
           locale: 'ro',
@@ -202,6 +206,15 @@ export default function GrantMatcher() {
                   </ul>
                 </div>
               )}
+
+              <div className="mt-6">
+                <Link 
+                  href={`/${locale}/proiecte/asistent-proiect?callId=${m.call.id ?? m.id ?? ''}`}
+                  className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 w-full"
+                >
+                  🚀 Creează proiect cu acest apel
+                </Link>
+              </div>
             </div>
           ))}
         </div>

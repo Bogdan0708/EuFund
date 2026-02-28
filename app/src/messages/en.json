@@ -358,7 +358,7 @@
   },
   "fundingCalls": {
     "title": "Active Funding Calls",
-    "subtitle": "Real-time data from the European Commission",
+    "subtitle": "PNRR, POCIDIF, ADR and European Programmes",
     "refresh": "Refresh",
     "open": "Open",
     "forthcoming": "Forthcoming",
@@ -366,7 +366,61 @@
     "noCalls": "No calls found",
     "details": "Details",
     "deadline": "Deadline",
-    "budget": "Budget"
+    "budget": "Budget",
+    "source": "Source",
+    "programme": "Programme",
+    "verifyEligibility": "Verify Eligibility",
+    "createProject": "Create Project",
+    "tabs": {
+      "all": "All",
+      "eu": "European Union",
+      "ro": "Romania"
+    }
+  },
+  "wizard": {
+    "title": "Intelligent Project Assistant",
+    "steps": {
+      "idea": "Idea",
+      "enhance": "Refinement",
+      "match": "Matching",
+      "generate": "Generation",
+      "review": "Review",
+      "saved": "Completed"
+    },
+    "idea": {
+      "title": "Describe your project idea",
+      "placeholder": "For example: We want to digitize the production process of our furniture factory using IoT sensors...",
+      "orgLabel": "Beneficiary organization",
+      "sectorLabel": "Activity sector",
+      "budgetLabel": "Budget estimate (EUR)"
+    },
+    "enhance": {
+      "title": "AI Idea Refinement",
+      "original": "Original idea",
+      "enhanced": "AI-enhanced idea",
+      "suggestions": "Additional suggestions"
+    },
+    "match": {
+      "title": "Identified matching calls",
+      "relevance": "Relevance",
+      "eligibility": "Eligibility score",
+      "select": "Select this call"
+    },
+    "generate": {
+      "title": "Full proposal generation",
+      "loading": "AI is now generating the full project structure, budget and methodology...",
+      "disclaimer": "This process may take up to 60 seconds."
+    },
+    "review": {
+      "title": "Review generated project",
+      "saveAction": "Save to Projects",
+      "disclaimer": "Review the data carefully before saving. The project will be saved as a draft."
+    },
+    "saved": {
+      "title": "Project saved successfully!",
+      "message": "Your project has been created and can be accessed in the projects section.",
+      "goProject": "Go to project"
+    }
   },
   "signing": {
     "title": "Qualified Electronic Signature (QES)",

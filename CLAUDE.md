@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FondEU (PlatformaFinantare.eu) — AI-powered platform for Romanian organizations to prepare EU funding applications. Built with Next.js 14 App Router, TypeScript, Drizzle ORM + PostgreSQL, NextAuth v5 beta, next-intl (ro/en).
+FondEU (PlatformaFinantare.eu) — AI-powered platform for Romanian organizations to prepare EU funding applications. Built with Next.js 14 App Router, TypeScript, Drizzle ORM + PostgreSQL (postgres.js driver), NextAuth v5 beta, next-intl (ro/en).
 
 ## Commands
 
@@ -14,14 +14,13 @@ All commands run from the `app/` directory:
 # Development
 npm run dev              # Start dev server (port 3000)
 npm run build            # Production build
-npm run start            # Start production server
 npm run lint             # ESLint (next lint)
 npm run typecheck        # tsc --noEmit
 
 # Tests (Vitest)
 npm run test             # Run all tests once
 npm run test:watch       # Watch mode
-npx vitest run path/to/file.test.ts  # Single test file
+npx vitest run tests/integration/feature-flags.test.ts  # Single test file
 
 # Database (Drizzle ORM)
 npm run db:generate      # Generate migration from schema changes
@@ -48,54 +47,72 @@ app/src/
 │   │   └── layout.tsx      # Root locale layout (NextIntlClientProvider, CSP nonce)
 │   └── api/
 │       ├── auth/           # NextAuth + register, verify-email, forgot/reset-password
-│       ├── ai/             # AI endpoints (generate-proposal, match-grants, chat, etc.)
+│       ├── ai/             # AI endpoints (generate-proposal, match-grants, chat, check-eligibility)
 │       ├── billing/        # Stripe (checkout, portal, pricing, info)
-│       ├── v1/             # REST resources (organizations, projects, work-packages)
+│       ├── v1/             # REST resources (organizations, projects, work-packages, admin)
 │       ├── integrations/   # External APIs (eurlex, cordis, eurostat, onrc, qes)
 │       └── webhooks/       # Stripe webhook handler
 ├── lib/
 │   ├── db/schema.ts        # Drizzle schema (all tables, enums, relations)
-│   ├── db/index.ts         # DB connection (exports `db`, `schema`)
+│   ├── db/index.ts         # DB connection (lazy proxy + withUserRLS)
 │   ├── auth/index.ts       # NextAuth config (Credentials provider, JWT strategy)
 │   ├── auth/edge.ts        # Edge-safe session decode (manual JWT, no eval)
-│   ├── auth/session.ts     # getUser(), requireUser(), getUserOrganizations()
-│   ├── ai/                 # AI modules (client, orchestrator, generators, analyzers)
-│   ├── errors/index.ts     # FondEUError class with bilingual messages
-│   ├── middleware/          # auth.ts (withAIAuth), rate-limit.ts, tier-gate.ts
-│   ├── email/              # Nodemailer transporter, templates, verification, reset
-│   ├── redis/client.ts     # ioredis connection
+│   ├── auth/helpers.ts     # requireAuth(), requirePlatformAdmin(), requireOrgRole()
+│   ├── errors/index.ts     # FondEUError, Errors factory, CircuitBreaker, withRetry
+│   ├── legal/audit.ts      # logAudit() with tamper-evident SHA-256 hash chain
+│   ├── legal/audit-integrity.ts  # verifyAuditChainIntegrity()
+│   ├── legal/retention-cleanup.ts # DPIA retention policy enforcement
+│   ├── feature-flags/index.ts     # isFeatureEnabled() with LRU cache
+│   ├── middleware/          # auth.ts (withAIAuth), rate-limit.ts (withRateLimit)
+│   ├── rules/eligibility.ts # Deterministic eligibility rules engine (no AI)
+│   ├── monitoring/sentry.ts # Conditional Sentry init (only when SENTRY_DSN set)
+│   ├── monitoring/metrics.ts # Prometheus-compatible metrics
+│   ├── redis/client.ts     # ioredis lazy connection
+│   ├── storage/gcs.ts      # Dual backend: GCS (production) + local FS (dev)
 │   ├── security/nonce.ts   # getNonce() for server components
-│   ├── legal/audit.ts      # logAudit() — GDPR audit trail
-│   ├── integrations/       # External API clients (eurlex, cordis, onrc, stripe, mysmis)
 │   └── i18n.ts             # next-intl config (locales: ro, en; default: ro)
 ├── components/             # React components organized by domain
 ├── messages/               # ro.json, en.json (i18n strings)
-└── middleware.ts            # Global edge middleware (CSP, CSRF, auth gates)
+└── middleware.ts            # Global edge middleware (CSP, CSRF, auth gates, email verification)
 ```
+
+Tests live in `app/tests/` (not `src/`). Path alias: `@/*` maps to `app/src/*`.
 
 ### Key Patterns
 
-**Error handling**: Use `FondEUError` from `@/lib/errors`. Factory methods: `Errors.validation()`, `Errors.notFound()`, etc. Convert to response with `.toResponse(locale)`.
+**Error handling**: Use `FondEUError` from `@/lib/errors`. Factory methods: `Errors.validation(field, msgRo, msgEn)`, `Errors.notFound(type, id)`, `Errors.unauthorized()`, `Errors.forbidden()`, `Errors.rateLimited()`, `Errors.serviceUnavailable(service)`, `Errors.internal()`. Convert to response with `.toResponse(locale)`. All user-facing errors require bilingual messages.
 
-**API route auth**: AI endpoints use `withAIAuth()` HOF which checks session, user tier, and Redis-based rate limits. Generic routes use `withRateLimit()`.
+**Auth helpers** (`@/lib/auth/helpers`):
+- `requireAuth()` — returns `SessionUser` or throws 401
+- `requirePlatformAdmin()` — **always verifies `isPlatformAdmin` against DB** (prevents stale-session privilege drift), throws 403
+- `requireOrgRole(userId, orgId, minRole)` — checks org membership role hierarchy (admin > org_admin > project_manager > viewer)
 
-**CSRF**: Double-submit cookie pattern. Middleware sets `csrf-token` httpOnly cookie and `X-CSRF-Token` response header. Clients send token back in `X-CSRF-Token` request header.
+**API route auth**: AI endpoints use `withAIAuth()` HOF which checks session, user tier, and Redis-based rate limits. Generic routes use `withRateLimit()`. Admin routes use `requirePlatformAdmin()`.
 
-**CSP nonce**: Middleware generates `crypto.randomUUID()`, passes via `x-nonce` request header. Server components read via `getNonce()` from `@/lib/security/nonce`. Layout injects it into `NextIntlClientProvider`.
+**DB lazy proxy** (`@/lib/db`): `db` is a `Proxy` that defers postgres connection to first property access. Required because Next.js build runs without `DATABASE_URL` in CI.
 
-**Audit logging**: `logAudit()` from `@/lib/legal/audit` for GDPR compliance. Track: userId, action, resource, resourceId, ipAddress, userAgent.
+**Row-Level Security**: `withUserRLS(userId, fn)` wraps queries in a transaction that sets `app.current_user_id` session variable. RLS policies in `lib/db/rls.sql` enforce tenant isolation using this variable. The variable name must match exactly between code and SQL.
+
+**CSRF**: Double-submit cookie pattern. Middleware sets `csrf-token` httpOnly cookie and `X-CSRF-Token` response header. Clients send token back in `X-CSRF-Token` request header. Constant-time comparison.
+
+**CSP nonce**: Middleware generates `crypto.randomUUID()`, passes via `x-nonce` request header. Server components read via `getNonce()` from `@/lib/security/nonce`.
+
+**Audit logging**: `logAudit()` from `@/lib/legal/audit`. Tamper-evident SHA-256 hash chain — each entry links to the previous via `previousHash`/`entryHash`. DLQ fallback ensures audit failures never crash requests. Verify chain with `verifyAuditChainIntegrity()`.
+
+**Feature flags**: `isFeatureEnabled(key, ctx)` from `@/lib/feature-flags`. DB-backed with 60s LRU cache (max 500 entries). Supports tier targeting, userId targeting, and deterministic percentage rollout (MD5 hash). Fail-closed: unknown flags return `false`.
+
+**Redis rate limiting**: Fail-closed for AI endpoints (503 if Redis unavailable), preventing unmetered AI usage.
 
 **Password hashing**: bcryptjs with cost factor 12.
 
 **Token TTLs**: Email verification = 24h, password reset = 1h.
-
-**Redis rate limiting**: Fail-closed for AI endpoints (503 if Redis unavailable), preventing unmetered AI usage. Check `isRedisAvailable()` in `@/lib/middleware/auth.ts`.
 
 ### Routing Conventions
 
 - Romanian page paths: `/ro/autentificare`, `/ro/inregistrare`, `/ro/resetare-parola`, `/ro/panou`, `/ro/proiecte`
 - Page routes use Romanian names in `(dashboard)` group: `panou` (dashboard), `proiecte` (projects), `finantari` (funding), `documente` (documents), `legislatie` (legislation), `setari` (settings)
 - API routes use English: `/api/ai/*`, `/api/auth/*`, `/api/v1/*`
+- Admin API routes: `/api/v1/admin/feature-flags`, `/api/v1/admin/retention`, `/api/v1/admin/programs`, `/api/v1/admin/calls`
 - Public paths must be listed in `middleware.ts` `publicPaths` array (both locale variants and API routes)
 
 ### Database
@@ -103,7 +120,8 @@ app/src/
 - Schema in `app/src/lib/db/schema.ts` — PostgreSQL enums use Romanian values (e.g., `'ciorna'`, `'in_lucru'`, `'deschis'`)
 - All IDs are UUID with `defaultRandom()`
 - Soft deletes via `deletedAt` timestamp where applicable
-- Path alias: `@/*` maps to `app/src/*`
+- User tiers: `free`, `pro`, `enterprise` (affects AI rate limits)
+- Drizzle migrations are in `app/drizzle/` — only files listed in `meta/_journal.json` run via `db:migrate`
 
 ### i18n
 
@@ -114,8 +132,31 @@ app/src/
 
 ### AI Providers
 
-Multi-provider setup: OpenAI (primary generation/analysis), Anthropic (alternative), Google (alternative). Configuration in `app/src/lib/ai/config.ts`. Rate limits per feature (proposals: 10/day, docs: 20/day, grants: 50/day).
+Multi-provider setup: OpenAI (primary), Anthropic (alternative), Google (alternative), Perplexity. Configuration in `app/src/lib/ai/config.ts`. Tier-based rate limits per feature (proposals: 10/day, docs: 20/day, grants: 50/day).
 
 ### External Integrations
 
-EU data: EurLex, CORDIS, Eurostat, EC Portal. Romanian: ONRC (company registry), ANAF (tax), MySMIS (project management system with XML export). All clients in `app/src/lib/integrations/`.
+EU data: EurLex, CORDIS, Eurostat, EC Portal. Romanian: ONRC (company registry), ANAF (tax), MySMIS (project management system with XML export). All clients in `app/src/lib/integrations/`. Use `CircuitBreaker` from `@/lib/errors` for external API calls.
+
+### Testing
+
+- Vitest with Node environment, globals enabled
+- Tests in `app/tests/` — integration tests in `app/tests/integration/`
+- Use `vi.mock()` for external dependencies (DB, auth, Redis)
+- Mock IDs must be valid UUIDs (e.g., `'11111111-1111-4111-8111-111111111111'`)
+- `logAudit` is typically mocked as `vi.fn()` in route tests
+
+### CI/CD
+
+- GitHub Actions: quality → security-gates → build-and-test
+- RLS tests only run when `vars.HAS_RLS_DATABASE == 'true'` — use `vars` (repository variables), never `secrets`, for job-level `if` conditions
+- Production deploys to GCP Cloud Run via `deploy-production.yml` (manual trigger with approval gate)
+
+### Gotchas
+
+- `rls.sql` variable must match `withUserRLS()`: both use `app.current_user_id`
+- `requirePlatformAdmin()` always hits DB — never trust session alone for admin checks
+- `logAudit()` only logs when a DB mutation actually occurs (no-op guard for consent)
+- `grantedAt` should NOT be set on withdraw-from-scratch consent records
+- Storage paths validated against directory traversal via `path.resolve()` check
+- ESLint `ignoreDuringBuilds: true` in `next.config.mjs` — pre-existing issues, fix incrementally

@@ -358,7 +358,7 @@
   },
   "fundingCalls": {
     "title": "Apeluri de Finanțare Active",
-    "subtitle": "Date în timp real de la Comisia Europeană",
+    "subtitle": "PNRR, POCIDIF, ADR și Programe Europene",
     "refresh": "Actualizează",
     "open": "Deschise",
     "forthcoming": "Viitoare",
@@ -366,7 +366,61 @@
     "noCalls": "Niciun apel găsit",
     "details": "Detalii",
     "deadline": "Termen",
-    "budget": "Buget"
+    "budget": "Buget",
+    "source": "Sursă",
+    "programme": "Program",
+    "verifyEligibility": "Verifică eligibilitate",
+    "createProject": "Creează proiect",
+    "tabs": {
+      "all": "Toate",
+      "eu": "Uniunea Europeană",
+      "ro": "România"
+    }
+  },
+  "wizard": {
+    "title": "Asistent Inteligent Proiect",
+    "steps": {
+      "idea": "Idee",
+      "enhance": "Rafinare",
+      "match": "Potrivire",
+      "generate": "Generare",
+      "review": "Revizuire",
+      "saved": "Finalizat"
+    },
+    "idea": {
+      "title": "Descrie ideea ta de proiect",
+      "placeholder": "De exemplu: Vrem să digitalizăm procesul de producție al fabricii noastre de mobilă folosind senzori IoT...",
+      "orgLabel": "Organizație beneficiară",
+      "sectorLabel": "Sector de activitate",
+      "budgetLabel": "Estimare buget (EUR)"
+    },
+    "enhance": {
+      "title": "Rafinare idee cu AI",
+      "original": "Ideea originală",
+      "enhanced": "Ideea îmbunătățită de AI",
+      "suggestions": "Sugestii adiționale"
+    },
+    "match": {
+      "title": "Apeluri potrivite identificate",
+      "relevance": "Relevanță",
+      "eligibility": "Scor eligibilitate",
+      "select": "Selectează acest apel"
+    },
+    "generate": {
+      "title": "Generare propunere completă",
+      "loading": "AI-ul generează acum structura completă a proiectului, bugetul și metodologia...",
+      "disclaimer": "Acest proces poate dura până la 60 de secunde."
+    },
+    "review": {
+      "title": "Revizuire proiect generat",
+      "saveAction": "Salvează în Proiecte",
+      "disclaimer": "Verificați cu atenție datele înainte de salvare. Proiectul va fi salvat ca ciornă."
+    },
+    "saved": {
+      "title": "Proiect salvat cu succes!",
+      "message": "Proiectul tău a fost creat și poate fi accesat în secțiunea de proiecte.",
+      "goProject": "Mergi la proiect"
+    }
   },
   "signing": {
     "title": "Semnare Electronică Calificată (QES)",

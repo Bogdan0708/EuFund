@@ -9,63 +9,37 @@ import { matchGrantsSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
 import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 
-// Seed data for demo - in production this comes from the database
+import { db } from '@/lib/db';
+import { callsForProposals, fundingPrograms } from '@/lib/db/schema';
+import { eq, inArray } from 'drizzle-orm';
+
+// Seed data for demo - used ONLY as a fallback if DB is empty
 const DEMO_CALLS: FundingCall[] = [
   {
-    id: 'call-001',
-    callCode: 'HORIZON-CL4-2026-01',
-    titleRo: 'Tranziția digitală a IMM-urilor europene',
-    programName: 'Horizon Europe',
+    id: 'demo-call-001',
+    callCode: 'PNRR-DIGITAL-IMM-2026',
+    titleRo: 'Digitalizare IMM în cadrul PNRR',
+    programName: 'PNRR',
+    eligibleTypes: ['srl', 'sa'],
+    budgetMin: 50000,
+    budgetMax: 500000,
+    durationMin: 6,
+    durationMax: 24,
+    submissionEnd: '2026-12-31T23:59:59Z',
+    status: 'deschis',
+  },
+  {
+    id: 'demo-call-002',
+    callCode: 'POCIDIF-TEH-2026',
+    titleRo: 'Inovare tehnologică pentru competitivitate',
+    programName: 'POCIDIF',
     eligibleTypes: ['srl', 'sa', 'ong'],
-    budgetMin: 500000,
-    budgetMax: 5000000,
-    durationMin: 24,
-    durationMax: 48,
-    submissionEnd: '2026-09-15T17:00:00Z',
-    status: 'deschis',
-  },
-  {
-    id: 'call-002',
-    callCode: 'LIFE-2026-ENV',
-    titleRo: 'Proiecte de mediu și eficiență resurselor',
-    programName: 'LIFE+',
-    eligibleTypes: ['srl', 'sa', 'ong', 'uat', 'institutie_publica'],
-    budgetMin: 1000000,
-    budgetMax: 10000000,
-    durationMin: 36,
-    durationMax: 60,
-    submissionEnd: '2026-10-01T17:00:00Z',
-    status: 'deschis',
-  },
-  {
-    id: 'call-003',
-    callCode: 'INTERREG-RO-HU-2026',
-    titleRo: 'Cooperare transfrontalieră România-Ungaria',
-    programName: 'Interreg VI-A',
-    eligibleTypes: ['srl', 'ong', 'uat', 'institutie_publica'],
-    eligibleRegions: ['RO11', 'RO42'],
     budgetMin: 100000,
     budgetMax: 2000000,
     durationMin: 12,
     durationMax: 36,
-    submissionEnd: '2026-06-30T17:00:00Z',
-    status: 'deschis',
-  },
-  {
-    id: 'call-004',
-    callCode: 'POCIDIF-2026-OP1-01',
-    titleRo: 'Digitalizare și inovare pentru competitivitate',
-    descriptionRo: 'Sprijin pentru investiții în digitalizare, cercetare și inovare pentru IMM-uri din România.',
-    programName: 'POCIDIF',
-    eligibleTypes: ['srl', 'sa'],
-    eligibleCaen: ['6201', '6202', '6311', '7112', '7211', '7219'],
-    budgetMin: 200000,
-    budgetMax: 3000000,
-    cofinancingRate: 10,
-    durationMin: 12,
-    durationMax: 36,
-    submissionEnd: '2026-12-15T17:00:00Z',
-    status: 'deschis',
+    submissionEnd: '2026-11-30T23:59:59Z',
+    status: 'previzionat',
   },
 ];
 
@@ -80,6 +54,75 @@ export async function POST(request: NextRequest) {
           Errors.validation('body', 'Date invalide', 'Invalid input').toResponse(),
           { status: 400 }
         );
+      }
+
+      // Fetch active calls from DB (fallback to demo if unavailable)
+      let dbCalls: Array<{
+        id: string;
+        callCode: string;
+        titleRo: string;
+        descriptionRo: string | null;
+        programName: string;
+        eligibleTypes: string[] | null;
+        eligibleRegions: string[] | null;
+        eligibleCaen: string[] | null;
+        budgetMin: string | null;
+        budgetMax: string | null;
+        cofinancingRate: string | null;
+        durationMin: number | null;
+        durationMax: number | null;
+        submissionEnd: Date | null;
+        status: 'deschis' | 'previzionat' | 'in_evaluare' | 'inchis' | 'anulat' | null;
+      }> = [];
+      try {
+        dbCalls = await db.select({
+          id: callsForProposals.id,
+          callCode: callsForProposals.callCode,
+          titleRo: callsForProposals.titleRo,
+          descriptionRo: callsForProposals.descriptionRo,
+          programName: fundingPrograms.nameRo,
+          eligibleTypes: callsForProposals.eligibleTypes,
+          eligibleRegions: callsForProposals.eligibleRegions,
+          eligibleCaen: callsForProposals.eligibleCaen,
+          budgetMin: callsForProposals.budgetMin,
+          budgetMax: callsForProposals.budgetMax,
+          cofinancingRate: callsForProposals.cofinancingRate,
+          durationMin: callsForProposals.durationMin,
+          durationMax: callsForProposals.durationMax,
+          submissionEnd: callsForProposals.submissionEnd,
+          status: callsForProposals.status,
+        })
+          .from(callsForProposals)
+          .innerJoin(fundingPrograms, eq(callsForProposals.programId, fundingPrograms.id))
+          .where(inArray(callsForProposals.status, ['deschis', 'previzionat']))
+          .limit(50);
+      } catch (dbError) {
+        logger.warn({ error: dbError, userId: user.id }, 'Calls query failed; using DEMO_CALLS fallback');
+      }
+
+      // Cast string decimals to numbers for the AI matcher
+      const mappedCalls: FundingCall[] = dbCalls.map(c => ({
+        id: c.id,
+        callCode: c.callCode,
+        titleRo: c.titleRo,
+        descriptionRo: c.descriptionRo ?? undefined,
+        programName: c.programName,
+        eligibleTypes: c.eligibleTypes ?? undefined,
+        eligibleRegions: c.eligibleRegions ?? undefined,
+        eligibleCaen: c.eligibleCaen ?? undefined,
+        budgetMin: c.budgetMin ? Number(c.budgetMin) : undefined,
+        budgetMax: c.budgetMax ? Number(c.budgetMax) : undefined,
+        cofinancingRate: c.cofinancingRate ? Number(c.cofinancingRate) : undefined,
+        durationMin: c.durationMin ?? undefined,
+        durationMax: c.durationMax ?? undefined,
+        submissionEnd: c.submissionEnd ? c.submissionEnd.toISOString() : undefined,
+        status: c.status ?? 'deschis',
+      }));
+
+      const callsToEvaluate = mappedCalls.length > 0 ? mappedCalls : DEMO_CALLS;
+      
+      if (mappedCalls.length === 0) {
+        logger.warn({ userId: user.id }, 'Empty calls database, falling back to DEMO_CALLS');
       }
 
       const { companyProfile } = parsed.data;
@@ -97,7 +140,7 @@ export async function POST(request: NextRequest) {
       const runWithCompliance = withEUAIActCompliance<typeof matcherInput>(
         'match-grants',
         async (payload) => {
-          const result = await matchGrants(payload, DEMO_CALLS);
+          const result = await matchGrants(payload, callsToEvaluate);
           const topScore = result.matches[0]?.overallScore ?? 0;
           return {
             result,
@@ -117,6 +160,7 @@ export async function POST(request: NextRequest) {
           matchesFound: result.matches.length,
           tokensUsed: result.tokensUsed,
           userTier: user.tier,
+          isDemoFallback: mappedCalls.length === 0,
         },
       });
 
@@ -127,9 +171,10 @@ export async function POST(request: NextRequest) {
           matches,
           metadata: {
             tokensUsed: result.tokensUsed,
-            callsEvaluated: DEMO_CALLS.length,
+            callsEvaluated: callsToEvaluate.length,
             matchedAt: new Date().toISOString(),
             aiAct: execution.metadata,
+            isDemoFallback: mappedCalls.length === 0,
           },
         },
       });

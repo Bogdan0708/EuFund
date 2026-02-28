@@ -30,6 +30,11 @@ export const consentStatusEnum = pgEnum('consent_status', ['granted', 'withdrawn
 export const workPackageStatusEnum = pgEnum('work_package_status', ['planned', 'active', 'completed', 'delayed', 'cancelled']);
 export const riskLevelEnum = pgEnum('risk_level', ['very_low', 'low', 'medium', 'high', 'very_high']);
 export const userTierEnum = pgEnum('user_tier', ['free', 'pro', 'enterprise']);
+export const connectorAccessMethodEnum = pgEnum('connector_access_method', ['api', 'html', 'pdf', 'docx', 'rss', 'manual']);
+export const connectorRunStatusEnum = pgEnum('connector_run_status', ['running', 'success', 'failed', 'partial']);
+export const extractionMethodEnum = pgEnum('extraction_method', ['regex', 'rule', 'llm', 'hybrid']);
+export const reviewSeverityEnum = pgEnum('review_severity', ['low', 'medium', 'high', 'critical']);
+export const reviewStatusEnum = pgEnum('review_status', ['pending', 'in_review', 'approved', 'rejected']);
 
 // ─── Users ───────────────────────────────────────────────────────
 export const users = pgTable('users', {
@@ -167,6 +172,8 @@ export const fundingPrograms = pgTable('funding_programs', {
 export const callsForProposals = pgTable('calls_for_proposals', {
   id: uuid('id').primaryKey().defaultRandom(),
   programId: uuid('program_id').notNull().references(() => fundingPrograms.id),
+  sourceConnectorId: uuid('source_connector_id').references(() => sourceConnectors.id, { onDelete: 'set null' }),
+  externalId: varchar('external_id', { length: 255 }),
   callCode: varchar('call_code', { length: 100 }).notNull(),
   titleRo: varchar('title_ro', { length: 1000 }).notNull(),
   titleEn: varchar('title_en', { length: 1000 }),
@@ -190,12 +197,15 @@ export const callsForProposals = pgTable('calls_for_proposals', {
   eligibleExpenses: jsonb('eligible_expenses'),
   stateAidScheme: varchar('state_aid_scheme', { length: 255 }),
   metadata: jsonb('metadata').default({}),
+  lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   programIdx: index('idx_calls_program').on(table.programId),
   statusIdx: index('idx_calls_status').on(table.status),
   deadlineIdx: index('idx_calls_deadline').on(table.submissionEnd),
+  sourceConnectorIdx: index('idx_calls_connector').on(table.sourceConnectorId),
+  uniqueExternal: uniqueIndex('idx_calls_unique_external').on(table.sourceConnectorId, table.externalId),
 }));
 
 // ─── Projects ───────────────────────────────────────────────────
@@ -400,6 +410,127 @@ export const fundingCalls = pgTable('funding_calls', {
   statusIdx: index('idx_funding_calls_status').on(table.status),
   deadlineIdx: index('idx_funding_calls_deadline').on(table.deadlineDate),
   programmeIdx: index('idx_funding_calls_programme').on(table.programme),
+}));
+
+// ─── Funding Source Connectors ─────────────────────────────────
+export const sourceConnectors = pgTable('source_connectors', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: varchar('slug', { length: 100 }).unique().notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  owner: varchar('owner', { length: 255 }),
+  baseUrl: varchar('base_url', { length: 1000 }),
+  accessMethod: connectorAccessMethodEnum('access_method').notNull().default('html'),
+  isActive: boolean('is_active').notNull().default(true),
+  config: jsonb('config').default({}),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  activeIdx: index('idx_source_connectors_active').on(table.isActive),
+}));
+
+// ─── Funding Source Runs ───────────────────────────────────────
+export const sourceRuns = pgTable('source_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  connectorId: uuid('connector_id').notNull().references(() => sourceConnectors.id, { onDelete: 'cascade' }),
+  status: connectorRunStatusEnum('status').notNull().default('running'),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  itemsDiscovered: integer('items_discovered').notNull().default(0),
+  itemsChanged: integer('items_changed').notNull().default(0),
+  error: text('error'),
+  metadata: jsonb('metadata').default({}),
+}, (table) => ({
+  connectorIdx: index('idx_source_runs_connector').on(table.connectorId),
+  statusIdx: index('idx_source_runs_status').on(table.status),
+}));
+
+// ─── Funding Documents (Raw) ───────────────────────────────────
+export const fundingDocumentsRaw = pgTable('funding_documents_raw', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  connectorId: uuid('connector_id').notNull().references(() => sourceConnectors.id, { onDelete: 'cascade' }),
+  runId: uuid('run_id').references(() => sourceRuns.id, { onDelete: 'set null' }),
+  externalKey: varchar('external_key', { length: 255 }).notNull(),
+  sourceUrl: varchar('source_url', { length: 1000 }).notNull(),
+  documentType: varchar('document_type', { length: 100 }).notNull(),
+  language: varchar('language', { length: 10 }).notNull().default('ro'),
+  fileType: varchar('file_type', { length: 20 }).notNull(),
+  title: text('title'),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).defaultNow(),
+  sha256: varchar('sha256', { length: 64 }).notNull(),
+  storagePath: varchar('storage_path', { length: 500 }).notNull(),
+  textContent: text('text_content'),
+  structureJson: jsonb('structure_json'),
+  metadata: jsonb('metadata').default({}),
+}, (table) => ({
+  connectorIdx: index('idx_funding_docs_raw_connector').on(table.connectorId),
+  fetchedIdx: index('idx_funding_docs_raw_fetched').on(table.fetchedAt),
+  uniqueVersion: uniqueIndex('idx_funding_docs_raw_unique_version').on(table.connectorId, table.externalKey, table.sha256),
+}));
+
+// ─── Funding Call Extractions ──────────────────────────────────
+export const fundingCallExtractions = pgTable('funding_call_extractions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  documentId: uuid('document_id').notNull().references(() => fundingDocumentsRaw.id, { onDelete: 'cascade' }),
+  callExternalKey: varchar('call_external_key', { length: 255 }).notNull(),
+  extractionVersion: integer('extraction_version').notNull().default(1),
+  fieldName: varchar('field_name', { length: 100 }).notNull(),
+  fieldValueJson: jsonb('field_value_json').notNull(),
+  confidence: decimal('confidence', { precision: 5, scale: 4 }),
+  evidenceSnippet: text('evidence_snippet'),
+  evidencePage: integer('evidence_page'),
+  evidenceLocator: varchar('evidence_locator', { length: 500 }),
+  method: extractionMethodEnum('method').notNull().default('hybrid'),
+  validated: boolean('validated').notNull().default(false),
+  validationErrors: jsonb('validation_errors').default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  callKeyIdx: index('idx_funding_call_extractions_call_key').on(table.callExternalKey),
+  fieldIdx: index('idx_funding_call_extractions_field').on(table.fieldName),
+  uniqueFieldVersion: uniqueIndex('idx_funding_call_extractions_unique').on(
+    table.documentId,
+    table.callExternalKey,
+    table.fieldName,
+    table.extractionVersion,
+  ),
+}));
+
+// ─── Funding Call Versions ─────────────────────────────────────
+export const fundingCallVersions = pgTable('funding_call_versions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  callExternalKey: varchar('call_external_key', { length: 255 }).notNull(),
+  versionNo: integer('version_no').notNull(),
+  changeType: varchar('change_type', { length: 50 }).notNull().default('updated'),
+  changedFields: jsonb('changed_fields').notNull(),
+  diffSummary: text('diff_summary'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  callKeyIdx: index('idx_funding_call_versions_call_key').on(table.callExternalKey),
+  uniqueVersion: uniqueIndex('idx_funding_call_versions_unique').on(table.callExternalKey, table.versionNo),
+}));
+
+// ─── Funding Review Queue ──────────────────────────────────────
+export const fundingReviewQueue = pgTable('funding_review_queue', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  callExternalKey: varchar('call_external_key', { length: 255 }).notNull(),
+  documentId: uuid('document_id').references(() => fundingDocumentsRaw.id, { onDelete: 'set null' }),
+  reason: text('reason').notNull(),
+  severity: reviewSeverityEnum('severity').notNull().default('medium'),
+  status: reviewStatusEnum('status').notNull().default('pending'),
+  assignedTo: uuid('assigned_to').references(() => users.id, { onDelete: 'set null' }),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  resolutionNotes: text('resolution_notes'),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  metadata: jsonb('metadata').default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  statusIdx: index('idx_funding_review_queue_status').on(table.status),
+  severityIdx: index('idx_funding_review_queue_severity').on(table.severity),
+  assigneeIdx: index('idx_funding_review_queue_assigned').on(table.assignedTo),
 }));
 
 // ─── Signature Workflows (QES) ──────────────────────────────────
@@ -625,6 +756,7 @@ export const projectCommentsRelations = relations(projectComments, ({ one }) => 
 
 export const callsForProposalsRelations = relations(callsForProposals, ({ one }) => ({
   program: one(fundingPrograms, { fields: [callsForProposals.programId], references: [fundingPrograms.id] }),
+  sourceConnector: one(sourceConnectors, { fields: [callsForProposals.sourceConnectorId], references: [sourceConnectors.id] }),
 }));
 
 export const documentsRelations = relations(documents, ({ one }) => ({
@@ -652,4 +784,35 @@ export const passwordResetTokensRelations = relations(passwordResetTokens, ({ on
 export const aiReviewsRelations = relations(aiReviews, ({ one }) => ({
   organization: one(organizations, { fields: [aiReviews.orgId], references: [organizations.id] }),
   requestedByUser: one(users, { fields: [aiReviews.requestedBy], references: [users.id] }),
+}));
+
+export const sourceConnectorsRelations = relations(sourceConnectors, ({ many }) => ({
+  runs: many(sourceRuns),
+  documents: many(fundingDocumentsRaw),
+}));
+
+export const sourceRunsRelations = relations(sourceRuns, ({ one, many }) => ({
+  connector: one(sourceConnectors, { fields: [sourceRuns.connectorId], references: [sourceConnectors.id] }),
+  documents: many(fundingDocumentsRaw),
+}));
+
+export const fundingDocumentsRawRelations = relations(fundingDocumentsRaw, ({ one, many }) => ({
+  connector: one(sourceConnectors, { fields: [fundingDocumentsRaw.connectorId], references: [sourceConnectors.id] }),
+  run: one(sourceRuns, { fields: [fundingDocumentsRaw.runId], references: [sourceRuns.id] }),
+  extractions: many(fundingCallExtractions),
+  reviewQueueItems: many(fundingReviewQueue),
+}));
+
+export const fundingCallExtractionsRelations = relations(fundingCallExtractions, ({ one }) => ({
+  document: one(fundingDocumentsRaw, { fields: [fundingCallExtractions.documentId], references: [fundingDocumentsRaw.id] }),
+}));
+
+export const fundingCallVersionsRelations = relations(fundingCallVersions, ({ one }) => ({
+  creator: one(users, { fields: [fundingCallVersions.createdBy], references: [users.id] }),
+}));
+
+export const fundingReviewQueueRelations = relations(fundingReviewQueue, ({ one }) => ({
+  document: one(fundingDocumentsRaw, { fields: [fundingReviewQueue.documentId], references: [fundingDocumentsRaw.id] }),
+  assignee: one(users, { fields: [fundingReviewQueue.assignedTo], references: [users.id] }),
+  creator: one(users, { fields: [fundingReviewQueue.createdBy], references: [users.id] }),
 }));

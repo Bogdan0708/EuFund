@@ -47,6 +47,9 @@ export type AuditAction =
   | 'ai.compliance_check'
   | 'ai.generate'
   | 'ai.chat'
+  | 'ai.wizard_enhance'
+  | 'ai.wizard_match'
+  | 'ai.wizard_generate'
   // Consent
   | 'consent.grant'
   | 'consent.withdraw'
@@ -58,7 +61,14 @@ export type AuditAction =
   | 'system.retention_cleanup'
   | 'system.feature_flag_change'
   | 'system.program_change'
-  | 'system.call_change';
+  | 'system.call_change'
+  | 'system.connector_sync'
+  // Funding AI ingestion/enrichment
+  | 'funding_ai.document_upsert'
+  | 'funding_ai.extractions_upsert'
+  | 'funding_ai.version_create'
+  | 'funding_ai.review_queue_create'
+  | 'funding_ai.review_queue_update';
 
 export interface AuditEntry {
   userId?: string;
