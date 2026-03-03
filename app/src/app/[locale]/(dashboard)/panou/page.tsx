@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowUpRight, CalendarClock, CheckCircle2, Clock3, FileWarning, ShieldCheck } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { CalendarClock, CheckCircle2, Clock3, FileWarning, ShieldCheck, Sparkles, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
@@ -30,9 +31,21 @@ export default function DashboardPage() {
   const params = useParams<{ locale?: string }>();
   const locale = params.locale || 'ro';
 
+  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [ideaInput, setIdeaInput] = useState('');
+
+  interface FundingCall {
+    id: string;
+    titleRo: string;
+    programName?: string;
+    submissionEnd?: string;
+    status?: string;
+  }
+
+  const [recentCalls, setRecentCalls] = useState<FundingCall[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -50,7 +63,20 @@ export default function DashboardPage() {
       }
     };
 
+    const loadCalls = async () => {
+      try {
+        const res = await fetch('/api/v1/calls?status=deschis&perPage=5');
+        if (res.ok) {
+          const payload = await res.json();
+          setRecentCalls(payload?.data?.items || []);
+        }
+      } catch {
+        // Non-critical — silently ignore
+      }
+    };
+
     load();
+    loadCalls();
   }, []);
 
   const summary = useMemo(() => {
@@ -104,13 +130,56 @@ export default function DashboardPage() {
         description="Urmărește sănătatea portofoliului, aprobările, termenele și acțiunile de conformitate într-un singur loc."
         rightSlot={
           <Button asChild>
-            <Link href={`/${locale}/proiecte/nou`}>
-              Aplicație nouă
-              <ArrowUpRight className="ml-2 h-4 w-4" />
+            <Link href={`/${locale}/proiecte/asistent-proiect`}>
+              Aplicație nouă cu AI
+              <Wand2 className="ml-2 h-4 w-4" />
             </Link>
           </Button>
         }
       />
+
+      <Card className="border-none bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white shadow-lg">
+        <CardContent className="py-6">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="h-5 w-5" />
+            <h2 className="text-lg font-semibold">Începe un proiect nou cu AI</h2>
+          </div>
+          <p className="mb-4 text-sm text-blue-100">
+            Descrie ideea ta și asistentul nostru AI va genera o propunere completă, potrivită pe apelurile de finanțare disponibile.
+          </p>
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (ideaInput.trim()) {
+                router.push(`/${locale}/proiecte/asistent-proiect?idea=${encodeURIComponent(ideaInput.trim())}`);
+              }
+            }}
+          >
+            <input
+              type="text"
+              value={ideaInput}
+              onChange={(e) => setIdeaInput(e.target.value)}
+              placeholder="Descrie ideea ta de proiect..."
+              className="flex-1 rounded-lg border-0 bg-white/20 px-4 py-2.5 text-sm text-white placeholder:text-blue-200 focus:outline-none focus:ring-2 focus:ring-white/50"
+            />
+            <Button
+              type="submit"
+              disabled={!ideaInput.trim()}
+              className="bg-white text-blue-700 hover:bg-blue-50"
+            >
+              <Wand2 className="mr-2 h-4 w-4" />
+              Pornește asistentul AI
+            </Button>
+          </form>
+          <Link
+            href={`/${locale}/finantari`}
+            className="mt-3 inline-block text-sm text-blue-200 hover:text-white transition-colors"
+          >
+            Sau începe de la un apel de finanțare →
+          </Link>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="border-none bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-md">
@@ -235,6 +304,34 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {recentCalls.length > 0 && (
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>Apeluri recente</CardTitle>
+            <CardDescription>Cele mai recente apeluri de finanțare deschise</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {recentCalls.map((call) => (
+              <div key={call.id} className="flex items-center justify-between rounded-lg border p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{call.titleRo}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {call.programName}
+                    {call.submissionEnd && ` • Termen: ${new Date(call.submissionEnd).toLocaleDateString(locale === 'ro' ? 'ro-RO' : 'en-GB')}`}
+                  </p>
+                </div>
+                <Button asChild variant="outline" size="sm" className="ml-3 shrink-0">
+                  <Link href={`/${locale}/proiecte/asistent-proiect?callId=${call.id}`}>
+                    <Wand2 className="mr-1 h-3.5 w-3.5" />
+                    Creează proiect
+                  </Link>
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="rounded-xl border bg-card/90 p-4 text-sm text-muted-foreground">
         <p className="flex items-center gap-2 font-medium text-foreground">

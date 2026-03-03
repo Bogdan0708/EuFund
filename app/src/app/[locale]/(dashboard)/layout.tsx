@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
-import { Bell, FolderKanban, LayoutDashboard, Menu, Search, ShieldCheck, Signature, Wallet, X, FileText, ClipboardList, Settings } from 'lucide-react';
+import { Bell, FolderKanban, LayoutDashboard, Menu, Search, ShieldCheck, Signature, Sparkles, Wallet, Wand2, X, FileText, ClipboardList, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AppBreadcrumbs } from '@/components/ui/breadcrumbs';
@@ -73,8 +73,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const navItems = useMemo(() => {
     const items = [
       { href: `/${locale}/panou`, label: 'Panou de control', icon: LayoutDashboard },
+      { href: `/${locale}/asistent`, label: 'Asistent AI', icon: Sparkles },
       { href: `/${locale}/finantari/live`, label: 'Apeluri și aplicații', icon: ClipboardList },
       { href: `/${locale}/proiecte`, label: 'Proiecte', icon: FolderKanban },
+      { href: `/${locale}/proiecte/asistent-proiect`, label: 'Asistent Proiect', icon: Wand2 },
       { href: `/${locale}/proiecte`, label: 'Sarcini și jaloane', icon: Signature },
       { href: `/${locale}/proiecte`, label: 'Buget și costuri', icon: Wallet },
       { href: `/${locale}/proiecte`, label: 'Rapoarte', icon: FileText },

@@ -1,4 +1,4 @@
-import pdf from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import * as xlsx from 'xlsx';
 import { logger } from '@/lib/logger';
@@ -29,10 +29,12 @@ export async function parseKnowledgeFile(
   try {
     // 1. PDF Parsing
     if (extension === 'pdf' || contentType === 'application/pdf') {
-      const data = await pdf(buffer);
+      const parser = new PDFParse({ data: new Uint8Array(buffer) });
+      const textResult = await parser.getText();
+      await parser.destroy();
       return {
-        text: data.text,
-        metadata: { pageCount: data.numpages, format: 'pdf' }
+        text: textResult.text,
+        metadata: { pageCount: textResult.total, format: 'pdf' }
       };
     }
 

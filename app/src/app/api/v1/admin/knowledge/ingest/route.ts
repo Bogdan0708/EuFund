@@ -3,7 +3,8 @@ import { requirePlatformAdmin } from '@/lib/auth/helpers';
 import { parseKnowledgeFile } from '@/lib/ai/knowledge/parser';
 import { ingestToKnowledgeBase } from '@/lib/ai/knowledge/ingestor';
 import { db } from '@/lib/db';
-import { fundingDocumentsRaw } from '@/lib/db/schema';
+import { fundingDocumentsRaw, sourceConnectors } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { logAudit } from '@/lib/legal/audit';
 import { Errors, FondEUError } from '@/lib/errors';
@@ -11,16 +12,34 @@ import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'knowledge-ingest-api' });
 
+/** Ensure a "manual-upload" source connector exists, return its ID. */
+async function getManualConnectorId(): Promise<string> {
+  const existing = await db.select({ id: sourceConnectors.id })
+    .from(sourceConnectors)
+    .where(eq(sourceConnectors.slug, 'manual-upload'))
+    .limit(1);
+  if (existing.length > 0) return existing[0].id;
+
+  const [created] = await db.insert(sourceConnectors).values({
+    slug: 'manual-upload',
+    name: 'Manual Upload',
+    owner: 'admin',
+    accessMethod: 'api',
+    isActive: true,
+  }).returning();
+  return created.id;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const user = await requirePlatformAdmin();
     const formData = await req.formData();
-    
+
     const file = formData.get('file') as File;
     const callId = formData.get('callId') as string;
     const programId = formData.get('programId') as string;
 
-    if (!file) throw Errors.validation('file', 'Niciun fișier încărcat');
+    if (!file) throw Errors.validation('file', 'Niciun fișier încărcat', 'No file uploaded');
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const sha256 = createHash('sha256').update(buffer).digest('hex');
@@ -38,8 +57,13 @@ export async function POST(req: NextRequest) {
     });
 
     // 3. Store in DB for tracking
+    const connectorId = await getManualConnectorId();
+    const storagePath = `manual-uploads/${sha256.slice(0, 12)}/${file.name}`;
     const [doc] = await db.insert(fundingDocumentsRaw).values({
+      connectorId,
       externalKey: `manual-${sha256.slice(0, 12)}`,
+      sourceUrl: `upload://${file.name}`,
+      storagePath,
       documentType: 'knowledge_upload',
       fileType: parsed.metadata.format,
       title: file.name,
@@ -50,7 +74,7 @@ export async function POST(req: NextRequest) {
 
     await logAudit({
       userId: user.id,
-      action: 'system.program_change', // Using closest existing or add new
+      action: 'system.program_change',
       resourceType: 'funding_document',
       resourceId: doc?.id,
       metadata: { filename: file.name, chunks, callId }

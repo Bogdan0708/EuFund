@@ -377,6 +377,17 @@
       "ro": "România"
     }
   },
+  "dashboard": {
+    "heroTitle": "Începe un proiect nou cu AI",
+    "heroDescription": "Descrie ideea ta și asistentul nostru AI va genera o propunere completă, potrivită pe apelurile de finanțare disponibile.",
+    "heroPlaceholder": "Descrie ideea ta de proiect...",
+    "heroCta": "Pornește asistentul AI",
+    "heroAltLink": "Sau începe de la un apel de finanțare →",
+    "recentCalls": "Apeluri recente",
+    "recentCallsDescription": "Cele mai recente apeluri de finanțare deschise",
+    "createFromCall": "Creează proiect",
+    "noRecentCalls": "Nu există apeluri deschise momentan."
+  },
   "wizard": {
     "title": "Asistent Inteligent Proiect",
     "steps": {
@@ -602,5 +613,36 @@
     "reject": "Respinge",
     "approved": "Aprobat",
     "rejected": "Respins"
+  },
+  "conversationalWizard": {
+    "title": "Asistent AI pentru Proiecte",
+    "subtitle": "Descrie ideea ta și te ghidez pas cu pas spre o propunere completă",
+    "welcome": "Bună! Sunt asistentul tău pentru fonduri europene. Descrie-mi ideea ta de proiect și te voi ghida prin tot procesul — de la rafinarea ideii până la generarea unei propuneri complete.\n\nPoți începe cu ceva simplu, de exemplu: \"Vreau să digitalizez primăria\" sau \"Avem nevoie de panouri solare pentru fabrica noastră\".",
+    "placeholder": "Descrie ideea ta de proiect...",
+    "send": "Trimite",
+    "errorMessage": "A apărut o eroare. Vă rugăm să încercați din nou.",
+    "quickFindFunding": "Găsește finanțare potrivită",
+    "quickGenerateProposal": "Generează propunere",
+    "quickCheckEligibility": "Verifică eligibilitate",
+    "toolEnhancing": "Se rafinează ideea de proiect",
+    "toolSearching": "Se caută apeluri de finanțare potrivite",
+    "toolGenerating": "Se generează propunerea completă",
+    "toolSaving": "Se salvează proiectul",
+    "enhancedIdea": "Ideea îmbunătățită",
+    "suggestions": "Sugestii",
+    "noMatches": "Nu s-au găsit apeluri de finanțare potrivite momentan.",
+    "matchesFound": "{count} apeluri potrivite găsite",
+    "eligibility": "Eligibilitate",
+    "relevance": "Relevanță",
+    "deadline": "Termen limită",
+    "selectCall": "Selectează acest apel",
+    "proposalSummary": "Rezumat",
+    "proposalObjectives": "Obiective",
+    "proposalMethodology": "Metodologie",
+    "proposalBudget": "Buget",
+    "proposalSustainability": "Sustenabilitate",
+    "confidence": "Încredere",
+    "projectSaved": "Proiect salvat cu succes!",
+    "goToProject": "Mergi la proiect"
   }
 }

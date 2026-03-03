@@ -91,10 +91,12 @@ type WizardState = {
 export function ProjectWizard({
   userOrgs,
   initialCallId = null,
+  initialIdea,
   locale = 'ro',
 }: {
   userOrgs: UserOrg[];
   initialCallId?: string | null;
+  initialIdea?: string;
   locale?: string;
 }) {
   const t = useTranslations();
@@ -103,7 +105,7 @@ export function ProjectWizard({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<WizardState>({
-    projectIdea: '',
+    projectIdea: initialIdea ?? '',
     enhancedIdea: '',
     selectedCallId: initialCallId,
     selectedOrgId: userOrgs[0]?.id ?? '',

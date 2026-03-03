@@ -377,6 +377,17 @@
       "ro": "Romania"
     }
   },
+  "dashboard": {
+    "heroTitle": "Start a new project with AI",
+    "heroDescription": "Describe your idea and our AI assistant will generate a complete proposal, matched to available funding calls.",
+    "heroPlaceholder": "Describe your project idea...",
+    "heroCta": "Launch AI assistant",
+    "heroAltLink": "Or start from a funding call →",
+    "recentCalls": "Recent calls",
+    "recentCallsDescription": "Latest open funding calls",
+    "createFromCall": "Create project",
+    "noRecentCalls": "No open calls at the moment."
+  },
   "wizard": {
     "title": "Intelligent Project Assistant",
     "steps": {
@@ -602,5 +613,36 @@
     "reject": "Reject",
     "approved": "Approved",
     "rejected": "Rejected"
+  },
+  "conversationalWizard": {
+    "title": "AI Project Assistant",
+    "subtitle": "Describe your idea and I'll guide you step by step to a complete proposal",
+    "welcome": "Hello! I'm your EU funding assistant. Describe your project idea and I'll guide you through the entire process — from refining the idea to generating a complete proposal.\n\nYou can start simple, for example: \"I want to digitize our city hall\" or \"We need solar panels for our factory\".",
+    "placeholder": "Describe your project idea...",
+    "send": "Send",
+    "errorMessage": "An error occurred. Please try again.",
+    "quickFindFunding": "Find matching funding",
+    "quickGenerateProposal": "Generate proposal",
+    "quickCheckEligibility": "Check eligibility",
+    "toolEnhancing": "Enhancing project idea",
+    "toolSearching": "Searching for matching funding calls",
+    "toolGenerating": "Generating complete proposal",
+    "toolSaving": "Saving project",
+    "enhancedIdea": "Enhanced Idea",
+    "suggestions": "Suggestions",
+    "noMatches": "No matching funding calls found at this time.",
+    "matchesFound": "{count} matching calls found",
+    "eligibility": "Eligibility",
+    "relevance": "Relevance",
+    "deadline": "Deadline",
+    "selectCall": "Select this call",
+    "proposalSummary": "Summary",
+    "proposalObjectives": "Objectives",
+    "proposalMethodology": "Methodology",
+    "proposalBudget": "Budget",
+    "proposalSustainability": "Sustainability",
+    "confidence": "Confidence",
+    "projectSaved": "Project saved successfully!",
+    "goToProject": "Go to project"
   }
 }

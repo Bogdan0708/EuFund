@@ -10,7 +10,7 @@ export default async function ProjectWizardPage({
   searchParams,
 }: {
   params: { locale: string };
-  searchParams: { callId?: string };
+  searchParams: { callId?: string; idea?: string };
 }) {
   const session = await auth();
   const userId = session?.user?.id;
@@ -30,6 +30,7 @@ export default async function ProjectWizardPage({
     <ProjectWizard
       userOrgs={memberships}
       initialCallId={searchParams.callId ?? null}
+      initialIdea={searchParams.idea ?? undefined}
       locale={locale}
     />
   );

@@ -141,7 +141,7 @@ export default function ProjectsPage() {
         description="Urmărește ciornele, depunerile și aplicațiile verificate cu acțiuni rapide."
         rightSlot={
           <Button asChild>
-            <Link href={`/${locale}/proiecte/nou`}>
+            <Link href={`/${locale}/proiecte/asistent-proiect`}>
               <Plus className="mr-2 h-4 w-4" />
               Aplicație nouă
             </Link>
@@ -196,7 +196,7 @@ export default function ProjectsPage() {
             <EmptyState
               title="Nu există aplicații încă"
               description="Începe cu o aplicație nouă sau extinde filtrele."
-              actionHref={`/${locale}/proiecte/nou`}
+              actionHref={`/${locale}/proiecte/asistent-proiect`}
               actionLabel="Creează aplicație"
             />
           ) : (

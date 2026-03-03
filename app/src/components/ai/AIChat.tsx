@@ -1,7 +1,26 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { csrfFetch } from '@/lib/csrf/client';
+
+function renderWithCitations(text: string): ReactNode {
+  const parts = text.split(/(\[Sursa \d+\])/g);
+  return parts.map((part, i) => {
+    const match = part.match(/^\[Sursa (\d+)\]$/);
+    if (match) {
+      return (
+        <span
+          key={i}
+          className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 mx-0.5"
+          title={`Sursa ${match[1]}`}
+        >
+          {part}
+        </span>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
 
 interface Message {
   role: 'user' | 'assistant';
@@ -83,7 +102,9 @@ export default function AIChat() {
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-800'
             }`}>
-              <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
+              <p className="whitespace-pre-wrap text-sm">
+                {renderWithCitations(msg.content)}
+              </p>
               <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'}`}>
                 {msg.timestamp.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })}
               </p>
