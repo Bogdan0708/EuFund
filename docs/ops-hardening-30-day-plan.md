@@ -1,9 +1,10 @@
 # EuFund 30-Day Operational Hardening Plan
 
-**Date**: 2026-03-03
+**Date**: 2026-03-04
 **Repo**: Bogdan0708/EuFund (`master` branch)
 **Author**: Staff Engineer / SRE Review
 **Status**: DRAFT — awaiting owner approval
+**Update 2026-03-04**: Migration risk review completed — journal/file mismatches fixed (see commit)
 
 ---
 
