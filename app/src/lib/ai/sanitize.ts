@@ -19,19 +19,95 @@ export const AI_INPUT_LIMITS = {
   genericField: 2000,
 } as const;
 
+// ─── Hardened Prompt Security (Sprint 1-3 remediation) ───────────
+const INVISIBLE_OR_BIDI_PATTERN = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
+const CONTROL_CHAR_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+const CYRILLIC_CONFUSABLE_PATTERN = /[аАеЕоОіІрРсСуУхХкКмМтТвВнН]/g;
+const ASCII_DELIMITER_LOOKALIKE_PATTERN = /---\s*(?:BEGIN|END)\b|<<<|>>>/i;
+
+const CYRILLIC_TO_LATIN_MAP: Record<string, string> = {
+  а: 'a', А: 'A', е: 'e', Е: 'E', о: 'o', О: 'O', і: 'i', І: 'I',
+  р: 'p', Р: 'P', с: 'c', С: 'C', у: 'y', У: 'Y', х: 'x', Х: 'X',
+  к: 'k', К: 'K', м: 'm', М: 'M', т: 't', Т: 'T', в: 'b', В: 'B',
+  н: 'h', Н: 'H',
+};
+
+const SENSITIVE_OUTPUT_PATTERNS: Array<{ type: string; pattern: RegExp }> = [
+  { type: 'api_key', pattern: /\b(?:sk|rk|pk)_[A-Za-z0-9_-]{16,}\b/gi },
+  { type: 'api_key', pattern: /\bAIza[0-9A-Za-z_-]{20,}\b/g },
+  { type: 'secret', pattern: /\b(?:api[_\s-]?key|secret|access[_\s-]?token|refresh[_\s-]?token|password)\b\s*[:=]?\s*[A-Za-z0-9._-]{8,}\b/gi },
+];
+
+const SYSTEM_FRAGMENT_BLOCK_PATTERNS = [
+  /system\s+prompt/i,
+  /developer\s+message/i,
+  /hidden\s+instructions?/i,
+];
+
+/**
+ * Normalize text before security processing:
+ * NFKC canonicalization, Cyrillic homoglyph replacement, invisible char removal.
+ */
+export function normalizePromptInput(text: string): string {
+  return text
+    .normalize('NFKC')
+    .replace(CYRILLIC_CONFUSABLE_PATTERN, (char) => CYRILLIC_TO_LATIN_MAP[char] ?? char)
+    .replace(INVISIBLE_OR_BIDI_PATTERN, '')
+    .replace(CONTROL_CHAR_PATTERN, ' ');
+}
+
+/**
+ * Heuristic check for binary/non-text payloads injected into text fields.
+ */
+export function isLikelyNonTextPayload(text: string): boolean {
+  if (!text) return false;
+  const sample = text.slice(0, 2048);
+  let suspiciousChars = 0;
+  for (let i = 0; i < sample.length; i++) {
+    const code = sample.charCodeAt(i);
+    if (code === 0 || (code < 9 || (code > 13 && code < 32) || code === 127)) {
+      suspiciousChars++;
+    }
+  }
+  if (sample.includes('\uFFFD')) suspiciousChars += 5;
+  return sample.length > 0 && suspiciousChars / sample.length > 0.02;
+}
+
+/**
+ * Filter AI output: redact leaked secrets/keys and block system prompt leakage.
+ */
+export function filterAIOutput(text: string): { text: string; blocked: boolean; redactions: string[] } {
+  const redactions: string[] = [];
+  let filtered = text;
+
+  for (const { type, pattern } of SENSITIVE_OUTPUT_PATTERNS) {
+    filtered = filtered.replace(pattern, () => {
+      redactions.push(type);
+      return `[REDACTED:${type}]`;
+    });
+  }
+
+  const blocked = SYSTEM_FRAGMENT_BLOCK_PATTERNS.some(p => p.test(filtered));
+
+  return { text: filtered, blocked, redactions };
+}
+
 /**
  * Known prompt injection patterns to detect and flag.
- * These are logged for monitoring but the delimiter approach is the primary defense.
+ * These are logged for monitoring; boundary isolation remains primary defense.
  */
 const INJECTION_PATTERNS = [
-  /ignore\s+(all\s+)?previous\s+instructions/i,
-  /ignore\s+(all\s+)?above\s+instructions/i,
-  /disregard\s+(all\s+)?previous/i,
+  /ignore\s+(all\s+)?(previous|prior|above)\s+instructions?/i,
+  /disregard\s+(all\s+)?(previous|prior|above)\s+instructions?/i,
+  /forget\s+(the\s+)?(rules|instructions|system\s+prompt)/i,
+  /(override|bypass|disable|break|evade)\s+(all\s+)?(safety|security|guardrails?|polic(?:y|ies))/i,
+  /(new|updated)\s+instructions?\s*:/i,
   /you\s+are\s+now\s+(?:a|an)\s+/i,
-  /new\s+instructions?\s*:/i,
+  /(act|behave|roleplay|pretend)\s+as\s+(?:a|an)\s+/i,
+  /(reveal|show|display|print|dump)\s+(the\s+)?(system\s+prompt|developer\s+message|hidden\s+instructions?)/i,
   /system\s*:\s*/i,
   /\[INST\]/i,
-  /\[\/INST\]/i,
+  /<\/?INST>/i,
   /<\|(?:im_start|im_end|system|user|assistant)\|>/i,
   /<<\s*SYS\s*>>/i,
   /HUMAN\s*:\s*$/m,
@@ -43,7 +119,9 @@ const INJECTION_PATTERNS = [
  * Returns true if suspicious patterns are detected.
  */
 export function detectInjectionAttempt(text: string): boolean {
-  return INJECTION_PATTERNS.some(pattern => pattern.test(text));
+  const normalized = normalizePromptInput(text);
+  return ASCII_DELIMITER_LOOKALIKE_PATTERN.test(normalized)
+    || INJECTION_PATTERNS.some(pattern => pattern.test(normalized));
 }
 
 /**

@@ -141,10 +141,25 @@ async function sanitizeAIJsonResponse(response: NextResponse): Promise<NextRespo
  * Use this for streaming routes where you need to run auth before returning a stream.
  */
 export async function authenticateAIUser(
-  _request: NextRequest,
-  options?: { feature?: AIFeature }
+  request: NextRequest,
+  options?: { feature?: AIFeature; allowedContentTypes?: string[] }
 ): Promise<{ user: AuthenticatedUser } | { errorResponse: NextResponse }> {
   try {
+    // Content-Type validation for state-changing methods
+    const method = request.method.toUpperCase();
+    if (['POST', 'PUT', 'PATCH'].includes(method)) {
+      const contentType = request.headers.get('content-type')?.split(';')[0]?.trim() || '';
+      const allowed = options?.allowedContentTypes ?? ['application/json'];
+      if (contentType && !allowed.some(t => contentType.startsWith(t))) {
+        return {
+          errorResponse: NextResponse.json(
+            { error: 'Unsupported Media Type', code: 'UNSUPPORTED_MEDIA_TYPE' },
+            { status: 415 }
+          ),
+        };
+      }
+    }
+
     const session = await auth();
 
     if (!session?.user?.id) {

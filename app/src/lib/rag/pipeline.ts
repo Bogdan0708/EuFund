@@ -4,6 +4,8 @@
 import { getVectorStore, type SearchResult } from '@/lib/vectors/store';
 import { aiGenerate } from '@/lib/ai/client';
 import { normalizeDiacritics } from '@/lib/utils/romanian';
+import { isLikelyNonTextPayload, normalizePromptInput } from '@/lib/ai/sanitize';
+import { logger } from '@/lib/logger';
 
 export interface RAGQuery {
   query: string;
@@ -26,11 +28,103 @@ const RO_LEGAL_STOP_WORDS = new Set([
   'prin', 'al', 'nr', 'art', 'alin', 'lit', 'pct',
 ]);
 
+const RAG_MAX_TOKENS_PER_SOURCE = 500;
+const RAG_MAX_CONTEXT_TOKENS = 1600;
+
+const RAG_POISONING_PATTERNS = [
+  /ignore\s+(all\s+)?(previous|prior|above)\s+instructions?/i,
+  /disregard\s+(all\s+)?(rules|instructions|system\s+prompt)/i,
+  /(override|bypass|disable)\s+(safety|security|guardrails?|policy)/i,
+  /(reveal|show|print)\s+(system\s+prompt|developer\s+message|hidden\s+instructions?)/i,
+  /you\s+are\s+now\s+(?:a|an)\s+/i,
+];
+
+function estimateTokens(text: string): number {
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+
+function normalizeChunkContent(text: string): string {
+  return normalizePromptInput(text).replace(/\s+/g, ' ').trim();
+}
+
+function toSourceId(result: SearchResult): string {
+  const sourceId = result.metadata?.sourceId;
+  if (typeof sourceId === 'string' && sourceId.trim().length > 0) {
+    return sourceId;
+  }
+  return `unknown:${result.id}`;
+}
+
+function validateRetrievedChunk(result: SearchResult): { valid: boolean; sanitized: string; reason?: string } {
+  const sanitized = normalizeChunkContent(result.content);
+
+  if (!sanitized) {
+    return { valid: false, sanitized, reason: 'empty' };
+  }
+
+  if (isLikelyNonTextPayload(result.content)) {
+    return { valid: false, sanitized, reason: 'binary_like' };
+  }
+
+  if (RAG_POISONING_PATTERNS.some((pattern) => pattern.test(sanitized))) {
+    return { valid: false, sanitized, reason: 'instruction_override_pattern' };
+  }
+
+  return { valid: true, sanitized };
+}
+
+function capTokensPerSource(results: SearchResult[], topK: number): SearchResult[] {
+  const selected: SearchResult[] = [];
+  const sourceTokenUsage = new Map<string, number>();
+  let totalTokens = 0;
+
+  for (const result of results) {
+    if (selected.length >= topK || totalTokens >= RAG_MAX_CONTEXT_TOKENS) {
+      break;
+    }
+
+    const sourceId = toSourceId(result);
+    const usedBySource = sourceTokenUsage.get(sourceId) || 0;
+    const sourceBudget = Math.max(0, RAG_MAX_TOKENS_PER_SOURCE - usedBySource);
+    const totalBudget = Math.max(0, RAG_MAX_CONTEXT_TOKENS - totalTokens);
+    const availableTokens = Math.min(sourceBudget, totalBudget);
+
+    if (availableTokens <= 0) {
+      continue;
+    }
+
+    const maxChars = availableTokens * 4;
+    const cappedContent = result.content.length > maxChars
+      ? `${result.content.slice(0, Math.max(0, maxChars - 26)).trim()}\n...[chunk truncated for safety]`
+      : result.content;
+
+    const tokens = estimateTokens(cappedContent);
+    if (tokens <= 0) {
+      continue;
+    }
+
+    selected.push({
+      ...result,
+      content: cappedContent,
+      metadata: {
+        ...result.metadata,
+        sourceId,
+        sourceDocumentId: sourceId,
+      },
+    });
+
+    sourceTokenUsage.set(sourceId, usedBySource + tokens);
+    totalTokens += tokens;
+  }
+
+  return selected;
+}
+
 /**
  * Preprocess Romanian text for better search
  */
 export function preprocessRomanianText(text: string): string {
-  let processed = normalizeDiacritics(text);
+  let processed = normalizeDiacritics(normalizePromptInput(text));
   // Normalize whitespace
   processed = processed.replace(/\s+/g, ' ').trim();
   // Expand common legal abbreviations
@@ -62,9 +156,10 @@ export function extractKeywords(text: string): string[] {
 export async function hybridSearch(opts: RAGQuery): Promise<SearchResult[]> {
   const store = getVectorStore();
   const processedQuery = preprocessRomanianText(opts.query);
+  const targetTopK = opts.topK ?? 5;
 
   // Semantic search
-  const semanticResults = await store.search(processedQuery, (opts.topK ?? 5) * 2, opts.filter);
+  const semanticResults = await store.search(processedQuery, targetTopK * 3, opts.filter);
 
   // Keyword boost: re-rank results that contain exact keywords
   const keywords = extractKeywords(processedQuery);
@@ -81,7 +176,29 @@ export async function hybridSearch(opts: RAGQuery): Promise<SearchResult[]> {
   });
 
   boosted.sort((a, b) => b.score - a.score);
-  return boosted.slice(0, opts.topK ?? 5);
+
+  const validated = boosted.flatMap((result) => {
+    const validatedChunk = validateRetrievedChunk(result);
+    if (!validatedChunk.valid) {
+      logger.warn(
+        { chunkId: result.id, sourceId: toSourceId(result), reason: validatedChunk.reason },
+        '[rag] Dropped suspicious retrieved chunk'
+      );
+      return [];
+    }
+
+    return [{
+      ...result,
+      content: validatedChunk.sanitized,
+      metadata: {
+        ...result.metadata,
+        sourceId: toSourceId(result),
+        sourceDocumentId: toSourceId(result),
+      },
+    }];
+  });
+
+  return capTokensPerSource(validated, targetTopK);
 }
 
 /**
@@ -102,7 +219,10 @@ export async function ragQuery(opts: RAGQuery): Promise<RAGResult> {
 
   // Build context from retrieved documents
   const context = sources
-    .map((s, i) => `[Sursa ${i + 1}] ${s.content}`)
+    .map((s, i) => {
+      const sourceId = toSourceId(s);
+      return `[Sursa ${i + 1} | document: ${sourceId}] ${s.content}`;
+    })
     .join('\n\n');
 
   const systemPrompt = opts.locale === 'en'
@@ -129,19 +249,47 @@ export async function ingestLegislation(doc: {
   metadata?: Record<string, unknown>;
 }): Promise<{ chunksCreated: number }> {
   const store = getVectorStore();
-  const chunks = chunkText(preprocessRomanianText(doc.fullText), 1000, 200);
+  const normalizedDocument = preprocessRomanianText(normalizeChunkContent(doc.fullText));
+  const chunks = chunkText(normalizedDocument, 1000, 200);
 
-  const vectorDocs = chunks.map((chunk, i) => ({
-    id: `${doc.id}-chunk-${i}`,
-    content: chunk,
-    metadata: {
-      sourceId: doc.id,
-      title: doc.title,
-      type: doc.type,
-      chunkIndex: i,
-      ...doc.metadata,
-    },
-  }));
+  const vectorDocs = chunks
+    .map((chunk, i) => ({
+      chunk,
+      index: i,
+    }))
+    .flatMap(({ chunk, index }) => {
+      const validated = validateRetrievedChunk({
+        id: `${doc.id}-chunk-${index}`,
+        content: chunk,
+        metadata: { sourceId: doc.id },
+        score: 1,
+      });
+
+      if (!validated.valid) {
+        logger.warn(
+          { documentId: doc.id, chunkIndex: index, reason: validated.reason },
+          '[rag] Dropped suspicious chunk during indexing'
+        );
+        return [];
+      }
+
+      return [{
+        id: `${doc.id}-chunk-${index}`,
+        content: validated.sanitized,
+        metadata: {
+          sourceId: doc.id,
+          sourceDocumentId: doc.id,
+          title: doc.title,
+          type: doc.type,
+          chunkIndex: index,
+          ...doc.metadata,
+        },
+      }];
+    });
+
+  if (vectorDocs.length === 0) {
+    return { chunksCreated: 0 };
+  }
 
   await store.upsert(vectorDocs);
   return { chunksCreated: vectorDocs.length };

@@ -281,7 +281,7 @@ describe('Security Integration Tests', () => {
       const setCookie = response.headers.get('Set-Cookie');
       if (setCookie) {
         expect(setCookie).toContain('csrf-token=');
-        expect(setCookie).not.toContain('HttpOnly');
+        expect(setCookie).toContain('HttpOnly');
         expect(setCookie.toLowerCase()).toContain('samesite=strict');
       }
     });

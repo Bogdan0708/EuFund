@@ -1,13 +1,65 @@
 // ─── Client-side CSRF Token Helper ──────────────────────────────
-// Double-submit cookie pattern: read csrf-token cookie, send as X-CSRF-Token header
+// Read token from bootstrap meta/header (not cookies), send as X-CSRF-Token header
+
+let csrfTokenCache: string | null = null;
+let bootstrapPromise: Promise<string | null> | null = null;
+
+function readTokenFromMeta(): string | null {
+  if (typeof document === 'undefined') return null;
+  const tag = document.querySelector('meta[name="csrf-token"]');
+  const value = tag?.getAttribute('content')?.trim();
+  return value ? value : null;
+}
+
+function cacheToken(token: string | null): void {
+  if (!token) return;
+  csrfTokenCache = token;
+
+  if (typeof document === 'undefined') return;
+  const tag = document.querySelector('meta[name="csrf-token"]');
+  if (tag) {
+    tag.setAttribute('content', token);
+  }
+}
+
+function captureTokenFromResponse(response: Response): void {
+  cacheToken(response.headers.get('X-CSRF-Token'));
+}
+
+async function bootstrapCSRFToken(): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  if (bootstrapPromise) return bootstrapPromise;
+
+  bootstrapPromise = (async () => {
+    try {
+      const response = await fetch('/api/health', {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
+      captureTokenFromResponse(response);
+      return getCSRFToken();
+    } catch {
+      return getCSRFToken();
+    } finally {
+      bootstrapPromise = null;
+    }
+  })();
+
+  return bootstrapPromise;
+}
 
 /**
- * Read the CSRF token from the cookie (set by middleware).
+ * Read the CSRF token from in-memory cache or meta bootstrap.
  */
 export function getCSRFToken(): string | null {
-  if (typeof document === 'undefined') return null;
-  const match = document.cookie.match(/(?:^|;\s*)csrf-token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : null;
+  if (csrfTokenCache) return csrfTokenCache;
+  const metaToken = readTokenFromMeta();
+  if (metaToken) {
+    csrfTokenCache = metaToken;
+    return metaToken;
+  }
+  return null;
 }
 
 /**
@@ -26,17 +78,24 @@ export function csrfHeaders(extraHeaders?: Record<string, string>): Record<strin
  * for state-changing methods (POST, PUT, DELETE, PATCH).
  */
 export async function csrfFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const method = (init?.method || 'GET').toUpperCase();
+  const method = (
+    init?.method ||
+    (typeof Request !== 'undefined' && input instanceof Request ? input.method : 'GET')
+  ).toUpperCase();
   const needsCSRF = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method);
+  const headers = new Headers(
+    init?.headers ||
+    (typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined),
+  );
 
   if (needsCSRF) {
-    const token = getCSRFToken();
-    const headers = new Headers(init?.headers);
+    const token = getCSRFToken() || await bootstrapCSRFToken();
     if (token && !headers.has('X-CSRF-Token')) {
       headers.set('X-CSRF-Token', token);
     }
-    return fetch(input, { ...init, headers });
   }
 
-  return fetch(input, init);
+  const response = await fetch(input, { ...init, headers });
+  captureTokenFromResponse(response);
+  return response;
 }
