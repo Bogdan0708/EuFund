@@ -12,7 +12,6 @@ import { factCheckGeneratedContent } from './fact-checker';
 import { withEUAIActCompliance } from './eu-ai-act';
 import { sanitizeAIOutput } from './sanitize';
 import { Errors } from '@/lib/errors';
-import { requireOrgRole } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
 
@@ -228,6 +227,7 @@ export async function saveWizardProject(
   userId: string,
   proposal: ProposalOutput,
 ): Promise<SaveProjectResult> {
+  const { requireOrgRole } = await import('@/lib/auth/helpers');
   await requireOrgRole(userId, orgId, 'project_manager');
 
   const createdProject = await db.transaction(async (tx) => {

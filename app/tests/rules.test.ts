@@ -43,6 +43,25 @@ describe('Eligibility Rules Engine', () => {
     expect(result.results.find((r) => r.ruleId === 'ELIG-001')?.status).toBe('fail');
   });
 
+  it('treats sme as eligible for commercial company calls', () => {
+    const ctx: RuleContext = {
+      ...baseContext,
+      organization: { ...baseContext.organization, orgType: 'sme' },
+    };
+    const result = runEligibilityRules(ctx);
+    expect(result.results.find((r) => r.ruleId === 'ELIG-001')?.status).toBe('pass');
+  });
+
+  it('treats public_body as eligible for public institution calls', () => {
+    const ctx: RuleContext = {
+      ...baseContext,
+      organization: { ...baseContext.organization, orgType: 'public_body' },
+      call: { ...baseContext.call, eligibleTypes: ['uat', 'institutie_publica'] },
+    };
+    const result = runEligibilityRules(ctx);
+    expect(result.results.find((r) => r.ruleId === 'ELIG-001')?.status).toBe('pass');
+  });
+
   it('fails on ineligible region', () => {
     const ctx: RuleContext = {
       ...baseContext,

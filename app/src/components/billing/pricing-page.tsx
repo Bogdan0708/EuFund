@@ -2,111 +2,126 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Locale } from '@/lib/i18n';
+import { getPricingTiers, type BillingTier } from '@/lib/integrations/stripe/billing';
 
 type Tier = {
-  name: string;
-  price: string;
-  subtitle: string;
+  tier: BillingTier;
   features: string[];
-  ctaLabel: string;
-  ctaHref: string;
 };
 
 const copy = {
   ro: {
     badge: 'Prețuri FondEU',
     title: 'Alege planul potrivit pentru echipa ta',
-    description: 'Începe gratuit, apoi activează Pro sau Enterprise pentru volume mai mari și suport prioritar.',
+    description: 'Începe cu un trial de 30 de zile cu funcții Pro, apoi rămâi pe Free sau treci la un plan plătit pentru volume mai mari și suport prioritar.',
     ctaLoggedOut: 'Ai deja cont? Autentifică-te',
     ctaManageSubscription: 'Gestionează abonamentul',
     tiers: [
       {
-        name: 'Free',
-        price: 'EUR 0',
-        subtitle: 'lună',
+        tier: 'free',
         features: [
+          'Trial Pro 30 de zile pentru utilizatori noi',
           'Până la 1.000 cereri AI/lună',
           'Instrumente de bază pentru proiecte',
           'Suport prin documentație',
         ],
-        ctaLabel: 'Începe gratuit',
-        ctaHref: '/ro/inregistrare',
       },
       {
-        name: 'Pro',
-        price: 'EUR 29',
-        subtitle: 'lună',
+        tier: 'pro',
         features: [
           'Până la 25.000 cereri AI/lună',
           'Fluxuri avansate pentru conformitate',
           'Suport prioritar',
         ],
-        ctaLabel: 'Treci la Pro',
-        ctaHref: '/api/billing/checkout?tier=pro&interval=monthly',
       },
       {
-        name: 'Enterprise',
-        price: 'EUR 99',
-        subtitle: 'lună',
+        tier: 'enterprise',
         features: [
           'Până la 200.000 cereri AI/lună',
           'Politici și audit pentru echipe extinse',
           'Suport dedicat',
         ],
-        ctaLabel: 'Alege Enterprise',
-        ctaHref: '/api/billing/checkout?tier=enterprise&interval=monthly',
       },
     ] satisfies Tier[],
   },
   en: {
     badge: 'FondEU Pricing',
     title: 'Pick the plan that fits your team',
-    description: 'Start free, then unlock Pro or Enterprise for higher usage and priority support.',
+    description: 'Start with a 30-day Pro trial, then stay on Free or upgrade for higher usage and priority support.',
     ctaLoggedOut: 'Already have an account? Log in',
     ctaManageSubscription: 'Manage subscription',
     tiers: [
       {
-        name: 'Free',
-        price: 'EUR 0',
-        subtitle: 'month',
+        tier: 'free',
         features: [
+          '30-day Pro trial for new users',
           'Up to 1,000 AI requests/month',
           'Core project tooling',
           'Documentation support',
         ],
-        ctaLabel: 'Start for free',
-        ctaHref: '/en/inregistrare',
       },
       {
-        name: 'Pro',
-        price: 'EUR 29',
-        subtitle: 'month',
+        tier: 'pro',
         features: [
           'Up to 25,000 AI requests/month',
           'Advanced compliance workflows',
           'Priority support',
         ],
-        ctaLabel: 'Upgrade to Pro',
-        ctaHref: '/api/billing/checkout?tier=pro&interval=monthly',
       },
       {
-        name: 'Enterprise',
-        price: 'EUR 99',
-        subtitle: 'month',
+        tier: 'enterprise',
         features: [
           'Up to 200,000 AI requests/month',
           'Team-wide governance and audit controls',
           'Dedicated support',
         ],
-        ctaLabel: 'Choose Enterprise',
-        ctaHref: '/api/billing/checkout?tier=enterprise&interval=monthly',
       },
     ] satisfies Tier[],
   },
 } as const;
 
+function getTierCta(locale: Locale, tier: BillingTier): { label: string; href: string } {
+  if (tier === 'free') {
+    return {
+      label: locale === 'en' ? 'Start 30-day trial' : 'Începe trialul de 30 de zile',
+      href: locale === 'en' ? '/en/inregistrare' : '/ro/inregistrare',
+    };
+  }
+
+  if (tier === 'pro') {
+    return {
+      label: locale === 'en' ? 'Upgrade to Pro' : 'Treci la Pro',
+      href: '/api/billing/checkout?tier=pro&interval=monthly',
+    };
+  }
+
+  return {
+    label: locale === 'en' ? 'Choose Enterprise' : 'Alege Enterprise',
+    href: '/api/billing/checkout?tier=enterprise&interval=monthly',
+  };
+}
+
+function formatPrice(amount: number): string {
+  return `EUR ${amount}`;
+}
+
 export function PricingPage({ locale }: { locale: Locale }) {
   const content = copy[locale === 'en' ? 'en' : 'ro'];
+  const pricingTiers = getPricingTiers();
+  const tiers = content.tiers.map((tier) => {
+    const pricing = pricingTiers.find((entry) => entry.tier === tier.tier);
+    if (!pricing) {
+      throw new Error(`Missing pricing tier definition for ${tier.tier}`);
+    }
+
+    return {
+      ...tier,
+      displayName: pricing.displayName,
+      price: formatPrice(pricing.monthlyPriceEur),
+      subtitle: locale === 'en' ? 'month' : 'lună',
+      cta: getTierCta(locale, tier.tier),
+    };
+  });
 
   return (
     <main className="min-h-screen bg-background px-6 py-16">
@@ -119,10 +134,10 @@ export function PricingPage({ locale }: { locale: Locale }) {
         <p className="mt-4 max-w-2xl text-muted-foreground">{content.description}</p>
 
         <div className="mt-10 grid gap-6 md:grid-cols-3">
-          {content.tiers.map((tier) => (
-            <Card key={tier.name} className="flex h-full flex-col">
+          {tiers.map((tier) => (
+            <Card key={tier.tier} className="flex h-full flex-col">
               <CardHeader>
-                <CardTitle>{tier.name}</CardTitle>
+                <CardTitle>{tier.displayName}</CardTitle>
                 <p className="text-3xl font-bold">
                   {tier.price}
                   <span className="ml-2 text-sm font-medium text-muted-foreground">/{tier.subtitle}</span>
@@ -135,7 +150,7 @@ export function PricingPage({ locale }: { locale: Locale }) {
                   ))}
                 </ul>
                 <Button asChild className="mt-auto w-full">
-                  <Link href={tier.ctaHref}>{tier.ctaLabel}</Link>
+                  <Link href={tier.cta.href}>{tier.cta.label}</Link>
                 </Button>
               </CardContent>
             </Card>

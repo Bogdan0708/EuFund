@@ -14,6 +14,7 @@ export type RuleResult = {
 export type RuleContext = {
   organization: {
     orgType: string;
+    orgTypeAlternatives?: string[];
     orgSize?: string;
     caenPrimary?: string;
     caenSecondary?: string[];
@@ -44,6 +45,26 @@ export type RuleContext = {
 
 type Rule = (ctx: RuleContext) => RuleResult;
 
+const ORG_TYPE_EQUIVALENTS: Record<string, string[]> = {
+  startup: ['srl', 'sa'],
+  sme: ['srl', 'sa'],
+  large_enterprise: ['sa', 'srl'],
+  ngo: ['ong'],
+  public_body: ['uat', 'institutie_publica'],
+  research_institute: ['institutie_publica', 'ong'],
+  university: ['institutie_publica'],
+};
+
+export function resolveEligibleOrgTypes(orgType: string, alternatives: string[] = []): string[] {
+  const normalized = orgType.trim().toLowerCase();
+  const merged = new Set<string>([
+    normalized,
+    ...(ORG_TYPE_EQUIVALENTS[normalized] || []),
+    ...alternatives.map((value) => value.trim().toLowerCase()),
+  ]);
+  return Array.from(merged);
+}
+
 // ─── Individual Rules ────────────────────────────────────────────
 
 const checkOrgTypeEligibility: Rule = (ctx) => {
@@ -58,7 +79,8 @@ const checkOrgTypeEligibility: Rule = (ctx) => {
     };
   }
 
-  const eligible = call.eligibleTypes.includes(organization.orgType);
+  const candidateTypes = resolveEligibleOrgTypes(organization.orgType, organization.orgTypeAlternatives);
+  const eligible = candidateTypes.some((candidate) => call.eligibleTypes!.includes(candidate));
   return {
     ruleId: 'ELIG-001',
     ruleName: 'Tip organizație eligibil',

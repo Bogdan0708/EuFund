@@ -5,6 +5,8 @@ import { optimizeTimeline, analyzeScenario, type TimelineOptimizationInput, type
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
 import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
+import { assertTier } from '@/lib/middleware/tier-gate';
+import { FondEUError } from '@/lib/errors';
 
 const timelineSchema = z.object({
   projectId: z.string(),
@@ -45,9 +47,11 @@ const timelineSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withAIAuth(request, async () => {
+  return withAIAuth(request, async (user) => {
     const req = request;
   try {
+    assertTier(user.tier, 'pro');
+
     const body = await req.json();
     const parsed = timelineSchema.safeParse(body);
     if (!parsed.success) {
@@ -66,6 +70,9 @@ export async function POST(request: NextRequest) {
     const { sanitized: data } = sanitizeAIResponseDeep(result);
     return NextResponse.json({ success: true, data });
   } catch (error) {
+    if (error instanceof FondEUError) {
+      return NextResponse.json(error.toResponse(), { status: error.statusCode });
+    }
     logger.error({ error: error }, 'Timeline optimization error:');
     return NextResponse.json(
       { success: false, error: { code: 'INTERNAL_ERROR', message: 'Timeline optimization failed' } },

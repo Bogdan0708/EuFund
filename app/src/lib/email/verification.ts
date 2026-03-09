@@ -1,12 +1,17 @@
-import { randomBytes } from 'crypto';
-import { eq } from 'drizzle-orm';
+import { createHash, randomBytes } from 'crypto';
+import { eq, or } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { logger } from '@/lib/logger';
 
 const VERIFICATION_TOKEN_TTL_HOURS = 24;
 
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
 export async function generateVerificationToken(userId: string): Promise<string> {
   const token = randomBytes(32).toString('hex');
+  const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_TTL_HOURS * 60 * 60 * 1000);
 
   await db.transaction(async (tx) => {
@@ -14,7 +19,7 @@ export async function generateVerificationToken(userId: string): Promise<string>
 
     await tx.insert(schema.emailVerificationTokens).values({
       userId,
-      token,
+      token: tokenHash,
       expiresAt,
     });
   });
@@ -24,9 +29,13 @@ export async function generateVerificationToken(userId: string): Promise<string>
 
 export async function verifyEmailToken(token: string): Promise<boolean> {
   const now = new Date();
+  const tokenHash = hashToken(token);
 
   const tokenRecord = await db.query.emailVerificationTokens.findFirst({
-    where: eq(schema.emailVerificationTokens.token, token),
+    where: or(
+      eq(schema.emailVerificationTokens.token, tokenHash),
+      eq(schema.emailVerificationTokens.token, token),
+    ),
   });
 
   if (!tokenRecord) {

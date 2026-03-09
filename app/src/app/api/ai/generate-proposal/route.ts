@@ -4,6 +4,7 @@ import { generateProposal } from '@/lib/ai/proposal-generator';
 import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
+import { assertTier } from '@/lib/middleware/tier-gate';
 import { generateProposalSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
 import { factCheckGeneratedContent } from '@/lib/ai/fact-checker';
@@ -19,6 +20,8 @@ const PROGRAM_MAP: Record<string, 'horizon_europe' | 'interreg' | 'life_plus' | 
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
     try {
+      assertTier(user.tier, 'pro');
+
       const body = await request.json();
       const parsed = generateProposalSchema.safeParse(body);
 

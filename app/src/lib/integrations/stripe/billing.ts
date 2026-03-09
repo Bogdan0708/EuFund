@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
+import { FREE_TRIAL_DAYS, resolveBillingTrialState } from '@/lib/billing/trial';
 
 export type BillingTier = 'free' | 'pro' | 'enterprise';
 export type BillingInterval = 'monthly' | 'yearly';
@@ -10,10 +11,15 @@ export type BillingStatus = 'none' | 'active' | 'trialing' | 'past_due' | 'cance
 export interface BillingInfo {
   userId: string;
   tier: BillingTier;
+  effectiveTier: BillingTier;
   subscriptionStatus: BillingStatus;
+  effectiveSubscriptionStatus: BillingStatus;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   subscriptionPeriodEnd: Date | null;
+  isInFreeTrial: boolean;
+  trialEndsAt: Date | null;
+  trialDaysRemaining: number;
   usage: {
     apiCallsThisMonth: number;
     apiCallsLimit: number;
@@ -76,9 +82,9 @@ const API_CALL_LIMITS: Record<BillingTier, number> = {
 
 export function getPricingTiers(): PricingTier[] {
   return [
-    { tier: 'free', displayName: 'Free', monthlyPriceEur: 0, yearlyPriceEur: 0, trialDays: 0 },
-    { tier: 'pro', displayName: 'Pro', monthlyPriceEur: 29, yearlyPriceEur: 290, trialDays: 14 },
-    { tier: 'enterprise', displayName: 'Enterprise', monthlyPriceEur: 99, yearlyPriceEur: 990, trialDays: 14 },
+    { tier: 'free', displayName: 'Free', monthlyPriceEur: 0, yearlyPriceEur: 0, trialDays: FREE_TRIAL_DAYS },
+    { tier: 'pro', displayName: 'Pro', monthlyPriceEur: 29, yearlyPriceEur: 290, trialDays: 0 },
+    { tier: 'enterprise', displayName: 'Enterprise', monthlyPriceEur: 99, yearlyPriceEur: 990, trialDays: 0 },
   ];
 }
 
@@ -191,7 +197,6 @@ export async function createCheckoutSession(
     metadata: { userId, tier },
     subscription_data: {
       metadata: { userId, tier },
-      trial_period_days: 14,
     },
     payment_method_collection: 'always',
     allow_promotion_codes: true,
@@ -376,6 +381,7 @@ export async function getBillingInfo(userId: string): Promise<BillingInfo> {
       stripeSubscriptionId: users.stripeSubscriptionId,
       subscriptionStatus: users.subscriptionStatus,
       subscriptionPeriodEnd: users.subscriptionPeriodEnd,
+      createdAt: users.createdAt,
       apiCallsThisMonth: users.apiCallsThisMonth,
     })
     .from(users)
@@ -387,17 +393,27 @@ export async function getBillingInfo(userId: string): Promise<BillingInfo> {
     throw new Error('User not found');
   }
 
-  const tier = (row.tier || 'free') as BillingTier;
-  const apiCallsLimit = API_CALL_LIMITS[tier];
+  const trialState = resolveBillingTrialState({
+    tier: row.tier as BillingTier | null,
+    subscriptionStatus: row.subscriptionStatus,
+    stripeSubscriptionId: row.stripeSubscriptionId,
+    createdAt: row.createdAt,
+  });
+  const apiCallsLimit = API_CALL_LIMITS[trialState.effectiveTier];
   const apiCallsThisMonth = row.apiCallsThisMonth || 0;
 
   return {
     userId: row.id,
-    tier,
-    subscriptionStatus: (row.subscriptionStatus || 'none') as BillingStatus,
+    tier: trialState.tier,
+    effectiveTier: trialState.effectiveTier,
+    subscriptionStatus: trialState.subscriptionStatus,
+    effectiveSubscriptionStatus: trialState.effectiveSubscriptionStatus,
     stripeCustomerId: row.stripeCustomerId,
     stripeSubscriptionId: row.stripeSubscriptionId,
     subscriptionPeriodEnd: row.subscriptionPeriodEnd,
+    isInFreeTrial: trialState.isInFreeTrial,
+    trialEndsAt: trialState.trialEndsAt,
+    trialDaysRemaining: trialState.trialDaysRemaining,
     usage: {
       apiCallsThisMonth,
       apiCallsLimit,

@@ -5,12 +5,15 @@ import { Errors, FondEUError } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
 import { enhanceProjectIdea } from '@/lib/ai/wizard-actions';
+import { assertTier } from '@/lib/middleware/tier-gate';
 
 const log = logger.child({ component: 'wizard-enhance-idea' });
 
 export async function POST(req: NextRequest) {
   return withAIAuth(req, async (user) => {
     try {
+      assertTier(user.tier, 'pro');
+
       const body = await req.json();
       const parsed = enhanceIdeaSchema.safeParse(body);
 

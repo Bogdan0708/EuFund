@@ -6,6 +6,8 @@ import { assessRisk } from '@/lib/ai/risk-assessment';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
 import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
+import { assertTier } from '@/lib/middleware/tier-gate';
+import { FondEUError } from '@/lib/errors';
 
 const deadlineSchema = z.object({
   type: z.enum(['deadline', 'risk', 'quick']),
@@ -25,7 +27,7 @@ const deadlineSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withAIAuth(request, async () => {
+  return withAIAuth(request, async (user) => {
   try {
     const body = await request.json();
     const parsed = deadlineSchema.parse(body);
@@ -38,6 +40,8 @@ export async function POST(request: NextRequest) {
       const { sanitized: data } = sanitizeAIResponseDeep(result);
       return NextResponse.json({ success: true, data });
     }
+
+    assertTier(user.tier, 'pro');
 
     if (parsed.type === 'deadline') {
       const result = await analyzeDeadlines({
@@ -68,6 +72,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
   } catch (error) {
+    if (error instanceof FondEUError) {
+      return NextResponse.json(error.toResponse(), { status: error.statusCode });
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input' } },

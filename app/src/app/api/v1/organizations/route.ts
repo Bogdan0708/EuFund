@@ -119,30 +119,32 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Insert organization
-    const [org] = await db.insert(organizations).values({
-      name: data.name,
-      cui: data.cui,
-      regCom: data.regCom,
-      orgType: data.orgType,
-      orgSize: data.orgSize,
-      caenPrimary: data.caenPrimary,
-      caenSecondary: data.caenSecondary,
-      address: data.address,
-      nutsRegion: data.nutsRegion,
-      legalRepName: data.legalRepName,
-      legalRepRole: data.legalRepRole,
-      contactEmail: data.contactEmail,
-      contactPhone: data.contactPhone,
-      website: data.website,
-    }).returning();
+    const org = await db.transaction(async (tx) => {
+      const [createdOrg] = await tx.insert(organizations).values({
+        name: data.name,
+        cui: data.cui,
+        regCom: data.regCom,
+        orgType: data.orgType,
+        orgSize: data.orgSize,
+        caenPrimary: data.caenPrimary,
+        caenSecondary: data.caenSecondary,
+        address: data.address,
+        nutsRegion: data.nutsRegion,
+        legalRepName: data.legalRepName,
+        legalRepRole: data.legalRepRole,
+        contactEmail: data.contactEmail,
+        contactPhone: data.contactPhone,
+        website: data.website,
+      }).returning();
 
-    // Add creator as org_admin
-    await db.insert(orgMembers).values({
-      orgId: org.id,
-      userId: user.id,
-      role: 'org_admin',
-      invitedBy: user.id,
+      await tx.insert(orgMembers).values({
+        orgId: createdOrg.id,
+        userId: user.id,
+        role: 'org_admin',
+        invitedBy: user.id,
+      });
+
+      return createdOrg;
     });
 
     // Audit log

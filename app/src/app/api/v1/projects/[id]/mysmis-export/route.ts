@@ -4,6 +4,7 @@ import { withUserRLS } from '@/lib/db';
 import { callsForProposals, complianceReports, organizations, projects, workPackages } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireTier } from '@/lib/middleware/tier-gate';
 import { logger } from '@/lib/logger';
 import { logAudit } from '@/lib/legal/audit';
 import { mapProjectToMySMIS, serializeMySMISPayloadToXml } from '@/lib/integrations/romanian/mysmis-mapper';
@@ -27,6 +28,7 @@ function normalizeAddress(address: unknown): string | null {
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
+    await requireTier('pro')(user.id);
     const { id } = params;
 
     const project = await withUserRLS(user.id, async (tx) => {

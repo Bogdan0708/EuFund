@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,11 +13,34 @@ async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise
   ]);
 }
 
-export async function GET() {
-  const healthCheck = {
+function canViewDetailedHealth(request: NextRequest): boolean {
+  if (process.env.NODE_ENV !== 'production') {
+    return true;
+  }
+
+  const expectedToken = process.env.HEALTHCHECK_AUTH_TOKEN;
+  if (!expectedToken) {
+    return false;
+  }
+
+  const bearer = request.headers.get('authorization');
+  const headerToken = request.headers.get('x-health-token');
+  return bearer === `Bearer ${expectedToken}` || headerToken === expectedToken;
+}
+
+export async function GET(request: NextRequest) {
+  const baseHealth = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version || '1.3.4',
+  };
+
+  if (!canViewDetailedHealth(request)) {
+    return NextResponse.json(baseHealth, { status: 200 });
+  }
+
+  const healthCheck = {
+    ...baseHealth,
     environment: process.env.NODE_ENV || 'development',
     services: {
       database: 'checking...',

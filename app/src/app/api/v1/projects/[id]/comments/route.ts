@@ -4,6 +4,7 @@ import { withUserRLS } from '@/lib/db';
 import { projectComments, projects, users } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -85,6 +86,17 @@ export async function POST(req: NextRequest, { params }: Params) {
         content: parsed.data.content,
       }).returning();
       return createdComment;
+    });
+
+    await logAudit({
+      userId: user.id,
+      action: 'project.comment_add',
+      resourceType: 'project',
+      resourceId: id,
+      metadata: {
+        commentId: comment.id,
+        section: parsed.data.section ?? null,
+      },
     });
 
     return NextResponse.json({ success: true, data: comment }, { status: 201 });

@@ -43,6 +43,10 @@ const DEMO_CALLS: FundingCall[] = [
   },
 ];
 
+function isDemoModeEnabled(): boolean {
+  return process.env.ALLOW_DEMO_CALLS === 'true';
+}
+
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
     try {
@@ -119,10 +123,27 @@ export async function POST(request: NextRequest) {
         status: c.status ?? 'deschis',
       }));
 
-      const callsToEvaluate = mappedCalls.length > 0 ? mappedCalls : DEMO_CALLS;
-      
-      if (mappedCalls.length === 0) {
-        logger.warn({ userId: user.id }, 'Empty calls database, falling back to DEMO_CALLS');
+      let callsToEvaluate = mappedCalls;
+      let usingDemoFallback = false;
+
+      if (callsToEvaluate.length === 0) {
+        if (isDemoModeEnabled()) {
+          usingDemoFallback = true;
+          callsToEvaluate = DEMO_CALLS;
+          logger.warn({ userId: user.id }, 'Empty calls database, ALLOW_DEMO_CALLS enabled; using demo calls');
+        } else {
+          logger.error({ userId: user.id }, 'Grant matching unavailable: no validated calls available');
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'CALL_DATA_UNAVAILABLE',
+                message: 'Funding call data is temporarily unavailable. Please try again later.',
+              },
+            },
+            { status: 503 },
+          );
+        }
       }
 
       const { companyProfile } = parsed.data;
@@ -160,7 +181,7 @@ export async function POST(request: NextRequest) {
           matchesFound: result.matches.length,
           tokensUsed: result.tokensUsed,
           userTier: user.tier,
-          isDemoFallback: mappedCalls.length === 0,
+          isDemoFallback: usingDemoFallback,
         },
       });
 
@@ -174,7 +195,7 @@ export async function POST(request: NextRequest) {
             callsEvaluated: callsToEvaluate.length,
             matchedAt: new Date().toISOString(),
             aiAct: execution.metadata,
-            isDemoFallback: mappedCalls.length === 0,
+            isDemoFallback: usingDemoFallback,
           },
         },
       });

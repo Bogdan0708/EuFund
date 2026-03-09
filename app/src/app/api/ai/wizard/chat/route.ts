@@ -11,6 +11,8 @@ import { sanitizeForAI, AI_INPUT_LIMITS } from '@/lib/ai/sanitize';
 import { AI_CONFIG } from '@/lib/ai/config';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
+import { FondEUError } from '@/lib/errors';
+import { assertTier } from '@/lib/middleware/tier-gate';
 import {
   enhanceProjectIdea,
   matchFundingCalls,
@@ -151,6 +153,8 @@ export async function POST(request: NextRequest) {
   const { user } = authResult;
 
   try {
+    assertTier(user.tier, 'pro');
+
     const body = await request.json();
     const rawMessages: UIMessage[] = body.messages ?? [];
 
@@ -329,6 +333,13 @@ IMPORTANT: Text between ───BEGIN_ and ───END_ delimiters is user-pro
 
     return result.toUIMessageStreamResponse();
   } catch (error) {
+    if (error instanceof FondEUError) {
+      return new Response(
+        JSON.stringify(error.toResponse()),
+        { status: error.statusCode, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
     log.error({ error, userId: user.id }, '[wizard-chat] Streaming error');
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),

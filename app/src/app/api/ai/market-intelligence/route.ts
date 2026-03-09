@@ -7,6 +7,7 @@ import { logAudit } from '@/lib/legal/audit';
 import { withAIAuth } from '@/lib/middleware/auth';
 import { logger } from '@/lib/logger';
 import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
+import { assertTier } from '@/lib/middleware/tier-gate';
 
 const inputSchema = z.object({
   projectBudget: z.number().nonnegative(),
@@ -32,6 +33,8 @@ export async function POST(request: NextRequest) {
         const quick = quickRomanianCheck(parsed.data.hasPublicProcurement, parsed.data.romanianPartnerCount);
         return NextResponse.json({ success: true, data: quick });
       }
+
+      assertTier(user.tier, 'pro');
 
       const result = await analyzeRomanianContext(parsed.data);
 

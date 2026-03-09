@@ -11,7 +11,8 @@ import { logger } from '@/lib/logger';
 import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 import { db } from '@/lib/db';
 import { aiReviews, orgMembers } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import { assertTier } from '@/lib/middleware/tier-gate';
 
 const euProgramKeys = ['horizon_europe', 'life_plus', 'interreg', 'erdf', 'pocidif', 'pnrr', 'general'] as const;
 
@@ -38,7 +39,32 @@ const inputSchema = z.object({
   romanianLead: z.boolean().optional(),
   quick: z.boolean().optional(),
   locale: z.enum(['ro', 'en']).optional(),
+  orgId: z.string().uuid().optional(),
 });
+
+async function resolveOversightOrgId(userId: string, requestedOrgId?: string): Promise<string | null> {
+  if (requestedOrgId) {
+    const membership = await db.query.orgMembers.findFirst({
+      where: and(
+        eq(orgMembers.userId, userId),
+        eq(orgMembers.orgId, requestedOrgId),
+      ),
+    });
+    return membership?.orgId ?? null;
+  }
+
+  const memberships = await db.query.orgMembers.findMany({
+    where: eq(orgMembers.userId, userId),
+    columns: { orgId: true },
+    limit: 2,
+  });
+
+  if (memberships.length === 1) {
+    return memberships[0].orgId;
+  }
+
+  return null;
+}
 
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
@@ -50,6 +76,10 @@ export async function POST(request: NextRequest) {
       }
 
       const input = parsed.data as typeof parsed.data & { programType: EUProgramKey };
+
+      if (!input.quick) {
+        assertTier(user.tier, 'pro');
+      }
 
       const runWithCompliance = withEUAIActCompliance<typeof input>(
         'predict-success',
@@ -91,13 +121,21 @@ export async function POST(request: NextRequest) {
 
       // EU AI Act Art. 14: High-risk results require human oversight
       if (oversightRequired) {
-        const membership = await db.query.orgMembers.findFirst({
-          where: eq(orgMembers.userId, user.id),
-        });
+        const oversightOrgId = await resolveOversightOrgId(user.id, input.orgId);
 
-        if (membership) {
+        if (!oversightOrgId) {
+          return NextResponse.json({
+            success: false,
+            error: {
+              code: 'OVERSIGHT_ORG_REQUIRED',
+              message: 'A valid organization context is required for human oversight routing.',
+            },
+          }, { status: 409 });
+        }
+
+        if (oversightOrgId) {
           const [review] = await db.insert(aiReviews).values({
-            orgId: membership.orgId,
+            orgId: oversightOrgId,
             requestedBy: user.id,
             feature: 'predict-success',
             riskLevel: 'high',
@@ -111,7 +149,7 @@ export async function POST(request: NextRequest) {
             success: true,
             status: 'pending_review',
             reviewId: review.id,
-            reviewUrl: `/api/v1/organizations/${membership.orgId}/ai-reviews?status=pending_review`,
+            reviewUrl: `/api/v1/organizations/${oversightOrgId}/ai-reviews?status=pending_review`,
             message: 'Rezultatul necesită aprobarea unui administrator conform EU AI Act Art. 14.',
             messageEn: 'Result requires administrator approval per EU AI Act Art. 14.',
             metadata: {

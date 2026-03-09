@@ -4,6 +4,7 @@ import { orgMembers, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { getProjectTimeline, createTimelineItem } from '@/lib/services/timeline';
+import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -82,6 +83,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     const item = await createTimelineItem(id, body, user.id);
+    await logAudit({
+      userId: user.id,
+      action: 'project.timeline_create',
+      resourceType: 'project',
+      resourceId: id,
+      metadata: {
+        timelineItemId: item.id,
+        taskName: body.taskName,
+      },
+    });
     return NextResponse.json({ success: true, data: item }, { status: 201 });
   } catch (error) {
     if (error instanceof FondEUError) {

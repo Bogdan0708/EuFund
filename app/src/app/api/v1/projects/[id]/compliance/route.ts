@@ -9,6 +9,7 @@ import { logAudit } from '@/lib/legal/audit';
 import { listComplianceChecks, getComplianceOverview } from '@/lib/services/compliance';
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { requireTier } from '@/lib/middleware/tier-gate';
 
 const log = logger.child({ component: 'compliance-api' });
 
@@ -79,6 +80,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
     if (!project) throw Errors.notFound('project', id);
 
     await requireOrgRole(user.id, project.orgId, 'project_manager');
+    const ensureTier = requireTier('pro');
+    await ensureTier(user.id);
 
     // Fetch organization and call data
     const org = await withUserRLS(user.id, async (tx) => {

@@ -1,12 +1,17 @@
-import { randomBytes } from 'crypto';
-import { eq } from 'drizzle-orm';
+import { createHash, randomBytes } from 'crypto';
+import { eq, or } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { logger } from '@/lib/logger';
 
 const RESET_TOKEN_TTL_HOURS = 1;
 
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
 export async function generatePasswordResetToken(userId: string): Promise<string> {
   const token = randomBytes(32).toString('hex');
+  const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_HOURS * 60 * 60 * 1000);
 
   await db.transaction(async (tx) => {
@@ -15,7 +20,7 @@ export async function generatePasswordResetToken(userId: string): Promise<string
 
     await tx.insert(schema.passwordResetTokens).values({
       userId,
-      token,
+      token: tokenHash,
       expiresAt,
     });
   });
@@ -25,9 +30,13 @@ export async function generatePasswordResetToken(userId: string): Promise<string
 
 export async function verifyPasswordResetToken(token: string): Promise<string | null> {
   const now = new Date();
+  const tokenHash = hashToken(token);
 
   const tokenRecord = await db.query.passwordResetTokens.findFirst({
-    where: eq(schema.passwordResetTokens.token, token),
+    where: or(
+      eq(schema.passwordResetTokens.token, tokenHash),
+      eq(schema.passwordResetTokens.token, token),
+    ),
   });
 
   if (!tokenRecord) {
@@ -44,7 +53,13 @@ export async function verifyPasswordResetToken(token: string): Promise<string | 
 
 export async function consumePasswordResetToken(token: string): Promise<void> {
   try {
-    await db.delete(schema.passwordResetTokens).where(eq(schema.passwordResetTokens.token, token));
+    const tokenHash = hashToken(token);
+    await db.delete(schema.passwordResetTokens).where(
+      or(
+        eq(schema.passwordResetTokens.token, tokenHash),
+        eq(schema.passwordResetTokens.token, token),
+      ),
+    );
   } catch (error) {
     logger.error({ error }, '[password-reset] Failed to delete token');
   }

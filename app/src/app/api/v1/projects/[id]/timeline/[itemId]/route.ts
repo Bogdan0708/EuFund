@@ -4,6 +4,7 @@ import { orgMembers, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { updateTimelineItem, deleteTimelineItem, updateTimelineProgress } from '@/lib/services/timeline';
+import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -28,6 +29,17 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (body.progress_percentage !== undefined && Object.keys(body).length === 1) {
       const item = await updateTimelineProgress(id, itemId, body.progress_percentage, user.id);
       if (!item) throw Errors.notFound('timeline_item', itemId);
+      await logAudit({
+        userId: user.id,
+        action: 'project.timeline_update',
+        resourceType: 'project',
+        resourceId: id,
+        metadata: {
+          timelineItemId: itemId,
+          updateType: 'progress',
+          progressPercentage: body.progress_percentage,
+        },
+      });
       return NextResponse.json({ success: true, data: item });
     }
 
@@ -74,6 +86,17 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
     const item = await updateTimelineItem(id, itemId, cleanUpdates, user.id);
     if (!item) throw Errors.notFound('timeline_item', itemId);
+    await logAudit({
+      userId: user.id,
+      action: 'project.timeline_update',
+      resourceType: 'project',
+      resourceId: id,
+      metadata: {
+        timelineItemId: itemId,
+        updateType: 'full',
+        fields: Object.keys(cleanUpdates),
+      },
+    });
     return NextResponse.json({ success: true, data: item });
   } catch (error) {
     if (error instanceof FondEUError) {
@@ -98,6 +121,15 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     await deleteTimelineItem(id, itemId, user.id);
+    await logAudit({
+      userId: user.id,
+      action: 'project.timeline_delete',
+      resourceType: 'project',
+      resourceId: id,
+      metadata: {
+        timelineItemId: itemId,
+      },
+    });
     return NextResponse.json({ success: true, data: { message: 'Timeline item deleted' } });
   } catch (error) {
     if (error instanceof FondEUError) {

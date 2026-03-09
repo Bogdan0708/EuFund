@@ -9,7 +9,7 @@ import { orgMembers, users } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 
 type Params = { params: { id: string } };
@@ -17,6 +17,10 @@ type Params = { params: { id: string } };
 const addMemberSchema = z.object({
   email: z.string().email(),
   role: z.enum(['org_admin', 'project_manager', 'viewer']).default('viewer'),
+});
+
+const removeMemberSchema = z.object({
+  userId: z.string().uuid(),
 });
 
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -102,6 +106,78 @@ export async function POST(req: NextRequest, { params }: Params) {
     });
 
     return NextResponse.json({ success: true, data: member }, { status: 201 });
+  } catch (error) {
+    if (error instanceof FondEUError) {
+      return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
+    }
+    return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest, { params }: Params) {
+  try {
+    const currentUser = await requireAuth();
+    const { id } = params;
+    await requireOrgRole(currentUser.id, id, 'org_admin');
+
+    const body = await req.json();
+    const parsed = removeMemberSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        Errors.validation('body', 'Date invalide', 'Invalid input').toResponse('ro'),
+        { status: 400 },
+      );
+    }
+
+    const existing = await db.query.orgMembers.findFirst({
+      where: and(eq(orgMembers.orgId, id), eq(orgMembers.userId, parsed.data.userId)),
+    });
+
+    if (!existing) {
+      throw Errors.notFound('organization_member');
+    }
+
+    if (existing.role === 'admin' || existing.role === 'org_admin') {
+      const adminMembers = await db.query.orgMembers.findMany({
+        where: and(
+          eq(orgMembers.orgId, id),
+          inArray(orgMembers.role, ['admin', 'org_admin']),
+        ),
+        columns: { userId: true },
+        limit: 2,
+      });
+
+      if (adminMembers.length <= 1) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'CONFLICT',
+              message: 'Nu puteți elimina ultimul administrator al organizației.',
+              details: { reason: 'LAST_ORG_ADMIN' },
+            },
+          },
+          { status: 409 },
+        );
+      }
+    }
+
+    await db
+      .delete(orgMembers)
+      .where(and(eq(orgMembers.orgId, id), eq(orgMembers.userId, parsed.data.userId)));
+
+    await logAudit({
+      userId: currentUser.id,
+      action: 'organization.member_remove',
+      resourceType: 'organization',
+      resourceId: id,
+      metadata: { removedUserId: parsed.data.userId, removedRole: existing.role },
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: { userId: parsed.data.userId, removed: true },
+    });
   } catch (error) {
     if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });

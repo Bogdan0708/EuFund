@@ -103,6 +103,12 @@ Tests live in `app/tests/` (not `src/`). Path alias: `@/*` maps to `app/src/*`.
 
 **Redis rate limiting**: Fail-closed for AI endpoints (503 if Redis unavailable), preventing unmetered AI usage.
 
+**Validation**: Zod for all request schemas, defined in `@/lib/validation/schemas.ts`. Key schemas: `extractedCallSchema`, `generateProposalSchema`, `checkEligibilitySchema`, `wizardMatchCallsSchema`. Types are inferred from schemas.
+
+**Knowledge ingestion pipeline**: `lib/ai/knowledge/` — three-stage pipeline: `parser.ts` (PDF/Word → text) → `extractor.ts` (AI-powered structured extraction) → `ingestor.ts` (vector store/RAG ingestion). Triggered via `/api/admin/ingest-call` (multipart upload, 15MB max, PDF/DOCX/XLSX/TXT).
+
+**Crawler sources**: `lib/connectors/sources/config.ts` — pre-configured web scraping targets for Romanian funding sources (8 regional ADRs, PNRR portal, AFM, FNGCIMM). Each source has CSS selectors, program detection keywords, and channel metadata.
+
 **Password hashing**: bcryptjs with cost factor 12.
 
 **Token TTLs**: Email verification = 24h, password reset = 1h.
@@ -112,7 +118,7 @@ Tests live in `app/tests/` (not `src/`). Path alias: `@/*` maps to `app/src/*`.
 - Romanian page paths: `/ro/autentificare`, `/ro/inregistrare`, `/ro/resetare-parola`, `/ro/panou`, `/ro/proiecte`
 - Page routes use Romanian names in `(dashboard)` group: `panou` (dashboard), `proiecte` (projects), `finantari` (funding), `documente` (documents), `legislatie` (legislation), `setari` (settings)
 - API routes use English: `/api/ai/*`, `/api/auth/*`, `/api/v1/*`
-- Admin API routes: `/api/v1/admin/feature-flags`, `/api/v1/admin/retention`, `/api/v1/admin/programs`, `/api/v1/admin/calls`
+- Admin API routes: `/api/v1/admin/feature-flags`, `/api/v1/admin/retention`, `/api/v1/admin/programs`, `/api/v1/admin/calls`, `/api/admin/ingest-call`
 - Public paths must be listed in `middleware.ts` `publicPaths` array (both locale variants and API routes)
 
 ### Database
@@ -140,17 +146,23 @@ EU data: EurLex, CORDIS, Eurostat, EC Portal. Romanian: ONRC (company registry),
 
 ### Testing
 
-- Vitest with Node environment, globals enabled
-- Tests in `app/tests/` — integration tests in `app/tests/integration/`
-- Use `vi.mock()` for external dependencies (DB, auth, Redis)
-- Mock IDs must be valid UUIDs (e.g., `'11111111-1111-4111-8111-111111111111'`)
-- `logAudit` is typically mocked as `vi.fn()` in route tests
+- **Unit/Integration (Vitest)**: Node environment, globals enabled. Tests in `app/tests/`, integration tests in `app/tests/integration/`. Use `vi.mock()` for external dependencies (DB, auth, Redis). Mock IDs must be valid UUIDs (e.g., `'11111111-1111-4111-8111-111111111111'`). `logAudit` is typically mocked as `vi.fn()` in route tests.
+- **E2E (Playwright)**: Config in `app/playwright.config.ts`. Three projects: setup (auth), chromium (authenticated), chromium-no-auth. Auth state stored in `app/e2e/.auth/user.json`. Traces and screenshots captured on failure.
 
 ### CI/CD
 
 - GitHub Actions: quality → security-gates → build-and-test
 - RLS tests only run when `vars.HAS_RLS_DATABASE == 'true'` — use `vars` (repository variables), never `secrets`, for job-level `if` conditions
 - Production deploys to GCP Cloud Run via `deploy-production.yml` (manual trigger with approval gate)
+
+### Knowledge Stack
+
+This project is part of a cross-project knowledge system:
+
+- **Obsidian vault**: `~/Obsidian/01-Projects/EU-Funds/` — symlinked docs, project notes
+- **AI Drafts**: AI-generated content goes to `~/Obsidian/04-AI_Drafts/` for human review before use
+- **Custom commands**: `/research`, `/review-drafts`, `/daily`, `/adr` — work across vault + NotebookLM
+- **NotebookLM notebooks**: FondEU-Architecture, FondEU-Compliance, FondEU-Research (see registry at `05-NotebookLM/Sources/notebook-registry.md`)
 
 ### Gotchas
 
@@ -160,3 +172,5 @@ EU data: EurLex, CORDIS, Eurostat, EC Portal. Romanian: ONRC (company registry),
 - `grantedAt` should NOT be set on withdraw-from-scratch consent records
 - Storage paths validated against directory traversal via `path.resolve()` check
 - ESLint `ignoreDuringBuilds: true` in `next.config.mjs` — pre-existing issues, fix incrementally
+- `withAIAuth()` caches user tiers in-memory (LRU, 5-min TTL, max 10k users) — stale tier after upgrade for up to 5 min
+- `instrumentationHook: true` in next.config.mjs enables Sentry — only active when `SENTRY_DSN` env var is set

@@ -32,7 +32,10 @@
     "audit:fix:prod": "npm audit fix --production",
     "deps:check": "npm outdated",
     "deps:update": "npm update",
-    "deps:update:interactive": "npx npm-check-updates -i"
+    "deps:update:interactive": "npx npm-check-updates -i",
+    "test:e2e": "npx playwright test",
+    "test:e2e:headed": "npx playwright test --headed",
+    "test:e2e:ui": "npx playwright test --ui"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.28",
@@ -84,6 +87,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/node": "^20.19.33",
     "@types/nodemailer": "^7.0.10",
     "@types/pdf-parse": "^1.1.5",

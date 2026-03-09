@@ -128,6 +128,26 @@ export const wizardSaveProjectSchema = z.object({
   proposal: z.any(), // Detailed validation handled by mapping logic
 });
 
+export const extractedCallSchema = z.object({
+  callCode: z.string().min(1),
+  titleRo: z.string().min(5),
+  titleEn: z.string().optional(),
+  descriptionRo: z.string().min(10),
+  eligibleTypes: z.array(z.string()),
+  eligibleRegions: z.array(z.string()).optional(),
+  eligibleCaen: z.array(z.string()).optional(),
+  budgetMin: z.number().optional(),
+  budgetMax: z.number().optional(),
+  cofinancingRate: z.number().optional(),
+  durationMin: z.number().optional(),
+  durationMax: z.number().optional(),
+  submissionStart: z.string().optional(),
+  submissionEnd: z.string().optional(),
+  isCompetitive: z.boolean().default(true),
+});
+
+export type ExtractedCall = z.infer<typeof extractedCallSchema>;
+
 export type EnhanceIdeaInput = z.infer<typeof enhanceIdeaSchema>;
 export type WizardMatchCallsInput = z.infer<typeof wizardMatchCallsSchema>;
 export type WizardGenerateProjectInput = z.infer<typeof wizardGenerateProjectSchema>;

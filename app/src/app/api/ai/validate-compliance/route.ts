@@ -9,10 +9,13 @@ import { validateComplianceSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
 import { checkFacts } from '@/lib/ai/fact-checker';
 import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
+import { assertTier } from '@/lib/middleware/tier-gate';
 
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
     try {
+      assertTier(user.tier, 'pro');
+
       const body = await request.json();
       const parsed = validateComplianceSchema.safeParse(body);
 

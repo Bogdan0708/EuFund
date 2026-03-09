@@ -447,7 +447,15 @@ describe('Security Integration Tests', () => {
           handler({ id: '1', email: 'test@example.com', tier: 'free' }),
       }));
       vi.mock('@/lib/db', () => ({
-        db: { query: { orgMembers: { findFirst: vi.fn() } }, insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'review-1' }]) }) }) },
+        db: {
+          query: {
+            orgMembers: {
+              findFirst: vi.fn(),
+              findMany: vi.fn().mockResolvedValue([{ orgId: 'org-1' }]),
+            },
+          },
+          insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'review-1' }]) }) }),
+        },
       }));
 
       const { POST } = await import('@/app/api/ai/predict-success/route');
@@ -482,7 +490,7 @@ describe('Security Integration Tests', () => {
       }));
       vi.mock('@/lib/middleware/auth', () => ({
         withAIAuth: (req: any, handler: Function) => 
-          handler({ id: '1', email: 'test@example.com', tier: 'free' }),
+          handler({ id: '1', email: 'test@example.com', tier: 'pro' }),
       }));
 
       const { POST } = await import('@/app/api/ai/generate-proposal/route');
@@ -509,15 +517,33 @@ describe('Security Integration Tests', () => {
 
     it('should accept valid payload for /api/ai/predict-success', async () => {
       vi.mock('@/lib/ai/predictive-analytics', () => ({
-        predictProposalSuccess: vi.fn().mockResolvedValue({
+        predictProposalSuccess: vi.fn(),
+        quickSuccessPrediction: vi.fn().mockReturnValue({
           successProbability: 0.85,
           confidenceLevel: 'high',
-          factors: [],
+          strengths: [],
+          weaknesses: [],
+          recommendations: [],
+          riskFactors: [],
+          scoreBreakdown: {},
+          benchmarkComparison: {},
         }),
-        quickSuccessPrediction: vi.fn(),
       }));
       vi.mock('@/lib/legal/audit', () => ({
         logAudit: vi.fn(),
+      }));
+      vi.mock('@/lib/logger', () => ({
+        logger: {
+          error: vi.fn(),
+          child: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }),
+        },
+      }));
+      vi.mock('@/lib/ai/eu-ai-act', () => ({
+        withEUAIActCompliance: (_feature: string, handler: Function) =>
+          async (payload: unknown) => ({
+            result: await handler(payload).then((value: any) => value.result ?? value),
+            metadata: { oversightRequired: false },
+          }),
       }));
       vi.mock('@/lib/middleware/auth', () => ({
         withAIAuth: (req: any, handler: Function) =>
@@ -536,6 +562,7 @@ describe('Security Integration Tests', () => {
         totalBudget: 500000,
         durationMonths: 36,
         sector: 'ICT',
+        quick: true,
         partners: [
           {
             name: 'Lead Partner',
@@ -570,7 +597,7 @@ describe('Security Integration Tests', () => {
       }));
       vi.mock('@/lib/middleware/auth', () => ({
         withAIAuth: (req: any, handler: Function) => 
-          handler({ id: '1', email: 'test@example.com', tier: 'free' }),
+          handler({ id: '1', email: 'test@example.com', tier: 'pro' }),
       }));
 
       const { POST } = await import('@/app/api/ai/generate-proposal/route');

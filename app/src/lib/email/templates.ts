@@ -5,6 +5,8 @@ type EmailTemplate = {
   html: string;
 };
 
+type TrialLifecycleStage = 'trial_7_days' | 'trial_1_day' | 'trial_expired';
+
 function baseTemplate(title: string, greeting: string, intro: string, ctaLabel: string, ctaUrl: string, footer: string): string {
   return `
 <!DOCTYPE html>
@@ -89,6 +91,97 @@ export function passwordResetEmail(name: string, resetUrl: string, locale: Email
       'Resetează parola',
       resetUrl,
       'Dacă nu ai făcut tu această solicitare, ignoră acest email. Parola ta rămâne neschimbată.',
+    ),
+  };
+}
+
+export function billingTrialLifecycleEmail(
+  name: string,
+  billingUrl: string,
+  stage: TrialLifecycleStage,
+  locale: EmailLocale = 'ro',
+): EmailTemplate {
+  const firstName = name?.trim() || (locale === 'en' ? 'there' : 'acolo');
+
+  if (locale === 'en') {
+    if (stage === 'trial_7_days') {
+      return {
+        subject: 'FondEU Pro trial: 7 days left',
+        html: baseTemplate(
+          'Your Pro trial ends in 7 days',
+          `Hi ${firstName},`,
+          'Your 30-day Pro trial is still active. Review your billing workspace and choose a paid plan if you want to keep Pro access after the trial ends.',
+          'Review billing',
+          billingUrl,
+          'If you take no action, your account will remain on the Free tier after the trial period.',
+        ),
+      };
+    }
+
+    if (stage === 'trial_1_day') {
+      return {
+        subject: 'FondEU Pro trial: 1 day left',
+        html: baseTemplate(
+          'Your Pro trial ends tomorrow',
+          `Hi ${firstName},`,
+          'Your 30-day Pro trial is about to end. Activate a paid plan now to keep uninterrupted access to Pro features and higher usage limits.',
+          'Keep Pro access',
+          billingUrl,
+          'If you take no action, your account will move to the Free tier after the trial expires.',
+        ),
+      };
+    }
+
+    return {
+      subject: 'FondEU Pro trial expired',
+      html: baseTemplate(
+        'Your Pro trial has ended',
+        `Hi ${firstName},`,
+        'Your 30-day Pro trial has expired and your account is now on the Free tier. You can upgrade at any time to restore Pro features and limits.',
+        'Upgrade now',
+        billingUrl,
+        'Your data remains available. Only premium capabilities and higher usage limits are affected.',
+      ),
+    };
+  }
+
+  if (stage === 'trial_7_days') {
+    return {
+      subject: 'FondEU Pro trial: au ramas 7 zile',
+      html: baseTemplate(
+        'Trialul tau Pro se incheie in 7 zile',
+        `Salut, ${firstName}!`,
+        'Trialul tau Pro de 30 de zile este inca activ. Verifica zona de facturare si alege un plan platit daca vrei sa pastrezi accesul Pro dupa expirare.',
+        'Vezi facturarea',
+        billingUrl,
+        'Daca nu faci nicio modificare, contul tau va ramane pe planul Free dupa incheierea trialului.',
+      ),
+    };
+  }
+
+  if (stage === 'trial_1_day') {
+    return {
+      subject: 'FondEU Pro trial: a ramas 1 zi',
+      html: baseTemplate(
+        'Trialul tau Pro se incheie maine',
+        `Salut, ${firstName}!`,
+        'Trialul tau Pro de 30 de zile este pe punctul de a expira. Activeaza acum un plan platit pentru a pastra fara intrerupere functiile Pro si limitele extinse.',
+        'Pastreaza accesul Pro',
+        billingUrl,
+        'Daca nu faci nicio modificare, contul tau va trece pe planul Free dupa expirare.',
+      ),
+    };
+  }
+
+  return {
+    subject: 'FondEU Pro trial: trial expirat',
+    html: baseTemplate(
+      'Trialul tau Pro a expirat',
+      `Salut, ${firstName}!`,
+      'Trialul tau Pro de 30 de zile a expirat, iar contul tau este acum pe planul Free. Poti face upgrade oricand pentru a reactiva functiile Pro si limitele extinse.',
+      'Fa upgrade acum',
+      billingUrl,
+      'Datele tale raman disponibile. Sunt afectate doar capabilitatile premium si limitele superioare de utilizare.',
     ),
   };
 }

@@ -8,6 +8,7 @@ import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
 import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
+import { assertTier } from '@/lib/middleware/tier-gate';
 
 const euProgramKeys = ['horizon_europe', 'life_plus', 'interreg', 'erdf', 'pocidif', 'pnrr', 'general'] as const;
 
@@ -47,6 +48,8 @@ export async function POST(request: NextRequest) {
       const result = quickQualityCheck(input);
       return NextResponse.json({ success: true, data: result });
     }
+
+    assertTier(user.tier, 'pro');
 
     const result = await generateKnowledgeRecommendations(input);
 

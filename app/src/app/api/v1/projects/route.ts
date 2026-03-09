@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
-import { projects, orgMembers, organizations } from '@/lib/db/schema';
+import { projects, orgMembers } from '@/lib/db/schema';
 import { createProjectSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole, getPaginationParams } from '@/lib/auth/helpers';
@@ -14,6 +14,36 @@ import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'projects-api' });
 type ProjectStatus = NonNullable<typeof projects.$inferSelect.status>;
+
+async function resolveProjectOrgId(userId: string, requestedOrgId?: string): Promise<string> {
+  if (requestedOrgId) {
+    await requireOrgRole(userId, requestedOrgId, 'project_manager');
+    return requestedOrgId;
+  }
+
+  const memberships = await withUserRLS(userId, async (tx) => {
+    return tx.query.orgMembers.findMany({
+      where: eq(orgMembers.userId, userId),
+      columns: { orgId: true },
+      limit: 2,
+    });
+  });
+
+  if (memberships.length === 1) {
+    return memberships[0].orgId;
+  }
+
+  throw new FondEUError(
+    {
+      code: 'CONFLICT',
+      statusCode: 409,
+      messageEn: 'A valid organization context is required to create a project.',
+      messageRo: 'Este necesar contextul unei organizații valide pentru a crea proiectul.',
+      details: { reason: 'PROJECT_ORG_REQUIRED' },
+      retryable: false,
+    },
+  );
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -53,7 +83,9 @@ export async function GET(req: NextRequest) {
     if (orgId && orgIds.includes(orgId)) {
       conditions.push(eq(projects.orgId, orgId));
     }
-    if (status) {
+    if (status === 'aprobat' || status === 'finalizat') {
+      conditions.push(inArray(projects.status, ['aprobat', 'finalizat'] as ProjectStatus[]));
+    } else if (status) {
       conditions.push(eq(projects.status, status as ProjectStatus));
     }
     if (search) {
@@ -120,38 +152,7 @@ export async function POST(req: NextRequest) {
     }
 
     const data = parsed.data;
-
-    // Resolve orgId: use provided, or find user's first org, or create a default
-    let orgId = data.orgId;
-    if (!orgId) {
-      const userOrg = await withUserRLS(user.id, async (tx) => {
-        return tx.query.orgMembers.findFirst({
-          where: eq(orgMembers.userId, user.id),
-        });
-      });
-      if (userOrg) {
-        orgId = userOrg.orgId;
-      } else {
-        // Auto-create a personal organization for the user
-        const newOrg = await withUserRLS(user.id, async (tx) => {
-          const [createdOrg] = await tx.insert(organizations).values({
-            name: `Organizația lui ${user.name || 'Utilizator'}`,
-            orgType: 'srl',
-            orgSize: 'micro',
-          }).returning();
-          await tx.insert(orgMembers).values({
-            orgId: createdOrg.id,
-            userId: user.id,
-            role: 'org_admin',
-          });
-          return createdOrg;
-        });
-        orgId = newOrg.id;
-      }
-    } else {
-      // Verify user has access to the organization
-      await requireOrgRole(user.id, orgId, 'project_manager');
-    }
+    const orgId = await resolveProjectOrgId(user.id, data.orgId);
 
     // Insert project
     const project = await withUserRLS(user.id, async (tx) => {

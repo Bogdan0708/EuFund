@@ -4,6 +4,7 @@ import { projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { getWorkPackage, updateWorkPackage, deleteWorkPackage } from '@/lib/services/work-packages';
+import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -51,6 +52,16 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const body = await req.json();
     const wp = await updateWorkPackage(id, wpId, body, user.id);
     if (!wp) throw Errors.notFound('work_package', wpId);
+    await logAudit({
+      userId: user.id,
+      action: 'project.work_package_update',
+      resourceType: 'project',
+      resourceId: id,
+      metadata: {
+        workPackageId: wpId,
+        fields: Object.keys(body ?? {}),
+      },
+    });
 
     return NextResponse.json({ success: true, data: wp });
   } catch (error) {
@@ -77,6 +88,15 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
     const wp = await deleteWorkPackage(id, wpId, user.id);
     if (!wp) throw Errors.notFound('work_package', wpId);
+    await logAudit({
+      userId: user.id,
+      action: 'project.work_package_delete',
+      resourceType: 'project',
+      resourceId: id,
+      metadata: {
+        workPackageId: wpId,
+      },
+    });
 
     return NextResponse.json({ success: true, data: { deleted: true } });
   } catch (error) {

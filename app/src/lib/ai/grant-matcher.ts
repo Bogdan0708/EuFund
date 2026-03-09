@@ -3,7 +3,12 @@
 
 import { z } from 'zod';
 import { aiGenerateObject } from './client';
-import { runEligibilityRules, type RuleContext, type RuleResult } from '@/lib/rules/eligibility';
+import {
+  resolveEligibleOrgTypes,
+  runEligibilityRules,
+  type RuleContext,
+  type RuleResult,
+} from '@/lib/rules/eligibility';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -97,6 +102,8 @@ export async function matchGrants(
         submissionEnd: call.submissionEnd,
       },
     };
+
+    ruleCtx.organization.orgTypeAlternatives = resolveEligibleOrgTypes(input.organization.orgType);
 
     return {
       call,

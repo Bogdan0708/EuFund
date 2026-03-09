@@ -4,6 +4,7 @@ import { projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { listRisks, createRisk, updateRisk, getRiskOverview } from '@/lib/services/risks';
+import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -78,6 +79,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     const risk = await createRisk(id, body, user.id);
+    await logAudit({
+      userId: user.id,
+      action: 'project.risk_create',
+      resourceType: 'project',
+      resourceId: id,
+      metadata: {
+        riskId: risk.id,
+        riskType: body.riskType,
+      },
+    });
     return NextResponse.json({ success: true, data: risk }, { status: 201 });
   } catch (error) {
     if (error instanceof FondEUError) {
@@ -111,6 +122,16 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
     const risk = await updateRisk(id, body.riskId, body, user.id);
     if (!risk) throw Errors.notFound('risk_assessment', body.riskId);
+    await logAudit({
+      userId: user.id,
+      action: 'project.risk_update',
+      resourceType: 'project',
+      resourceId: id,
+      metadata: {
+        riskId: body.riskId,
+        fields: Object.keys(body ?? {}),
+      },
+    });
 
     return NextResponse.json({ success: true, data: risk });
   } catch (error) {

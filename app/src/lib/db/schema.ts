@@ -30,6 +30,25 @@ export const consentStatusEnum = pgEnum('consent_status', ['granted', 'withdrawn
 export const workPackageStatusEnum = pgEnum('work_package_status', ['planned', 'active', 'completed', 'delayed', 'cancelled']);
 export const riskLevelEnum = pgEnum('risk_level', ['very_low', 'low', 'medium', 'high', 'very_high']);
 export const userTierEnum = pgEnum('user_tier', ['free', 'pro', 'enterprise']);
+
+export const fundingInstrumentType = pgEnum('funding_instrument_type', [
+  'grant',
+  'state_aid',
+  'de_minimis',
+  'loan',
+  'guarantee',
+  'equity',
+  'combined'
+]);
+
+export const implementingChannel = pgEnum('implementing_channel', [
+  'mysmis',
+  'pnrr_portal',
+  'bank_network',
+  'afm_portal',
+  'minister_portal',
+  'e_licitatie'
+]);
 export const connectorAccessMethodEnum = pgEnum('connector_access_method', ['api', 'html', 'pdf', 'docx', 'rss', 'manual']);
 export const connectorRunStatusEnum = pgEnum('connector_run_status', ['running', 'success', 'failed', 'partial']);
 export const extractionMethodEnum = pgEnum('extraction_method', ['regex', 'rule', 'llm', 'hybrid']);
@@ -175,6 +194,8 @@ export const callsForProposals = pgTable('calls_for_proposals', {
   sourceConnectorId: uuid('source_connector_id').references(() => sourceConnectors.id, { onDelete: 'set null' }),
   externalId: varchar('external_id', { length: 255 }),
   callCode: varchar('call_code', { length: 100 }).notNull(),
+  instrumentType: fundingInstrumentType('instrument_type').default('grant'),
+  implementingChannel: implementingChannel('implementing_channel').default('mysmis'),
   titleRo: varchar('title_ro', { length: 1000 }).notNull(),
   titleEn: varchar('title_en', { length: 1000 }),
   descriptionRo: text('description_ro'),
@@ -186,6 +207,10 @@ export const callsForProposals = pgTable('calls_for_proposals', {
   budgetMin: decimal('budget_min', { precision: 15, scale: 2 }),
   budgetMax: decimal('budget_max', { precision: 15, scale: 2 }),
   cofinancingRate: decimal('cofinancing_rate', { precision: 5, scale: 2 }),
+  guaranteeRate: decimal('guarantee_rate', { precision: 5, scale: 2 }),
+  interestSubsidy: boolean('interest_subsidy').default(false),
+  legalBasis: text('legal_basis'),
+  officialUrl: text('official_url'),
   durationMin: integer('duration_min'),
   durationMax: integer('duration_max'),
   submissionStart: timestamp('submission_start', { withTimezone: true }),
@@ -205,6 +230,7 @@ export const callsForProposals = pgTable('calls_for_proposals', {
   statusIdx: index('idx_calls_status').on(table.status),
   deadlineIdx: index('idx_calls_deadline').on(table.submissionEnd),
   sourceConnectorIdx: index('idx_calls_connector').on(table.sourceConnectorId),
+  uniqueCallCode: uniqueIndex('idx_calls_code_unique').on(table.callCode),
   uniqueExternal: uniqueIndex('idx_calls_unique_external').on(table.sourceConnectorId, table.externalId),
 }));
 

@@ -51,3 +51,17 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ url: result });
 }
+
+export async function GET(request: NextRequest) {
+  const payload = {
+    tier: request.nextUrl.searchParams.get('tier'),
+    interval: request.nextUrl.searchParams.get('interval') ?? 'monthly',
+  };
+
+  const result = await createSession(request, payload);
+  if (typeof result !== 'string') {
+    return result;
+  }
+
+  return NextResponse.redirect(result, { status: 303 });
+}

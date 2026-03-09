@@ -9,6 +9,7 @@ import { LRUCache } from 'lru-cache';
 import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
 import { AI_CONFIG } from '@/lib/ai/config';
 import { trackRequest, metrics } from '@/lib/monitoring/metrics';
+import { resolveBillingTrialState } from '@/lib/billing/trial';
 
 export type UserTier = 'free' | 'pro' | 'enterprise';
 
@@ -34,12 +35,17 @@ async function getUserTier(userId: string): Promise<UserTier> {
   }
 
   try {
-    const user = await db.select({ tier: schema.users.tier })
+    const user = await db.select({
+      tier: schema.users.tier,
+      subscriptionStatus: schema.users.subscriptionStatus,
+      stripeSubscriptionId: schema.users.stripeSubscriptionId,
+      createdAt: schema.users.createdAt,
+    })
       .from(schema.users)
       .where(eq(schema.users.id, userId))
       .limit(1);
 
-    const tier: UserTier = user[0]?.tier || 'free';
+    const tier = resolveBillingTrialState(user[0] || {}).effectiveTier as UserTier;
     tierCache.set(userId, tier);
     return tier;
   } catch (error) {
@@ -180,6 +186,8 @@ export async function authenticateAIUser(
       tier: userTier,
     };
 
+    // Fail-closed: AI endpoints require Redis for rate limiting.
+    // If Redis is configured but unavailable, return 503 to prevent unmetered AI usage.
     if (!await isRedisAvailable()) {
       log.warn({ userId: user.id }, '[auth] Redis unavailable — rejecting AI request (fail-closed)');
       return {

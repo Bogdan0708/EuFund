@@ -24,26 +24,24 @@ export class AIGatewayProvider extends BaseAIProvider {
     const startTime = Date.now();
     
     try {
-      const payload = {
-        task_type: request.taskType,
-        prompt: request.prompt,
-        system_prompt: request.systemPrompt,
-        max_tokens: request.maxTokens || 2048,
-        temperature: request.temperature || 0.7,
-        user_tier: request.userTier,
-        language: request.language || 'auto',
-        priority: request.priority || 'normal'
-      };
+      const model = this.selectModel(request);
+      const messages = this.buildMessages(request);
       
       const response = await this.withTimeout(
-        fetch(`${this.gatewayUrl}/api/v1/generate`, {
+        fetch(`${this.gatewayUrl}/v1/chat/completions`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${this.gatewayApiKey}`,
             'Content-Type': 'application/json',
             'X-User-ID': request.userId
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({
+            model,
+            messages,
+            max_tokens: request.maxTokens || 2048,
+            temperature: request.temperature || 0.7,
+            stream: false,
+          })
         })
       );
 
@@ -57,40 +55,30 @@ export class AIGatewayProvider extends BaseAIProvider {
         throw new AIProviderError(this.provider, 'server', `Gateway HTTP ${response.status}`, true);
       }
 
-      const data = await response.json();
-      
-      if (!data.success || !data.result) {
-        throw new AIProviderError(
-          this.provider,
-          'gateway-error',
-          data.error || 'Gateway returned unsuccessful response',
-          true
-        );
-      }
-
-      const result = data.result;
-      const tokensUsed = {
-        input: result.tokens_used?.input || 0,
-        output: result.tokens_used?.output || 0
+      const data = await response.json() as {
+        id?: string;
+        model?: string;
+        choices?: Array<{ message?: { content?: string | null } }>;
+        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
       };
-
-      // The gateway response includes the actual provider used
-      const actualProvider = result.provider || 'unknown';
-      const actualModel = result.model || 'auto';
+      const tokensUsed = {
+        input: data.usage?.prompt_tokens || 0,
+        output: data.usage?.completion_tokens || 0
+      };
       
       return {
-        content: result.content,
-        provider: this.provider, // Keep gateway as provider
-        model: `${actualProvider}/${actualModel}`, // Show underlying provider
+        content: data.choices?.[0]?.message?.content || '',
+        provider: this.provider,
+        model: data.model || model,
         tokensUsed: {
           input: tokensUsed.input,
           output: tokensUsed.output,
           total: tokensUsed.input + tokensUsed.output
         },
-        cost: result.cost || this.calculateCost(tokensUsed.input, tokensUsed.output),
+        cost: this.calculateCost(tokensUsed.input, tokensUsed.output),
         latency: Date.now() - startTime,
-        cached: result.cached || false,
-        requestId: result.request_id || this.generateRequestId(),
+        cached: false,
+        requestId: data.id || this.generateRequestId(),
         timestamp: new Date()
       };
 
@@ -106,28 +94,32 @@ export class AIGatewayProvider extends BaseAIProvider {
     const startTime = Date.now();
     
     try {
-      const payload = {
-        task_type: request.taskType,
-        prompt: request.prompt,
-        system_prompt: request.systemPrompt,
-        max_tokens: request.maxTokens || 2048,
-        temperature: request.temperature || 0.3,
-        user_tier: request.userTier,
-        language: request.language || 'auto',
-        priority: request.priority || 'normal',
-        structured_output: true,
-        schema: request.schema
-      };
+      const model = this.selectModel(request);
+      const messages = this.buildMessages(request);
+      const schemaInstruction = `You must respond with valid JSON that matches this schema: ${JSON.stringify(request.schema)}`;
+
+      if (messages[0]?.role === 'system') {
+        messages[0].content = `${messages[0].content}\n\n${schemaInstruction}`;
+      } else {
+        messages.unshift({ role: 'system', content: schemaInstruction });
+      }
       
       const response = await this.withTimeout(
-        fetch(`${this.gatewayUrl}/api/v1/generate-object`, {
+        fetch(`${this.gatewayUrl}/v1/chat/completions`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${this.gatewayApiKey}`,
             'Content-Type': 'application/json',
             'X-User-ID': request.userId
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({
+            model,
+            messages,
+            max_tokens: request.maxTokens || 2048,
+            temperature: request.temperature || 0.3,
+            response_format: { type: 'json_object' },
+            stream: false,
+          })
         })
       );
 
@@ -141,45 +133,37 @@ export class AIGatewayProvider extends BaseAIProvider {
         throw new AIProviderError(this.provider, 'server', `Gateway HTTP ${response.status}`, true);
       }
 
-      const data = await response.json();
-      
-      if (!data.success || !data.result) {
-        throw new AIProviderError(
-          this.provider,
-          'gateway-error',
-          data.error || 'Gateway returned unsuccessful response',
-          true
-        );
-      }
-
-      const result = data.result;
+      const data = await response.json() as {
+        id?: string;
+        model?: string;
+        choices?: Array<{ message?: { content?: string | null } }>;
+        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+      };
+      const content = data.choices?.[0]?.message?.content || '{}';
       const tokensUsed = {
-        input: result.tokens_used?.input || 0,
-        output: result.tokens_used?.output || 0
+        input: data.usage?.prompt_tokens || 0,
+        output: data.usage?.completion_tokens || 0
       };
 
-      const actualProvider = result.provider || 'unknown';
-      const actualModel = result.model || 'auto';
-
       const aiResponse: AIResponse = {
-        content: result.content,
+        content,
         provider: this.provider,
-        model: `${actualProvider}/${actualModel}`,
+        model: data.model || model,
         tokensUsed: {
           input: tokensUsed.input,
           output: tokensUsed.output,
           total: tokensUsed.input + tokensUsed.output
         },
-        cost: result.cost || this.calculateCost(tokensUsed.input, tokensUsed.output),
+        cost: this.calculateCost(tokensUsed.input, tokensUsed.output),
         latency: Date.now() - startTime,
-        cached: result.cached || false,
-        requestId: result.request_id || this.generateRequestId(),
+        cached: false,
+        requestId: data.id || this.generateRequestId(),
         timestamp: new Date()
       };
 
       return {
         ...aiResponse,
-        object: result.object as T
+        object: JSON.parse(content) as T
       };
 
     } catch (error: unknown) {
@@ -191,13 +175,16 @@ export class AIGatewayProvider extends BaseAIProvider {
   public async embed(text: string): Promise<number[]> {
     try {
       const response = await this.withTimeout(
-        fetch(`${this.gatewayUrl}/api/v1/embed`, {
+        fetch(`${this.gatewayUrl}/v1/embeddings`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${this.gatewayApiKey}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ text })
+          body: JSON.stringify({
+            model: 'text-embedding-3-small',
+            input: text,
+          })
         })
       );
 
@@ -205,8 +192,8 @@ export class AIGatewayProvider extends BaseAIProvider {
         throw new AIProviderError(this.provider, 'server', `Gateway HTTP ${response.status}`, true);
       }
 
-      const data = await response.json();
-      return data.result?.embedding || [];
+      const data = await response.json() as { data?: Array<{ embedding?: number[] }> };
+      return data.data?.[0]?.embedding || [];
 
     } catch (error: unknown) {
       this.handleError(error);
@@ -231,6 +218,28 @@ export class AIGatewayProvider extends BaseAIProvider {
     } catch {
       return false;
     }
+  }
+
+  private selectModel(request: AIRequest): string {
+    switch (request.taskType) {
+      case 'proposal_generation':
+      case 'risk_assessment':
+      case 'legal_analysis':
+        return 'gpt-4o';
+      default:
+        return 'gpt-4o-mini';
+    }
+  }
+
+  private buildMessages(request: AIRequest): Array<{ role: 'system' | 'user'; content: string }> {
+    const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
+
+    if (request.systemPrompt) {
+      messages.push({ role: 'system', content: request.systemPrompt });
+    }
+
+    messages.push({ role: 'user', content: request.prompt });
+    return messages;
   }
 }
 

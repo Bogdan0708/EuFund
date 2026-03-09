@@ -50,36 +50,39 @@ async function registerHandler(req: NextRequest) {
 
     const passwordHash = await hash(data.password, 12);
 
-    const [user] = await db.insert(users).values({
-      email: data.email,
-      passwordHash,
-      fullName: data.fullName,
-      phone: data.phone,
-      dateOfBirth: data.dateOfBirth,
-      ageVerified: true,
-      preferredLang: 'ro',
-    }).returning({
-      id: users.id,
-      email: users.email,
-      fullName: users.fullName,
-      createdAt: users.createdAt,
-    });
-
-    // Record GDPR consents
     const ipAddress = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || undefined;
     const userAgent = req.headers.get('user-agent') || undefined;
-
     const consentTypes = ['privacy_policy', 'terms_of_service', 'data_processing'] as const;
-    for (const consentType of consentTypes) {
-      await db.insert(consentRecords).values({
-        userId: user.id,
-        consentType,
-        status: 'granted',
-        version: '1.0',
-        ipAddress,
-        userAgent,
+
+    const user = await db.transaction(async (tx) => {
+      const [createdUser] = await tx.insert(users).values({
+        email: data.email,
+        passwordHash,
+        fullName: data.fullName,
+        phone: data.phone,
+        dateOfBirth: data.dateOfBirth,
+        ageVerified: true,
+        preferredLang: 'ro',
+      }).returning({
+        id: users.id,
+        email: users.email,
+        fullName: users.fullName,
+        createdAt: users.createdAt,
       });
-    }
+
+      for (const consentType of consentTypes) {
+        await tx.insert(consentRecords).values({
+          userId: createdUser.id,
+          consentType,
+          status: 'granted',
+          version: '1.0',
+          ipAddress,
+          userAgent,
+        });
+      }
+
+      return createdUser;
+    });
 
     await logAudit({
       userId: user.id,

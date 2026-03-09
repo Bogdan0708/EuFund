@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger';
 import { generateComplianceTasksFromGhid } from '@/lib/compliance/ghid-task-generator';
 import { logAudit } from '@/lib/legal/audit';
 import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
+import { assertTier } from '@/lib/middleware/tier-gate';
 
 const inputSchema = z.object({
   projectId: z.string().uuid(),
@@ -15,6 +16,8 @@ const inputSchema = z.object({
 export async function POST(request: NextRequest) {
   return withAIAuth(request, async (user) => {
     try {
+      assertTier(user.tier, 'pro');
+
       const body = await request.json();
       const parsed = inputSchema.safeParse(body);
       if (!parsed.success) {
@@ -52,4 +55,3 @@ export async function POST(request: NextRequest) {
     }
   }, { feature: 'compliance' });
 }
-

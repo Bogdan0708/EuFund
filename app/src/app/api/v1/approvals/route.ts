@@ -24,20 +24,29 @@ async function resolveAdminOrgId(userId: string, requestedOrgId: string | null):
     return requestedOrgId;
   }
 
-  const adminMembership = await withUserRLS(userId, async (tx) => {
-    return tx.query.orgMembers.findFirst({
+  const adminMemberships = await withUserRLS(userId, async (tx) => {
+    return tx.query.orgMembers.findMany({
       where: and(
         eq(orgMembers.userId, userId),
         inArray(orgMembers.role, ['admin', 'org_admin']),
       ),
+      columns: { orgId: true },
+      limit: 2,
     });
   });
 
-  if (!adminMembership) {
-    throw Errors.forbidden();
+  if (adminMemberships.length === 1) {
+    return adminMemberships[0].orgId;
   }
 
-  return adminMembership.orgId;
+  throw new FondEUError({
+    code: 'CONFLICT',
+    statusCode: 409,
+    messageEn: 'A valid administrator organization context is required.',
+    messageRo: 'Este necesar contextul unei organizații administrate valid.',
+    details: { reason: 'APPROVAL_ORG_REQUIRED' },
+    retryable: false,
+  });
 }
 
 export async function GET(req: NextRequest) {

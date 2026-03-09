@@ -43,7 +43,7 @@ const savedFilters = [
   { id: 'all', label: 'Toate aplicațiile', status: 'all' },
   { id: 'review', label: 'În verificare', status: 'verificare' },
   { id: 'drafts', label: 'Ciorne', status: 'ciorna' },
-  { id: 'approved', label: 'Aprobate', status: 'aprobat' },
+  { id: 'approved', label: 'Aprobate / finalizate', status: 'aprobat' },
 ];
 
 function formatCurrency(value: string | null | undefined, locale: string) {

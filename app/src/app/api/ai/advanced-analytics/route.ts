@@ -8,6 +8,7 @@ import { FondEUError, Errors } from '@/lib/errors';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
 import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
+import { assertTier } from '@/lib/middleware/tier-gate';
 
 const euProgramKeys = ['horizon_europe', 'life_plus', 'interreg', 'erdf', 'pocidif', 'pnrr', 'general'] as const;
 
@@ -32,7 +33,7 @@ const inputSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withAIAuth(request, async () => {
+  return withAIAuth(request, async (user) => {
   try {
     const body = await request.json();
     const parsed = inputSchema.safeParse(body);
@@ -49,6 +50,8 @@ export async function POST(request: NextRequest) {
       const { sanitized: data } = sanitizeAIResponseDeep(result);
       return NextResponse.json({ success: true, data });
     }
+
+    assertTier(user.tier, 'pro');
 
     const result = await generateAdvancedReport(input);
 

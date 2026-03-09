@@ -75,7 +75,8 @@ export async function GET(req: NextRequest, { params }: Params) {
 
 const approvalSchema = z.object({
   projectId: z.string().uuid(),
-  decision: z.enum(['aprobat', 'respins']),
+  decision: z.enum(['approve', 'reject', 'aprobat', 'respins']),
+  feedback: z.string().max(2000).optional(),
 });
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       throw Errors.validation('body', 'Date invalide', 'Invalid input');
     }
 
-    const { projectId, decision } = parsed.data;
+    const { projectId, decision, feedback } = parsed.data;
 
     // Verify project exists, belongs to org, and is in 'verificare' status
     const project = await db.query.projects.findFirst({
@@ -107,9 +108,20 @@ export async function POST(req: NextRequest, { params }: Params) {
       throw Errors.notFound('project', projectId);
     }
 
+    const nextStatus = decision === 'approve' || decision === 'aprobat'
+      ? 'finalizat'
+      : 'ciorna';
+
     await db
       .update(projects)
-      .set({ status: decision, updatedAt: new Date() })
+      .set({
+        status: nextStatus,
+        updatedAt: new Date(),
+        metadata: {
+          ...(project.metadata ?? {}),
+          ...(feedback ? { approvalFeedback: feedback } : {}),
+        },
+      })
       .where(eq(projects.id, projectId));
 
     await logAudit({
@@ -118,12 +130,16 @@ export async function POST(req: NextRequest, { params }: Params) {
       resourceType: 'project',
       resourceId: projectId,
       oldValue: { status: 'verificare' },
-      newValue: { status: decision },
+      newValue: { status: nextStatus },
+      metadata: {
+        decision,
+        ...(feedback ? { feedback } : {}),
+      },
     });
 
     return NextResponse.json({
       success: true,
-      data: { projectId, status: decision },
+      data: { projectId, status: nextStatus, decision },
     });
   } catch (error) {
     if (error instanceof FondEUError) {

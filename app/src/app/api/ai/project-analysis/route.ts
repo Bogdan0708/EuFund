@@ -5,6 +5,8 @@ import { analyzeProject, getProjectHealthQuick, type ProjectAnalysisRequest } fr
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
 import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
+import { assertTier } from '@/lib/middleware/tier-gate';
+import { FondEUError } from '@/lib/errors';
 
 const quickAnalysisSchema = z.object({
   mode: z.literal('quick'),
@@ -55,7 +57,7 @@ const fullAnalysisSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withAIAuth(request, async () => {
+  return withAIAuth(request, async (user) => {
   try {
     const body = await request.json();
 
@@ -73,11 +75,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, data });
     }
 
+    assertTier(user.tier, 'pro');
+
     const parsed = fullAnalysisSchema.parse(body);
     const result = await analyzeProject(parsed as ProjectAnalysisRequest);
     const { sanitized: data } = sanitizeAIResponseDeep(result);
     return NextResponse.json({ success: true, data });
   } catch (error) {
+    if (error instanceof FondEUError) {
+      return NextResponse.json(error.toResponse(), { status: error.statusCode });
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input' } },

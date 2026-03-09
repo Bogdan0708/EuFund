@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { PageHeader } from '@/components/ui/page-header';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/page-states';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { TrialBanner } from '@/components/billing/trial-banner';
 
 interface Project {
   id: string;
@@ -91,7 +92,7 @@ export default function DashboardPage() {
       { label: 'Ciornă', value: projects.filter((project) => project.status === 'ciorna').length, color: 'bg-slate-500' },
       { label: 'În lucru', value: projects.filter((project) => project.status === 'in_lucru').length, color: 'bg-sky-500' },
       { label: 'Verificare', value: projects.filter((project) => project.status === 'verificare').length, color: 'bg-amber-500' },
-      { label: 'Aprobat', value: projects.filter((project) => project.status === 'aprobat').length, color: 'bg-emerald-500' },
+      { label: 'Aprobat / finalizat', value: projects.filter((project) => ['aprobat', 'finalizat'].includes(project.status)).length, color: 'bg-emerald-500' },
     ];
 
     return {
@@ -125,6 +126,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <TrialBanner locale={locale === 'en' ? 'en' : 'ro'} />
+
       <PageHeader
         title="Panou programe"
         description="Urmărește sănătatea portofoliului, aprobările, termenele și acțiunile de conformitate într-un singur loc."

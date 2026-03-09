@@ -6,6 +6,8 @@ import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
 import { assessRisk, type RiskAssessmentInput } from '@/lib/ai/risk-assessment';
 import { listRisks } from '@/lib/services/risks';
 import { listWorkPackages } from '@/lib/services/work-packages';
+import { requireTier } from '@/lib/middleware/tier-gate';
+import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -23,6 +25,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     });
     if (!project) throw Errors.notFound('project', id);
     await requireOrgRole(user.id, project.orgId, 'project_manager');
+    const ensureTier = requireTier('pro');
+    await ensureTier(user.id);
 
     // Gather context for AI analysis
     const [existingRisks, workPackages] = await Promise.all([
@@ -85,6 +89,18 @@ export async function POST(req: NextRequest, { params }: Params) {
         created.push(risk);
       }
       return created;
+    });
+
+    await logAudit({
+      userId: user.id,
+      action: 'ai.generate',
+      resourceType: 'project',
+      resourceId: id,
+      metadata: {
+        feature: 'risk_ai_assessment',
+        storedRisks: storedRisks.length,
+        existingRisksCount: existingRisks.length,
+      },
     });
 
     return NextResponse.json({

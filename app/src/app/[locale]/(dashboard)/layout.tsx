@@ -79,6 +79,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       { href: `/${locale}/proiecte/asistent-proiect`, label: 'Asistent Proiect', icon: Wand2 },
       { href: `/${locale}/proiecte`, label: 'Sarcini și jaloane', icon: Signature },
       { href: `/${locale}/proiecte`, label: 'Buget și costuri', icon: Wallet },
+      { href: `/${locale}/billing`, label: 'Facturare', icon: Wallet },
       { href: `/${locale}/proiecte`, label: 'Rapoarte', icon: FileText },
       { href: `/${locale}/documente/incarca`, label: 'Documente', icon: FileText },
       { href: `/${locale}/audit`, label: 'Jurnal audit', icon: ShieldCheck },

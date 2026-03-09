@@ -14,6 +14,8 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 type Params = { params: { id: string } };
+const DIRECT_MUTABLE_PROJECT_STATUSES = ['ciorna', 'in_lucru', 'verificare', 'depus'] as const;
+const TERMINAL_PROJECT_STATUSES = ['aprobat', 'respins', 'finalizat', 'arhivat'] as const;
 
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
@@ -67,7 +69,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       throw Errors.notFound('project', id);
     }
 
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
+    const userRole = await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     const body = await req.json();
 
@@ -116,6 +118,55 @@ export async function PUT(req: NextRequest, { params }: Params) {
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         updateData[field] = body[field];
+      }
+    }
+
+    if (body.status !== undefined) {
+      const nextStatus = String(body.status);
+      const currentStatus = String(project.status);
+
+      if (TERMINAL_PROJECT_STATUSES.includes(currentStatus as typeof TERMINAL_PROJECT_STATUSES[number]) && nextStatus !== currentStatus) {
+        throw new FondEUError({
+          code: 'CONFLICT',
+          statusCode: 409,
+          messageEn: 'Terminal project states cannot be changed from the generic update route.',
+          messageRo: 'Stările finale ale proiectului nu pot fi modificate din ruta generică de actualizare.',
+          details: { reason: 'TERMINAL_PROJECT_STATE_LOCKED', currentStatus, nextStatus },
+          retryable: false,
+        });
+      }
+
+      if (!DIRECT_MUTABLE_PROJECT_STATUSES.includes(nextStatus as typeof DIRECT_MUTABLE_PROJECT_STATUSES[number])) {
+        throw new FondEUError({
+          code: 'CONFLICT',
+          statusCode: 409,
+          messageEn: 'This status transition must use the dedicated workflow route.',
+          messageRo: 'Această tranziție de status trebuie făcută prin fluxul dedicat.',
+          details: { reason: 'PROJECT_STATUS_WORKFLOW_REQUIRED', currentStatus, nextStatus },
+          retryable: false,
+        });
+      }
+
+      if (currentStatus === 'verificare' && nextStatus !== 'verificare') {
+        throw new FondEUError({
+          code: 'CONFLICT',
+          statusCode: 409,
+          messageEn: 'Projects under review must be updated through the approval workflow.',
+          messageRo: 'Proiectele aflate în verificare trebuie actualizate prin fluxul de aprobare.',
+          details: { reason: 'PROJECT_UNDER_REVIEW', currentStatus, nextStatus },
+          retryable: false,
+        });
+      }
+
+      if (userRole !== 'org_admin' && userRole !== 'admin' && nextStatus === 'depus') {
+        throw new FondEUError({
+          code: 'FORBIDDEN',
+          statusCode: 403,
+          messageEn: 'Only organization administrators can mark a project as submitted.',
+          messageRo: 'Doar administratorii organizației pot marca un proiect ca depus.',
+          details: { reason: 'PROJECT_SUBMISSION_REQUIRES_ADMIN' },
+          retryable: false,
+        });
       }
     }
 

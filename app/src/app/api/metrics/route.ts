@@ -1,10 +1,29 @@
-// ─── Prometheus Metrics Endpoint ─────────────────────────────────
-// GET /api/metrics — returns Prometheus exposition format
-
+import { NextRequest, NextResponse } from 'next/server';
 import { metrics } from '@/lib/monitoring/metrics';
+
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+function isAuthorized(request: NextRequest): boolean {
+  if (process.env.NODE_ENV !== 'production') {
+    return true;
+  }
+
+  const expectedToken = process.env.METRICS_AUTH_TOKEN;
+  if (!expectedToken) {
+    return false;
+  }
+
+  const bearer = request.headers.get('authorization');
+  const headerToken = request.headers.get('x-metrics-token');
+
+  return bearer === `Bearer ${expectedToken}` || headerToken === expectedToken;
+}
+
+export async function GET(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   return new Response(metrics.toPrometheus(), {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
