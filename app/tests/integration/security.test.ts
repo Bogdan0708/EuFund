@@ -540,10 +540,16 @@ describe('Security Integration Tests', () => {
       }));
       vi.mock('@/lib/ai/eu-ai-act', () => ({
         withEUAIActCompliance: (_feature: string, handler: Function) =>
-          async (payload: unknown) => ({
+          async (payload: unknown, _userId?: string) => ({
             result: await handler(payload).then((value: any) => value.result ?? value),
             metadata: { oversightRequired: false },
           }),
+      }));
+      vi.mock('@/lib/ai/sanitize', () => ({
+        sanitizeAIResponseDeep: (data: unknown) => ({ sanitized: data, piiRedacted: [] }),
+      }));
+      vi.mock('@/lib/middleware/tier-gate', () => ({
+        assertTier: vi.fn().mockImplementation((tier: string) => tier),
       }));
       vi.mock('@/lib/middleware/auth', () => ({
         withAIAuth: (req: any, handler: Function) =>
