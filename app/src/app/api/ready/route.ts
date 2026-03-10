@@ -6,7 +6,8 @@ import { withRateLimit } from '@/lib/middleware/rate-limit';
  * Subject to a strict 12 requests/minute rate limit to prevent abuse
  * while allowing sufficient health monitoring frequency.
  */
-async function readyHandler(req: NextRequest) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function readyHandler(_req: NextRequest) {
   return NextResponse.json(
     { status: 'ready', timestamp: new Date().toISOString() },
     { status: 200 }
