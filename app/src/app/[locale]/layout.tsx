@@ -8,10 +8,16 @@ import { CookieConsentBanner } from '@/components/ui/cookie-consent';
 import { getNonce } from '@/lib/security/nonce';
 import '@/app/globals.css';
 
-export const metadata: Metadata = {
-  title: 'FondEU – Platforma de Finanțări Europene',
-  description: 'Platformă AI pentru pregătirea cererilor de finanțare europeană pentru organizații din România.',
-};
+export async function generateMetadata({ params: { locale } }: { params: { locale: string } }): Promise<Metadata> {
+  return {
+    title: locale === 'en'
+      ? 'FondEU – European Funding Platform'
+      : 'FondEU – Platforma de Finanțări Europene',
+    description: locale === 'en'
+      ? 'AI-powered platform for preparing EU funding applications for Romanian organizations.'
+      : 'Platformă AI pentru pregătirea cererilor de finanțare europeană pentru organizații din România.',
+  };
+}
 
 export default async function LocaleLayout({
   children,
@@ -33,7 +39,7 @@ export default async function LocaleLayout({
       </head>
       <body className="min-h-screen bg-gray-50 text-gray-900 antialiased">
         <AuthSessionProvider>
-          <NextIntlClientProvider messages={messages}>
+          <NextIntlClientProvider locale={locale} messages={messages}>
             {children}
             <CookieConsentBanner />
           </NextIntlClientProvider>
