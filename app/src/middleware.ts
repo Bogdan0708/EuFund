@@ -47,6 +47,7 @@ function buildCSP(nonce: string, isDev: boolean): string {
 const publicPaths = [
   '/api/auth',
   '/api/health',
+  '/api/ready',
   '/api/csp-report', // CSP violation reporting endpoint
   '/api/metrics',    // Prometheus scrape endpoint
   '/ro/autentificare',

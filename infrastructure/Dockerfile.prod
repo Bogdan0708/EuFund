@@ -30,6 +30,7 @@ COPY --from=builder /app/public ./public
 
 # Copy drizzle migrations for runtime
 COPY --from=builder /app/src/lib/db/migrations ./src/lib/db/migrations
+COPY --from=builder /app/drizzle.config.ts ./
 
 USER nextjs
 EXPOSE 3000

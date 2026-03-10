@@ -15,7 +15,7 @@ export abstract class BaseAIProvider implements AIProviderInterface {
   public abstract readonly provider: AIProvider;
   protected apiKey: string;
   protected baseURL?: string;
-  protected timeout: number = 30000; // 30 seconds default
+  protected timeout: number = 15000; // 15 seconds default
 
   constructor(protected config: {
     apiKey: string;
@@ -24,7 +24,7 @@ export abstract class BaseAIProvider implements AIProviderInterface {
   }) {
     this.apiKey = config.apiKey;
     this.baseURL = config.baseURL;
-    this.timeout = config.timeout || 30000;
+    this.timeout = config.timeout || 15000;
   }
 
   public abstract generateText(request: AIRequest): Promise<AIResponse>;
