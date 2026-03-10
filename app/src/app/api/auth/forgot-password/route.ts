@@ -57,10 +57,8 @@ async function forgotPasswordHandler(req: NextRequest) {
     return successResponse;
   } catch (error) {
     logger.error({ error }, '[auth:forgot-password]');
-    return NextResponse.json(
-      { error: { message: 'A apărut o eroare internă.' } },
-      { status: 500 },
-    );
+    // Always return 200 to prevent user enumeration (P0-2 / P2-3)
+    return NextResponse.json({ success: true }, { status: 200 });
   }
 }
 

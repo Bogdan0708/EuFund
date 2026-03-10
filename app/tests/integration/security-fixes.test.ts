@@ -252,7 +252,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
       expect(response.headers.get('Location')).toContain('/ro/autentificare');
     });
 
-    it('should redirect to the /en/login for unauthenticated requests to protected EN pages', async () => {
+    it('should redirect to /en/autentificare for unauthenticated requests to protected EN pages', async () => {
        vi.doMock('@/lib/auth/edge', () => ({
         auth: (handler: Function) => (req: NextAuthRequest) => {
           req.auth = null; // Simulate no session
@@ -265,7 +265,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
       const response = await middleware(request) as NextResponse;
 
       expect(response.status).toBe(307);
-      expect(response.headers.get('Location')).toContain('/en/login');
+      expect(response.headers.get('Location')).toContain('/en/autentificare');
     });
   });
 });

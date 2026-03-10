@@ -59,7 +59,10 @@
     "tokenExpired": "Link-ul de resetare este invalid sau a expirat. Te rugăm să soliciți unul nou.",
     "backToLogin": "Înapoi la autentificare",
     "passwordMismatch": "Parolele nu coincid.",
-    "passwordTooShort": "Parola trebuie să aibă cel puțin 8 caractere."
+    "passwordTooShort": "Parola trebuie să aibă cel puțin 8 caractere.",
+    "platformDescription": "FondEU – Platforma de Finanțări Europene",
+    "dateOfBirth": "Data nașterii",
+    "requiredConsents": "Consimțăminte obligatorii"
   },
   "nav": {
     "dashboard": "Panou de control",

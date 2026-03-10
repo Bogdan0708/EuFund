@@ -59,7 +59,10 @@
     "tokenExpired": "The reset link is invalid or has expired. Please request a new one.",
     "backToLogin": "Back to sign in",
     "passwordMismatch": "Passwords do not match.",
-    "passwordTooShort": "Password must be at least 8 characters."
+    "passwordTooShort": "Password must be at least 8 characters.",
+    "platformDescription": "FondEU – European Funding Platform",
+    "dateOfBirth": "Date of Birth",
+    "requiredConsents": "Required consents"
   },
   "nav": {
     "dashboard": "Dashboard",

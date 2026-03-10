@@ -11,6 +11,37 @@ interface ConsentRecord {
   status: ConsentStatus;
 }
 
+const i18n = {
+  ro: {
+    title: 'Preferințe cookie',
+    description: 'Cookie-urile esențiale sunt active permanent. Alegeți dacă permiteți analytics și marketing.',
+    privacyLink: 'Vezi politica de confidențialitate',
+    essential: 'Esențiale',
+    essentialDesc: 'Necesare pentru autentificare și securitate.',
+    analyticsDesc: 'Măsoară utilizarea produsului.',
+    marketingDesc: 'Comunicări promoționale personalizate.',
+    rejectAll: 'Respinge toate opționale',
+    savePrefs: 'Salvează preferințe',
+    acceptAll: 'Acceptă toate',
+    hasConsent: 'Cel puțin un consent opțional activ.',
+    noConsent: 'Niciun consent opțional activ.',
+  },
+  en: {
+    title: 'Cookie preferences',
+    description: 'Essential cookies are always active. Choose whether to allow analytics and marketing.',
+    privacyLink: 'View privacy policy',
+    essential: 'Essential',
+    essentialDesc: 'Required for authentication and security.',
+    analyticsDesc: 'Measures product usage.',
+    marketingDesc: 'Personalized promotional communications.',
+    rejectAll: 'Reject all optional',
+    savePrefs: 'Save preferences',
+    acceptAll: 'Accept all',
+    hasConsent: 'At least one optional consent is active.',
+    noConsent: 'No optional consent active.',
+  },
+};
+
 const CONSENT_VERSION = process.env.NEXT_PUBLIC_CONSENT_POLICY_VERSION || 'v1';
 const STORAGE_KEY = `eufund:cookie-consent-dismissed:${CONSENT_VERSION}`;
 
@@ -54,6 +85,21 @@ export function CookieConsentBanner() {
       }
 
       try {
+        // Check for session cookie before fetching authenticated endpoint.
+        // This avoids a 401 console error on every unauthenticated page load.
+        const hasSession = document.cookie.split('; ').some((c) =>
+          c.startsWith('authjs.session-token=') || c.startsWith('__Secure-authjs.session-token=')
+        );
+
+        if (!hasSession) {
+          // Show basic cookie banner for unauthenticated users (GDPR compliance)
+          if (!cancelled) {
+            setVisible(true);
+            setLoading(false);
+          }
+          return;
+        }
+
         const csrfToken = getCsrfToken();
         const res = await fetch('/api/auth/consent', {
           headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
@@ -61,8 +107,7 @@ export function CookieConsentBanner() {
 
         if (!res.ok) {
           if (!cancelled) {
-            // Hide for unauthenticated users (401), show for others
-            setVisible(res.status !== 401);
+            setVisible(true);
             setLoading(false);
           }
           return;
@@ -97,24 +142,30 @@ export function CookieConsentBanner() {
   async function persistConsent(analytics: boolean, marketing: boolean) {
     setSaving(true);
     try {
-      const csrfToken = getCsrfToken();
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
-      };
+      const hasSession = document.cookie.split('; ').some((c) =>
+        c.startsWith('authjs.session-token=') || c.startsWith('__Secure-authjs.session-token=')
+      );
 
-      const response = await fetch('/api/auth/consent/bulk', {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify({
-          consents: [
-            { consentType: 'analytics', status: analytics ? 'granted' : 'withdrawn' },
-            { consentType: 'marketing', status: marketing ? 'granted' : 'withdrawn' },
-          ],
-        }),
-      });
+      if (hasSession) {
+        const csrfToken = getCsrfToken();
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+          ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+        };
 
-      if (!response.ok) return;
+        const response = await fetch('/api/auth/consent/bulk', {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            consents: [
+              { consentType: 'analytics', status: analytics ? 'granted' : 'withdrawn' },
+              { consentType: 'marketing', status: marketing ? 'granted' : 'withdrawn' },
+            ],
+          }),
+        });
+
+        if (!response.ok) return;
+      }
 
       setAnalyticsEnabled(analytics);
       setMarketingEnabled(marketing);
@@ -129,33 +180,35 @@ export function CookieConsentBanner() {
 
   if (!mounted || loading || !visible) return null;
 
+  const t = locale === 'en' ? i18n.en : i18n.ro;
+
   return (
     <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-3xl rounded-xl border bg-white p-4 shadow-xl">
       <div className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold">Preferințe cookie</h2>
+          <h2 className="text-sm font-semibold">{t.title}</h2>
           <p className="text-xs text-muted-foreground">
-            Cookie-urile esențiale sunt active permanent. Alegeți dacă permiteți analytics și marketing.
+            {t.description}
             {' '}
             <a
               href={locale === 'en' ? '/en/privacy-policy' : '/ro/politica-de-confidentialitate'}
               className="underline underline-offset-2"
             >
-              Vezi politica de confidențialitate
+              {t.privacyLink}
             </a>
           </p>
         </div>
 
         <div className="grid gap-2 text-sm sm:grid-cols-3">
           <div className="rounded-md border p-2">
-            <p className="font-medium">Esențiale</p>
-            <p className="text-xs text-muted-foreground">Necesare pentru autentificare și securitate.</p>
+            <p className="font-medium">{t.essential}</p>
+            <p className="text-xs text-muted-foreground">{t.essentialDesc}</p>
           </div>
           <label className="rounded-md border p-2">
             <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="font-medium">Analytics</p>
-                <p className="text-xs text-muted-foreground">Măsoară utilizarea produsului.</p>
+                <p className="text-xs text-muted-foreground">{t.analyticsDesc}</p>
               </div>
               <input
                 type="checkbox"
@@ -169,7 +222,7 @@ export function CookieConsentBanner() {
             <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="font-medium">Marketing</p>
-                <p className="text-xs text-muted-foreground">Comunicări promoționale personalizate.</p>
+                <p className="text-xs text-muted-foreground">{t.marketingDesc}</p>
               </div>
               <input
                 type="checkbox"
@@ -183,16 +236,16 @@ export function CookieConsentBanner() {
 
         <div className="flex flex-wrap gap-2">
           <Button variant="destructive" size="sm" onClick={() => persistConsent(false, false)} disabled={saving}>
-            Respinge toate opționale
+            {t.rejectAll}
           </Button>
           <Button variant="outline" size="sm" onClick={() => persistConsent(analyticsEnabled, marketingEnabled)} disabled={saving}>
-            Salvează preferințe
+            {t.savePrefs}
           </Button>
           <Button size="sm" onClick={() => persistConsent(true, true)} disabled={saving}>
-            Acceptă toate
+            {t.acceptAll}
           </Button>
           <span className="self-center text-xs text-muted-foreground">
-            {hasOptionalConsent ? 'Cel puțin un consent opțional activ.' : 'Niciun consent opțional activ.'}
+            {hasOptionalConsent ? t.hasConsent : t.noConsent}
           </span>
         </div>
       </div>

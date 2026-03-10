@@ -113,7 +113,7 @@ export default function ResetPasswordPage() {
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl text-primary">{t('setNewPassword')}</CardTitle>
-            <CardDescription>FondEU – Platforma de Finanțări Europene</CardDescription>
+            <CardDescription>{t('platformDescription')}</CardDescription>
           </CardHeader>
           <form onSubmit={handleSetNewPassword}>
             <CardContent className="space-y-4">

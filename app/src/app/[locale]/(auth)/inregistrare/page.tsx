@@ -100,7 +100,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Data nașterii</Label>
+              <Label>{t('dateOfBirth')}</Label>
               <Input type="date" {...reg('dateOfBirth')} />
               {errors.dateOfBirth && <p className="text-sm text-destructive">{errors.dateOfBirth.message}</p>}
             </div>
@@ -112,27 +112,27 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-3 rounded-lg bg-muted p-4">
-              <h3 className="font-medium">Consimțăminte obligatorii</h3>
+              <h3 className="font-medium">{t('requiredConsents')}</h3>
               <label className="flex items-start gap-2">
-                <input type="checkbox" {...reg('ageConfirmed')} className="mt-1" />
+                <input type="checkbox" {...reg('ageConfirmed')} className="mt-1 h-5 w-5" />
                 <span className="text-sm">{t('ageConfirmation')}</span>
               </label>
               {errors.ageConfirmed && <p className="text-sm text-destructive">{errors.ageConfirmed.message}</p>}
 
               <label className="flex items-start gap-2">
-                <input type="checkbox" {...reg('privacyConsent')} className="mt-1" />
+                <input type="checkbox" {...reg('privacyConsent')} className="mt-1 h-5 w-5" />
                 <span className="text-sm">{t('privacyConsent')}</span>
               </label>
               {errors.privacyConsent && <p className="text-sm text-destructive">{errors.privacyConsent.message}</p>}
 
               <label className="flex items-start gap-2">
-                <input type="checkbox" {...reg('termsConsent')} className="mt-1" />
+                <input type="checkbox" {...reg('termsConsent')} className="mt-1 h-5 w-5" />
                 <span className="text-sm">{t('termsConsent')}</span>
               </label>
               {errors.termsConsent && <p className="text-sm text-destructive">{errors.termsConsent.message}</p>}
 
               <label className="flex items-start gap-2">
-                <input type="checkbox" {...reg('gdprConsent')} className="mt-1" />
+                <input type="checkbox" {...reg('gdprConsent')} className="mt-1 h-5 w-5" />
                 <span className="text-sm">{t('gdprConsent')}</span>
               </label>
               {errors.gdprConsent && <p className="text-sm text-destructive">{errors.gdprConsent.message}</p>}

@@ -64,7 +64,9 @@ const publicPaths = [
   '/_next',
   '/favicon.ico',
   '/robots.txt',
-  '/manifest.json'
+  '/manifest.json',
+  '/manifest.webmanifest',
+  '/sitemap.xml'
 ];
 
 if (process.env.NODE_ENV === 'development') {
@@ -127,7 +129,7 @@ export default auth(async (req) => {
     }
 
     // Redirect to login for web pages
-    const loginUrl = pathname.startsWith('/en') ? '/en/login' : '/ro/autentificare';
+    const loginUrl = pathname.startsWith('/en') ? '/en/autentificare' : '/ro/autentificare';
     const response = NextResponse.redirect(new URL(loginUrl, req.url));
     response.headers.set('x-request-id', requestId);
     return finalizeResponse(response);

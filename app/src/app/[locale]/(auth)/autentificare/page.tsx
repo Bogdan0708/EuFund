@@ -24,6 +24,12 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (!email.trim() || !password) {
+      setError(t('invalidCredentials'));
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -49,10 +55,10 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl text-primary">🇪🇺 {t('login')}</CardTitle>
-          <CardDescription>FondEU – Platforma de Finanțări Europene</CardDescription>
+          <CardTitle className="text-2xl text-primary">{t('login')}</CardTitle>
+          <CardDescription>{t('platformDescription')}</CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} method="post" noValidate>
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">{t('email')}</Label>
@@ -88,7 +94,7 @@ export default function LoginPage() {
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Se procesează...' : t('login')}
+              {loading ? t('processing') : t('login')}
             </Button>
             <p className="text-sm text-muted-foreground">
               <Link href={`/${locale}/inregistrare`} className="text-primary hover:underline">

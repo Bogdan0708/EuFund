@@ -23,6 +23,14 @@ function detectLocale(acceptLanguage?: string | null): 'ro' | 'en' {
 
 async function registerHandler(req: NextRequest) {
   try {
+    const contentType = req.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return NextResponse.json(
+        Errors.validation('Content-Type', 'Content-Type trebuie să fie application/json.', 'Content-Type must be application/json.').toResponse('ro'),
+        { status: 400 },
+      );
+    }
+
     const body = await req.json();
     const parsed = registerSchema.safeParse(body);
 
