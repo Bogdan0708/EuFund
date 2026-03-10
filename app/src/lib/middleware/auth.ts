@@ -80,6 +80,26 @@ const FEATURE_DAILY_LIMITS: Record<AIFeature, number> = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+function validateAllowedContentType(
+  request: NextRequest,
+  allowedContentTypes: string[] = ['application/json'],
+): NextResponse | null {
+  const method = request.method.toUpperCase();
+  if (!['POST', 'PUT', 'PATCH'].includes(method)) {
+    return null;
+  }
+
+  const contentType = request.headers.get('content-type')?.split(';')[0]?.trim() || '';
+  if (!contentType || !allowedContentTypes.some((value) => contentType.startsWith(value))) {
+    return NextResponse.json(
+      { error: 'Unsupported Media Type', code: 'UNSUPPORTED_MEDIA_TYPE' },
+      { status: 415 },
+    );
+  }
+
+  return null;
+}
+
 async function checkFeatureDailyLimit(
   userId: string,
   feature: AIFeature,
@@ -142,6 +162,95 @@ async function sanitizeAIJsonResponse(response: NextResponse): Promise<NextRespo
   }
 }
 
+type AuthGuardResult =
+  | { user: AuthenticatedUser; rateLimit: { remaining: number; resetTime: number } }
+  | { errorResponse: NextResponse };
+
+async function guardAIRequest(
+  request: NextRequest,
+  options?: { feature?: AIFeature; allowedContentTypes?: string[] }
+): Promise<AuthGuardResult> {
+  const contentTypeError = validateAllowedContentType(request, options?.allowedContentTypes);
+  if (contentTypeError) {
+    return { errorResponse: contentTypeError };
+  }
+
+  const session = await auth();
+  if (!session?.user?.id) {
+    return {
+      errorResponse: NextResponse.json(
+        { error: 'Authentication required', code: 'UNAUTHORIZED' },
+        { status: 401 },
+      ),
+    };
+  }
+
+  const userTier = await getUserTier(session.user.id);
+  const user: AuthenticatedUser = {
+    id: session.user.id,
+    email: session.user.email!,
+    name: session.user.name || undefined,
+    tier: userTier,
+  };
+
+  if (!await isRedisAvailable()) {
+    log.warn({ userId: user.id }, '[auth] Redis unavailable — rejecting AI request (fail-closed)');
+    return {
+      errorResponse: NextResponse.json(
+        {
+          error: 'Service temporarily unavailable',
+          code: 'RATE_LIMIT_UNAVAILABLE',
+          message: 'Rate limiting service is unavailable. Please try again shortly.',
+        },
+        { status: 503 },
+      ),
+    };
+  }
+
+  const rateLimit = await checkRateLimit(
+    `ai_requests:${user.id}`,
+    RATE_LIMITS[user.tier],
+    60 * 60 * 1000,
+  );
+
+  if (!rateLimit.allowed) {
+    return {
+      errorResponse: NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          code: 'RATE_LIMIT_EXCEEDED',
+          tier: user.tier,
+          limit: RATE_LIMITS[user.tier],
+          resetTime: rateLimit.resetTime,
+        },
+        { status: 429 },
+      ),
+    };
+  }
+
+  if (options?.feature) {
+    const featureLimit = FEATURE_DAILY_LIMITS[options.feature];
+    const featureRate = await checkFeatureDailyLimit(user.id, options.feature, featureLimit);
+
+    if (!featureRate.allowed) {
+      return {
+        errorResponse: NextResponse.json(
+          {
+            error: 'Daily feature limit exceeded',
+            code: 'FEATURE_LIMIT_EXCEEDED',
+            feature: options.feature,
+            limit: featureLimit,
+            resetTime: featureRate.resetTime,
+          },
+          { status: 429 },
+        ),
+      };
+    }
+  }
+
+  return { user, rateLimit };
+}
+
 /**
  * Authenticate and rate-limit an AI request, returning the user or an error response.
  * Use this for streaming routes where you need to run auth before returning a stream.
@@ -151,99 +260,12 @@ export async function authenticateAIUser(
   options?: { feature?: AIFeature; allowedContentTypes?: string[] }
 ): Promise<{ user: AuthenticatedUser } | { errorResponse: NextResponse }> {
   try {
-    // Content-Type validation for state-changing methods
-    const method = request.method.toUpperCase();
-    if (['POST', 'PUT', 'PATCH'].includes(method)) {
-      const contentType = request.headers.get('content-type')?.split(';')[0]?.trim() || '';
-      const allowed = options?.allowedContentTypes ?? ['application/json'];
-      if (contentType && !allowed.some(t => contentType.startsWith(t))) {
-        return {
-          errorResponse: NextResponse.json(
-            { error: 'Unsupported Media Type', code: 'UNSUPPORTED_MEDIA_TYPE' },
-            { status: 415 }
-          ),
-        };
-      }
+    const result = await guardAIRequest(request, options);
+    if ('errorResponse' in result) {
+      return result;
     }
 
-    const session = await auth();
-
-    if (!session?.user?.id) {
-      return {
-        errorResponse: NextResponse.json(
-          { error: 'Authentication required', code: 'UNAUTHORIZED' },
-          { status: 401 }
-        ),
-      };
-    }
-
-    const userTier = await getUserTier(session.user.id);
-
-    const user: AuthenticatedUser = {
-      id: session.user.id,
-      email: session.user.email!,
-      name: session.user.name || undefined,
-      tier: userTier,
-    };
-
-    // Fail-closed: AI endpoints require Redis for rate limiting.
-    // If Redis is configured but unavailable, return 503 to prevent unmetered AI usage.
-    if (!await isRedisAvailable()) {
-      log.warn({ userId: user.id }, '[auth] Redis unavailable — rejecting AI request (fail-closed)');
-      return {
-        errorResponse: NextResponse.json(
-          {
-            error: 'Service temporarily unavailable',
-            code: 'RATE_LIMIT_UNAVAILABLE',
-            message: 'Rate limiting service is unavailable. Please try again shortly.',
-          },
-          { status: 503 },
-        ),
-      };
-    }
-
-    const rateLimit = await checkRateLimit(
-      `ai_requests:${user.id}`,
-      RATE_LIMITS[user.tier],
-      60 * 60 * 1000
-    );
-
-    if (!rateLimit.allowed) {
-      return {
-        errorResponse: NextResponse.json(
-          {
-            error: 'Rate limit exceeded',
-            code: 'RATE_LIMIT_EXCEEDED',
-            tier: user.tier,
-            limit: RATE_LIMITS[user.tier],
-            resetTime: rateLimit.resetTime,
-          },
-          { status: 429 }
-        ),
-      };
-    }
-
-    if (options?.feature) {
-      const featureLimit = FEATURE_DAILY_LIMITS[options.feature];
-      const featureRate = await checkFeatureDailyLimit(user.id, options.feature, featureLimit);
-
-      if (!featureRate.allowed) {
-        return {
-          errorResponse: NextResponse.json(
-            {
-              error: 'Daily feature limit exceeded',
-              code: 'FEATURE_LIMIT_EXCEEDED',
-              feature: options.feature,
-              limit: featureLimit,
-              resetTime: featureRate.resetTime,
-            },
-            { status: 429 }
-          ),
-        };
-      }
-    }
-
-    return { user };
+    return { user: result.user };
   } catch (error) {
     log.error({ error }, 'AI authentication error:');
     return {
@@ -258,94 +280,26 @@ export async function authenticateAIUser(
 export async function withAIAuth(
   request: NextRequest,
   handler: (user: AuthenticatedUser) => Promise<NextResponse>,
-  options?: { feature?: AIFeature }
+  options?: { feature?: AIFeature; allowedContentTypes?: string[] }
 ): Promise<NextResponse> {
   try {
-    // Check authentication
-    const session = await auth();
-    
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Authentication required', code: 'UNAUTHORIZED' },
-        { status: 401 }
-      );
-    }
-
-    // Get user tier from database with fail-closed default
-    const userTier = await getUserTier(session.user.id);
-    
-    const user: AuthenticatedUser = {
-      id: session.user.id,
-      email: session.user.email!,
-      name: session.user.name || undefined,
-      tier: userTier
-    };
-
-    // Fail-closed: AI endpoints require Redis for rate limiting.
-    // If Redis is unavailable, return 503 to prevent unmetered AI usage.
-    if (!await isRedisAvailable()) {
-      log.warn({ userId: user.id }, '[auth] Redis unavailable — rejecting AI request (fail-closed)');
-      return NextResponse.json(
-        {
-          error: 'Service temporarily unavailable',
-          code: 'RATE_LIMIT_UNAVAILABLE',
-          message: 'Rate limiting service is unavailable. Please try again shortly.',
-        },
-        { status: 503 },
-      );
-    }
-
-    // Check rate limits
-    const rateLimit = await checkRateLimit(
-      `ai_requests:${user.id}`,
-      RATE_LIMITS[user.tier],
-      60 * 60 * 1000 // 1 hour window
-    );
-
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        {
-          error: 'Rate limit exceeded',
-          code: 'RATE_LIMIT_EXCEEDED',
-          tier: user.tier,
-          limit: RATE_LIMITS[user.tier],
-          resetTime: rateLimit.resetTime
-        },
-        { status: 429 }
-      );
-    }
-
-    // Per-feature daily rate limit
-    if (options?.feature) {
-      const featureLimit = FEATURE_DAILY_LIMITS[options.feature];
-      const featureRate = await checkFeatureDailyLimit(user.id, options.feature, featureLimit);
-
-      if (!featureRate.allowed) {
-        return NextResponse.json(
-          {
-            error: 'Daily feature limit exceeded',
-            code: 'FEATURE_LIMIT_EXCEEDED',
-            feature: options.feature,
-            limit: featureLimit,
-            resetTime: featureRate.resetTime,
-          },
-          { status: 429 }
-        );
-      }
+    const result = await guardAIRequest(request, options);
+    if ('errorResponse' in result) {
+      return result.errorResponse;
     }
 
     // Add rate limit headers
     const startTime = Date.now();
-    let response = await handler(user);
+    let response = await handler(result.user);
     response = await sanitizeAIJsonResponse(response);
-    response.headers.set('X-RateLimit-Limit', RATE_LIMITS[user.tier].toString());
-    response.headers.set('X-RateLimit-Remaining', rateLimit.remaining.toString());
-    response.headers.set('X-RateLimit-Reset', rateLimit.resetTime.toString());
+    response.headers.set('X-RateLimit-Limit', RATE_LIMITS[result.user.tier].toString());
+    response.headers.set('X-RateLimit-Remaining', result.rateLimit.remaining.toString());
+    response.headers.set('X-RateLimit-Reset', result.rateLimit.resetTime.toString());
 
     // Track metrics
     const durationMs = Date.now() - startTime;
     trackRequest(request.method, request.nextUrl.pathname, response.status, durationMs);
-    metrics.inc('ai_requests_total', { feature: options?.feature ?? 'general', tier: user.tier });
+    metrics.inc('ai_requests_total', { feature: options?.feature ?? 'general', tier: result.user.tier });
 
     return response;
 
@@ -356,45 +310,4 @@ export async function withAIAuth(
       { status: 500 }
     );
   }
-}
-
-// CSRF protection for state-changing operations
-// Uses the proper double-submit cookie pattern from csrf.ts
-// This is a lightweight check for the auth middleware layer;
-// full validation (with Redis) happens via csrf.ts
-export function validateCSRFToken(request: NextRequest): boolean {
-  const headerToken = request.headers.get('X-CSRF-Token');
-  const cookieToken = request.cookies.get('csrf-token')?.value;
-
-  // Both header and cookie must exist and match (double-submit pattern)
-  if (!headerToken || !cookieToken) {
-    return false;
-  }
-
-  // Constant-time comparison to prevent timing attacks
-  if (headerToken.length !== cookieToken.length) {
-    return false;
-  }
-
-  let mismatch = 0;
-  for (let i = 0; i < headerToken.length; i++) {
-    mismatch |= headerToken.charCodeAt(i) ^ cookieToken.charCodeAt(i);
-  }
-
-  return mismatch === 0;
-}
-
-export function requireCSRF(handler: (request: NextRequest) => Promise<Response> | Response) {
-  return async (request: NextRequest) => {
-    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
-      if (!validateCSRFToken(request)) {
-        return NextResponse.json(
-          { error: 'CSRF token required', code: 'CSRF_REQUIRED' },
-          { status: 403 }
-        );
-      }
-    }
-    
-    return handler(request);
-  };
 }

@@ -1,5 +1,8 @@
 #!/bin/bash
-# Quick deployment script for EU Funding Platform
+# Image build script for EU Funding Platform
+# NOTE: This script only builds and pushes the container image via Cloud Build.
+# Actual deployment to Cloud Run is handled by GitHub Actions (deploy-production.yml).
+# Use this for manual image builds, NOT for production deployments.
 
 set -e
 
@@ -48,12 +51,13 @@ for service in "${REQUIRED_SERVICES[@]}"; do
 done
 
 # Build and deploy
-print_status "Starting Cloud Build deployment..."
+print_status "Starting Cloud Build image build..."
 print_status "This will:"
 echo "  - Build the Next.js application"
-echo "  - Create Docker container image"  
-echo "  - Deploy to Cloud Run in europe-west2"
-echo "  - Run database migrations"
+echo "  - Create Docker container image"
+echo "  - Push to Artifact Registry"
+echo ""
+print_warning "This does NOT deploy to Cloud Run. Use GitHub Actions deploy-production.yml for production deployments."
 echo ""
 
 read -p "Continue? (y/N): " -n 1 -r
@@ -67,26 +71,14 @@ fi
 gcloud builds submit --config cloudbuild.yaml
 
 if [ $? -eq 0 ]; then
-    print_success "Deployment completed successfully!"
-    echo ""
-    echo "=== Application Information ==="
-    
-    # Get service URL
-    SERVICE_URL=$(gcloud run services describe fondeu-platform \
-        --region=europe-west2 \
-        --format="value(status.url)")
-    
-    echo "Service URL: $SERVICE_URL"
-    echo "Health Check: $SERVICE_URL/api/health"
-    echo "Romanian Interface: $SERVICE_URL/ro"
+    print_success "Image build completed successfully!"
     echo ""
     echo "=== Next Steps ==="
-    echo "1. Test the deployment: curl $SERVICE_URL/api/health"
-    echo "2. Set up custom domain if needed"
+    echo "1. Deploy to production via GitHub Actions: deploy-production.yml (workflow_dispatch)"
+    echo "2. Or manually: gcloud run deploy fondeu-platform --image europe-west2-docker.pkg.dev/eufunding/fondeu/app:latest --region europe-west2 --memory 2Gi --cpu 2"
     echo "3. Monitor logs: gcloud run services logs tail fondeu-platform --region=europe-west2"
-    echo "4. Monitor costs in GCP Console"
 else
-    print_error "Deployment failed. Check Cloud Build logs for details:"
+    print_error "Image build failed. Check Cloud Build logs for details:"
     echo "gcloud builds list --limit=5"
     exit 1
 fi

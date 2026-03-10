@@ -33,6 +33,7 @@ export const AI_CONFIG = {
   vectorStore: {
     provider: (process.env.VECTOR_PROVIDER || 'memory') as 'qdrant' | 'memory',
     qdrantUrl: process.env.QDRANT_URL || 'http://localhost:6333',
+    qdrantApiKey: process.env.QDRANT_API_KEY || '',
     collectionName: process.env.VECTOR_COLLECTION || 'eu_legislation',
   },
   // Rate limits per user

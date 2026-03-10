@@ -31,8 +31,8 @@ export async function POST(req: NextRequest) {
     const result = await runTrialLifecycleNotifications({ dryRun });
 
     return NextResponse.json({ success: true, data: result });
-  } catch (error: any) {
-    if (error instanceof FondEUError || (error && error.name === 'FondEUError')) {
+  } catch (error: unknown) {
+    if (error instanceof FondEUError) {
       return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
     }
 

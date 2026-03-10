@@ -107,6 +107,8 @@ Tests live in `app/tests/` (not `src/`). Path alias: `@/*` maps to `app/src/*`.
 
 **Knowledge ingestion pipeline**: `lib/ai/knowledge/` — three-stage pipeline: `parser.ts` (PDF/Word → text) → `extractor.ts` (AI-powered structured extraction) → `ingestor.ts` (vector store/RAG ingestion). Triggered via `/api/admin/ingest-call` (multipart upload, 15MB max, PDF/DOCX/XLSX/TXT).
 
+**Vector store / RAG**: `lib/vectors/store.ts` — abstraction over Qdrant (production) and in-memory (dev). Controlled by `VECTOR_PROVIDER` env var. Qdrant requires `QDRANT_URL` and `QDRANT_API_KEY`. Collection name defaults to `eu_legislation`. RAG pipeline in `lib/rag/pipeline.ts` — hybrid search (semantic + keyword boost), sentence-based chunking (1000 chars, 200 overlap), chunk validation against poisoning patterns, per-source token budgeting (500 tokens/source, 1600 total context).
+
 **Crawler sources**: `lib/connectors/sources/config.ts` — pre-configured web scraping targets for Romanian funding sources (8 regional ADRs, PNRR portal, AFM, FNGCIMM). Each source has CSS selectors, program detection keywords, and channel metadata.
 
 **Password hashing**: bcryptjs with cost factor 12.
@@ -155,14 +157,26 @@ EU data: EurLex, CORDIS, Eurostat, EC Portal. Romanian: ONRC (company registry),
 - RLS tests only run when `vars.HAS_RLS_DATABASE == 'true'` — use `vars` (repository variables), never `secrets`, for job-level `if` conditions
 - Production deploys to GCP Cloud Run via `deploy-production.yml` (manual trigger with approval gate)
 
+### Scripts (Offline Tooling)
+
+Canonical pipeline for document processing (all in `app/scripts/`):
+
+1. `classify-documents.ts` — AI-classifies raw PDFs/docs into programs and document types
+2. `create-reviewer-sheet.ts` — generates spreadsheet for manual review of classifications
+3. `seed-programs.ts` — seeds `funding_programs` table from classification data
+4. `bulk-ingest-rag-knowledge.ts` — chunks, embeds (OpenAI), and upserts to Qdrant. Requires `QDRANT_URL`, `QDRANT_API_KEY`, `OPENAI_API_KEY`
+5. `direct-ingest-guides.ts` — **emergency-only**, direct DB writes bypassing API/auth. Requires `--dry-run` or `--confirm` flag, writes audit artifact
+6. `generate-knowledge-vault.ts` — generates Obsidian notes and NotebookLM upload guides. Workstation-local, not product code. `VAULT_ROOT` env var overrides output path
+
+Classification output lives in `app/scripts/classification-output/` (gitignored).
+
 ### Knowledge Stack
 
 This project is part of a cross-project knowledge system:
 
-- **Obsidian vault**: `~/Obsidian/01-Projects/EU-Funds/` — symlinked docs, project notes
-- **AI Drafts**: AI-generated content goes to `~/Obsidian/04-AI_Drafts/` for human review before use
+- **Obsidian vault**: `EUFundsVault` — 620+ notes organized by program (PNRR, PEO, POTJ, etc.) with YAML frontmatter and Dataview queries
 - **Custom commands**: `/research`, `/review-drafts`, `/daily`, `/adr` — work across vault + NotebookLM
-- **NotebookLM notebooks**: FondEU-Architecture, FondEU-Compliance, FondEU-Research (see registry at `05-NotebookLM/Sources/notebook-registry.md`)
+- **NotebookLM notebooks**: 12 program-specific notebooks (FondEU-Architecture, FondEU-PEO, FondEU-PNRR, FondEU-POTJ, FondEU-POAT, FondEU-POCIDIF, FondEU-PDD, FondEU-PS, FondEU-POIM, FondEU-PR-NE, FondEU-POCU, FondEU-PoIDS). Registered via `mcp__notebooklm__add_notebook`, queryable via `/research`
 
 ### Gotchas
 
@@ -174,3 +188,6 @@ This project is part of a cross-project knowledge system:
 - ESLint `ignoreDuringBuilds: true` in `next.config.mjs` — pre-existing issues, fix incrementally
 - `withAIAuth()` caches user tiers in-memory (LRU, 5-min TTL, max 10k users) — stale tier after upgrade for up to 5 min
 - `instrumentationHook: true` in next.config.mjs enables Sentry — only active when `SENTRY_DSN` env var is set
+- Qdrant must have `QDRANT_API_KEY` set in production — unauthenticated Qdrant is a read/write security risk
+- `direct-ingest-guides.ts` is emergency-only — it bypasses API auth, audit logging, and review. Never use as a normal ingestion path
+- Vector store `MemoryVectorStore` treats filter as key-value equality; `QdrantVectorStore` passes filter raw to Qdrant API — not interchangeable for filtered searches

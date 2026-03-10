@@ -22,27 +22,17 @@ export const AI_INPUT_LIMITS = {
 // ─── Hardened Prompt Security (Sprint 1-3 remediation) ───────────
 const INVISIBLE_OR_BIDI_PATTERN = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
 const CONTROL_CHAR_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
-const CYRILLIC_CONFUSABLE_PATTERN = /[аАеЕоОіІрРсСуУхХкКмМтТвВнН]/g;
+const CYRILLIC_CONFUSABLE_PATTERN = /[аАеЕоОіІрРсСуУхХкКмМтТвВнНзЗьЬ]/g;
 const ASCII_DELIMITER_LOOKALIKE_PATTERN = /---\s*(?:BEGIN|END)\b|<<<|>>>/i;
+const NON_TEXT_PAYLOAD_THRESHOLD = 0.02;
+const REPLACEMENT_CHAR_PENALTY = 5;
 
 const CYRILLIC_TO_LATIN_MAP: Record<string, string> = {
   а: 'a', А: 'A', е: 'e', Е: 'E', о: 'o', О: 'O', і: 'i', І: 'I',
   р: 'p', Р: 'P', с: 'c', С: 'C', у: 'y', У: 'Y', х: 'x', Х: 'X',
-  к: 'k', К: 'K', м: 'm', М: 'M', т: 't', Т: 'T', в: 'b', В: 'B',
-  н: 'h', Н: 'H',
+  к: 'k', К: 'K', м: 'm', М: 'M', т: 't', Т: 'T', в: 'v', В: 'V',
+  н: 'n', Н: 'H', з: '3', З: '3', ь: 'b', Ь: 'B',
 };
-
-const SENSITIVE_OUTPUT_PATTERNS: Array<{ type: string; pattern: RegExp }> = [
-  { type: 'api_key', pattern: /\b(?:sk|rk|pk)_[A-Za-z0-9_-]{16,}\b/gi },
-  { type: 'api_key', pattern: /\bAIza[0-9A-Za-z_-]{20,}\b/g },
-  { type: 'secret', pattern: /\b(?:api[_\s-]?key|secret|access[_\s-]?token|refresh[_\s-]?token|password)\b\s*[:=]?\s*[A-Za-z0-9._-]{8,}\b/gi },
-];
-
-const SYSTEM_FRAGMENT_BLOCK_PATTERNS = [
-  /system\s+prompt/i,
-  /developer\s+message/i,
-  /hidden\s+instructions?/i,
-];
 
 /**
  * Normalize text before security processing:
@@ -69,27 +59,8 @@ export function isLikelyNonTextPayload(text: string): boolean {
       suspiciousChars++;
     }
   }
-  if (sample.includes('\uFFFD')) suspiciousChars += 5;
-  return sample.length > 0 && suspiciousChars / sample.length > 0.02;
-}
-
-/**
- * Filter AI output: redact leaked secrets/keys and block system prompt leakage.
- */
-export function filterAIOutput(text: string): { text: string; blocked: boolean; redactions: string[] } {
-  const redactions: string[] = [];
-  let filtered = text;
-
-  for (const { type, pattern } of SENSITIVE_OUTPUT_PATTERNS) {
-    filtered = filtered.replace(pattern, () => {
-      redactions.push(type);
-      return `[REDACTED:${type}]`;
-    });
-  }
-
-  const blocked = SYSTEM_FRAGMENT_BLOCK_PATTERNS.some(p => p.test(filtered));
-
-  return { text: filtered, blocked, redactions };
+  if (sample.includes('\uFFFD')) suspiciousChars += REPLACEMENT_CHAR_PENALTY;
+  return sample.length > 0 && suspiciousChars / sample.length > NON_TEXT_PAYLOAD_THRESHOLD;
 }
 
 /**

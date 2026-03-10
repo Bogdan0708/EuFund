@@ -24,7 +24,10 @@ describe('AI Output PII Sanitization', () => {
 
     const { withAIAuth } = await import('@/lib/middleware/auth');
 
-    const req = new NextRequest('http://localhost:3000/api/ai/chat', { method: 'POST' });
+    const req = new NextRequest('http://localhost:3000/api/ai/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+    });
     const res = await withAIAuth(req, async () => {
       return NextResponse.json({
         success: true,
@@ -43,4 +46,3 @@ describe('AI Output PII Sanitization', () => {
     expect(answer).not.toContain('john.doe@example.com');
   });
 });
-

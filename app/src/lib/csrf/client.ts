@@ -4,22 +4,9 @@
 let csrfTokenCache: string | null = null;
 let bootstrapPromise: Promise<string | null> | null = null;
 
-function readTokenFromMeta(): string | null {
-  if (typeof document === 'undefined') return null;
-  const tag = document.querySelector('meta[name="csrf-token"]');
-  const value = tag?.getAttribute('content')?.trim();
-  return value ? value : null;
-}
-
 function cacheToken(token: string | null): void {
   if (!token) return;
   csrfTokenCache = token;
-
-  if (typeof document === 'undefined') return;
-  const tag = document.querySelector('meta[name="csrf-token"]');
-  if (tag) {
-    tag.setAttribute('content', token);
-  }
 }
 
 function captureTokenFromResponse(response: Response): void {
@@ -38,9 +25,9 @@ async function bootstrapCSRFToken(): Promise<string | null> {
         credentials: 'same-origin',
       });
       captureTokenFromResponse(response);
-      return getCSRFToken();
+      return csrfTokenCache;
     } catch {
-      return getCSRFToken();
+      return csrfTokenCache;
     } finally {
       bootstrapPromise = null;
     }
@@ -54,11 +41,6 @@ async function bootstrapCSRFToken(): Promise<string | null> {
  */
 export function getCSRFToken(): string | null {
   if (csrfTokenCache) return csrfTokenCache;
-  const metaToken = readTokenFromMeta();
-  if (metaToken) {
-    csrfTokenCache = metaToken;
-    return metaToken;
-  }
   return null;
 }
 
@@ -90,7 +72,10 @@ export async function csrfFetch(input: RequestInfo | URL, init?: RequestInit): P
 
   if (needsCSRF) {
     const token = getCSRFToken() || await bootstrapCSRFToken();
-    if (token && !headers.has('X-CSRF-Token')) {
+    if (!token) {
+      throw new Error('CSRF token unavailable. Please reload the page and try again.');
+    }
+    if (!headers.has('X-CSRF-Token')) {
       headers.set('X-CSRF-Token', token);
     }
   }

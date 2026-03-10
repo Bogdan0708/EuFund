@@ -38,7 +38,10 @@ describe('AI feature daily rate limits', () => {
     }));
 
     const { withAIAuth } = await import('@/lib/middleware/auth');
-    const req = new NextRequest('http://localhost:3000/api/ai/generate-proposal', { method: 'POST' });
+    const req = new NextRequest('http://localhost:3000/api/ai/generate-proposal', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+    });
     const res = await withAIAuth(
       req,
       async () => NextResponse.json({ success: true }),
@@ -83,7 +86,10 @@ describe('AI feature daily rate limits', () => {
     }));
 
     const { withAIAuth } = await import('@/lib/middleware/auth');
-    const req = new NextRequest('http://localhost:3000/api/ai/generate-proposal', { method: 'POST' });
+    const req = new NextRequest('http://localhost:3000/api/ai/generate-proposal', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+    });
     const res = await withAIAuth(
       req,
       async () => NextResponse.json({ success: true }),
@@ -157,7 +163,10 @@ describe('AI feature daily rate limits', () => {
     }));
 
     const { withAIAuth } = await import('@/lib/middleware/auth');
-    const req = new NextRequest('http://localhost:3000/api/ai/generate-proposal', { method: 'POST' });
+    const req = new NextRequest('http://localhost:3000/api/ai/generate-proposal', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+    });
     const res = await withAIAuth(
       req,
       async (user) => NextResponse.json({ tier: user.tier }),

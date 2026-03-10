@@ -22,7 +22,7 @@ const ALLOWED_MIME_TYPES = [
 export async function POST(req: NextRequest) {
   try {
     // Security P0: Verified admin check against DB
-    const user = await requirePlatformAdmin();
+    await requirePlatformAdmin();
 
     const formData = await req.formData();
     const file = formData.get('file') as File;

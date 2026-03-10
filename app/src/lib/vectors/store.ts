@@ -101,16 +101,25 @@ class MemoryVectorStore implements VectorStore {
 class QdrantVectorStore implements VectorStore {
   private baseUrl: string;
   private collection: string;
+  private apiKey: string;
 
   constructor() {
     this.baseUrl = AI_CONFIG.vectorStore.qdrantUrl;
     this.collection = AI_CONFIG.vectorStore.collectionName;
+    this.apiKey = AI_CONFIG.vectorStore.qdrantApiKey;
   }
 
   private async qdrantFetch(path: string, opts?: RequestInit): Promise<unknown> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(opts?.headers as Record<string, string>),
+    };
+    if (this.apiKey) {
+      headers['api-key'] = this.apiKey;
+    }
     const res = await fetch(`${this.baseUrl}${path}`, {
       ...opts,
-      headers: { 'Content-Type': 'application/json', ...opts?.headers },
+      headers,
     });
     if (!res.ok) throw new Error(`Qdrant error: ${res.status} ${await res.text()}`);
     return res.json();

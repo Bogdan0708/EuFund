@@ -37,6 +37,8 @@ infrastructure/terraform/*.tfvars
 *.key
 
 audits/
+scripts/classification-output/
+app/scripts/classification-output/
 .abacusai/
 .pnpm-store/
 audit_bundle/

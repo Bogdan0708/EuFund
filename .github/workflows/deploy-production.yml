@@ -73,6 +73,26 @@ jobs:
             --description="pre-deploy-${{ github.sha }}" \
             --async
 
+      - name: Run database migrations
+        if: ${{ inputs.rollback != true }}
+        run: |
+          gcloud run jobs execute fondeu-db-migrate \
+            --region "$REGION" \
+            --wait \
+            --args="npx,drizzle-kit,migrate" \
+          || gcloud run jobs create fondeu-db-migrate \
+            --region "$REGION" \
+            --image "europe-west2-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/fondeu/platform:${{ steps.image.outputs.tag }}" \
+            --set-secrets DATABASE_URL=DATABASE_URL:latest \
+            --memory 512Mi \
+            --cpu 1 \
+            --max-retries 0 \
+            --task-timeout 300s \
+            --command "npx" \
+            --args="drizzle-kit,migrate" \
+            --execute-now \
+            --wait
+
       - name: Deploy to Cloud Run
         if: ${{ inputs.rollback != true }}
         env:
@@ -83,8 +103,13 @@ jobs:
             --region "$REGION" \
             --platform managed \
             --allow-unauthenticated \
-            --set-env-vars APP_VERSION=${IMAGE_TAG},GITHUB_SHA=${{ github.sha }},GCS_BUCKET=${{ vars.GCS_BUCKET }},GCS_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCS_KEY_FILENAME=${{ vars.GCS_KEY_FILENAME }},STORAGE_STRICT_GCS=true \
-            --update-secrets DATABASE_URL=DATABASE_URL:latest,NEXTAUTH_SECRET=NEXTAUTH_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,REDIS_URL=REDIS_URL:latest,SENTRY_DSN=SENTRY_DSN:latest
+            --memory 2Gi \
+            --cpu 2 \
+            --min-instances 1 \
+            --max-instances 20 \
+            --concurrency 80 \
+            --set-env-vars APP_VERSION=${IMAGE_TAG},GITHUB_SHA=${{ github.sha }},GCS_BUCKET=${{ vars.GCS_BUCKET }},GCS_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCS_KEY_FILENAME=${{ vars.GCS_KEY_FILENAME }},STORAGE_STRICT_GCS=true,VECTOR_PROVIDER=qdrant,QDRANT_URL=${{ vars.QDRANT_URL }} \
+            --update-secrets DATABASE_URL=DATABASE_URL:latest,NEXTAUTH_SECRET=NEXTAUTH_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,REDIS_URL=REDIS_URL:latest,SENTRY_DSN=SENTRY_DSN:latest,QDRANT_API_KEY=QDRANT_API_KEY:latest
 
       - name: Rollback to previous serving revision
         if: ${{ inputs.rollback == true }}

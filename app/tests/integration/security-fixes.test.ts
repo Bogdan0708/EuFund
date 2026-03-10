@@ -128,6 +128,58 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
       expect(response.headers.get('X-RateLimit-Remaining')).toBe('9');
       expect(response.headers.get('X-RateLimit-Reset')).toBe(resetTime.toString());
     });
+
+    it('should reject missing Content-Type in withAIAuth for POST requests', async () => {
+      vi.doMock('@/lib/redis/client', () => ({
+        isRedisAvailable: vi.fn().mockResolvedValue(true),
+        checkRateLimit: vi.fn(),
+      }));
+      vi.doMock('@/lib/auth', () => ({
+        auth: () => Promise.resolve({ user: { id: 'free-user-1', email: 'free@test.com' } }),
+      }));
+      vi.doMock('@/lib/db', () => ({ db: {}, schema: {} }));
+      vi.doMock('lru-cache', () => ({
+        LRUCache: class {
+          get = () => 'free';
+          set = vi.fn();
+        }
+      }));
+
+      const { withAIAuth } = await import('@/lib/middleware/auth');
+      const handler = vi.fn(() => Promise.resolve(NextResponse.json({ success: true })));
+
+      const request = createNextRequest('/api/ai/predict', { method: 'POST' });
+      const response = await withAIAuth(request, handler);
+
+      expect(response.status).toBe(415);
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('should reject missing Content-Type in authenticateAIUser for POST requests', async () => {
+      vi.doMock('@/lib/redis/client', () => ({
+        isRedisAvailable: vi.fn().mockResolvedValue(true),
+        checkRateLimit: vi.fn(),
+      }));
+      vi.doMock('@/lib/auth', () => ({
+        auth: () => Promise.resolve({ user: { id: 'free-user-1', email: 'free@test.com' } }),
+      }));
+      vi.doMock('@/lib/db', () => ({ db: {}, schema: {} }));
+      vi.doMock('lru-cache', () => ({
+        LRUCache: class {
+          get = () => 'free';
+          set = vi.fn();
+        }
+      }));
+
+      const { authenticateAIUser } = await import('@/lib/middleware/auth');
+      const request = createNextRequest('/api/ai/predict', { method: 'POST' });
+      const result = await authenticateAIUser(request);
+
+      expect('errorResponse' in result).toBe(true);
+      if ('errorResponse' in result) {
+        expect(result.errorResponse.status).toBe(415);
+      }
+    });
   });
 
   describe('Production-Specific Headers', () => {

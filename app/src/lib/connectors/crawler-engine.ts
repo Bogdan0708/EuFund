@@ -14,6 +14,56 @@ const USER_AGENTS = [
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 ];
 
+/**
+ * Validate that a URL is safe to fetch — reject internal/private IPs,
+ * metadata endpoints, and non-HTTPS schemes in production.
+ */
+function validateCrawlerUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Invalid crawler URL: ${url}`);
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error(`Disallowed protocol in crawler URL: ${parsed.protocol}`);
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  // Block cloud metadata endpoints
+  const blockedHostnames = [
+    'metadata.google.internal',
+    'metadata.goog',
+    '169.254.169.254',
+    'metadata.azure.com',
+  ];
+  if (blockedHostnames.includes(hostname)) {
+    throw new Error(`Blocked metadata endpoint: ${hostname}`);
+  }
+
+  // Block RFC1918 private ranges, loopback, and link-local
+  const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4Match) {
+    const [, a, b] = ipv4Match.map(Number);
+    const isPrivate =
+      a === 10 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      a === 127 ||
+      (a === 169 && b === 254) ||
+      a === 0;
+    if (isPrivate) {
+      throw new Error(`Blocked private/internal IP in crawler URL: ${hostname}`);
+    }
+  }
+
+  if (hostname === 'localhost' || hostname.endsWith('.local') || hostname.endsWith('.internal')) {
+    throw new Error(`Blocked internal hostname in crawler URL: ${hostname}`);
+  }
+}
+
 export async function runCrawler(config: CrawlerSourceConfig, connectorId: string) {
   log.info({ source: config.slug }, 'Starting crawler run');
   
@@ -24,6 +74,8 @@ export async function runCrawler(config: CrawlerSourceConfig, connectorId: strin
   }).returning();
 
   try {
+    validateCrawlerUrl(config.listingUrl);
+
     const userAgent = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
     const response = await fetch(config.listingUrl, {
       headers: { 'User-Agent': userAgent }

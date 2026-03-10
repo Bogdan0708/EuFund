@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { csrfFetch } from '@/lib/csrf/client';
 
 export default function RegisterPage() {
   const t = useTranslations('auth');
@@ -32,7 +33,7 @@ export default function RegisterPage() {
   const onSubmit = async (data: RegisterInput) => {
     setServerError('');
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await csrfFetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

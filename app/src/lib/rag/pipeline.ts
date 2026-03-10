@@ -30,6 +30,7 @@ const RO_LEGAL_STOP_WORDS = new Set([
 
 const RAG_MAX_TOKENS_PER_SOURCE = 500;
 const RAG_MAX_CONTEXT_TOKENS = 1600;
+const RAG_SEMANTIC_SEARCH_MULTIPLIER = 2;
 
 const RAG_POISONING_PATTERNS = [
   /ignore\s+(all\s+)?(previous|prior|above)\s+instructions?/i,
@@ -39,8 +40,13 @@ const RAG_POISONING_PATTERNS = [
   /you\s+are\s+now\s+(?:a|an)\s+/i,
 ];
 
-function estimateTokens(text: string): number {
-  return Math.max(1, Math.ceil(text.length / 4));
+export function estimateContextTokens(text: string): number {
+  const codePoints = Array.from(text).length;
+  const nonAsciiCount = Array.from(text).filter((char) => char.charCodeAt(0) > 127).length;
+  const nonAsciiRatio = codePoints === 0 ? 0 : nonAsciiCount / codePoints;
+  const charsPerToken = nonAsciiRatio > 0 ? 3.2 : 4;
+
+  return Math.max(1, Math.ceil(codePoints / charsPerToken));
 }
 
 function normalizeChunkContent(text: string): string {
@@ -98,7 +104,7 @@ function capTokensPerSource(results: SearchResult[], topK: number): SearchResult
       ? `${result.content.slice(0, Math.max(0, maxChars - 26)).trim()}\n...[chunk truncated for safety]`
       : result.content;
 
-    const tokens = estimateTokens(cappedContent);
+    const tokens = estimateContextTokens(cappedContent);
     if (tokens <= 0) {
       continue;
     }
@@ -159,7 +165,7 @@ export async function hybridSearch(opts: RAGQuery): Promise<SearchResult[]> {
   const targetTopK = opts.topK ?? 5;
 
   // Semantic search
-  const semanticResults = await store.search(processedQuery, targetTopK * 3, opts.filter);
+  const semanticResults = await store.search(processedQuery, targetTopK * RAG_SEMANTIC_SEARCH_MULTIPLIER, opts.filter);
 
   // Keyword boost: re-rank results that contain exact keywords
   const keywords = extractKeywords(processedQuery);

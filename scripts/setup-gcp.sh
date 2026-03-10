@@ -197,41 +197,14 @@ gcloud billing budgets create \
     --threshold-rule=percent=0.25,spend-basis=current-spend \
     --threshold-rule=percent=0.75,spend-basis=current-spend || print_warning "Budget might already exist"
 
-# Create environment file for production
-print_status "Creating production environment file"
-cat > ../app/.env.production << EOF
-# Database Configuration
-DATABASE_URL="postgresql://fondeu_app:$DB_PASSWORD@/fondeu?host=/cloudsql/$PROJECT_ID:europe-west2:fondeu-postgres-prod"
+# Store DATABASE_URL in Secret Manager (used by Cloud Run --update-secrets)
+print_status "Storing DATABASE_URL in Secret Manager"
+echo -n "$DB_CONNECTION_STRING" | gcloud secrets create DATABASE_URL --data-file=- || print_warning "Secret might already exist"
+echo -n "$NEXTAUTH_SECRET" | gcloud secrets create NEXTAUTH_SECRET --data-file=- || print_warning "Secret might already exist"
+echo -n "$OPENAI_API_KEY" | gcloud secrets create OPENAI_API_KEY --data-file=- || print_warning "Secret might already exist"
 
-# Redis Configuration (will be updated with actual IP)
-REDIS_URL="redis://REDIS_PRIVATE_IP:6379"
-
-# NextAuth Configuration
-NEXTAUTH_URL="https://fondeu.your-domain.com"
-NEXTAUTH_SECRET="$NEXTAUTH_SECRET"
-
-# AI Configuration
-OPENAI_API_KEY="$OPENAI_API_KEY"
-AI_GENERATION_MODEL="gpt-4o"
-AI_ANALYSIS_MODEL="gpt-4o-mini"
-
-# Romanian Government APIs
-EC_PORTAL_API_KEY="SEDIA"
-
-# Storage
-GCS_BUCKET_DOCUMENTS="$PROJECT_ID-fondeu-documents"
-GCS_BUCKET_ASSETS="$PROJECT_ID-fondeu-assets"
-
-# Security
-ENCRYPT_SECRET="$NEXTAUTH_SECRET"
-
-# Monitoring
-NODE_ENV="production"
-PORT="8080"
-PROJECT_ID="$PROJECT_ID"
-EOF
-
-print_success ".env.production file created"
+print_success "All secrets stored in Secret Manager (no local .env.production generated)"
+print_warning "Production env vars are managed via Cloud Run --set-env-vars and --update-secrets in deploy-production.yml"
 
 print_success "GCP setup completed!"
 echo ""

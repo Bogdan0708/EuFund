@@ -1,9 +1,3 @@
-variable "aws_region" {
-  type        = string
-  description = "AWS region for deployment."
-  default     = "eu-west-2"
-}
-
 variable "gcp_project_id" {
   type        = string
   description = "GCP project ID for Terraform state infrastructure."
@@ -27,29 +21,14 @@ variable "domain_name" {
   description = "Primary public domain name."
 }
 
-variable "hosted_zone_id" {
-  type        = string
-  description = "Route53 hosted zone ID."
-}
-
-variable "alb_certificate_arn" {
-  type        = string
-  description = "ACM certificate ARN for ALB (same region as ALB)."
-}
-
-variable "cloudfront_certificate_arn" {
-  type        = string
-  description = "ACM certificate ARN in us-east-1 for CloudFront."
-}
-
 variable "db_username" {
   type        = string
-  description = "RDS master username."
+  description = "Cloud SQL master username."
 }
 
 variable "db_password" {
   type        = string
-  description = "RDS master password."
+  description = "Cloud SQL master password."
   sensitive   = true
 }
 
@@ -67,18 +46,6 @@ variable "nextauth_secret" {
 variable "nextauth_url" {
   type        = string
   description = "NextAuth public URL."
-}
-
-variable "public_subnet_cidrs" {
-  type        = list(string)
-  description = "CIDR blocks for public subnets."
-  default     = ["10.0.1.0/24", "10.0.2.0/24"]
-}
-
-variable "private_subnet_cidrs" {
-  type        = list(string)
-  description = "CIDR blocks for private subnets."
-  default     = ["10.0.101.0/24", "10.0.102.0/24"]
 }
 
 variable "cloud_run_service_name" {
