@@ -28,7 +28,7 @@ export default async function LocaleLayout({
 }) {
   if (!locales.includes(locale as (typeof locales)[number])) notFound();
 
-  const [messages, nonce] = await Promise.all([getMessages(), getNonce()]);
+  const [messages, nonce] = await Promise.all([getMessages({ locale }), getNonce()]);
 
   return (
     <html lang={locale}>
