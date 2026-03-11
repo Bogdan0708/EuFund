@@ -37,11 +37,11 @@ steps:
       - |
         IMAGE_TAG="${SHORT_SHA:-$BUILD_ID}"
         IMAGE_REPO="europe-west2-docker.pkg.dev/$PROJECT_ID/fondeu/app"
-        IMAGE_URI="$IMAGE_REPO:$IMAGE_TAG"
-        echo "IMAGE_TAG=$IMAGE_TAG" > /workspace/deploy.env
-        echo "IMAGE_REPO=$IMAGE_REPO" >> /workspace/deploy.env
-        echo "IMAGE_URI=$IMAGE_URI" >> /workspace/deploy.env
-        echo "Prepared image $IMAGE_URI"
+        IMAGE_URI="$$IMAGE_REPO:$$IMAGE_TAG"
+        echo "IMAGE_TAG=$$IMAGE_TAG" > /workspace/deploy.env
+        echo "IMAGE_REPO=$$IMAGE_REPO" >> /workspace/deploy.env
+        echo "IMAGE_URI=$$IMAGE_URI" >> /workspace/deploy.env
+        echo "Prepared image $$IMAGE_URI"
 
   - name: gcr.io/cloud-builders/docker
     id: build
@@ -52,8 +52,8 @@ steps:
         source /workspace/deploy.env
         docker build \
           -f infrastructure/Dockerfile.prod \
-          -t "$IMAGE_URI" \
-          -t "$IMAGE_REPO:latest" \
+          -t "$$IMAGE_URI" \
+          -t "$$IMAGE_REPO:latest" \
           .
 
   - name: gcr.io/cloud-builders/docker
@@ -63,7 +63,7 @@ steps:
       - -ceu
       - |
         source /workspace/deploy.env
-        docker push "$IMAGE_URI"
+        docker push "$$IMAGE_URI"
 
   - name: gcr.io/cloud-builders/docker
     id: push-latest
@@ -72,7 +72,7 @@ steps:
       - -ceu
       - |
         source /workspace/deploy.env
-        docker push "$IMAGE_REPO:latest"
+        docker push "$$IMAGE_REPO:latest"
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     id: backup-db
@@ -97,8 +97,8 @@ steps:
         if gcloud run jobs describe "$_MIGRATION_JOB" --region "$_REGION" >/dev/null 2>&1; then
           gcloud run jobs update "$_MIGRATION_JOB" \
             --region "$_REGION" \
-            --image "$IMAGE_URI" \
-            --service-account "$SERVICE_ACCOUNT" \
+            --image "$$IMAGE_URI" \
+            --service-account "$$SERVICE_ACCOUNT" \
             --set-secrets DATABASE_URL=DATABASE_URL:latest \
             --memory 512Mi \
             --cpu 1 \
@@ -109,8 +109,8 @@ steps:
         else
           gcloud run jobs create "$_MIGRATION_JOB" \
             --region "$_REGION" \
-            --image "$IMAGE_URI" \
-            --service-account "$SERVICE_ACCOUNT" \
+            --image "$$IMAGE_URI" \
+            --service-account "$$SERVICE_ACCOUNT" \
             --set-secrets DATABASE_URL=DATABASE_URL:latest \
             --memory 512Mi \
             --cpu 1 \
@@ -140,7 +140,7 @@ steps:
         SERVICE_ACCOUNT="fondeu-app-runner@$PROJECT_ID.iam.gserviceaccount.com"
 
         gcloud run deploy "$_SERVICE" \
-          --image "$IMAGE_URI" \
+          --image "$$IMAGE_URI" \
           --region "$_REGION" \
           --platform managed \
           --allow-unauthenticated \
@@ -152,7 +152,7 @@ steps:
           --add-cloudsql-instances "$_CLOUDSQL_CONNECTION_NAME" \
           --vpc-connector "$_VPC_CONNECTOR" \
           --vpc-egress "$_VPC_EGRESS" \
-          --service-account "$SERVICE_ACCOUNT" \
+          --service-account "$$SERVICE_ACCOUNT" \
           --set-env-vars "APP_VERSION=${SHORT_SHA:-$BUILD_ID},GITHUB_SHA=${COMMIT_SHA:-${SHORT_SHA:-$BUILD_ID}},GCS_BUCKET=$_GCS_BUCKET,GCS_PROJECT_ID=$PROJECT_ID,GCS_KEY_FILENAME=$_GCS_KEY_FILENAME,STORAGE_STRICT_GCS=true,VECTOR_PROVIDER=qdrant,QDRANT_URL=$_QDRANT_URL,AI_GATEWAY_URL=$_AI_GATEWAY_URL,AI_GATEWAY_TENANT_ID=$_AI_GATEWAY_TENANT_ID,NODE_ENV=production,NEXT_PUBLIC_APP_URL=$_PRODUCTION_URL,NEXTAUTH_URL=$_PRODUCTION_URL,DB_SOCKET_PATH=$_DB_SOCKET_PATH,DB_NAME=$_DB_NAME,DB_USER=$_DB_USER" \
           --update-secrets "DATABASE_URL=${_DATABASE_URL_SECRET_NAME}:latest,NEXTAUTH_SECRET=${_NEXTAUTH_SECRET_NAME}:latest,REDIS_URL=${_REDIS_URL_SECRET_NAME}:latest,SENTRY_DSN=${_SENTRY_DSN_SECRET_NAME}:latest,QDRANT_API_KEY=${_QDRANT_API_KEY_SECRET_NAME}:latest,SMTP_PASS=${_SMTP_PASS_SECRET_NAME}:latest,DB_PASS=${_DB_PASS_SECRET_NAME}:latest,AI_GATEWAY_KEY=${_AI_GATEWAY_SECRET_NAME}:latest,NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${_STRIPE_PUBLISHABLE_SECRET_NAME}:latest,STRIPE_SECRET_KEY=${_STRIPE_SECRET_KEY_SECRET_NAME}:latest,STRIPE_WEBHOOK_SECRET=${_STRIPE_WEBHOOK_SECRET_NAME}:latest"
 
@@ -167,27 +167,27 @@ steps:
           exit 1
         fi
 
-        GATEWAY_KEY=$(gcloud secrets versions access latest --secret "$_AI_GATEWAY_SECRET_NAME")
-        if [ -z "$GATEWAY_KEY" ]; then
+        GATEWAY_KEY=$$(gcloud secrets versions access latest --secret "$_AI_GATEWAY_SECRET_NAME")
+        if [ -z "$$GATEWAY_KEY" ]; then
           echo "Failed to load gateway key from $_AI_GATEWAY_SECRET_NAME"
           exit 1
         fi
 
-        HEALTH_JSON=$(curl -sf "$_AI_GATEWAY_URL/health")
-        python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "healthy" else 1)' <<<"$HEALTH_JSON"
+        HEALTH_JSON=$$(curl -sf "$_AI_GATEWAY_URL/health")
+        python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "healthy" else 1)' <<<"$$HEALTH_JSON"
 
-        READY_JSON=$(curl -sf -H "Authorization: Bearer $GATEWAY_KEY" "$_AI_GATEWAY_URL/ready")
-        python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "ready" else 1)' <<<"$READY_JSON"
+        READY_JSON=$$(curl -sf -H "Authorization: Bearer $$GATEWAY_KEY" "$_AI_GATEWAY_URL/ready")
+        python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "ready" else 1)' <<<"$$READY_JSON"
 
-        CHAT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-          -H "Authorization: Bearer $GATEWAY_KEY" \
+        CHAT_STATUS=$$(curl -s -o /dev/null -w "%{http_code}" \
+          -H "Authorization: Bearer $$GATEWAY_KEY" \
           -H "Content-Type: application/json" \
           -H "x-tenant-id: $_AI_GATEWAY_TENANT_ID" \
           -d '{"model":"gpt-4o","messages":[{"role":"user","content":"ping"}],"max_tokens":5}' \
           "$_AI_GATEWAY_URL/v1/chat/completions")
 
-        if [ "$CHAT_STATUS" -lt 200 ] || [ "$CHAT_STATUS" -ge 400 ]; then
-          echo "AI gateway chat smoke test failed (HTTP $CHAT_STATUS)"
+        if [ "$$CHAT_STATUS" -lt 200 ] || [ "$$CHAT_STATUS" -ge 400 ]; then
+          echo "AI gateway chat smoke test failed (HTTP $$CHAT_STATUS)"
           exit 1
         fi
 
@@ -197,33 +197,33 @@ steps:
     args:
       - -ceu
       - |
-        PROD_URL="${_PRODUCTION_URL:-$(gcloud run services describe "$_SERVICE" --region "$_REGION" --format='value(status.url)')}"
-        if [ -z "$PROD_URL" ]; then
+        PROD_URL="${_PRODUCTION_URL:-$$(gcloud run services describe "$_SERVICE" --region "$_REGION" --format='value(status.url)')}"
+        if [ -z "$$PROD_URL" ]; then
           echo "Missing production URL"
           exit 1
         fi
 
         HEALTH_HEADER=()
         if [ -n "$_HEALTHCHECK_SECRET_NAME" ] && gcloud secrets describe "$_HEALTHCHECK_SECRET_NAME" >/dev/null 2>&1; then
-          HEALTH_TOKEN=$(gcloud secrets versions access latest --secret "$_HEALTHCHECK_SECRET_NAME")
-          HEALTH_HEADER=(-H "Authorization: Bearer $HEALTH_TOKEN")
+          HEALTH_TOKEN=$$(gcloud secrets versions access latest --secret "$_HEALTHCHECK_SECRET_NAME")
+          HEALTH_HEADER=(-H "Authorization: Bearer $$HEALTH_TOKEN")
         fi
 
-        for i in $(seq 1 15); do
-          HEALTH_JSON=$(curl -sf "${HEALTH_HEADER[@]}" "$PROD_URL/api/health" || true)
-          STATUS=$(python3 -c 'import json,sys; data=(json.load(sys.stdin) if sys.stdin.readable() else {}); print(data.get("status","unreachable"))' <<<"$HEALTH_JSON" 2>/dev/null || echo "unreachable")
-          STORAGE=$(python3 -c 'import json,sys; data=(json.load(sys.stdin) if sys.stdin.readable() else {}); print(data.get("services",{}).get("storage","missing"))' <<<"$HEALTH_JSON" 2>/dev/null || echo "missing")
-          SENTRY=$(python3 -c 'import json,sys; data=(json.load(sys.stdin) if sys.stdin.readable() else {}); print(data.get("services",{}).get("sentry","missing"))' <<<"$HEALTH_JSON" 2>/dev/null || echo "missing")
-          if [ -n "$_HEALTHCHECK_SECRET_NAME" ] && [ "${#HEALTH_HEADER[@]}" -gt 0 ]; then
-            HEALTHY=$([ "$STATUS" = "healthy" ] && [ "$STORAGE" != "error" ] && [ "$SENTRY" != "error" ] && echo yes || echo no)
+        for i in $$(seq 1 15); do
+          HEALTH_JSON=$$(curl -sf "$${HEALTH_HEADER[@]}" "$$PROD_URL/api/health" || true)
+          STATUS=$$(python3 -c 'import json,sys; data=(json.load(sys.stdin) if sys.stdin.readable() else {}); print(data.get("status","unreachable"))' <<<"$$HEALTH_JSON" 2>/dev/null || echo "unreachable")
+          STORAGE=$$(python3 -c 'import json,sys; data=(json.load(sys.stdin) if sys.stdin.readable() else {}); print(data.get("services",{}).get("storage","missing"))' <<<"$$HEALTH_JSON" 2>/dev/null || echo "missing")
+          SENTRY=$$(python3 -c 'import json,sys; data=(json.load(sys.stdin) if sys.stdin.readable() else {}); print(data.get("services",{}).get("sentry","missing"))' <<<"$$HEALTH_JSON" 2>/dev/null || echo "missing")
+          if [ -n "$_HEALTHCHECK_SECRET_NAME" ] && [ "$${#HEALTH_HEADER[@]}" -gt 0 ]; then
+            HEALTHY=$$([ "$$STATUS" = "healthy" ] && [ "$$STORAGE" != "error" ] && [ "$$SENTRY" != "error" ] && echo yes || echo no)
           else
-            HEALTHY=$([ "$STATUS" = "healthy" ] && echo yes || echo no)
+            HEALTHY=$$([ "$$STATUS" = "healthy" ] && echo yes || echo no)
           fi
-          if [ "$HEALTHY" = "yes" ]; then
+          if [ "$$HEALTHY" = "yes" ]; then
             echo "Production healthy"
             exit 0
           fi
-          echo "Attempt $i: status=$STATUS storage=$STORAGE sentry=$SENTRY"
+          echo "Attempt $$i: status=$$STATUS storage=$$STORAGE sentry=$$SENTRY"
           sleep 20
         done
 
