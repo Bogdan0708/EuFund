@@ -429,7 +429,7 @@ export function createDefaultConfig(): AIRouterConfig {
         provider: AIProvider.AI_GATEWAY,
         model: 'auto',
         apiKey: process.env.AI_GATEWAY_API_KEY || process.env.AI_GATEWAY_KEY || '',
-        baseURL: process.env.AI_GATEWAY_URL || 'https://ai-gateway-382299704849.europe-west2.run.app',
+        baseURL: process.env.AI_GATEWAY_URL || 'https://ai-gateway-382299704849.europe-central2.run.app',
         timeout: 30000,
         maxRetries: 3,
         enabled: !!(process.env.AI_GATEWAY_API_KEY || process.env.AI_GATEWAY_KEY)
