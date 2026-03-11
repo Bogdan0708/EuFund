@@ -90,13 +90,17 @@ Key runtime dependencies:
 - Qdrant on VM
 
 Relevant files:
-- `.github/workflows/deploy-production.yml`
+- `cloudbuild.production.yaml`
 - `scripts/setup-gcp.sh`
 - `app/src/app/api/**`
 - `app/src/lib/db/**`
 - `app/src/lib/ai/**`
 - `app/src/lib/rag/**`
 - `app/src/lib/vectors/store.ts`
+
+Deployment note:
+- GitHub Actions is retained for CI only
+- production deployments run through GCP Cloud Build
 
 ### Shared AI gateway
 
