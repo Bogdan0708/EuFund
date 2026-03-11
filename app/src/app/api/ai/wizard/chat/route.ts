@@ -11,7 +11,7 @@ import { sanitizeForAI, AI_INPUT_LIMITS } from '@/lib/ai/sanitize';
 import { AI_CONFIG } from '@/lib/ai/config';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
-import { FondEUError } from '@/lib/errors';
+import { Errors, FondEUError } from '@/lib/errors';
 import { assertTier } from '@/lib/middleware/tier-gate';
 import {
   enhanceProjectIdea,
@@ -30,7 +30,7 @@ function getOpenAIProvider() {
     return createOpenAI({ apiKey: gatewayKey, baseURL: `${gatewayUrl}/v1` });
   }
 
-  return createOpenAI({ apiKey: process.env.OPENAI_API_KEY ?? '' });
+  throw Errors.serviceUnavailable('AI gateway');
 }
 
 const SYSTEM_PROMPT_RO = `Ești un consultant expert în fonduri europene pentru organizații din România. Ghidezi utilizatorul pas cu pas pentru a crea un proiect de finanțare europeană.

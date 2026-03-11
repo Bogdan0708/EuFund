@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
 
     // AI service check
     try {
-      if (process.env.OPENAI_API_KEY) {
+      if (process.env.AI_GATEWAY_URL && (process.env.AI_GATEWAY_KEY || process.env.AI_GATEWAY_API_KEY)) {
         healthCheck.services.ai = 'configured';
       } else {
         healthCheck.services.ai = 'not_configured';

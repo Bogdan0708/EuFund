@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { CircuitBreaker, Errors, withRetry } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { AI_CONFIG } from './config';
-import { createDefaultConfig, getAIOrchestrator } from './orchestrator';
 import { TaskType } from './types';
 const log = logger.child({ component: 'ai-client' });
 
@@ -34,10 +33,6 @@ function resolveTaskType(hintText: string): TaskType {
   return TaskType.DOCUMENT_ANALYSIS;
 }
 
-function getOrchestrator() {
-  return getAIOrchestrator(createDefaultConfig());
-}
-
 function getGatewayClient(): OpenAI | null {
   if (!gatewayUrl || !gatewayKey) {
     return null;
@@ -54,68 +49,12 @@ function getGatewayClient(): OpenAI | null {
   return gatewayClient;
 }
 
-async function aiGenerateDirect(opts: {
-  system: string;
-  prompt: string;
-  temperature?: number;
-  maxTokens?: number;
-}): Promise<{ text: string; tokensUsed: number }> {
-  const orchestrator = getOrchestrator();
-  const result = await orchestrator.generateText({
-    taskType: resolveTaskType(`${opts.system}\n${opts.prompt}`),
-    prompt: opts.prompt,
-    systemPrompt: opts.system,
-    maxTokens: opts.maxTokens ?? AI_CONFIG.generation.maxTokens,
-    temperature: opts.temperature ?? AI_CONFIG.generation.temperature,
-    userTier: 'enterprise',
-    userId: 'legacy-client',
-    language: 'auto',
-    priority: 'normal',
-  });
-
-  return {
-    text: result.content,
-    tokensUsed: result.tokensUsed.total,
-  };
-}
-
-async function aiGenerateObjectDirect<T extends z.ZodType>(opts: {
-  system: string;
-  prompt: string;
-  schema: T;
-  schemaName: string;
-  temperature?: number;
-}): Promise<{ object: z.infer<T>; tokensUsed: number }> {
-  const orchestrator = getOrchestrator();
-  const result = await orchestrator.generateObject<z.infer<T>>({
-    taskType: resolveTaskType(`${opts.schemaName}\n${opts.system}\n${opts.prompt}`),
-    prompt: opts.prompt,
-    systemPrompt: opts.system,
-    maxTokens: AI_CONFIG.analysis.maxTokens,
-    temperature: opts.temperature ?? AI_CONFIG.analysis.temperature,
-    userTier: 'enterprise',
-    userId: 'legacy-client',
-    language: 'auto',
-    priority: 'normal',
-    structuredOutput: true,
-    schema: schemaToJsonSchema(opts.schema),
-  });
-
-  const validatedObject = opts.schema.parse(result.object);
-
-  return {
-    object: validatedObject,
-    tokensUsed: result.tokensUsed.total,
-  };
-}
-
-async function aiEmbedDirect(text: string): Promise<{ embedding: number[]; tokensUsed: number }> {
-  const orchestrator = getOrchestrator();
-  const embedding = await orchestrator.embed(text);
-  return {
-    embedding,
-    tokensUsed: Math.ceil(text.length / 4),
-  };
+function requireGatewayClient(): OpenAI {
+  const gateway = getGatewayClient();
+  if (!gateway) {
+    throw Errors.serviceUnavailable('AI gateway is required but not configured');
+  }
+  return gateway;
 }
 
 function schemaToJsonSchema(schema: z.ZodType): unknown {
@@ -140,15 +79,10 @@ export async function aiGenerate(opts: {
   maxTokens?: number;
 }): Promise<{ text: string; tokensUsed: number }> {
   const startTime = performance.now();
+  const gateway = requireGatewayClient();
   try {
     return await generationBreaker.execute(() =>
       withRetry(async () => {
-        const gateway = getGatewayClient();
-
-        if (!gateway) {
-          return aiGenerateDirect(opts);
-        }
-
         try {
           const response = await gateway.chat.completions.create({
             model: AI_CONFIG.generation.model,
@@ -165,8 +99,8 @@ export async function aiGenerate(opts: {
             tokensUsed: response.usage?.total_tokens || 0,
           };
         } catch (error) {
-          log.warn({ error }, 'Gateway generation failed, falling back to direct provider routing');
-          return aiGenerateDirect(opts);
+          log.error({ error, taskType: resolveTaskType(`${opts.system}\n${opts.prompt}`) }, 'AI gateway generation failed');
+          throw Errors.serviceUnavailable('AI gateway request failed');
         }
       })
     );
@@ -186,15 +120,10 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
   temperature?: number;
 }): Promise<{ object: z.infer<T>; tokensUsed: number }> {
   const startTime = performance.now();
+  const gateway = requireGatewayClient();
   try {
     return await analysisBreaker.execute(() =>
       withRetry(async () => {
-        const gateway = getGatewayClient();
-
-        if (!gateway) {
-          return aiGenerateObjectDirect(opts);
-        }
-
         try {
           const response = await gateway.chat.completions.create({
             model: AI_CONFIG.analysis.model,
@@ -218,8 +147,8 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
             tokensUsed: response.usage?.total_tokens || 0,
           };
         } catch (error) {
-          log.warn({ error }, 'Gateway structured generation failed, falling back to direct provider routing');
-          return aiGenerateObjectDirect(opts);
+          log.error({ error, schemaName: opts.schemaName }, 'AI gateway structured generation failed');
+          throw Errors.serviceUnavailable('AI gateway request failed');
         }
       })
     );
@@ -233,15 +162,10 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
  */
 export async function aiEmbed(text: string): Promise<{ embedding: number[]; tokensUsed: number }> {
   const startTime = performance.now();
+  const gateway = requireGatewayClient();
   try {
     return await embeddingBreaker.execute(() =>
       withRetry(async () => {
-        const gateway = getGatewayClient();
-
-        if (!gateway) {
-          return aiEmbedDirect(text);
-        }
-
         try {
           const response = await gateway.embeddings.create({
             model: AI_CONFIG.embedding.model,
@@ -254,8 +178,8 @@ export async function aiEmbed(text: string): Promise<{ embedding: number[]; toke
             tokensUsed: response.usage?.total_tokens || Math.ceil(text.length / 4),
           };
         } catch (error) {
-          log.warn({ error }, 'Gateway embedding failed, falling back to direct provider routing');
-          return aiEmbedDirect(text);
+          log.error({ error }, 'AI gateway embedding failed');
+          throw Errors.serviceUnavailable('AI gateway request failed');
         }
       })
     );

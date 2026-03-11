@@ -4,11 +4,6 @@ const mocks = vi.hoisted(() => ({
   openAIConstructor: vi.fn(),
   gatewayChatCreate: vi.fn(),
   gatewayEmbeddingsCreate: vi.fn(),
-  orchestratorGenerateText: vi.fn(),
-  orchestratorGenerateObject: vi.fn(),
-  orchestratorEmbed: vi.fn(),
-  createDefaultConfig: vi.fn(() => ({ providers: {} })),
-  getAIOrchestrator: vi.fn(),
 }));
 
 vi.mock('openai', () => {
@@ -24,15 +19,6 @@ vi.mock('openai', () => {
   return { default: OpenAI };
 });
 
-vi.mock('@/lib/ai/orchestrator', () => ({
-  createDefaultConfig: mocks.createDefaultConfig,
-  getAIOrchestrator: mocks.getAIOrchestrator.mockImplementation(() => ({
-    generateText: mocks.orchestratorGenerateText,
-    generateObject: mocks.orchestratorGenerateObject,
-    embed: mocks.orchestratorEmbed,
-  })),
-}));
-
 describe('FundEU AI gateway consumer contract', () => {
   const originalEnv = { ...process.env };
 
@@ -41,11 +27,6 @@ describe('FundEU AI gateway consumer contract', () => {
     vi.clearAllMocks();
     process.env = { ...originalEnv };
 
-    mocks.orchestratorGenerateText.mockResolvedValue({
-      content: 'direct-response',
-      tokensUsed: { total: 17 },
-    });
-    mocks.orchestratorEmbed.mockResolvedValue([0.91, 0.42]);
     mocks.gatewayChatCreate.mockResolvedValue({
       choices: [{ message: { content: 'gateway-response' } }],
       usage: { total_tokens: 23 },
@@ -60,20 +41,17 @@ describe('FundEU AI gateway consumer contract', () => {
     process.env = originalEnv;
   });
 
-  it('falls back to direct orchestration when gateway config is absent', async () => {
+  it('fails closed when gateway config is absent', async () => {
     delete process.env.AI_GATEWAY_URL;
     delete process.env.AI_GATEWAY_API_KEY;
     delete process.env.AI_GATEWAY_KEY;
 
     const { aiGenerate } = await import('@/lib/ai/client');
-    const response = await aiGenerate({
+    await expect(aiGenerate({
       system: 'You are helpful.',
       prompt: 'Draft a funding summary.',
-    });
-
+    })).rejects.toThrow(/AI gateway is required/i);
     expect(mocks.openAIConstructor).not.toHaveBeenCalled();
-    expect(mocks.orchestratorGenerateText).toHaveBeenCalledOnce();
-    expect(response).toEqual({ text: 'direct-response', tokensUsed: 17 });
   });
 
   it('uses the gateway chat completions contract when configured', async () => {
@@ -105,25 +83,22 @@ describe('FundEU AI gateway consumer contract', () => {
         temperature: 0.2,
       }),
     );
-    expect(mocks.orchestratorGenerateText).not.toHaveBeenCalled();
     expect(response).toEqual({ text: 'gateway-response', tokensUsed: 23 });
   });
 
-  it('falls back to direct orchestration when gateway chat fails', async () => {
+  it('fails closed when gateway chat fails', async () => {
     process.env.AI_GATEWAY_URL = 'https://gateway.example.com';
     process.env.AI_GATEWAY_API_KEY = 'gateway-secret';
-    mocks.gatewayChatCreate.mockRejectedValueOnce(new Error('gateway down'));
+    mocks.gatewayChatCreate.mockRejectedValue(new Error('gateway down'));
 
     const { aiGenerate } = await import('@/lib/ai/client');
-    const response = await aiGenerate({
+    await expect(aiGenerate({
       system: 'You are helpful.',
       prompt: 'Draft a funding summary.',
-    });
+    })).rejects.toThrow(/AI gateway request failed/i);
 
-    expect(mocks.gatewayChatCreate).toHaveBeenCalledOnce();
-    expect(mocks.orchestratorGenerateText).toHaveBeenCalledOnce();
-    expect(response).toEqual({ text: 'direct-response', tokensUsed: 17 });
-  });
+    expect(mocks.gatewayChatCreate).toHaveBeenCalled();
+  }, 15000);
 
   it('uses the gateway embeddings contract when configured', async () => {
     process.env.AI_GATEWAY_URL = 'https://gateway.example.com';
@@ -139,7 +114,6 @@ describe('FundEU AI gateway consumer contract', () => {
         dimensions: 1536,
       }),
     );
-    expect(mocks.orchestratorEmbed).not.toHaveBeenCalled();
     expect(response).toEqual({ embedding: [0.11, 0.22, 0.33], tokensUsed: 9 });
   });
 });

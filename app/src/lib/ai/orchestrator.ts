@@ -131,8 +131,10 @@ export class AIOrchestrator {
 
   public async embed(text: string, provider?: AIProvider): Promise<number[]> {
     try {
-      // Embeddings use specific providers (OpenAI or Google)
-      const targetProvider = provider || AIProvider.OPENAI;
+      const targetProvider = provider || AIProvider.AI_GATEWAY;
+      if (targetProvider !== AIProvider.AI_GATEWAY) {
+        throw new AIProviderError(targetProvider, 'not-allowed', 'FundEU embeddings must use ai-gateway', false);
+      }
       const providerInstance = this.registry.get(targetProvider);
       
       if (!providerInstance) {
@@ -395,35 +397,34 @@ export function createDefaultConfig(): AIRouterConfig {
       [AIProvider.OPENAI]: {
         provider: AIProvider.OPENAI,
         model: 'gpt-4o',
-        apiKey: process.env.OPENAI_API_KEY || '',
+        apiKey: '',
         timeout: 30000,
-        maxRetries: 3,
-        enabled: !!process.env.OPENAI_API_KEY
+        maxRetries: 0,
+        enabled: false
       },
       [AIProvider.ANTHROPIC]: {
         provider: AIProvider.ANTHROPIC,
         model: 'claude-3-5-sonnet-20241022',
-        apiKey: process.env.ANTHROPIC_API_KEY || '',
+        apiKey: '',
         timeout: 30000,
-        maxRetries: 3,
-        enabled: !!process.env.ANTHROPIC_API_KEY
+        maxRetries: 0,
+        enabled: false
       },
       [AIProvider.GOOGLE]: {
         provider: AIProvider.GOOGLE,
         model: 'gemini-2.5-flash',
-        apiKey: process.env.GOOGLE_AI_API_KEY || '',
+        apiKey: '',
         timeout: 30000,
-        maxRetries: 3,
-        enabled: !!process.env.GOOGLE_AI_API_KEY
+        maxRetries: 0,
+        enabled: false
       },
       [AIProvider.OPENLLM_RO]: {
         provider: AIProvider.OPENLLM_RO,
         model: 'rollama3-8b-instruct',
-        apiKey: process.env.OPENLLM_RO_API_KEY || '',
-        baseURL: process.env.OPENLLM_RO_API_URL,
+        apiKey: '',
         timeout: 30000,
-        maxRetries: 3,
-        enabled: !!process.env.OPENLLM_RO_API_KEY
+        maxRetries: 0,
+        enabled: false
       },
       [AIProvider.AI_GATEWAY]: {
         provider: AIProvider.AI_GATEWAY,
@@ -437,18 +438,17 @@ export function createDefaultConfig(): AIRouterConfig {
       [AIProvider.PERPLEXITY]: {
         provider: AIProvider.PERPLEXITY,
         model: 'llama-3.1-sonar-large-128k-online',
-        apiKey: process.env.PERPLEXITY_API_KEY || '',
-        baseURL: 'https://api.perplexity.ai',
+        apiKey: '',
         timeout: 30000,
-        maxRetries: 3,
-        enabled: !!process.env.PERPLEXITY_API_KEY
-      }
+        maxRetries: 0,
+        enabled: false
+      },
     },
     routingStrategy: 'balanced',
     enableCaching: true,
     cacheProvider: 'redis',
     enableCircuitBreaker: true,
     enableMetrics: true,
-    defaultFallbacks: [AIProvider.OPENAI, AIProvider.GOOGLE]
+    defaultFallbacks: []
   };
 }

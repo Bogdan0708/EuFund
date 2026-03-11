@@ -71,16 +71,8 @@ read -s -p "Enter a strong password for PostgreSQL: " DB_PASSWORD
 echo ""
 read -s -p "Enter NextAuth secret (32 characters): " NEXTAUTH_SECRET
 echo ""
-# Check for OpenAI API key from environment or use provided keys
-if [ -n "$OPENAI_API_KEY" ]; then
-    print_status "Using OpenAI API key from environment variable"
-else
-    print_error "OPENAI_API_KEY environment variable is required. Set it before running this script."
-    exit 1
-fi
-
 print_status "Optional production secrets can be supplied via environment before running:"
-echo "  REDIS_URL SENTRY_DSN QDRANT_API_KEY SMTP_PASS DB_PASS GOOGLE_AI_API_KEY AI_GATEWAY_API_KEY"
+echo "  REDIS_URL SENTRY_DSN QDRANT_API_KEY SMTP_PASS DB_PASS AI_GATEWAY_API_KEY"
 echo "  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET HEALTHCHECK_AUTH_TOKEN"
 
 # Validate inputs
@@ -222,13 +214,11 @@ gcloud billing budgets create \
 print_status "Storing canonical application secrets in Secret Manager"
 ensure_secret_version "DATABASE_URL" "$DB_CONNECTION_STRING"
 ensure_secret_version "NEXTAUTH_SECRET" "$NEXTAUTH_SECRET"
-ensure_secret_version "OPENAI_API_KEY" "$OPENAI_API_KEY"
 ensure_secret_version "REDIS_URL" "$REDIS_URL"
 ensure_secret_version "SENTRY_DSN" "$SENTRY_DSN"
 ensure_secret_version "QDRANT_API_KEY" "$QDRANT_API_KEY"
 ensure_secret_version "SMTP_PASS" "$SMTP_PASS"
 ensure_secret_version "DB_PASS" "${DB_PASS:-$DB_PASSWORD}"
-ensure_secret_version "GOOGLE_AI_API_KEY" "$GOOGLE_AI_API_KEY"
 ensure_secret_version "AI_GATEWAY_API_KEY" "$AI_GATEWAY_API_KEY"
 ensure_secret_version "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" "$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"
 ensure_secret_version "STRIPE_SECRET_KEY" "$STRIPE_SECRET_KEY"
@@ -242,7 +232,7 @@ print_success "GCP setup completed!"
 echo ""
 echo "=== Next Steps ==="
 echo "1. Verify optional production secrets/vars are populated:"
-echo "   REDIS_URL SENTRY_DSN QDRANT_API_KEY SMTP_PASS DB_PASS GOOGLE_AI_API_KEY AI_GATEWAY_API_KEY"
+echo "   REDIS_URL SENTRY_DSN QDRANT_API_KEY SMTP_PASS DB_PASS AI_GATEWAY_API_KEY"
 echo "   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET HEALTHCHECK_AUTH_TOKEN"
 echo ""
 echo "2. Set GitHub Actions vars/secrets used by deploy-production.yml if not already configured:"
