@@ -60,7 +60,8 @@ export class AIOrchestrator {
       this.recordUsage(optimizedRequest, response);
 
       if (isRomanianOptimized) {
-        const usedRomanianProvider = response.provider === 'openllm-ro';
+        // In the new gateway-only architecture, we track performance based on the gateway's responses
+        const usedRomanianProvider = response.provider === AIProvider.AI_GATEWAY;
         recordRomanianPerformance(
           optimizedRequest as RomanianOptimizedRequest, 
           response, 
