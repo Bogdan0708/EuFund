@@ -96,7 +96,7 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
     });
 
     it('should set X-RateLimit headers on success', async () => {
-      const resetTime = new Date(Date.now() + 3600 * 1000);
+      const resetTime = Date.now() + 60_000;
       // Mock rate limit to return 'allowed'
       vi.doMock('@/lib/redis/client', () => ({
         isRedisAvailable: vi.fn().mockResolvedValue(true),
@@ -179,6 +179,42 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
       if ('errorResponse' in result) {
         expect(result.errorResponse.status).toBe(415);
       }
+    });
+
+    it('should allow explicitly permitted multipart Content-Type in withAIAuth', async () => {
+      const resetTime = Date.now() + 60_000;
+      vi.doMock('@/lib/redis/client', () => ({
+        isRedisAvailable: vi.fn().mockResolvedValue(true),
+        checkRateLimit: vi.fn().mockResolvedValue({
+          allowed: true,
+          remaining: 9,
+          resetTime,
+        }),
+      }));
+      vi.doMock('@/lib/auth', () => ({
+        auth: () => Promise.resolve({ user: { id: 'pro-user-1', email: 'pro@test.com' } }),
+      }));
+      vi.doMock('@/lib/db', () => ({ db: {}, schema: {} }));
+      vi.doMock('lru-cache', () => ({
+        LRUCache: class {
+          get = () => 'pro';
+          set = vi.fn();
+        }
+      }));
+
+      const { withAIAuth } = await import('@/lib/middleware/auth');
+      const handler = vi.fn(() => Promise.resolve(NextResponse.json({ success: true })));
+
+      const request = createNextRequest('/api/ai/analyze-document', {
+        method: 'POST',
+        headers: { 'content-type': 'multipart/form-data; boundary=upload-boundary' },
+      });
+      const response = await withAIAuth(request, handler, {
+        allowedContentTypes: ['multipart/form-data'],
+      });
+
+      expect(response.status).toBe(200);
+      expect(handler).toHaveBeenCalledOnce();
     });
   });
 

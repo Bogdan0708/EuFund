@@ -1,50 +1,5 @@
 import { describe, it, expect } from 'vitest';
-
-// Extract and test the validateCrawlerUrl function
-// We re-implement it here since it's not exported, to verify the logic
-function validateCrawlerUrl(url: string): void {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new Error(`Invalid crawler URL: ${url}`);
-  }
-
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error(`Disallowed protocol in crawler URL: ${parsed.protocol}`);
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
-
-  const blockedHostnames = [
-    'metadata.google.internal',
-    'metadata.goog',
-    '169.254.169.254',
-    'metadata.azure.com',
-  ];
-  if (blockedHostnames.includes(hostname)) {
-    throw new Error(`Blocked metadata endpoint: ${hostname}`);
-  }
-
-  const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4Match) {
-    const [, a, b] = ipv4Match.map(Number);
-    const isPrivate =
-      a === 10 ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      a === 127 ||
-      (a === 169 && b === 254) ||
-      a === 0;
-    if (isPrivate) {
-      throw new Error(`Blocked private/internal IP in crawler URL: ${hostname}`);
-    }
-  }
-
-  if (hostname === 'localhost' || hostname.endsWith('.local') || hostname.endsWith('.internal')) {
-    throw new Error(`Blocked internal hostname in crawler URL: ${hostname}`);
-  }
-}
+import { validateCrawlerUrl } from '@/lib/connectors/crawler-engine';
 
 describe('Crawler SSRF URL validation', () => {
   it('allows valid public HTTPS URLs', () => {
@@ -118,5 +73,16 @@ describe('Crawler SSRF URL validation', () => {
 
   it('blocks link-local 169.254.x.x', () => {
     expect(() => validateCrawlerUrl('http://169.254.0.1/')).toThrow('Blocked private/internal IP');
+  });
+
+  it('blocks IPv6 loopback and unique-local ranges', () => {
+    expect(() => validateCrawlerUrl('http://[::1]/')).toThrow('Blocked private/internal IP');
+    expect(() => validateCrawlerUrl('http://[fc00::1]/')).toThrow('Blocked private/internal IP');
+    expect(() => validateCrawlerUrl('http://[fd12:3456::1]/')).toThrow('Blocked private/internal IP');
+  });
+
+  it('blocks IPv6 link-local ranges and allows public IPv6', () => {
+    expect(() => validateCrawlerUrl('http://[fe80::1]/')).toThrow('Blocked private/internal IP');
+    expect(() => validateCrawlerUrl('https://[2001:4860:4860::8888]/')).not.toThrow();
   });
 });

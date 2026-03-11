@@ -26,6 +26,10 @@ const CYRILLIC_CONFUSABLE_PATTERN = /[аАеЕоОіІрРсСуУхХкКмМт
 const ASCII_DELIMITER_LOOKALIKE_PATTERN = /---\s*(?:BEGIN|END)\b|<<<|>>>/i;
 const NON_TEXT_PAYLOAD_THRESHOLD = 0.02;
 const REPLACEMENT_CHAR_PENALTY = 5;
+const PRIVATE_KEY_PATTERN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/gi;
+const SECRET_ASSIGNMENT_PATTERN = /\b(?:OPENAI_API_KEY|ANTHROPIC_API_KEY|GOOGLE_AI_API_KEY|GATEWAY_MASTER_KEY|NEXTAUTH_SECRET|STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|QDRANT_API_KEY|AI_GATEWAY_API_KEY)\b\s*[:=]\s*[^\s"'`]+/gi;
+const TOKEN_LIKE_PATTERN = /\b(?:sk-[A-Za-z0-9]{16,}|AIza[0-9A-Za-z\-_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|ya29\.[A-Za-z0-9\-_]+)\b/g;
+const PROMPT_LEAK_PATTERN = /(^|\n)\s*(?:system prompt|developer message|hidden instructions?)\s*:\s*([^\n]+)/gi;
 
 const CYRILLIC_TO_LATIN_MAP: Record<string, string> = {
   а: 'a', А: 'A', е: 'e', Е: 'E', о: 'o', О: 'O', і: 'i', І: 'I',
@@ -166,13 +170,14 @@ export function sanitizeAIOutput(
 ): { sanitized: string; piiRedacted: string[] } {
   // Always strip HTML/XSS first
   const output = sanitizeHTML(text);
+  const { cleaned: secretCleaned, redactions: secretRedactions } = stripSensitiveAILeaks(output);
 
   if (options?.stripPII === false) {
-    return { sanitized: output, piiRedacted: [] };
+    return { sanitized: secretCleaned, piiRedacted: secretRedactions };
   }
 
-  const { cleaned, redactions } = stripPII(output);
-  return { sanitized: cleaned, piiRedacted: redactions };
+  const { cleaned, redactions } = stripPII(secretCleaned);
+  return { sanitized: cleaned, piiRedacted: [...secretRedactions, ...redactions] };
 }
 
 /**
@@ -186,7 +191,9 @@ export function sanitizeAIResponseDeep<T>(data: T): { sanitized: T; piiRedacted:
   function walk(node: unknown): unknown {
     if (typeof node === 'string') {
       const htmlClean = sanitizeHTML(node);
-      const { cleaned, redactions } = stripPII(htmlClean);
+      const { cleaned: secretCleaned, redactions: secretRedactions } = stripSensitiveAILeaks(htmlClean);
+      const { cleaned, redactions } = stripPII(secretCleaned);
+      if (secretRedactions.length > 0) allRedactions.push(...secretRedactions);
       if (redactions.length > 0) allRedactions.push(...redactions);
       return cleaned;
     }
@@ -204,4 +211,32 @@ export function sanitizeAIResponseDeep<T>(data: T): { sanitized: T; piiRedacted:
   }
 
   return { sanitized: walk(data) as T, piiRedacted: allRedactions };
+}
+
+function stripSensitiveAILeaks(text: string): { cleaned: string; redactions: string[] } {
+  const redactions: string[] = [];
+  let cleaned = text;
+
+  cleaned = cleaned.replace(PRIVATE_KEY_PATTERN, () => {
+    redactions.push('PRIVATE_KEY');
+    return '[SECRET_REDACTED]';
+  });
+
+  cleaned = cleaned.replace(SECRET_ASSIGNMENT_PATTERN, (match) => {
+    const secretName = match.split(/[:=]/, 1)[0]?.trim() || 'SECRET';
+    redactions.push(secretName);
+    return `${secretName}=[SECRET_REDACTED]`;
+  });
+
+  cleaned = cleaned.replace(TOKEN_LIKE_PATTERN, () => {
+    redactions.push('ACCESS_TOKEN');
+    return '[SECRET_REDACTED]';
+  });
+
+  cleaned = cleaned.replace(PROMPT_LEAK_PATTERN, (_match, prefix) => {
+    redactions.push('PROMPT_LEAK');
+    return `${prefix || ''}[PROMPT_CONTENT_REDACTED]`;
+  });
+
+  return { cleaned, redactions };
 }

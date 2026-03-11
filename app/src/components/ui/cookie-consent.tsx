@@ -45,6 +45,15 @@ const i18n = {
 const CONSENT_VERSION = process.env.NEXT_PUBLIC_CONSENT_POLICY_VERSION || 'v1';
 const STORAGE_KEY = `eufund:cookie-consent-dismissed:${CONSENT_VERSION}`;
 
+function hasAuthSessionCookie(): boolean {
+  if (typeof document === 'undefined') return false;
+
+  return document.cookie.split('; ').some((cookie) =>
+    cookie.startsWith('authjs.session-token')
+    || cookie.startsWith('__Secure-authjs.session-token')
+  );
+}
+
 function getCsrfToken(): string | null {
   if (typeof document === 'undefined') return null;
   return document.cookie
@@ -87,11 +96,7 @@ export function CookieConsentBanner() {
       try {
         // Check for session cookie before fetching authenticated endpoint.
         // This avoids a 401 console error on every unauthenticated page load.
-        const hasSession = document.cookie.split('; ').some((c) =>
-          c.startsWith('authjs.session-token=') || c.startsWith('__Secure-authjs.session-token=')
-        );
-
-        if (!hasSession) {
+        if (!hasAuthSessionCookie()) {
           // Show basic cookie banner for unauthenticated users (GDPR compliance)
           if (!cancelled) {
             setVisible(true);
@@ -142,11 +147,7 @@ export function CookieConsentBanner() {
   async function persistConsent(analytics: boolean, marketing: boolean) {
     setSaving(true);
     try {
-      const hasSession = document.cookie.split('; ').some((c) =>
-        c.startsWith('authjs.session-token=') || c.startsWith('__Secure-authjs.session-token=')
-      );
-
-      if (hasSession) {
+      if (hasAuthSessionCookie()) {
         const csrfToken = getCsrfToken();
         const headers: HeadersInit = {
           'Content-Type': 'application/json',

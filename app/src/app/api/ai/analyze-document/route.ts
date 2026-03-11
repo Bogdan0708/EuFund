@@ -117,5 +117,8 @@ export async function POST(request: NextRequest) {
       logger.error({ error: error }, '[analyze-document]');
       return NextResponse.json(Errors.internal().toResponse(), { status: 500 });
     }
-  }, { feature: 'document' });
+  }, {
+    feature: 'document',
+    allowedContentTypes: ['multipart/form-data'],
+  });
 }

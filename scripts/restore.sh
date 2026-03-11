@@ -1,53 +1,30 @@
 #!/usr/bin/env bash
-# Disaster Recovery - Database Restore
+# Cloud SQL Restore Helper
 set -euo pipefail
 
-REGION="${AWS_REGION:-eu-west-2}"
-DB_CLUSTER="eu-funds-db"
+PROJECT_ID="${GCP_PROJECT_ID:-eufunding}"
+INSTANCE="${CLOUD_SQL_INSTANCE:-fondeu-postgres-prod}"
 
-echo "=== Disaster Recovery - Database Restore ==="
-echo "⚠️  This will create a NEW cluster from a snapshot"
+echo "=== Cloud SQL Restore ==="
+echo "Project:  $PROJECT_ID"
+echo "Instance: $INSTANCE"
+echo ""
+echo "Recent backups:"
+gcloud sql backups list \
+  --project="$PROJECT_ID" \
+  --instance="$INSTANCE" \
+  --limit=10
 
-# List available snapshots
-echo -e "\nAvailable snapshots:"
-aws rds describe-db-cluster-snapshots \
-  --db-cluster-identifier "$DB_CLUSTER" \
-  --query 'DBClusterSnapshots | sort_by(@, &SnapshotCreateTime) | [-10:].[DBClusterSnapshotIdentifier, SnapshotCreateTime, Status]' \
-  --output table --region "$REGION"
+echo ""
+read -rp "Enter backup run ID to restore: " BACKUP_RUN_ID
+[ -z "$BACKUP_RUN_ID" ] && echo "No backup selected" && exit 1
 
-# Select snapshot
-read -rp "Enter snapshot identifier to restore: " SNAPSHOT_ID
-[ -z "$SNAPSHOT_ID" ] && echo "No snapshot selected" && exit 1
+echo "This will restore backup run $BACKUP_RUN_ID into instance $INSTANCE."
+read -rp "Proceed with restore? (y/N): " CONFIRM
+[ "$CONFIRM" != "y" ] && echo "Cancelled" && exit 0
 
-RESTORE_CLUSTER="${DB_CLUSTER}-restore-$(date +%s)"
-echo -e "\nRestoring to new cluster: $RESTORE_CLUSTER"
+gcloud sql backups restore "$BACKUP_RUN_ID" \
+  --project="$PROJECT_ID" \
+  --restore-instance="$INSTANCE"
 
-# Restore
-aws rds restore-db-cluster-from-snapshot \
-  --db-cluster-identifier "$RESTORE_CLUSTER" \
-  --snapshot-identifier "$SNAPSHOT_ID" \
-  --engine aurora-postgresql \
-  --vpc-security-group-ids "${DB_SECURITY_GROUP}" \
-  --db-subnet-group-name "${DB_SUBNET_GROUP:-eu-funds-db-subnet}" \
-  --region "$REGION"
-
-echo "Waiting for cluster to become available..."
-aws rds wait db-cluster-available \
-  --db-cluster-identifier "$RESTORE_CLUSTER" \
-  --region "$REGION"
-
-# Create instance
-aws rds create-db-instance \
-  --db-instance-identifier "${RESTORE_CLUSTER}-0" \
-  --db-cluster-identifier "$RESTORE_CLUSTER" \
-  --db-instance-class db.r6g.large \
-  --engine aurora-postgresql \
-  --region "$REGION"
-
-echo "✅ Restore initiated: $RESTORE_CLUSTER"
-echo "Next steps:"
-echo "  1. Wait for instance to become available"
-echo "  2. Update DATABASE_URL to point to new cluster"
-echo "  3. Redeploy application"
-echo "  4. Verify data integrity"
-echo "  5. Rename/swap clusters when confirmed"
+echo "Restore requested. Validate application data before reopening traffic."

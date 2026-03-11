@@ -18,7 +18,7 @@ const USER_AGENTS = [
  * Validate that a URL is safe to fetch — reject internal/private IPs,
  * metadata endpoints, and non-HTTPS schemes in production.
  */
-function validateCrawlerUrl(url: string): void {
+export function validateCrawlerUrl(url: string): void {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -55,6 +55,27 @@ function validateCrawlerUrl(url: string): void {
       (a === 169 && b === 254) ||
       a === 0;
     if (isPrivate) {
+      throw new Error(`Blocked private/internal IP in crawler URL: ${hostname}`);
+    }
+  }
+
+  const normalizedIpv6 = hostname.startsWith('[') && hostname.endsWith(']')
+    ? hostname.slice(1, -1)
+    : hostname;
+  const isIpv6 = normalizedIpv6.includes(':');
+  if (isIpv6) {
+    const collapsed = normalizedIpv6.toLowerCase();
+    const isBlockedIpv6 =
+      collapsed === '::1'
+      || collapsed === '::'
+      || collapsed.startsWith('fc')
+      || collapsed.startsWith('fd')
+      || collapsed.startsWith('fe80:')
+      || collapsed.startsWith('fe90:')
+      || collapsed.startsWith('fea0:')
+      || collapsed.startsWith('feb0:');
+
+    if (isBlockedIpv6) {
       throw new Error(`Blocked private/internal IP in crawler URL: ${hostname}`);
     }
   }

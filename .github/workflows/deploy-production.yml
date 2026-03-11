@@ -15,6 +15,7 @@ on:
 env:
   REGION: europe-west2
   CLOUD_RUN_SERVICE: fondeu-platform
+  MIGRATION_JOB: fondeu-db-migrate
 
 permissions:
   id-token: write
@@ -73,25 +74,40 @@ jobs:
             --description="pre-deploy-${{ github.sha }}" \
             --async
 
+      - name: Configure database migration job
+        if: ${{ inputs.rollback != true }}
+        run: |
+          if gcloud run jobs describe "$MIGRATION_JOB" --region "$REGION" >/dev/null 2>&1; then
+            gcloud run jobs update "$MIGRATION_JOB" \
+              --region "$REGION" \
+              --image "europe-west2-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/fondeu/platform:${{ steps.image.outputs.tag }}" \
+              --service-account "fondeu-app-runner@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
+              --set-secrets DATABASE_URL=DATABASE_URL:latest \
+              --memory 512Mi \
+              --cpu 1 \
+              --max-retries 0 \
+              --task-timeout 300s \
+              --command "npx" \
+              --args "drizzle-kit,migrate"
+          else
+            gcloud run jobs create "$MIGRATION_JOB" \
+              --region "$REGION" \
+              --image "europe-west2-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/fondeu/platform:${{ steps.image.outputs.tag }}" \
+              --service-account "fondeu-app-runner@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
+              --set-secrets DATABASE_URL=DATABASE_URL:latest \
+              --memory 512Mi \
+              --cpu 1 \
+              --max-retries 0 \
+              --task-timeout 300s \
+              --command "npx" \
+              --args "drizzle-kit,migrate"
+          fi
+
       - name: Run database migrations
         if: ${{ inputs.rollback != true }}
         run: |
-          gcloud run jobs execute fondeu-db-migrate \
+          gcloud run jobs execute "$MIGRATION_JOB" \
             --region "$REGION" \
-            --wait \
-            --args="npx,drizzle-kit,migrate" \
-          || gcloud run jobs create fondeu-db-migrate \
-            --region "$REGION" \
-            --image "europe-west2-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/fondeu/platform:${{ steps.image.outputs.tag }}" \
-            --service-account "fondeu-app-runner@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
-            --set-secrets DATABASE_URL=DATABASE_URL:latest \
-            --memory 512Mi \
-            --cpu 1 \
-            --max-retries 0 \
-            --task-timeout 300s \
-            --command "npx" \
-            --args="drizzle-kit,migrate" \
-            --execute-now \
             --wait
 
       - name: Deploy to Cloud Run
@@ -110,8 +126,8 @@ jobs:
             --max-instances 20 \
             --concurrency 80 \
             --service-account "fondeu-app-runner@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
-            --set-env-vars APP_VERSION=${IMAGE_TAG},GITHUB_SHA=${{ github.sha }},GCS_BUCKET=${{ vars.GCS_BUCKET }},GCS_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCS_KEY_FILENAME=${{ vars.GCS_KEY_FILENAME }},STORAGE_STRICT_GCS=true,VECTOR_PROVIDER=qdrant,QDRANT_URL=${{ vars.QDRANT_URL }},NODE_ENV=production,NEXT_PUBLIC_APP_URL=${{ vars.PRODUCTION_URL }},NEXTAUTH_URL=${{ vars.PRODUCTION_URL }},DB_SOCKET_PATH=${{ vars.DB_SOCKET_PATH }},DB_NAME=${{ vars.DB_NAME }},DB_USER=${{ vars.DB_USER }} \
-            --update-secrets DATABASE_URL=DATABASE_URL:latest,NEXTAUTH_SECRET=NEXTAUTH_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,REDIS_URL=REDIS_URL:latest,SENTRY_DSN=SENTRY_DSN:latest,QDRANT_API_KEY=QDRANT_API_KEY:latest,SMTP_PASS=SMTP_PASS:latest,DB_PASS=DB_PASS:latest,GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest,AI_GATEWAY_KEY=AI_GATEWAY_KEY:latest,NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=STRIPE_PUBLISHABLE_KEY:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest
+            --set-env-vars APP_VERSION=${IMAGE_TAG},GITHUB_SHA=${{ github.sha }},GCS_BUCKET=${{ vars.GCS_BUCKET }},GCS_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCS_KEY_FILENAME=${{ vars.GCS_KEY_FILENAME }},STORAGE_STRICT_GCS=true,VECTOR_PROVIDER=qdrant,QDRANT_URL=${{ vars.QDRANT_URL }},AI_GATEWAY_URL=${{ vars.AI_GATEWAY_URL }},NODE_ENV=production,NEXT_PUBLIC_APP_URL=${{ vars.PRODUCTION_URL }},NEXTAUTH_URL=${{ vars.PRODUCTION_URL }},DB_SOCKET_PATH=${{ vars.DB_SOCKET_PATH }},DB_NAME=${{ vars.DB_NAME }},DB_USER=${{ vars.DB_USER }} \
+            --update-secrets DATABASE_URL=DATABASE_URL:latest,NEXTAUTH_SECRET=NEXTAUTH_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,REDIS_URL=REDIS_URL:latest,SENTRY_DSN=SENTRY_DSN:latest,QDRANT_API_KEY=QDRANT_API_KEY:latest,SMTP_PASS=SMTP_PASS:latest,DB_PASS=DB_PASS:latest,GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest,AI_GATEWAY_API_KEY=AI_GATEWAY_API_KEY:latest,NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,HEALTHCHECK_AUTH_TOKEN=HEALTHCHECK_AUTH_TOKEN:latest
 
       - name: Rollback to previous serving revision
         if: ${{ inputs.rollback == true }}
@@ -138,13 +154,39 @@ jobs:
             --format="value(status.url)"
         timeout-minutes: 15
 
+      - name: Verify AI gateway dependency
+        if: ${{ inputs.rollback != true }}
+        env:
+          AI_GATEWAY_URL: ${{ vars.AI_GATEWAY_URL }}
+        run: |
+          if [ -z "$AI_GATEWAY_URL" ]; then
+            echo "AI_GATEWAY_URL GitHub variable is required for production deploy validation"
+            exit 1
+          fi
+
+          GATEWAY_KEY=$(gcloud secrets versions access latest --secret=AI_GATEWAY_API_KEY)
+          if [ -z "$GATEWAY_KEY" ]; then
+            echo "Failed to load AI gateway API key from Secret Manager"
+            exit 1
+          fi
+
+          curl -sf "$AI_GATEWAY_URL/health" | jq -e '.status == "healthy"'
+          curl -sf -H "Authorization: Bearer $GATEWAY_KEY" "$AI_GATEWAY_URL/ready" | jq -e '.status == "ready"'
+
       - name: Production health check
         run: |
           PROD_URL="${{ vars.PRODUCTION_URL }}"
+          HEALTH_TOKEN=$(gcloud secrets versions access latest --secret=HEALTHCHECK_AUTH_TOKEN)
+          if [ -z "$HEALTH_TOKEN" ]; then
+            echo "Failed to load health check token from Secret Manager"
+            exit 1
+          fi
+
           for i in {1..15}; do
-            STATUS=$(curl -sf "$PROD_URL/api/health" | jq -r '.status' || echo "unreachable")
-            STORAGE=$(curl -sf "$PROD_URL/api/health" | jq -r '.services.storage' || echo "unreachable")
-            SENTRY=$(curl -sf "$PROD_URL/api/health" | jq -r '.services.sentry' || echo "unreachable")
+            HEALTH_JSON=$(curl -sf -H "Authorization: Bearer $HEALTH_TOKEN" "$PROD_URL/api/health" || true)
+            STATUS=$(printf '%s' "$HEALTH_JSON" | jq -r '.status // "unreachable"' 2>/dev/null || echo "unreachable")
+            STORAGE=$(printf '%s' "$HEALTH_JSON" | jq -r '.services.storage // "missing"' 2>/dev/null || echo "missing")
+            SENTRY=$(printf '%s' "$HEALTH_JSON" | jq -r '.services.sentry // "missing"' 2>/dev/null || echo "missing")
             if [ "$STATUS" == "healthy" ] && [ "$STORAGE" != "error" ] && [ "$SENTRY" != "error" ]; then
               echo "Production healthy!"
               exit 0

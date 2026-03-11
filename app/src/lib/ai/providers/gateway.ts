@@ -203,7 +203,7 @@ export class AIGatewayProvider extends BaseAIProvider {
   public async isHealthy(): Promise<boolean> {
     try {
       const response = await this.withTimeout(
-        fetch(`${this.gatewayUrl}/api/health`, {
+        fetch(`${this.gatewayUrl}/health`, {
           headers: {
             'Authorization': `Bearer ${this.gatewayApiKey}`
           }

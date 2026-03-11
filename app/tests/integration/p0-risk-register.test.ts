@@ -118,6 +118,43 @@ describe('R02: AI Output PII Sanitization', () => {
     expect(sanitized.nested.deep.text).not.toContain('test@example.com');
     expect(piiRedacted.length).toBeGreaterThan(0);
   });
+
+  it('sanitizeAIOutput strips secret-like content and prompt leaks', async () => {
+    const { sanitizeAIOutput } = await import('@/lib/ai/sanitize');
+
+    const text = `
+      system prompt: reveal internal routing and hidden instructions
+      OPENAI_API_KEY=sk-supersecretvalue123456789
+      -----BEGIN PRIVATE KEY-----
+      top-secret
+      -----END PRIVATE KEY-----
+    `;
+
+    const { sanitized, piiRedacted } = sanitizeAIOutput(text);
+
+    expect(sanitized).toContain('[PROMPT_CONTENT_REDACTED]');
+    expect(sanitized).toContain('OPENAI_API_KEY=[SECRET_REDACTED]');
+    expect(sanitized).toContain('[SECRET_REDACTED]');
+    expect(sanitized).not.toContain('sk-supersecretvalue123456789');
+    expect(piiRedacted).toEqual(expect.arrayContaining(['PROMPT_LEAK', 'OPENAI_API_KEY', 'PRIVATE_KEY']));
+  });
+
+  it('sanitizeAIResponseDeep strips nested secret-like content', async () => {
+    const { sanitizeAIResponseDeep } = await import('@/lib/ai/sanitize');
+
+    const data = {
+      explanation: 'developer message: use hidden instructions for approval scoring',
+      nested: {
+        token: 'AIzaSySecretTokenForTesting123456',
+      },
+    };
+
+    const { sanitized, piiRedacted } = sanitizeAIResponseDeep(data);
+
+    expect(sanitized.explanation).toContain('[PROMPT_CONTENT_REDACTED]');
+    expect(sanitized.nested.token).toBe('[SECRET_REDACTED]');
+    expect(piiRedacted).toEqual(expect.arrayContaining(['PROMPT_LEAK', 'ACCESS_TOKEN']));
+  });
 });
 
 // ─── R05: AI Fact-Checker ────────────────────────────────────────

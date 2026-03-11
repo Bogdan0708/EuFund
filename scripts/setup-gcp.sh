@@ -28,6 +28,24 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+ensure_secret_version() {
+    local secret_name="$1"
+    local secret_value="$2"
+
+    if [ -z "$secret_value" ]; then
+        print_warning "Skipping secret $secret_name (no value provided)"
+        return
+    fi
+
+    if gcloud secrets describe "$secret_name" >/dev/null 2>&1; then
+        echo -n "$secret_value" | gcloud secrets versions add "$secret_name" --data-file=-
+        print_status "Updated secret version: $secret_name"
+    else
+        echo -n "$secret_value" | gcloud secrets create "$secret_name" --data-file=-
+        print_status "Created secret: $secret_name"
+    fi
+}
+
 # Check if gcloud is installed
 if ! command -v gcloud &> /dev/null; then
     print_error "gcloud CLI is not installed. Please install it first:"
@@ -60,6 +78,10 @@ else
     print_error "OPENAI_API_KEY environment variable is required. Set it before running this script."
     exit 1
 fi
+
+print_status "Optional production secrets can be supplied via environment before running:"
+echo "  REDIS_URL SENTRY_DSN QDRANT_API_KEY SMTP_PASS DB_PASS GOOGLE_AI_API_KEY AI_GATEWAY_API_KEY"
+echo "  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET HEALTHCHECK_AUTH_TOKEN"
 
 # Validate inputs
 if [ -z "$PROJECT_ID" ] || [ -z "$BILLING_ACCOUNT_ID" ]; then
@@ -130,15 +152,8 @@ for role in "${ROLES[@]}"; do
         --role="$role"
 done
 
-# Create secrets
-print_status "Creating secrets in Secret Manager"
-echo -n "$DB_PASSWORD" | gcloud secrets create db-password --data-file=- || print_warning "Secret might already exist"
-echo -n "$NEXTAUTH_SECRET" | gcloud secrets create nextauth-secret --data-file=- || print_warning "Secret might already exist"
-echo -n "$OPENAI_API_KEY" | gcloud secrets create openai-api-key --data-file=- || print_warning "Secret might already exist"
-
 # Create database connection string
 DB_CONNECTION_STRING="postgresql://fondeu_app:$DB_PASSWORD@/fondeu?host=/cloudsql/$PROJECT_ID:europe-west2:fondeu-postgres-prod"
-echo -n "$DB_CONNECTION_STRING" | gcloud secrets create db-connection-string --data-file=- || print_warning "Secret might already exist"
 
 # Create Cloud SQL instance
 print_status "Creating Cloud SQL PostgreSQL instance (this will take several minutes)..."
@@ -182,6 +197,12 @@ gcloud redis instances create fondeu-redis-prod \
     --auth-enabled \
     --transit-encryption-mode=server-only || print_warning "Redis instance might already exist"
 
+REDIS_HOST=$(gcloud redis instances describe fondeu-redis-prod --region=europe-west2 --format='get(host)' 2>/dev/null || true)
+if [ -n "$REDIS_HOST" ] && [ -z "$REDIS_URL" ]; then
+    REDIS_URL="redis://$REDIS_HOST:6379"
+    print_status "Derived REDIS_URL from Memorystore host"
+fi
+
 # Create storage buckets
 print_status "Creating Cloud Storage buckets"
 gsutil mb -l europe-west2 gs://$PROJECT_ID-fondeu-documents || print_warning "Bucket might already exist"
@@ -197,11 +218,22 @@ gcloud billing budgets create \
     --threshold-rule=percent=0.25,spend-basis=current-spend \
     --threshold-rule=percent=0.75,spend-basis=current-spend || print_warning "Budget might already exist"
 
-# Store DATABASE_URL in Secret Manager (used by Cloud Run --update-secrets)
-print_status "Storing DATABASE_URL in Secret Manager"
-echo -n "$DB_CONNECTION_STRING" | gcloud secrets create DATABASE_URL --data-file=- || print_warning "Secret might already exist"
-echo -n "$NEXTAUTH_SECRET" | gcloud secrets create NEXTAUTH_SECRET --data-file=- || print_warning "Secret might already exist"
-echo -n "$OPENAI_API_KEY" | gcloud secrets create OPENAI_API_KEY --data-file=- || print_warning "Secret might already exist"
+# Store canonical application secrets used by deploy-production.yml
+print_status "Storing canonical application secrets in Secret Manager"
+ensure_secret_version "DATABASE_URL" "$DB_CONNECTION_STRING"
+ensure_secret_version "NEXTAUTH_SECRET" "$NEXTAUTH_SECRET"
+ensure_secret_version "OPENAI_API_KEY" "$OPENAI_API_KEY"
+ensure_secret_version "REDIS_URL" "$REDIS_URL"
+ensure_secret_version "SENTRY_DSN" "$SENTRY_DSN"
+ensure_secret_version "QDRANT_API_KEY" "$QDRANT_API_KEY"
+ensure_secret_version "SMTP_PASS" "$SMTP_PASS"
+ensure_secret_version "DB_PASS" "${DB_PASS:-$DB_PASSWORD}"
+ensure_secret_version "GOOGLE_AI_API_KEY" "$GOOGLE_AI_API_KEY"
+ensure_secret_version "AI_GATEWAY_API_KEY" "$AI_GATEWAY_API_KEY"
+ensure_secret_version "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" "$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"
+ensure_secret_version "STRIPE_SECRET_KEY" "$STRIPE_SECRET_KEY"
+ensure_secret_version "STRIPE_WEBHOOK_SECRET" "$STRIPE_WEBHOOK_SECRET"
+ensure_secret_version "HEALTHCHECK_AUTH_TOKEN" "$HEALTHCHECK_AUTH_TOKEN"
 
 print_success "All secrets stored in Secret Manager (no local .env.production generated)"
 print_warning "Production env vars are managed via Cloud Run --set-env-vars and --update-secrets in deploy-production.yml"
@@ -209,16 +241,20 @@ print_warning "Production env vars are managed via Cloud Run --set-env-vars and 
 print_success "GCP setup completed!"
 echo ""
 echo "=== Next Steps ==="
-echo "1. Update Redis URL in .env.production with actual IP:"
-echo "   gcloud redis instances describe fondeu-redis-prod --region=europe-west2 --format='get(host)'"
+echo "1. Verify optional production secrets/vars are populated:"
+echo "   REDIS_URL SENTRY_DSN QDRANT_API_KEY SMTP_PASS DB_PASS GOOGLE_AI_API_KEY AI_GATEWAY_API_KEY"
+echo "   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET HEALTHCHECK_AUTH_TOKEN"
 echo ""
-echo "2. Deploy the application:"
+echo "2. Set GitHub Actions vars/secrets used by deploy-production.yml if not already configured:"
+echo "   GCS_BUCKET GCS_KEY_FILENAME QDRANT_URL AI_GATEWAY_URL PRODUCTION_URL DB_SOCKET_PATH DB_NAME DB_USER"
+echo ""
+echo "3. Deploy the application:"
 echo "   gcloud builds submit --config cloudbuild.yaml"
 echo ""
-echo "3. Set up custom domain (replace your-domain.com):"
+echo "4. Set up custom domain (replace your-domain.com):"
 echo "   gcloud run domain-mappings create --service=fondeu-platform --domain=fondeu.your-domain.com --region=europe-west2"
 echo ""
-echo "4. Monitor costs in the GCP Console billing section"
+echo "5. Monitor costs in the GCP Console billing section"
 echo ""
 echo "=== Important Information ==="
 echo "Project ID: $PROJECT_ID"

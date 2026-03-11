@@ -1,34 +1,35 @@
 #!/usr/bin/env bash
-# Quick Rollback to Previous Version
+# Quick GCP Cloud Run Rollback
 set -euo pipefail
 
-CLUSTER="${ECS_CLUSTER:-eu-funds-production}"
-SERVICE="${ECS_SERVICE:-eu-funds-app-production}"
-REGION="${AWS_REGION:-eu-west-2}"
+SERVICE="${CLOUD_RUN_SERVICE:-fondeu-platform}"
+REGION="${GCP_REGION:-europe-west2}"
 
-echo "=== Quick Rollback ==="
+echo "=== Cloud Run Rollback ==="
 
-# Get previous task definition
-CURRENT=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --region "$REGION" \
-  --query 'services[0].taskDefinition' --output text)
-CURRENT_REV=$(echo "$CURRENT" | grep -oP ':\K\d+$')
-PREV_REV=$((CURRENT_REV - 1))
-PREV_TASK="${CURRENT%:*}:$PREV_REV"
+CURRENT_REVISION=$(gcloud run services describe "$SERVICE" \
+  --region "$REGION" \
+  --format="value(status.traffic[0].revisionName)")
 
-echo "Current: $CURRENT"
-echo "Rolling back to: $PREV_TASK"
+PREVIOUS_REVISION=$(gcloud run revisions list \
+  --service "$SERVICE" \
+  --region "$REGION" \
+  --sort-by="~metadata.creationTimestamp" \
+  --format="value(metadata.name)" | sed -n '2p')
 
-read -rp "Proceed? (y/N): " CONFIRM
+if [ -z "$PREVIOUS_REVISION" ]; then
+  echo "No previous revision found for service $SERVICE in $REGION"
+  exit 1
+fi
+
+echo "Current revision:  $CURRENT_REVISION"
+echo "Rollback target:   $PREVIOUS_REVISION"
+
+read -rp "Proceed with traffic rollback? (y/N): " CONFIRM
 [ "$CONFIRM" != "y" ] && echo "Cancelled" && exit 0
 
-aws ecs update-service \
-  --cluster "$CLUSTER" \
-  --service "$SERVICE" \
-  --task-definition "$PREV_TASK" \
-  --force-new-deployment \
-  --region "$REGION"
+gcloud run services update-traffic "$SERVICE" \
+  --region "$REGION" \
+  --to-revisions "${PREVIOUS_REVISION}=100"
 
-echo "Waiting for rollback..."
-aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE" --region "$REGION"
-
-echo "✅ Rolled back to $PREV_TASK"
+echo "Rollback complete: $SERVICE -> $PREVIOUS_REVISION"
