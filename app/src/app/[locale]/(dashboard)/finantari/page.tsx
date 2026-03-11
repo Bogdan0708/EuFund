@@ -125,11 +125,21 @@ export default function FinantariPage() {
         title="Apeluri de finanțare"
         description="Programe active din surse UE și România, sincronizate în platformă."
         rightSlot={(
-          <Button asChild>
-            <Link href={`/${locale}/proiecte/asistent-proiect`}>Asistent Proiect AI</Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button asChild variant="outline">
+              <Link href={`/${locale}/finantari/live`}>Portal live UE</Link>
+            </Button>
+            <Button asChild>
+              <Link href={`/${locale}/proiecte/asistent-proiect`}>Asistent Proiect AI</Link>
+            </Button>
+          </div>
         )}
       />
+
+      <div className="rounded-xl border bg-card/70 p-4 text-sm text-muted-foreground">
+        Aici vezi apelurile sincronizate si curate in platforma, inclusiv sursele din Romania.
+        Pentru feed-ul live din portalul Comisiei Europene, foloseste pagina dedicata de portal.
+      </div>
 
       <Card>
         <CardHeader className="space-y-3">
@@ -214,11 +224,6 @@ export default function FinantariPage() {
         </CardContent>
       </Card>
 
-      <div className="flex justify-end">
-        <Button asChild variant="outline">
-          <Link href={`/${locale}/finantari/live`}>Browse Live EC Portal</Link>
-        </Button>
-      </div>
     </div>
   );
 }

@@ -54,7 +54,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }));
 
         const shortcuts = ([
-          { id: 'calls', title: 'Apeluri de finanțare', type: 'call', href: `/${locale}/finantari/live` },
+          { id: 'calls', title: 'Apeluri de finanțare', type: 'call', href: `/${locale}/finantari` },
           { id: 'docs', title: 'Încărcare documente justificative', type: 'document', href: `/${locale}/documente/incarca` },
         ] satisfies SearchResult[]).filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
 
@@ -74,7 +74,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const items = [
       { href: `/${locale}/panou`, label: 'Panou de control', icon: LayoutDashboard },
       { href: `/${locale}/asistent`, label: 'Asistent AI', icon: Sparkles },
-      { href: `/${locale}/finantari/live`, label: 'Apeluri și aplicații', icon: ClipboardList },
+      { href: `/${locale}/finantari`, label: 'Apeluri și aplicații', icon: ClipboardList },
       { href: `/${locale}/proiecte`, label: 'Proiecte', icon: FolderKanban },
       { href: `/${locale}/proiecte/asistent-proiect`, label: 'Asistent Proiect', icon: Wand2 },
       { href: `/${locale}/proiecte`, label: 'Sarcini și jaloane', icon: Signature },

@@ -69,7 +69,7 @@ export default function DashboardPage() {
         const res = await fetch('/api/v1/calls?status=deschis&perPage=5');
         if (res.ok) {
           const payload = await res.json();
-          setRecentCalls(payload?.data?.items || []);
+          setRecentCalls(payload?.data || []);
         }
       } catch {
         // Non-critical — silently ignore

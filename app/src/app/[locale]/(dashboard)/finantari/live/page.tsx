@@ -88,13 +88,18 @@ export default function FundingCallsLivePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Apeluri de finanțare"
-        description="Parcurge programele active și creează aplicații cu mai puțini pași."
+        title="Portal live UE"
+        description="Flux live din Funding & Tenders Portal al Comisiei Europene. Pentru apelurile sincronizate in platforma, foloseste pagina principala de apeluri."
         rightSlot={
-          <Button variant="outline" onClick={loadCalls}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Actualizează
-          </Button>
+          <div className="flex gap-2">
+            <Button asChild variant="outline">
+              <Link href={`/${locale}/finantari`}>Apeluri sincronizate</Link>
+            </Button>
+            <Button variant="outline" onClick={loadCalls}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Actualizează
+            </Button>
+          </div>
         }
       />
 
