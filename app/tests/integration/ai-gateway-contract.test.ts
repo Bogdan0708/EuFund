@@ -100,6 +100,36 @@ describe('FundEU AI gateway consumer contract', () => {
     expect(mocks.gatewayChatCreate).toHaveBeenCalled();
   }, 15000);
 
+  it('sends x-tenant-id header in OpenAI constructor defaultHeaders', async () => {
+    process.env.AI_GATEWAY_URL = 'https://gateway.example.com';
+    process.env.AI_GATEWAY_API_KEY = 'gateway-secret';
+
+    const { aiGenerate } = await import('@/lib/ai/client');
+    await aiGenerate({ system: 'test', prompt: 'test' });
+
+    expect(mocks.openAIConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultHeaders: expect.objectContaining({
+          'x-tenant-id': 'fondeu-platform',
+        }),
+      }),
+    );
+  });
+
+  it('defaults analysis model to gpt-4o (not gpt-4o-mini)', async () => {
+    delete process.env.AI_ANALYSIS_MODEL;
+
+    const { AI_CONFIG } = await import('@/lib/ai/config');
+    expect(AI_CONFIG.analysis.model).toBe('gpt-4o');
+  });
+
+  it('allows AI_ANALYSIS_MODEL env var to override default', async () => {
+    process.env.AI_ANALYSIS_MODEL = 'gpt-5.3-instant';
+
+    const { AI_CONFIG } = await import('@/lib/ai/config');
+    expect(AI_CONFIG.analysis.model).toBe('gpt-5.3-instant');
+  });
+
   it('uses the gateway embeddings contract when configured', async () => {
     process.env.AI_GATEWAY_URL = 'https://gateway.example.com';
     process.env.AI_GATEWAY_KEY = 'gateway-secret';

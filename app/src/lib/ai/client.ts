@@ -43,6 +43,9 @@ function getGatewayClient(): OpenAI | null {
       apiKey: gatewayKey,
       baseURL: `${gatewayUrl}/v1`,
       timeout: 30000,
+      defaultHeaders: {
+        'x-tenant-id': AI_CONFIG.gateway.tenantId,
+      },
     });
   }
 

@@ -3,6 +3,7 @@
 
 import { BaseAIProvider } from './base';
 import { AIProvider, AIRequest, AIResponse, AIProviderError } from '../types';
+import { AI_CONFIG } from '../config';
 
 export class AIGatewayProvider extends BaseAIProvider {
   public readonly provider = AIProvider.AI_GATEWAY;
@@ -33,7 +34,8 @@ export class AIGatewayProvider extends BaseAIProvider {
           headers: {
             'Authorization': `Bearer ${this.gatewayApiKey}`,
             'Content-Type': 'application/json',
-            'X-User-ID': request.userId
+            'X-User-ID': request.userId,
+            'x-tenant-id': AI_CONFIG.gateway.tenantId,
           },
           body: JSON.stringify({
             model,
@@ -65,7 +67,7 @@ export class AIGatewayProvider extends BaseAIProvider {
         input: data.usage?.prompt_tokens || 0,
         output: data.usage?.completion_tokens || 0
       };
-      
+
       return {
         content: data.choices?.[0]?.message?.content || '',
         provider: this.provider,
@@ -92,7 +94,7 @@ export class AIGatewayProvider extends BaseAIProvider {
     request: AIRequest & { schema: unknown }
   ): Promise<AIResponse & { object: T }> {
     const startTime = Date.now();
-    
+
     try {
       const model = this.selectModel(request);
       const messages = this.buildMessages(request);
@@ -103,14 +105,15 @@ export class AIGatewayProvider extends BaseAIProvider {
       } else {
         messages.unshift({ role: 'system', content: schemaInstruction });
       }
-      
+
       const response = await this.withTimeout(
         fetch(`${this.gatewayUrl}/v1/chat/completions`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${this.gatewayApiKey}`,
             'Content-Type': 'application/json',
-            'X-User-ID': request.userId
+            'X-User-ID': request.userId,
+            'x-tenant-id': AI_CONFIG.gateway.tenantId,
           },
           body: JSON.stringify({
             model,
@@ -180,9 +183,10 @@ export class AIGatewayProvider extends BaseAIProvider {
           headers: {
             'Authorization': `Bearer ${this.gatewayApiKey}`,
             'Content-Type': 'application/json',
+            'x-tenant-id': AI_CONFIG.gateway.tenantId,
           },
           body: JSON.stringify({
-            model: 'text-embedding-3-small',
+            model: AI_CONFIG.embedding.model,
             input: text,
           })
         })
@@ -225,9 +229,9 @@ export class AIGatewayProvider extends BaseAIProvider {
       case 'proposal_generation':
       case 'risk_assessment':
       case 'legal_analysis':
-        return 'gpt-4o';
+        return AI_CONFIG.generation.model;
       default:
-        return 'gpt-4o-mini';
+        return AI_CONFIG.analysis.model;
     }
   }
 

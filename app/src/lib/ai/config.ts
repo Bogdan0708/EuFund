@@ -12,7 +12,7 @@ export const AI_CONFIG = {
   // Model for analysis/classification
   analysis: {
     provider: 'openai' as const,
-    model: process.env.AI_ANALYSIS_MODEL || 'gpt-4o-mini',
+    model: process.env.AI_ANALYSIS_MODEL || 'gpt-4o',
     temperature: 0.3,
     maxTokens: 2048,
   },
@@ -42,6 +42,10 @@ export const AI_CONFIG = {
     documentAnalysesPerDay: 20,
     grantMatchesPerDay: 50,
     complianceChecksPerDay: 30,
+  },
+  // Gateway settings
+  gateway: {
+    tenantId: process.env.AI_GATEWAY_TENANT_ID || 'fondeu-platform',
   },
   // GDPR: Data processing agreement references
   gdpr: {

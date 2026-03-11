@@ -26,6 +26,7 @@
     "docker:run": "docker run -p 8080:8080 fondeu-platform",
     "deploy:gcp": "../scripts/deploy.sh",
     "health:check": "curl -f http://localhost:8080/api/health || exit 1",
+    "smoke:ai": "npx tsx --env-file=.env.local scripts/smoke-test-ai.ts",
     "audit:security": "../scripts/security-audit.sh",
     "audit:prod": "npm audit --production",
     "audit:fix": "npm audit fix",
