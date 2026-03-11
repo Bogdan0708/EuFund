@@ -37,6 +37,8 @@ infrastructure/terraform/*.tfvars
 *.key
 
 audits/
+audit/
+app/screenshots/
 scripts/classification-output/
 app/scripts/classification-output/
 .abacusai/

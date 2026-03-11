@@ -6,20 +6,27 @@
 
 ## Backup Strategy
 
-### Database (Aurora PostgreSQL)
-- **Automated backups:** Continuous, 30-day retention
+### Database (Cloud SQL PostgreSQL)
+- **Automated backups:** Cloud SQL automated backups
 - **Manual snapshots:** Before each deployment
-- **Cross-region:** Copy to eu-central-1 (Frankfurt) weekly
-- **Point-in-time recovery:** Available for last 30 days
+- **Point-in-time recovery:** Validate configured retention in Cloud SQL
+- **Manual trigger:** [backup.sh](/home/godja/Dev/EU-Funds/scripts/backup.sh)
 
-### Redis (ElastiCache)
-- **Snapshots:** Daily at 04:00 UTC, 7-day retention
+### Redis (Memorystore)
+- **Persistence/backup:** document actual Memorystore backup posture
 - **Data is cache-only:** Can be rebuilt from database
 
-### Application
-- **Container images:** Stored in ECR with immutable tags
-- **Infrastructure:** Terraform state in S3 with versioning
-- **Secrets:** AWS Secrets Manager with versioning
+### Application and AI Services
+- **Container images:** stored in Artifact Registry / Cloud Build outputs
+- **Runtime:** Cloud Run revisions for `fondeu-platform`, `ai-gateway`, and `primaria`
+- **Secrets:** GCP Secret Manager with versioning
+
+### Qdrant / Knowledge Data Plane
+- **Host:** VM `fondeu-qdrant`
+- **Disk:** persistent disk `fondeu-qdrant`
+- **Ingress:** restricted to internal connector CIDR `10.8.0.0/28`
+- **Backup policy:** daily disk snapshots via `daily-backups`, 04:00 UTC, 7-day retention
+- **Remaining gap:** validate the documented Qdrant restore procedure end-to-end
 
 ## Scenarios
 
@@ -31,22 +38,23 @@ RTO: ~5 minutes
 
 ### 2. Database Corruption
 ```bash
-# Restore from point-in-time or snapshot
+# Restore from Cloud SQL backup
 ./scripts/restore.sh
 ```
 RTO: ~30 minutes
 
-### 3. Region Failure
-1. Switch DNS to GCP europe-west3 (Frankfurt) backup
-2. Restore database from cross-region snapshot
-3. Deploy application to GCP GKE
-RTO: ~4 hours
+### 3. Qdrant / Retrieval Failure
+1. Stop publish/reindex activity
+2. Check VM health, disk, and Qdrant process
+3. Restore Qdrant data from backup if needed
+4. Validate representative retrieval queries from FundEU
+RTO: depends on backup maturity; currently this is a platform hardening priority
 
 ### 4. Complete Data Loss
-1. Restore from S3 cross-region backup
-2. Rebuild infrastructure with Terraform
-3. Restore database from backup
-4. Redeploy application
+1. Restore Cloud SQL from backup
+2. Restore Qdrant from backup
+3. Redeploy or rollback Cloud Run services if needed
+4. Revalidate app, gateway, and retrieval flows
 RTO: ~4 hours
 
 ## Testing Schedule
@@ -56,5 +64,5 @@ RTO: ~4 hours
 
 ## Contacts
 - On-call engineer: [TBD]
-- AWS Support: Enterprise console
+- GCP support / project operators: [TBD]
 - Database admin: [TBD]

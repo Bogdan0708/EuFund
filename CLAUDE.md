@@ -109,7 +109,7 @@ Tests live in `app/tests/` (not `src/`). Path alias: `@/*` maps to `app/src/*`.
 
 **Vector store / RAG**: `lib/vectors/store.ts` — abstraction over Qdrant (production) and in-memory (dev). Controlled by `VECTOR_PROVIDER` env var. Qdrant requires `QDRANT_URL` and `QDRANT_API_KEY`. Collection name defaults to `eu_legislation`. RAG pipeline in `lib/rag/pipeline.ts` — hybrid search (semantic + keyword boost), sentence-based chunking (1000 chars, 200 overlap), chunk validation against poisoning patterns, per-source token budgeting (500 tokens/source, 1600 total context).
 
-**Crawler sources**: `lib/connectors/sources/config.ts` — pre-configured web scraping targets for Romanian funding sources (8 regional ADRs, PNRR portal, AFM, FNGCIMM). Each source has CSS selectors, program detection keywords, and channel metadata.
+**Crawler sources**: `lib/connectors/sources/config.ts` — currently 11 pre-configured web scraping targets for Romanian funding sources (3 national + 8 regional ADRs). Additional sources should be added only after manual review confirms they are worth operationalizing. Each source has CSS selectors, program detection keywords, and channel metadata.
 
 **Password hashing**: bcryptjs with cost factor 12.
 
@@ -162,8 +162,8 @@ EU data: EurLex, CORDIS, Eurostat, EC Portal. Romanian: ONRC (company registry),
 Canonical pipeline for document processing (all in `app/scripts/`):
 
 1. `classify-documents.ts` — AI-classifies raw PDFs/docs into programs and document types
-2. `create-reviewer-sheet.ts` — generates spreadsheet for manual review of classifications
-3. `seed-programs.ts` — seeds `funding_programs` table from classification data
+2. `create-reviewer-sheet.ts` — generates a text-based manual reviewer sheet for `UNKNOWN` classifications
+3. `seed-programs.ts` — seeds the currently curated `funding_programs` set from classification data; expand it after manual review when new programs are confirmed
 4. `bulk-ingest-rag-knowledge.ts` — chunks, embeds (OpenAI), and upserts to Qdrant. Requires `QDRANT_URL`, `QDRANT_API_KEY`, `OPENAI_API_KEY`
 5. `direct-ingest-guides.ts` — **emergency-only**, direct DB writes bypassing API/auth. Requires `--dry-run` or `--confirm` flag, writes audit artifact
 6. `generate-knowledge-vault.ts` — generates Obsidian notes and NotebookLM upload guides. Workstation-local, not product code. `VAULT_ROOT` env var overrides output path
