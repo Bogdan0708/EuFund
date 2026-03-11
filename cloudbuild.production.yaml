@@ -211,15 +211,9 @@ steps:
 
         for i in $(seq 1 15); do
           HEALTH_JSON=$(curl -sf "${HEALTH_HEADER[@]}" "$PROD_URL/api/health" || true)
-          STATUS=$(python3 -c 'import json,sys; \
-try: print(json.load(sys.stdin).get("status","unreachable")); \
-except Exception: print("unreachable")' <<<"$HEALTH_JSON")
-          STORAGE=$(python3 -c 'import json,sys; \
-try: print(json.load(sys.stdin).get("services",{}).get("storage","missing")); \
-except Exception: print("missing")' <<<"$HEALTH_JSON")
-          SENTRY=$(python3 -c 'import json,sys; \
-try: print(json.load(sys.stdin).get("services",{}).get("sentry","missing")); \
-except Exception: print("missing")' <<<"$HEALTH_JSON")
+          STATUS=$(python3 -c 'import json,sys; data=(json.load(sys.stdin) if sys.stdin.readable() else {}); print(data.get("status","unreachable"))' <<<"$HEALTH_JSON" 2>/dev/null || echo "unreachable")
+          STORAGE=$(python3 -c 'import json,sys; data=(json.load(sys.stdin) if sys.stdin.readable() else {}); print(data.get("services",{}).get("storage","missing"))' <<<"$HEALTH_JSON" 2>/dev/null || echo "missing")
+          SENTRY=$(python3 -c 'import json,sys; data=(json.load(sys.stdin) if sys.stdin.readable() else {}); print(data.get("services",{}).get("sentry","missing"))' <<<"$HEALTH_JSON" 2>/dev/null || echo "missing")
           if [ -n "$_HEALTHCHECK_SECRET_NAME" ] && [ "${#HEALTH_HEADER[@]}" -gt 0 ]; then
             HEALTHY=$([ "$STATUS" = "healthy" ] && [ "$STORAGE" != "error" ] && [ "$SENTRY" != "error" ] && echo yes || echo no)
           else
