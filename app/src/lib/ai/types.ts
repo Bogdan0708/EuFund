@@ -184,7 +184,7 @@ export interface AIProviderInterface {
 
 // Configuration interfaces
 export interface AIRouterConfig {
-  providers: Record<AIProvider, ProviderConfig>;
+  providers: Partial<Record<AIProvider, ProviderConfig>>;
   routingStrategy: 'cost' | 'speed' | 'quality' | 'balanced';
   enableCaching: boolean;
   cacheProvider: 'redis' | 'memory';

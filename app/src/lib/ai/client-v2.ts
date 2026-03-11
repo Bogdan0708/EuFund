@@ -112,17 +112,12 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: AIGenerateObje
  * Enhanced version of existing aiEmbed function
  */
 export async function aiEmbed(text: string, options?: {
-  provider?: 'openai' | 'google';
+  provider?: 'gateway';
 }): Promise<number[]> {
   const orchestrator = getAIOrchestrator(createDefaultConfig());
-  
-  const providerMap = {
-    'openai': 'openai' as import('./types').AIProvider,
-    'google': 'google' as import('./types').AIProvider
-  };
-  
-  const provider = options?.provider ? providerMap[options.provider] : undefined;
-  return await orchestrator.embed(text, provider);
+  void options;
+
+  return await orchestrator.embed(text);
 }
 
 /**
@@ -130,7 +125,7 @@ export async function aiEmbed(text: string, options?: {
  * Enhanced version of existing aiEmbedBatch function
  */
 export async function aiEmbedBatch(texts: string[], options?: {
-  provider?: 'openai' | 'google';
+  provider?: 'gateway';
   batchSize?: number;
 }): Promise<number[][]> {
   const batchSize = options?.batchSize || 10;
@@ -139,7 +134,7 @@ export async function aiEmbedBatch(texts: string[], options?: {
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize);
     const batchResults = await Promise.all(
-      batch.map(text => aiEmbed(text, { provider: options?.provider }))
+      batch.map(text => aiEmbed(text))
     );
     results.push(...batchResults);
   }

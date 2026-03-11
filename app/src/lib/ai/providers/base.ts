@@ -9,7 +9,21 @@ import {
   AIProviderInterface,
   AIProviderError 
 } from '../types';
-import { PROVIDER_CAPABILITIES } from '../provider-matrix';
+
+const GATEWAY_CAPABILITY: ProviderCapability = {
+  taskTypes: [],
+  maxContextLength: 1_000_000,
+  supportsRomanian: true,
+  supportsFunctionCalling: true,
+  supportsStreaming: true,
+  supportsSystemPrompts: true,
+  costPerToken: {
+    input: 0.001,
+    output: 0.003,
+  },
+  latencyP99: 2200,
+  reliability: 0.999,
+};
 
 export abstract class BaseAIProvider implements AIProviderInterface {
   public abstract readonly provider: AIProvider;
@@ -33,7 +47,7 @@ export abstract class BaseAIProvider implements AIProviderInterface {
   public abstract isHealthy(): Promise<boolean>;
 
   public getCapabilities(): ProviderCapability {
-    return PROVIDER_CAPABILITIES[this.provider];
+    return GATEWAY_CAPABILITY;
   }
 
   public estimateCost(request: AIRequest): number {

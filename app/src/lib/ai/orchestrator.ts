@@ -1,14 +1,8 @@
-// ─── AI Orchestrator - Main Multi-Provider Interface ─────────────────
-// Central orchestrator that manages all AI providers, routing, caching, and monitoring
+// ─── AI Orchestrator - Gateway-Only Interface ────────────────────────
+// Central orchestrator that manages the ai-gateway, caching, and monitoring.
 
-import { AIRouter } from './router';
 import { ProviderRegistry, BaseAIProvider } from './providers/base';
-import { OpenAIProvider } from './providers/openai';
-import { ClaudeProvider } from './providers/claude';
-import { GoogleProvider } from './providers/google';
-import { RomanianProvider } from './providers/romanian';
 import { AIGatewayProvider } from './providers/gateway';
-import { PerplexityProvider } from './providers/perplexity';
 import { AICache, getAICache, shouldCache } from './cache';
 import { 
   optimizeForRomanianContext, 
@@ -21,7 +15,6 @@ import {
   AIProvider, 
   AIRequest, 
   AIResponse, 
-  RoutingDecision, 
   AIProviderError,
   UsageMetrics,
   AIRouterConfig
@@ -31,7 +24,6 @@ import { logger } from '@/lib/logger';
 const log = logger.child({ component: 'ai-orchestrator' });
 
 export class AIOrchestrator {
-  private router: AIRouter;
   private registry: ProviderRegistry;
   private cache: AICache;
   private config: AIRouterConfig;
@@ -39,12 +31,6 @@ export class AIOrchestrator {
 
   constructor(config: AIRouterConfig) {
     this.config = config;
-    this.router = new AIRouter({
-      enableCircuitBreaker: config.enableCircuitBreaker,
-      maxFailures: 3,
-      circuitBreakerTimeoutMs: 300000,
-      enableCaching: config.enableCaching
-    });
     this.registry = new ProviderRegistry();
     this.cache = getAICache({ enabled: config.enableCaching });
     
@@ -53,11 +39,9 @@ export class AIOrchestrator {
 
   public async generateText(request: AIRequest): Promise<AIResponse> {
     try {
-      // 1. Romanian Context Optimization
       const optimizedRequest = optimizeForRomanianContext(request);
       const isRomanianOptimized = 'romanianContext' in optimizedRequest;
-      
-      // 2. Check cache first
+
       if (shouldCache(optimizedRequest) && this.cache.isEnabled()) {
         const cached = await this.cache.get(optimizedRequest);
         if (cached) {
@@ -66,22 +50,15 @@ export class AIOrchestrator {
         }
       }
 
-      // 3. Get routing decision (with Romanian optimization)
-      const routing = await this.router.routeRequest(optimizedRequest);
-      
-      // 4. Execute request with fallbacks
-      const response = await this.executeWithFallback(optimizedRequest, routing) as AIResponse;
-      
-      // 5. Cache successful response
+      const provider = this.requireGatewayProvider();
+      const response = await provider.generateText(optimizedRequest);
+
       if (shouldCache(optimizedRequest) && this.cache.isEnabled()) {
         await this.cache.set(optimizedRequest, response);
       }
-      
-      // 6. Record metrics and Romanian performance
+
       this.recordUsage(optimizedRequest, response);
-      this.router.reportSuccess(routing.selectedProvider);
-      
-      // 7. Romanian performance tracking
+
       if (isRomanianOptimized) {
         const usedRomanianProvider = response.provider === 'openllm-ro';
         recordRomanianPerformance(
@@ -95,12 +72,6 @@ export class AIOrchestrator {
 
     } catch (error: unknown) {
       log.error({ error }, 'AI Orchestrator error');
-      
-      // Record failure for circuit breaker
-      if (error instanceof AIProviderError) {
-        this.router.reportFailure(error.provider as AIProvider);
-      }
-      
       throw error;
     }
   }
@@ -109,22 +80,14 @@ export class AIOrchestrator {
     request: AIRequest & { schema: unknown }
   ): Promise<AIResponse & { object: T }> {
     try {
-      // Structured output is generally not cached due to complexity
-      const routing = await this.router.routeRequest(request);
-      const response = await this.executeObjectWithFallback(request, routing) as AIResponse & { object: T };
-      
+      const provider = this.requireGatewayProvider();
+      const response = await provider.generateObject<T>(request) as AIResponse & { object: T };
+
       this.recordUsage(request, response);
-      this.router.reportSuccess(routing.selectedProvider);
-      
       return response;
 
     } catch (error: unknown) {
       log.error({ error }, 'AI Orchestrator structured error');
-      
-      if (error instanceof AIProviderError) {
-        this.router.reportFailure(error.provider as AIProvider);
-      }
-      
       throw error;
     }
   }
@@ -211,144 +174,31 @@ export class AIOrchestrator {
     return analyzeRomanianContext(text);
   }
 
-  private async executeWithFallback(
-    request: AIRequest, 
-    routing: RoutingDecision
-  ): Promise<AIResponse> {
-    const providers = [
-      routing.selectedProvider,
-      ...routing.fallbackProviders.map(f => f.provider)
-    ];
-
-    let lastError: Error | null = null;
-
-    for (const providerType of providers) {
-      const provider = this.registry.get(providerType);
-      if (!provider) continue;
-
-      try {
-        return await provider.generateText(request);
-      } catch (error: unknown) {
-        lastError = error instanceof Error ? error : new Error('Unknown provider error');
-        
-        // Don't retry on non-retryable errors
-        if (error instanceof AIProviderError && !error.retryable) {
-          throw error;
-        }
-        
-        // Continue to next provider
-        const message = error instanceof Error ? error.message : 'Unknown provider error';
-        log.warn({ provider: providerType, error: message }, 'Provider failed, trying next');
-      }
+  private requireGatewayProvider(): BaseAIProvider {
+    const provider = this.registry.get(AIProvider.AI_GATEWAY);
+    if (!provider) {
+      throw new AIProviderError(AIProvider.AI_GATEWAY, 'not-configured', 'AI gateway is not configured', false);
     }
-
-    throw lastError || new Error('All providers failed');
-  }
-
-  private async executeObjectWithFallback<T>(
-    request: AIRequest & { schema: unknown }, 
-    routing: RoutingDecision
-  ): Promise<AIResponse & { object: T }> {
-    const providers = [
-      routing.selectedProvider,
-      ...routing.fallbackProviders.map(f => f.provider)
-    ];
-
-    let lastError: Error | null = null;
-
-    for (const providerType of providers) {
-      const provider = this.registry.get(providerType);
-      if (!provider) continue;
-
-      try {
-        return await provider.generateObject<T>(request) as AIResponse & { object: T };
-      } catch (error: unknown) {
-        lastError = error instanceof Error ? error : new Error('Unknown provider error');
-        
-        if (error instanceof AIProviderError && !error.retryable) {
-          throw error;
-        }
-        
-        const message = error instanceof Error ? error.message : 'Unknown provider error';
-        log.warn({ provider: providerType, error: message }, 'Provider failed for structured output, trying next');
-      }
-    }
-
-    throw lastError || new Error('All providers failed for structured output');
+    return provider;
   }
 
   private initializeProviders(): void {
-    // Initialize providers based on configuration
-    for (const [providerType, config] of Object.entries(this.config.providers)) {
-      if (!config.enabled || !config.apiKey) continue;
+    const config = this.config.providers[AIProvider.AI_GATEWAY];
+    if (!config?.enabled || !config.apiKey || !config.baseURL) {
+      log.warn('AI gateway is not fully configured; orchestrator will fail closed');
+      return;
+    }
 
-      try {
-        let provider: BaseAIProvider;
-
-        switch (providerType as AIProvider) {
-          case AIProvider.OPENAI:
-            provider = new OpenAIProvider({
-              apiKey: config.apiKey,
-              baseURL: config.baseURL,
-              timeout: config.timeout
-            });
-            break;
-
-          case AIProvider.ANTHROPIC:
-            provider = new ClaudeProvider({
-              apiKey: config.apiKey,
-              baseURL: config.baseURL,
-              timeout: config.timeout
-            });
-            break;
-
-          case AIProvider.GOOGLE:
-            provider = new GoogleProvider({
-              apiKey: config.apiKey,
-              baseURL: config.baseURL,
-              timeout: config.timeout
-            });
-            break;
-
-          case AIProvider.OPENLLM_RO:
-            provider = new RomanianProvider({
-              apiKey: config.apiKey,
-              baseURL: config.baseURL,
-              timeout: config.timeout
-            });
-            break;
-
-          case AIProvider.AI_GATEWAY:
-            if (!config.baseURL) {
-              log.warn('AI Gateway requires baseURL, skipping');
-              continue;
-            }
-            provider = new AIGatewayProvider({
-              apiKey: config.apiKey,
-              baseURL: config.baseURL,
-              timeout: config.timeout
-            });
-            break;
-
-          case AIProvider.PERPLEXITY:
-            provider = new PerplexityProvider({
-              apiKey: config.apiKey,
-              baseURL: config.baseURL,
-              timeout: config.timeout
-            });
-            break;
-
-          default:
-            log.warn(`Unknown provider type: ${providerType}`);
-            continue;
-        }
-
-        this.registry.register(provider);
-        log.info(`Initialized provider: ${providerType}`);
-
-      } catch (error) {
-        log.error({ error, provider: providerType }, `Failed to initialize provider ${providerType}`);
-      }
+    try {
+      const provider = new AIGatewayProvider({
+        apiKey: config.apiKey,
+        baseURL: config.baseURL,
+        timeout: config.timeout,
+      });
+      this.registry.register(provider);
+      log.info('Initialized provider: ai-gateway');
+    } catch (error) {
+      log.error({ error, provider: AIProvider.AI_GATEWAY }, 'Failed to initialize AI gateway');
     }
   }
 
@@ -394,38 +244,6 @@ export function getAIOrchestrator(config?: AIRouterConfig): AIOrchestrator {
 export function createDefaultConfig(): AIRouterConfig {
   return {
     providers: {
-      [AIProvider.OPENAI]: {
-        provider: AIProvider.OPENAI,
-        model: 'gpt-4o',
-        apiKey: '',
-        timeout: 30000,
-        maxRetries: 0,
-        enabled: false
-      },
-      [AIProvider.ANTHROPIC]: {
-        provider: AIProvider.ANTHROPIC,
-        model: 'claude-3-5-sonnet-20241022',
-        apiKey: '',
-        timeout: 30000,
-        maxRetries: 0,
-        enabled: false
-      },
-      [AIProvider.GOOGLE]: {
-        provider: AIProvider.GOOGLE,
-        model: 'gemini-2.5-flash',
-        apiKey: '',
-        timeout: 30000,
-        maxRetries: 0,
-        enabled: false
-      },
-      [AIProvider.OPENLLM_RO]: {
-        provider: AIProvider.OPENLLM_RO,
-        model: 'rollama3-8b-instruct',
-        apiKey: '',
-        timeout: 30000,
-        maxRetries: 0,
-        enabled: false
-      },
       [AIProvider.AI_GATEWAY]: {
         provider: AIProvider.AI_GATEWAY,
         model: 'auto',
@@ -434,14 +252,6 @@ export function createDefaultConfig(): AIRouterConfig {
         timeout: 30000,
         maxRetries: 3,
         enabled: !!(process.env.AI_GATEWAY_API_KEY || process.env.AI_GATEWAY_KEY)
-      },
-      [AIProvider.PERPLEXITY]: {
-        provider: AIProvider.PERPLEXITY,
-        model: 'llama-3.1-sonar-large-128k-online',
-        apiKey: '',
-        timeout: 30000,
-        maxRetries: 0,
-        enabled: false
       },
     },
     routingStrategy: 'balanced',
