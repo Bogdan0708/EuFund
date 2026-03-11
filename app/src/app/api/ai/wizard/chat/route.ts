@@ -27,7 +27,13 @@ function getOpenAIProvider() {
   const gatewayKey = process.env.AI_GATEWAY_KEY || process.env.AI_GATEWAY_API_KEY;
 
   if (gatewayUrl && gatewayKey) {
-    return createOpenAI({ apiKey: gatewayKey, baseURL: `${gatewayUrl}/v1` });
+    return createOpenAI({ 
+      apiKey: gatewayKey, 
+      baseURL: `${gatewayUrl}/v1`,
+      headers: {
+        'x-tenant-id': AI_CONFIG.gateway.tenantId,
+      }
+    });
   }
 
   throw Errors.serviceUnavailable('AI gateway');

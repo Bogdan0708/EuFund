@@ -2,11 +2,6 @@
 // Comprehensive type system for intelligent AI provider routing
 
 export enum AIProvider {
-  OPENAI = 'openai',
-  ANTHROPIC = 'anthropic', 
-  GOOGLE = 'google',
-  PERPLEXITY = 'perplexity',
-  OPENLLM_RO = 'openllm-ro',
   AI_GATEWAY = 'ai-gateway'
 }
 
