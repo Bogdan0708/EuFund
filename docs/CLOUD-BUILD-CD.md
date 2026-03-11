@@ -44,7 +44,7 @@ Defaults already exist for:
 - `_SERVICE=fondeu-platform`
 - `_REGION=europe-west2`
 - `_MIGRATION_JOB=fondeu-db-migrate`
-- `_CLOUD_SQL_INSTANCE=fondeu-postgres-prod`
+- `_CLOUD_SQL_INSTANCE=fondeu-db`
 - `_AI_GATEWAY_TENANT_ID=fondeu-platform`
 - `_CLOUDSQL_CONNECTION_NAME=eufunding:europe-west2:fondeu-db`
 - `_DB_SOCKET_PATH=/cloudsql/eufunding:europe-west2:fondeu-db`

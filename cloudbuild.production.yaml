@@ -2,7 +2,7 @@ substitutions:
   _SERVICE: fondeu-platform
   _REGION: europe-west2
   _MIGRATION_JOB: fondeu-db-migrate
-  _CLOUD_SQL_INSTANCE: fondeu-postgres-prod
+  _CLOUD_SQL_INSTANCE: fondeu-db
   _GCS_BUCKET: ""
   _GCS_KEY_FILENAME: ""
   _QDRANT_URL: ""
