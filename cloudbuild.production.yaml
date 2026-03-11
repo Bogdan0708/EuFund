@@ -100,6 +100,10 @@ steps:
             --image "$$IMAGE_URI" \
             --service-account "$$SERVICE_ACCOUNT" \
             --set-secrets DATABASE_URL=DATABASE_URL:latest \
+            --add-cloudsql-instances "$_CLOUDSQL_CONNECTION_NAME" \
+            --vpc-connector "$_VPC_CONNECTOR" \
+            --vpc-egress "$_VPC_EGRESS" \
+            --set-env-vars "DB_SOCKET_PATH=$_DB_SOCKET_PATH" \
             --memory 512Mi \
             --cpu 1 \
             --max-retries 0 \
@@ -112,6 +116,10 @@ steps:
             --image "$$IMAGE_URI" \
             --service-account "$$SERVICE_ACCOUNT" \
             --set-secrets DATABASE_URL=DATABASE_URL:latest \
+            --add-cloudsql-instances "$_CLOUDSQL_CONNECTION_NAME" \
+            --vpc-connector "$_VPC_CONNECTOR" \
+            --vpc-egress "$_VPC_EGRESS" \
+            --set-env-vars "DB_SOCKET_PATH=$_DB_SOCKET_PATH" \
             --memory 512Mi \
             --cpu 1 \
             --max-retries 0 \
