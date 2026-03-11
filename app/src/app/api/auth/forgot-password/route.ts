@@ -40,7 +40,14 @@ async function forgotPasswordHandler(req: NextRequest) {
 
     const locale = detectLocale(req.headers.get('accept-language')) as 'ro' | 'en';
     const baseUrl = process.env.NEXTAUTH_URL || req.nextUrl.origin;
-    const token = await generatePasswordResetToken(user.id);
+    let token: string;
+    try {
+      token = await generatePasswordResetToken(user.id);
+    } catch (tokenError) {
+      logger.error({ tokenError, userId: user.id }, '[auth:forgot-password] Token generation failed');
+      return successResponse;
+    }
+
     const resetUrl = `${baseUrl}/${locale}/resetare-parola?token=${encodeURIComponent(token)}`;
     const template = passwordResetEmail(user.fullName, resetUrl, (user.preferredLang as 'ro' | 'en') || locale);
 

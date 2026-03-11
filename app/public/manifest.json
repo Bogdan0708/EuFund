@@ -1,0 +1,11 @@
+{
+  "name": "FondEU",
+  "short_name": "FondEU",
+  "description": "FondEU - European funding platform",
+  "lang": "ro",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f766e"
+}
