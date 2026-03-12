@@ -108,8 +108,8 @@ steps:
             --cpu 1 \
             --max-retries 0 \
             --task-timeout 300s \
-            --command npx \
-            --args drizzle-kit,migrate
+            --command npm \
+            --args run,db:migrate
         else
           gcloud run jobs create "$_MIGRATION_JOB" \
             --region "$_REGION" \
@@ -124,8 +124,8 @@ steps:
             --cpu 1 \
             --max-retries 0 \
             --task-timeout 300s \
-            --command npx \
-            --args drizzle-kit,migrate
+            --command npm \
+            --args run,db:migrate
         fi
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
