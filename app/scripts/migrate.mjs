@@ -12,11 +12,13 @@ if (!connectionString) {
 
 function createClient() {
   if (socketPath) {
+    const parsedUrl = new URL(connectionString.replace(/@(?=\/)/, '@localhost'));
+
     return postgres({
       host: socketPath,
-      database: process.env.DB_NAME || 'fondeu',
-      username: process.env.DB_USER || 'fondeu',
-      password: process.env.DB_PASS || '',
+      database: parsedUrl.pathname.replace(/^\//, '') || process.env.DB_NAME || 'fondeu',
+      username: decodeURIComponent(parsedUrl.username || process.env.DB_USER || 'fondeu'),
+      password: decodeURIComponent(parsedUrl.password || process.env.DB_PASS || ''),
       max: 1,
       idle_timeout: 20,
       connect_timeout: 30,
