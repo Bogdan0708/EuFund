@@ -1,0 +1,11 @@
+{
+  "name": "fondeu-production-master",
+  "description": "Production deploy from master",
+  "repositoryEventConfig": {
+    "repository": "projects/eufunding/locations/europe-west2/connections/fundeu-github-connection/repositories/eu-fund-repo",
+    "push": {
+      "branch": "^master$"
+    }
+  },
+  "filename": "cloudbuild.production.yaml"
+}
