@@ -241,3 +241,4 @@ steps:
 options:
   machineType: E2_HIGHCPU_8
   substitutionOption: ALLOW_LOOSE
+  logging: CLOUD_LOGGING_ONLY
