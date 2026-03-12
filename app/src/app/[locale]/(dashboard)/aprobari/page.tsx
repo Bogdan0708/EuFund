@@ -1,7 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
+import { cookies } from 'next/headers';
 import { requireUser, getUserOrganizations } from '@/lib/auth/session';
 import { ApprovalsClient } from './approvals-client';
+import { getBaseUrl } from '@/lib/utils';
 
 export default async function ApprovalsPage() {
   const user = await requireUser();
@@ -17,7 +19,12 @@ export default async function ApprovalsPage() {
   }> = [];
 
   if (org?.id) {
-    const res = await fetch(`/api/v1/approvals?orgId=${org.id}&perPage=50`, { cache: 'no-store' });
+    const res = await fetch(`${getBaseUrl()}/api/v1/approvals?orgId=${org.id}&perPage=50`, {
+      cache: 'no-store',
+      headers: {
+        cookie: cookies().toString(),
+      },
+    });
     if (res.ok) {
       const payload = await res.json();
       pendingProjects = payload?.data ?? [];

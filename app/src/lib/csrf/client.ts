@@ -13,7 +13,7 @@ function captureTokenFromResponse(response: Response): void {
   cacheToken(response.headers.get('X-CSRF-Token'));
 }
 
-async function bootstrapCSRFToken(): Promise<string | null> {
+export async function bootstrapCSRFToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   if (bootstrapPromise) return bootstrapPromise;
 

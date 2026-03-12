@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { type UIMessage, TextStreamChatTransport } from 'ai';
-import { csrfHeaders } from '@/lib/csrf/client';
+import { csrfHeaders, bootstrapCSRFToken } from '@/lib/csrf/client';
 import { useTranslations } from 'next-intl';
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -82,7 +82,14 @@ export default function ConversationalWizard({
     id: 'wizard-chat',
     transport: new TextStreamChatTransport({
       api: '/api/ai/wizard/chat',
-      headers: () => csrfHeaders({ 'Content-Type': 'application/json' }),
+      headers: async () => {
+        const headers = csrfHeaders({ 'Content-Type': 'application/json' });
+        if (!headers['X-CSRF-Token']) {
+          const token = await bootstrapCSRFToken();
+          if (token) headers['X-CSRF-Token'] = token;
+        }
+        return headers;
+      },
       body: {
         locale,
         userOrgs: userOrgs.map((o) => ({ id: o.id, name: o.name, type: o.type })),

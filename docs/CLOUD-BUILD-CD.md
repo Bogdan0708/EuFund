@@ -61,7 +61,7 @@ The pipeline supports overridable secret-name substitutions. Defaults match curr
 - `_QDRANT_API_KEY_SECRET_NAME=QDRANT_API_KEY`
 - `_SMTP_PASS_SECRET_NAME=SMTP_PASS`
 - `_DB_PASS_SECRET_NAME=DB_PASS`
-- `_AI_GATEWAY_SECRET_NAME=AI_GATEWAY_KEY`
+- `_AI_GATEWAY_SECRET_NAME=AI_GATEWAY_API_KEY`
 - `_STRIPE_PUBLISHABLE_SECRET_NAME=STRIPE_PUBLISHABLE_KEY`
 - `_STRIPE_SECRET_KEY_SECRET_NAME=stripe-secret-key`
 - `_STRIPE_WEBHOOK_SECRET_NAME=stripe-webhook-secret`
@@ -77,7 +77,9 @@ These must exist in Secret Manager:
 - `QDRANT_API_KEY`
 - `SMTP_PASS`
 - `DB_PASS`
-- `AI_GATEWAY_KEY` by default, or whatever `_AI_GATEWAY_SECRET_NAME` points to
+- `AI_GATEWAY_API_KEY` by default, or whatever `_AI_GATEWAY_SECRET_NAME` points to
+
+The production deploy also maps the same secret to `AI_GATEWAY_KEY` at runtime for backward compatibility with older code paths.
 - `STRIPE_PUBLISHABLE_KEY` by default, or whatever `_STRIPE_PUBLISHABLE_SECRET_NAME` points to
 - `stripe-secret-key` by default, or whatever `_STRIPE_SECRET_KEY_SECRET_NAME` points to
 - `stripe-webhook-secret` by default, or whatever `_STRIPE_WEBHOOK_SECRET_NAME` points to

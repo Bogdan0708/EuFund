@@ -3,7 +3,7 @@
 ## Context
 - FondEU app: `~/Dev/EU-Funds/app/` (Next.js 14, commit `5215613`)
 - AI Gateway v3.0.0 deployed at: `https://ai-gateway-382299704849.europe-west2.run.app`
-- Gateway auth token: [stored in GCP Secret Manager as AI_GATEWAY_KEY]
+- Gateway auth token: [stored in GCP Secret Manager as AI_GATEWAY_API_KEY]
 - GCP project: `eufunding`, region: `europe-west2`
 - Artifact Registry: `europe-west2-docker.pkg.dev/eufunding/fondeu/app`
 - Cloud SQL: `eufunding:europe-west2:fondeu-db`
@@ -18,7 +18,7 @@
 Currently `src/lib/ai/client.ts` calls providers directly. It should route through the gateway instead.
 
 **Requirements:**
-- Add env vars: `AI_GATEWAY_URL`, `AI_GATEWAY_KEY`
+- Add env vars: `AI_GATEWAY_URL`, `AI_GATEWAY_API_KEY`
 - Update `src/lib/ai/client.ts` to call gateway's `/v1/chat/completions` endpoint
 - Keep fallback to direct provider calls if gateway is down
 - The gateway is OpenAI-compatible, so use OpenAI SDK format

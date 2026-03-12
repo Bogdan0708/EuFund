@@ -1,6 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
+import { cookies } from 'next/headers';
 import { requireUser, getUserOrganizations } from '@/lib/auth/session';
+import { getBaseUrl } from '@/lib/utils';
 
 const ACTION_LABELS: Record<string, string> = {
   'auth.login': 'Autentificare',
@@ -50,7 +52,12 @@ export default async function AuditLogPage() {
   }> = [];
 
   if (org?.id) {
-    const res = await fetch(`/api/v1/audit?orgId=${org.id}&perPage=50`, { cache: 'no-store' });
+    const res = await fetch(`${getBaseUrl()}/api/v1/audit?orgId=${org.id}&perPage=50`, {
+      cache: 'no-store',
+      headers: {
+        cookie: cookies().toString(),
+      },
+    });
     if (res.ok) {
       const payload = await res.json();
       entries = payload?.data ?? [];
