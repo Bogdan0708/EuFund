@@ -18,7 +18,7 @@ export class AIGatewayProvider extends BaseAIProvider {
     super(config);
     
     this.gatewayApiKey = this.apiKey;
-    this.gatewayUrl = this.baseURL || 'https://ai-gateway-382299704849.europe-central2.run.app';
+    this.gatewayUrl = this.baseURL || 'https://ai-gateway-j3dqdqxnyq-lm.a.run.app';
   }
 
   public async generateText(request: AIRequest): Promise<AIResponse> {

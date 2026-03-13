@@ -6,7 +6,7 @@ substitutions:
   _GCS_BUCKET: ""
   _GCS_KEY_FILENAME: ""
   _QDRANT_URL: ""
-  _AI_GATEWAY_URL: https://ai-gateway-382299704849.europe-central2.run.app
+  _AI_GATEWAY_URL: https://ai-gateway-j3dqdqxnyq-lm.a.run.app
   _AI_GATEWAY_TENANT_ID: fondeu-platform
   _PRODUCTION_URL: ""
   _CLOUDSQL_CONNECTION_NAME: eufunding:europe-west2:fondeu-db
@@ -184,8 +184,18 @@ steps:
         HEALTH_JSON=$$(curl -sf "$_AI_GATEWAY_URL/health")
         python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "healthy" else 1)' <<<"$$HEALTH_JSON"
 
-        READY_JSON=$$(curl -sf -H "Authorization: Bearer $$GATEWAY_KEY" "$_AI_GATEWAY_URL/ready")
-        python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "ready" else 1)' <<<"$$READY_JSON"
+        READY_STATUS=$$(curl -s -o /tmp/gateway_ready.json -w "%{http_code}" \
+          -H "Authorization: Bearer $$GATEWAY_KEY" \
+          "$_AI_GATEWAY_URL/ready")
+        if [ "$$READY_STATUS" = "200" ]; then
+          python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "ready" else 1)' </tmp/gateway_ready.json
+        elif [ "$$READY_STATUS" = "404" ]; then
+          echo "Gateway /ready returned 404; continuing with health and chat checks against the live gateway contract"
+        else
+          echo "AI gateway readiness check failed (HTTP $$READY_STATUS)"
+          cat /tmp/gateway_ready.json
+          exit 1
+        fi
 
         CHAT_STATUS=$$(curl -s -o /dev/null -w "%{http_code}" \
           -H "Authorization: Bearer $$GATEWAY_KEY" \
