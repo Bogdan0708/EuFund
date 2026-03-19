@@ -48,3 +48,6 @@ today_changes.patch
 
 # Docker env
 .env.docker
+
+# Worktrees
+.worktrees/
