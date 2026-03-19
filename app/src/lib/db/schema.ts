@@ -29,7 +29,7 @@ export const consentTypeEnum = pgEnum('consent_type', [
 export const consentStatusEnum = pgEnum('consent_status', ['granted', 'withdrawn', 'expired']);
 export const workPackageStatusEnum = pgEnum('work_package_status', ['planned', 'active', 'completed', 'delayed', 'cancelled']);
 export const riskLevelEnum = pgEnum('risk_level', ['very_low', 'low', 'medium', 'high', 'very_high']);
-export const userTierEnum = pgEnum('user_tier', ['free', 'pro', 'enterprise']);
+export const userTierEnum = pgEnum('user_tier', ['free', 'plus', 'pro', 'enterprise', 'ultra']);
 
 export const fundingInstrumentType = pgEnum('funding_instrument_type', [
   'grant',
