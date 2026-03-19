@@ -4,12 +4,14 @@ import { users } from '@/lib/db/schema';
 import { Errors } from '@/lib/errors';
 import { resolveBillingTrialState } from '@/lib/billing/trial';
 
-export type BillingTier = 'free' | 'pro' | 'enterprise';
+export type BillingTier = 'free' | 'plus' | 'pro' | 'enterprise' | 'ultra';
 
 const TIER_RANK: Record<BillingTier, number> = {
   free: 0,
-  pro: 1,
-  enterprise: 2,
+  plus: 1,
+  pro: 2,
+  enterprise: 3,
+  ultra: 4,
 };
 
 export function hasRequiredTier(currentTier: BillingTier, minTier: BillingTier): boolean {

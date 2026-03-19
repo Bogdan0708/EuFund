@@ -15,7 +15,7 @@ export const matchAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   let ragResults: { content: string; metadata: Record<string, unknown>; score: number }[] = []
   try {
     const { hybridSearch } = await import('@/lib/rag/pipeline')
-    ragResults = await hybridSearch(searchQuery, { limit: 10 })
+    ragResults = await hybridSearch({ query: searchQuery, topK: 10 })
   } catch {
     stream.send({ type: 'step_progress', step: 2, message: 'Knowledge base search unavailable, using AI matching only...' })
   }

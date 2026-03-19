@@ -1,4 +1,4 @@
-export type BillingTier = 'free' | 'pro' | 'enterprise';
+export type BillingTier = 'free' | 'plus' | 'pro' | 'enterprise' | 'ultra';
 export type BillingStatus = 'none' | 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete' | 'unpaid';
 
 export const FREE_TRIAL_DAYS = 30;

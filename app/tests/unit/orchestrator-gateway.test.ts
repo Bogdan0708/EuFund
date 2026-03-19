@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('@/lib/ai/client-v2', () => ({
   aiGenerate: vi.fn().mockResolvedValue({
-    content: 'test response',
-    usage: { totalTokens: 100 },
+    text: 'test response',
+    tokensUsed: 100,
   }),
   aiEmbed: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
 }))

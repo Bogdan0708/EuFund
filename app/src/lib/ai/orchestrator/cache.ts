@@ -9,6 +9,7 @@ export async function getCachedResult<T>(prefix: string, params: Record<string, 
   try {
     const { getRedis } = await import('@/lib/redis/client')
     const redis = getRedis()
+    if (!redis) return null
     const cached = await redis.get(cacheKey(prefix, params))
     return cached ? JSON.parse(cached) : null
   } catch {
@@ -25,6 +26,7 @@ export async function setCachedResult(
   try {
     const { getRedis } = await import('@/lib/redis/client')
     const redis = getRedis()
+    if (!redis) return
     await redis.setex(cacheKey(prefix, params), ttlSeconds, JSON.stringify(result))
   } catch {
     // Non-fatal — cache miss on next call

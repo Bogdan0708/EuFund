@@ -54,7 +54,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       program: undefined, // Could load from call
     })
 
-    return new Response(buffer, {
+    return new Response(new Uint8Array(buffer), {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'Content-Disposition': `attachment; filename="${project.title.replace(/[^a-zA-Z0-9-_ ]/g, '')}.docx"`,

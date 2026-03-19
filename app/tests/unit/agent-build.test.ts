@@ -48,7 +48,7 @@ describe('Build Agent', () => {
     const { buildAgent } = await import('@/lib/ai/orchestrator/agents/build')
     await buildAgent(baseCtx, '', mockStream, mockGateway)
     const aiChunkCalls = (mockStream.send as ReturnType<typeof vi.fn>).mock.calls.filter(
-      (call: [{ type: string }]) => call[0].type === 'ai_chunk'
+      (call: unknown[]) => (call[0] as { type: string }).type === 'ai_chunk'
     )
     // One ai_chunk per section
     expect(aiChunkCalls).toHaveLength(2)

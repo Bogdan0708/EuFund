@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { FREE_TRIAL_DAYS, resolveBillingTrialState } from '@/lib/billing/trial';
 
-export type BillingTier = 'free' | 'pro' | 'enterprise';
+export type BillingTier = 'free' | 'plus' | 'pro' | 'enterprise' | 'ultra';
 export type BillingInterval = 'monthly' | 'yearly';
 export type BillingStatus = 'none' | 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete' | 'unpaid';
 
@@ -64,6 +64,10 @@ function getStripeClient(): Stripe {
 }
 
 const STRIPE_PRICES: Record<Exclude<BillingTier, 'free'>, Record<BillingInterval, string | undefined>> = {
+  plus: {
+    monthly: process.env.STRIPE_PRICE_PLUS_MONTHLY,
+    yearly: process.env.STRIPE_PRICE_PLUS_YEARLY,
+  },
   pro: {
     monthly: process.env.STRIPE_PRICE_PRO_MONTHLY,
     yearly: process.env.STRIPE_PRICE_PRO_YEARLY,
@@ -72,12 +76,18 @@ const STRIPE_PRICES: Record<Exclude<BillingTier, 'free'>, Record<BillingInterval
     monthly: process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY,
     yearly: process.env.STRIPE_PRICE_ENTERPRISE_YEARLY,
   },
+  ultra: {
+    monthly: process.env.STRIPE_PRICE_ULTRA_MONTHLY,
+    yearly: process.env.STRIPE_PRICE_ULTRA_YEARLY,
+  },
 };
 
 const API_CALL_LIMITS: Record<BillingTier, number> = {
   free: 1000,
+  plus: 10000,
   pro: 25000,
   enterprise: 200000,
+  ultra: 500000,
 };
 
 export function getPricingTiers(): PricingTier[] {
@@ -117,7 +127,7 @@ function resolveTierByPriceId(priceId: string | null | undefined): BillingTier {
   return 'free';
 }
 
-const TIER_RANK: Record<BillingTier, number> = { free: 0, pro: 1, enterprise: 2 };
+const TIER_RANK: Record<BillingTier, number> = { free: 0, plus: 1, pro: 2, enterprise: 3, ultra: 4 };
 
 async function checkIfDowngrade(
   userId: string | undefined,
