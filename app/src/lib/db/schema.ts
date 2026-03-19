@@ -1,8 +1,8 @@
 import {
   pgTable, pgEnum, uuid, varchar, text, boolean, integer, decimal,
-  timestamp, jsonb, inet, bigint, date, index, uniqueIndex,
+  timestamp, jsonb, inet, bigint, date, index, uniqueIndex, unique,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 // ─── Enums ───────────────────────────────────────────────────────
 export const userRoleEnum = pgEnum('user_role', ['admin', 'org_admin', 'project_manager', 'viewer']);
@@ -54,6 +54,28 @@ export const connectorRunStatusEnum = pgEnum('connector_run_status', ['running',
 export const extractionMethodEnum = pgEnum('extraction_method', ['regex', 'rule', 'llm', 'hybrid']);
 export const reviewSeverityEnum = pgEnum('review_severity', ['low', 'medium', 'high', 'critical']);
 export const reviewStatusEnum = pgEnum('review_status', ['pending', 'in_review', 'approved', 'rejected']);
+
+// New enums for orchestrator redesign
+export const workflowStatusEnum = pgEnum('workflow_status', [
+  'active', 'paused', 'completed', 'abandoned'
+])
+export const workflowMessageRoleEnum = pgEnum('workflow_message_role', [
+  'user', 'assistant', 'system'
+])
+export const discoveryMethodEnum = pgEnum('discovery_method', [
+  'crawler', 'perplexity', 'manual'
+])
+export const discoveryStatusEnum = pgEnum('discovery_status', [
+  'pending_review', 'approved', 'rejected', 'expired'
+])
+export const alertUrgencyEnum = pgEnum('alert_urgency', ['daily'])
+export const projectDocStatusEnum = pgEnum('project_doc_status', [
+  'draft', 'review', 'final'
+])
+export const fileCategory = pgEnum('file_category', ['uploaded', 'generated'])
+export const projectStatusEnumV2 = pgEnum('project_status_v2', [
+  'draft', 'action_plan', 'built', 'exported'
+])
 
 // ─── Users ───────────────────────────────────────────────────────
 export const users = pgTable('users', {
@@ -718,6 +740,108 @@ export const complianceChecks = pgTable('compliance_checks', {
 }, (table) => ({
   projectIdx: index('idx_compliance_check_project').on(table.projectId),
 }));
+
+// ─── Orchestrator Redesign Tables ────────────────────────────────
+export const workflowSessions = pgTable('workflow_sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  projectId: uuid('project_id').references(() => projects.id),
+  currentStep: integer('current_step').notNull().default(1),
+  context: jsonb('context').notNull().default(sql`'{}'`),
+  status: workflowStatusEnum('status').notNull().default('active'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  userIdIdx: index('idx_workflow_sessions_user').on(table.userId),
+  statusIdx: index('idx_workflow_sessions_status').on(table.status),
+}))
+
+export const workflowMessages = pgTable('workflow_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').notNull().references(() => workflowSessions.id, { onDelete: 'cascade' }),
+  eventId: integer('event_id'),
+  role: workflowMessageRoleEnum('role').notNull(),
+  content: text('content').notNull(),
+  step: integer('step'),
+  eventType: varchar('event_type', { length: 50 }),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  sessionIdIdx: index('idx_workflow_messages_session').on(table.sessionId),
+  createdAtIdx: index('idx_workflow_messages_created').on(table.createdAt),
+}))
+
+export const discoveredCalls = pgTable('discovered_calls', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sourceUrl: text('source_url').notNull(),
+  sourceDomain: text('source_domain').notNull(),
+  title: text('title').notNull(),
+  program: text('program'),
+  summary: text('summary'),
+  rawContent: text('raw_content'),
+  contentHash: text('content_hash').notNull().unique(),
+  discoveredAt: timestamp('discovered_at').defaultNow().notNull(),
+  discoveryMethod: discoveryMethodEnum('discovery_method').notNull(),
+  discoverySource: text('discovery_source'),
+  status: discoveryStatusEnum('status').notNull().default('pending_review'),
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at'),
+  callId: uuid('call_id').references(() => callsForProposals.id),
+}, (table) => ({
+  statusIdx: index('idx_discovered_calls_status').on(table.status),
+}))
+
+export const programAlerts = pgTable('program_alerts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  program: text('program').notNull(),
+  urgency: alertUrgencyEnum('urgency').notNull().default('daily'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  userIdIdx: index('idx_program_alerts_user').on(table.userId),
+}))
+
+export const projectDocuments = pgTable('project_documents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id),
+  version: integer('version').notNull().default(1),
+  sections: jsonb('sections').notNull(),
+  actionPlan: jsonb('action_plan'),
+  metadata: jsonb('metadata'),
+  status: projectDocStatusEnum('status').notNull().default('draft'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index('idx_project_documents_project').on(table.projectId),
+}))
+
+export const projectFiles = pgTable('project_files', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  filename: text('filename').notNull(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+  storagePath: text('storage_path').notNull(),
+  category: fileCategory('category').notNull(),
+  description: text('description'),
+  extractedText: text('extracted_text'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index('idx_project_files_project').on(table.projectId),
+}))
+
+export const teamMembers = pgTable('team_members', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ownerId: uuid('owner_id').notNull().references(() => users.id),
+  memberId: uuid('member_id').notNull().references(() => users.id),
+  invitedAt: timestamp('invited_at').defaultNow().notNull(),
+  acceptedAt: timestamp('accepted_at'),
+}, (table) => ({
+  ownerIdIdx: index('idx_team_members_owner').on(table.ownerId),
+  memberIdIdx: index('idx_team_members_member').on(table.memberId),
+  uniqueOwnerMember: unique('uq_team_owner_member').on(table.ownerId, table.memberId),
+}))
 
 // ─── Relations ──────────────────────────────────────────────────
 export const usersRelations = relations(users, ({ many }) => ({
