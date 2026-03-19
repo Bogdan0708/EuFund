@@ -43,6 +43,11 @@ Redesign FondEU from a multi-page dashboard into a minimalist two-page app (Chat
   - Each shows: project title (or "Untitled"), step progress (e.g., "Step 4/7"), last active date
   - Selecting loads message history and resumes where user left off
   - Subtle text + chevron, Apple style
+- **Quick starts** (shown when no active session): 3-5 prominent entry cards:
+  - "Check if I'm eligible for EU funds"
+  - "Find open calls for my idea"
+  - "Improve a draft application I already wrote"
+  - Each maps to a workflow template variant
 - Message input at bottom (fixed), large text area with send button and file attach
 - Agent step indicators: collapsible cards between messages showing step progress (e.g., "Matching grants..." → "Found 3 matches") with subtle expand animation
 - Checkpoint moments: agent pauses and presents options as clickable cards (e.g., "I found these 3 calls — which one to research deeper?")
@@ -86,7 +91,8 @@ Redesign FondEU from a multi-page dashboard into a minimalist two-page app (Chat
 ### Simplified Auth
 
 - **Google login** — primary (covers ~80% of Romanian organizations)
-- **Email magic link** — fallback (for government entities without Google accounts)
+- **Microsoft login** — for municipalities, consultancies, and institutional buyers using Microsoft 365
+- **Email magic link** — fallback (for entities without Google or Microsoft accounts)
 - **No passwords** — delete credentials provider, bcrypt, reset/verification flows
 - **No org roles in Plus/Pro** — one user = one account = their projects
 - **Ultra tier** — up to 5 users with shared project access (simple team, no role hierarchy)
@@ -142,7 +148,9 @@ lib/ai/orchestrator/
 | 4 | Research | Deep targeted search for requirements, forms, deadlines, certificates |
 | 5 | Knowledge | Feeds research results back to Qdrant (chunks, embeds, upserts) |
 | 6 | Plan | Generates structured action plan (steps, documents, timeline, responsibilities) |
+| 6.5 | Compliance | Automated compliance check — flags auto-rejection risks before building |
 | 7 | Build | Produces full project document (all sections, program-specific extras) |
+| 7.5 | Preflight | Submission readiness check — mandatory annexes, budget consistency, declarations |
 
 ### Provider Routing Per Agent
 
@@ -156,7 +164,9 @@ Each agent specifies provider and model explicitly in its gateway request (e.g.,
 | Research | Perplexity Sonar Pro + Gemini 2.5 Pro + Claude Sonnet | Deep research needs quality |
 | Knowledge | OpenAI Embeddings + Gemini 2.5 Flash | Embeddings + document chunking |
 | Plan | Claude Sonnet | Complex structuring benefits from Claude |
+| Compliance | Claude Sonnet | Needs reasoning to check eligibility against call criteria |
 | Build | **Tier-dependent** (see below) | Highest quality for the product output |
+| Preflight | Gemini 2.5 Flash | Structured checklist validation, cost-efficient |
 | Edits | Claude Sonnet | Single-section, small context |
 
 **Build model by tier:**
@@ -187,6 +197,85 @@ To reduce costs, agent research results are cached aggressively:
 - **Step 2** (match results) cached by program + sector + region for 1h.
 - Cache stored in Redis with TTL. Cache hits skip the AI call entirely.
 - Estimated cost reduction: ~30-40% for popular programs/calls.
+
+### Match Reasoning
+
+The Match agent (step 2) must explain both **why** a call matches AND **why** other calls were excluded. Each match result includes:
+- `reasoning`: why this call fits (thematic, eligibility, budget alignment)
+- `exclusionReasons`: top 3 excluded calls with why they didn't make it (e.g., "PNRR Call 5.1 — budget ceiling too low for your project")
+
+This builds trust and reduces support load.
+
+### Compliance Agent (Step 6.5)
+
+Between Plan and Build, an automated compliance check agent:
+- Compares the action plan against the call's eligibility criteria (from Research step)
+- Flags "auto-rejection" risks: missing mandatory documents, budget outside range, ineligible applicant type, region mismatch
+- Produces a compliance report with pass/fail per criterion
+- If critical issues found → checkpoint: "These issues may cause rejection. Fix before building?"
+- Uses Claude Sonnet for reasoning accuracy
+
+### Preflight Check (Step 7.5)
+
+After Build, before marking project complete:
+- Mandatory annexes present? (cross-reference Research step's `requiredDocuments`)
+- Budget figures consistent across sections?
+- Required declarations included?
+- Formatting matches call template requirements?
+- All uploaded certificates referenced in annexes checklist?
+- Returns checklist with pass/fail per item
+
+### Data Anonymization
+
+Before sending user content to AI providers, the gateway client sanitizes:
+- CIF (Cod de Identificare Fiscală) — regex: `RO\d{2,10}`
+- IBAN — regex: `[A-Z]{2}\d{2}[A-Z0-9]{4,30}`
+- CNP (personal ID) — regex: `[1-8]\d{12}`
+- Phone numbers, email addresses
+
+Replacement: `[REDACTED_CIF]`, `[REDACTED_IBAN]`, etc. Original values never leave the platform.
+
+Implemented in `lib/ai/orchestrator/sanitizer.ts`, called by the gateway client wrapper before every AI call.
+
+### AI Content Labeling (EU AI Act Compliance)
+
+All AI-generated content must be clearly labeled per EU AI Act requirements:
+- Each generated section displays: "Generated by FondEU AI — Human Review Required"
+- `project_documents.sections` JSONB stores per-section provenance metadata
+- Inline UI badge: "AI Generated" (blue) vs "Human Edited" (green)
+- Export includes footer: "This document contains AI-generated content. Human review is required before submission."
+
+### Per-Section Provenance
+
+Each section in `project_documents.sections` JSONB stores:
+
+```typescript
+interface ProjectSection {
+  title: string
+  content: string
+  order: number
+  source: 'generated' | 'edited'
+  provenance: {
+    model: string           // e.g., 'claude-sonnet-4-0'
+    provider: string        // e.g., 'claude'
+    promptVersion: string   // hash of the system prompt used
+    sourceEvidenceIds: string[]  // Qdrant chunk IDs used as context
+    generatedAt: string     // ISO timestamp
+    confidence: number      // 0-1, from AI response
+  }
+}
+```
+
+### Source Snapshotting
+
+When the Research agent downloads guides or official documents, it preserves:
+- Source URL
+- Fetch timestamp
+- Content hash (SHA-256)
+- Raw content snapshot (stored in GCS)
+- Extraction results linked back to the snapshot
+
+Stored in `workflow_sessions.context.researchResults.sourceSnapshots[]`. This ensures provenance — if a guide changes later, the platform can show what version was used when the project was built.
 
 ### Engine Mechanics
 
@@ -320,7 +409,7 @@ type SSEEvent = {
 - SSE with automatic reconnect (EventSource API, 3s retry)
 - Client sends `lastEventId` on reconnect — server replays missed events from `workflow_messages`
 - Replay endpoint: `GET /api/ai/orchestrator/replay?sessionId=xxx&afterEventId=N`
-- Server heartbeat every 30s (`:keepalive\n\n`)
+- Server heartbeat every 15s (keeps connection alive during long Perplexity research, 2-4 min) (`:keepalive\n\n`)
 - Session state in DB — reconnect resumes cleanly
 - One connection per browser tab
 - Cloud Run request timeout set to 3600s for SSE endpoint (max allowed)

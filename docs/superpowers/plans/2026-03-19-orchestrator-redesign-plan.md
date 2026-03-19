@@ -771,7 +771,7 @@ Understand the current NextAuth config — which providers are configured, how J
 
 - [ ] **Step 3: Add Google provider to NextAuth config**
 
-Install: `cd app && npm install next-auth@beta @auth/google-provider`
+Install: `cd app && npm install next-auth@beta`
 
 In `app/src/lib/auth/index.ts`, add Google provider:
 
@@ -786,7 +786,19 @@ Google({
 }),
 ```
 
-Add callback to link Google users to existing accounts by email:
+Also add Microsoft provider for municipalities/institutions:
+
+```typescript
+import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id'
+
+MicrosoftEntraID({
+  clientId: process.env.MICROSOFT_CLIENT_ID!,
+  clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
+  allowDangerousEmailAccountLinking: true,
+}),
+```
+
+Add callback to link Google/Microsoft users to existing accounts by email:
 
 ```typescript
 // In callbacks.signIn:
@@ -1738,7 +1750,7 @@ export function writeSSEHeaders(res: ServerResponse) {
   })
 }
 
-export function startHeartbeat(res: ServerResponse, intervalMs = 30_000): NodeJS.Timeout {
+export function startHeartbeat(res: ServerResponse, intervalMs = 15_000): NodeJS.Timeout {
   return setInterval(() => {
     res.write(':keepalive\n\n')
   }, intervalMs)
@@ -2807,6 +2819,139 @@ On file upload:
 
 ---
 
+### Task 5.14: Add Data Anonymization Sanitizer
+
+**Files:**
+- Create: `app/src/lib/ai/orchestrator/sanitizer.ts`
+- Test: `app/tests/unit/orchestrator-sanitizer.test.ts`
+
+- [ ] **Step 1: Write test**
+
+```typescript
+// app/tests/unit/orchestrator-sanitizer.test.ts
+import { describe, it, expect } from 'vitest'
+import { sanitizeForAI } from '@/lib/ai/orchestrator/sanitizer'
+
+describe('Data Anonymization', () => {
+  it('redacts CIF numbers', () => {
+    expect(sanitizeForAI('Company CIF RO12345678')).toBe('Company CIF [REDACTED_CIF]')
+  })
+
+  it('redacts IBAN numbers', () => {
+    expect(sanitizeForAI('Account RO49AAAA1B31007593840000')).toBe('Account [REDACTED_IBAN]')
+  })
+
+  it('redacts CNP numbers', () => {
+    expect(sanitizeForAI('CNP 1234567890123')).toBe('CNP [REDACTED_CNP]')
+  })
+
+  it('preserves non-sensitive text', () => {
+    expect(sanitizeForAI('PNRR Call 4.2 budget 500000 EUR')).toBe('PNRR Call 4.2 budget 500000 EUR')
+  })
+})
+```
+
+- [ ] **Step 2: Implement sanitizer**
+
+```typescript
+// app/src/lib/ai/orchestrator/sanitizer.ts
+const PATTERNS = [
+  { regex: /\bRO\d{2,10}\b/g, replacement: '[REDACTED_CIF]' },
+  { regex: /\b[A-Z]{2}\d{2}[A-Z0-9]{4,30}\b/g, replacement: '[REDACTED_IBAN]' },
+  { regex: /\b[1-8]\d{12}\b/g, replacement: '[REDACTED_CNP]' },
+  { regex: /\b\d{10}\b/g, replacement: '[REDACTED_PHONE]' },
+  { regex: /\b[\w.-]+@[\w.-]+\.\w{2,}\b/g, replacement: '[REDACTED_EMAIL]' },
+]
+
+export function sanitizeForAI(text: string): string {
+  let result = text
+  for (const { regex, replacement } of PATTERNS) {
+    result = result.replace(regex, replacement)
+  }
+  return result
+}
+```
+
+- [ ] **Step 3: Integrate into gateway client** — call `sanitizeForAI()` on all message content before sending to gateway.
+
+- [ ] **Step 4: Run test, commit**
+
+```bash
+git add app/src/lib/ai/orchestrator/sanitizer.ts app/tests/unit/orchestrator-sanitizer.test.ts
+git commit -m "feat(orchestrator): add data anonymization — redact CIF, IBAN, CNP before AI calls"
+```
+
+---
+
+### Task 5.15: Add Compliance Agent (Step 6.5)
+
+**Files:**
+- Create: `app/src/lib/ai/orchestrator/agents/compliance.ts`
+- Create: `app/src/lib/ai/orchestrator/prompts/compliance.ts`
+- Test: `app/tests/unit/agent-compliance.test.ts`
+
+The compliance agent runs between Plan and Build:
+1. Takes the action plan + research results (eligibility criteria)
+2. Checks each criterion: applicant type eligible? Region eligible? Budget in range? Required documents identified?
+3. Produces a pass/fail checklist
+4. If critical failures → checkpoint: "These issues may cause rejection. Fix before building?"
+5. If all pass → proceed automatically to Build
+
+- [ ] **Step 1: Write test**
+- [ ] **Step 2: Implement prompt and agent**
+- [ ] **Step 3: Update engine to dispatch compliance agent after step 6**
+- [ ] **Step 4: Run test, commit**
+
+```bash
+git commit -m "feat(orchestrator): add compliance agent (step 6.5) — flags auto-rejection risks"
+```
+
+---
+
+### Task 5.16: Add Preflight Check (Step 7.5)
+
+**Files:**
+- Create: `app/src/lib/ai/orchestrator/agents/preflight.ts`
+- Test: `app/tests/unit/agent-preflight.test.ts`
+
+After Build completes, run a structured checklist:
+- Cross-reference `requiredDocuments` from Research step against uploaded files
+- Check budget figures consistent across sections
+- Verify all required declarations present
+- Return pass/fail checklist, display to user before marking complete
+
+- [ ] **Step 1: Write test**
+- [ ] **Step 2: Implement preflight agent**
+- [ ] **Step 3: Update engine to dispatch preflight after step 7**
+- [ ] **Step 4: Run test, commit**
+
+```bash
+git commit -m "feat(orchestrator): add preflight check (step 7.5) — submission readiness validation"
+```
+
+---
+
+### Task 5.17: Add Match Reasoning (Include + Exclude)
+
+**Files:**
+- Modify: `app/src/lib/ai/orchestrator/agents/match.ts`
+- Modify: `app/src/lib/ai/orchestrator/prompts/match.ts`
+
+Update the match agent to return:
+- For each matched call: `reasoning` (why it fits)
+- Top 3 excluded calls with `exclusionReason` (why they didn't make it)
+- Display both in the checkpoint card UI
+
+- [ ] **Step 1: Update match prompt to require exclusion reasoning**
+- [ ] **Step 2: Update MatchedCall type to include exclusions**
+- [ ] **Step 3: Run test, commit**
+
+```bash
+git commit -m "feat(orchestrator): add match reasoning — explain both inclusion and exclusion"
+```
+
+---
+
 ## Phase 6: Funding Discovery
 
 **Goal:** Build daily discovery pipeline with Cloud Scheduler trigger and chat review.
@@ -3053,6 +3198,8 @@ git commit -m "feat(ui): add Apple-style design tokens"
 - Create: `app/src/components/chat/ProjectSelector.tsx`
 - Create: `app/src/components/chat/StepIndicator.tsx`
 - Create: `app/src/components/chat/CheckpointCard.tsx`
+- Create: `app/src/components/chat/QuickStarts.tsx`
+- Create: `app/src/components/chat/AIBadge.tsx`
 - Create: `app/src/hooks/useOrchestrator.ts`
 
 - [ ] **Step 1: Build useOrchestrator hook**
@@ -3064,7 +3211,22 @@ Custom hook that manages:
 - Reconnection with lastEventId
 - Session state (current step, status)
 
-- [ ] **Step 2: Build MessageInput component**
+- [ ] **Step 2: Build QuickStarts component**
+
+When no active session, show 3-5 prominent entry cards instead of empty chat:
+- "Check if I'm eligible for EU funds"
+- "Find open calls for my idea"
+- "Improve a draft application I already wrote"
+Each card starts a new workflow with a pre-filled context hint. Apple-style cards with subtle shadows.
+
+- [ ] **Step 3: Build AIBadge component**
+
+Small inline badge for AI-generated content:
+- Blue badge: "AI Generated" — shows on sections with `source: 'generated'`
+- Green badge: "Human Edited" — shows on sections with `source: 'edited'`
+- Hover shows provenance: model used, generated timestamp, confidence score
+
+- [ ] **Step 4: Build MessageInput component**
 
 Large text area with file attach button. Send on Enter (Shift+Enter for newline). File drop zone. Apple-style minimal design.
 
@@ -3310,8 +3472,8 @@ git commit -m "feat(ui): update auth pages for Google + magic link, clean up nav
 | 2. Auth Simplification | 3 tasks | ~4 commits |
 | 3. Gateway Streaming | 2 tasks | ~3 commits |
 | 4. Billing & Tiers | 2 tasks | ~3 commits |
-| 5. Orchestrator Engine | 13 tasks | ~16 commits |
+| 5. Orchestrator Engine | 17 tasks | ~20 commits |
 | 6. Funding Discovery | 2 tasks | ~3 commits |
 | 7. Project Builder & Export | 4 tasks | ~5 commits |
 | 8. UI Redesign | 5 tasks | ~7 commits |
-| **Total** | **37 tasks** | **~49 commits** |
+| **Total** | **41 tasks** | **~53 commits** |
