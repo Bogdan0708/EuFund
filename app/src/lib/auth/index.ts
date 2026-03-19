@@ -1,5 +1,8 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
+import Google from 'next-auth/providers/google';
+import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
+import EmailProvider from 'next-auth/providers/email';
 import { loginSchema } from '@/lib/validators';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
@@ -62,6 +65,27 @@ export const {
         };
       },
     }),
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      allowDangerousEmailAccountLinking: true,
+    }),
+    MicrosoftEntraID({
+      clientId: process.env.MICROSOFT_CLIENT_ID!,
+      clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
+      allowDangerousEmailAccountLinking: true,
+    }),
+    EmailProvider({
+      server: {
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT),
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASSWORD,
+        },
+      },
+      from: process.env.EMAIL_FROM || 'noreply@platformafinantare.eu',
+    }),
   ],
   pages: {
     signIn: '/ro/autentificare',
@@ -72,6 +96,17 @@ export const {
     maxAge: 24 * 60 * 60, // 24 hours
   },
   callbacks: {
+    async signIn({ user, account }) {
+      if ((account?.provider === 'google' || account?.provider === 'microsoft-entra-id') && user.email) {
+        const existing = await db.query.users.findFirst({
+          where: eq(users.email, user.email),
+        });
+        if (existing) {
+          user.id = existing.id;
+        }
+      }
+      return true;
+    },
     async jwt({ token, user, trigger }) {
       if (user) {
         const authUser = user as AuthUserClaims;
