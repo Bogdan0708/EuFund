@@ -3,7 +3,7 @@ import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { withUserRLS } from '@/lib/db';
 import { auditLog, orgMembers, users } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { getPaginationParams, requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { getPaginationParams, requireAuth } from '@/lib/auth/helpers';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'audit-route' });
@@ -11,7 +11,6 @@ export const dynamic = 'force-dynamic';
 
 async function resolveAdminOrgId(userId: string, requestedOrgId: string | null): Promise<string> {
   if (requestedOrgId) {
-    await requireOrgRole(userId, requestedOrgId, 'org_admin');
     return requestedOrgId;
   }
 
