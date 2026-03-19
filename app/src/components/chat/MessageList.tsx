@@ -52,14 +52,12 @@ function renderMarkdown(text: string): string {
 
 interface MessageListProps {
   messages: ChatMessage[];
-  currentStep: number;
   onCheckpointRespond: (response: string) => void;
   isStreaming: boolean;
 }
 
 export function MessageList({
   messages,
-  currentStep,
   onCheckpointRespond,
   isStreaming,
 }: MessageListProps) {

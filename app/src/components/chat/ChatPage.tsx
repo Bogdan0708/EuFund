@@ -12,7 +12,6 @@ export function ChatPage() {
   const locale = useLocale();
   const {
     messages,
-    currentStep,
     status,
     sendMessage,
     activeSessionId,
@@ -89,7 +88,6 @@ export function ChatPage() {
       ) : (
         <MessageList
           messages={messages}
-          currentStep={currentStep}
           onCheckpointRespond={handleCheckpointRespond}
           isStreaming={isStreaming}
         />
