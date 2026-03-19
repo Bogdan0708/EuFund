@@ -48,7 +48,8 @@ function FileRow({ file, locale }: { file: PlaceholderFile; locale: string }) {
   );
 }
 
-export function FilesTab({ projectId: _projectId }: FilesTabProps) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function FilesTab({ projectId }: FilesTabProps) {
   const locale = useLocale();
 
   return (
