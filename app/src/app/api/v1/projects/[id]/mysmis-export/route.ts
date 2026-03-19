@@ -3,7 +3,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { withUserRLS } from '@/lib/db';
 import { callsForProposals, complianceReports, organizations, projects, workPackages } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { requireTier } from '@/lib/middleware/tier-gate';
 import { logger } from '@/lib/logger';
 import { logAudit } from '@/lib/legal/audit';
@@ -38,7 +38,6 @@ export async function GET(req: NextRequest, { params }: Params) {
     });
     if (!project) throw Errors.notFound('project', id);
 
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     const [organization, call, packages, latestComplianceReport] = await withUserRLS(user.id, async (tx) => {
       return Promise.all([

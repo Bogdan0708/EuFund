@@ -9,7 +9,6 @@ describe('GET /api/v1/audit', () => {
         id: '123e4567-e89b-42d3-a456-426614174000',
         email: 'admin@test.com',
       }),
-      requireOrgRole: vi.fn().mockResolvedValue('org_admin'),
       getPaginationParams: vi.fn().mockReturnValue({ page: 1, perPage: 20, offset: 0 }),
     }));
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
 import { projects, riskAssessments } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { assessRisk, type RiskAssessmentInput } from '@/lib/ai/risk-assessment';
 import { listRisks } from '@/lib/services/risks';
 import { listWorkPackages } from '@/lib/services/work-packages';
@@ -24,7 +24,6 @@ export async function POST(req: NextRequest, { params }: Params) {
       });
     });
     if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
     const ensureTier = requireTier('pro');
     await ensureTier(user.id);
 

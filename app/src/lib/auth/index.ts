@@ -1,13 +1,10 @@
 import NextAuth from 'next-auth';
-import Credentials from 'next-auth/providers/credentials';
 import Google from 'next-auth/providers/google';
 import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
 import EmailProvider from 'next-auth/providers/email';
-import { loginSchema } from '@/lib/validators';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
-import { compare } from 'bcryptjs';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ component: 'auth' });
@@ -29,42 +26,6 @@ export const {
   signOut,
 } = NextAuth({
   providers: [
-    Credentials({
-      name: 'credentials',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' },
-      },
-      async authorize(credentials) {
-        const parsed = loginSchema.safeParse(credentials);
-        if (!parsed.success) return null;
-
-        const { email, password } = parsed.data;
-
-        const user = await db.query.users.findFirst({
-          where: eq(users.email, email),
-        });
-
-        if (!user || !user.passwordHash) return null;
-
-        const isValid = await compare(password, user.passwordHash);
-        if (!isValid) return null;
-
-        // Update last login
-        await db
-          .update(users)
-          .set({ lastLoginAt: new Date() })
-          .where(eq(users.id, user.id));
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.fullName,
-          emailVerified: user.emailVerified ?? false,
-          isPlatformAdmin: user.isPlatformAdmin ?? false,
-        };
-      },
-    }),
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,

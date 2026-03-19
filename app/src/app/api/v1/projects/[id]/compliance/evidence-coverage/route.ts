@@ -3,7 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { withUserRLS } from '@/lib/db';
 import { projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { logger } from '@/lib/logger';
 import { getGhidEvidenceCoverage } from '@/lib/services/compliance';
 
@@ -19,7 +19,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
       });
     });
     if (!project) throw Errors.notFound('project', params.id);
-    await requireOrgRole(user.id, project.orgId, 'viewer');
 
     const coverage = await getGhidEvidenceCoverage(project.id, user.id);
 

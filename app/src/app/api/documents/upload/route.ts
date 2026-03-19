@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
 import { documents, docTypeEnum, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { basename } from 'path';
 import { buildObjectPath, computeSha256, deleteObject, putObject } from '@/lib/storage/gcs';
@@ -56,9 +56,6 @@ export async function POST(req: NextRequest) {
     }
 
     let resolvedOrgId = orgId || undefined;
-    if (orgId) {
-      await requireOrgRole(user.id, orgId, 'project_manager');
-    }
 
     if (projectId) {
       const project = await withUserRLS(user.id, async (tx) => {
@@ -74,8 +71,6 @@ export async function POST(req: NextRequest) {
           { status: 404 },
         );
       }
-
-      await requireOrgRole(user.id, project.orgId, 'project_manager');
 
       if (orgId && orgId !== project.orgId) {
         return NextResponse.json(

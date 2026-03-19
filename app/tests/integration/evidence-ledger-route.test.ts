@@ -7,7 +7,6 @@ describe('/api/v1/projects/[id]/evidence-ledger', () => {
     const logAudit = vi.fn().mockResolvedValue(undefined);
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'u@test.com' }),
-      requireOrgRole: vi.fn().mockResolvedValue('project_manager'),
     }));
     vi.doMock('@/lib/db', () => ({
       db: {

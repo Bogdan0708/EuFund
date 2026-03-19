@@ -56,8 +56,6 @@ const publicPaths = [
   '/en/inregistrare',
   '/ro/resetare-parola',
   '/en/resetare-parola',
-  '/api/auth/forgot-password',
-  '/api/auth/reset-password',
   '/ro/preturi',
   '/en/pricing',
   '/pricing',

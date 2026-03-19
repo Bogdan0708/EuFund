@@ -20,7 +20,6 @@ describe('POST /api/v1/projects organization context', () => {
 
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'u@test.com' }),
-      requireOrgRole: vi.fn().mockResolvedValue('project_manager'),
       getPaginationParams: vi.fn(),
     }));
     vi.doMock('@/lib/db', () => ({
@@ -58,7 +57,6 @@ describe('POST /api/v1/projects organization context', () => {
 
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'u@test.com' }),
-      requireOrgRole: vi.fn().mockResolvedValue('project_manager'),
       getPaginationParams: vi.fn(),
     }));
     vi.doMock('@/lib/db', () => ({
@@ -96,7 +94,6 @@ describe('POST /api/v1/projects organization context', () => {
 
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'u@test.com' }),
-      requireOrgRole: vi.fn().mockResolvedValue('project_manager'),
       getPaginationParams: vi.fn(),
     }));
     vi.doMock('@/lib/db', () => ({

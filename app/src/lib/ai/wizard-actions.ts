@@ -227,9 +227,6 @@ export async function saveWizardProject(
   userId: string,
   proposal: ProposalOutput,
 ): Promise<SaveProjectResult> {
-  const { requireOrgRole } = await import('@/lib/auth/helpers');
-  await requireOrgRole(userId, orgId, 'project_manager');
-
   const createdProject = await db.transaction(async (tx) => {
     const [project] = await tx.insert(projects).values({
       orgId,

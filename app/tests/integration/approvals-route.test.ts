@@ -5,7 +5,6 @@ describe('POST /api/v1/approvals', () => {
     vi.resetModules();
 
     const updateSet = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
-    const requireOrgRole = vi.fn().mockResolvedValue('org_admin');
     const logAudit = vi.fn().mockResolvedValue(undefined);
 
     vi.doMock('@/lib/auth/helpers', () => ({
@@ -13,7 +12,6 @@ describe('POST /api/v1/approvals', () => {
         id: '123e4567-e89b-42d3-a456-426614174000',
         email: 'admin@test.com',
       }),
-      requireOrgRole,
       getPaginationParams: vi.fn(),
     }));
 
@@ -81,7 +79,6 @@ describe('POST /api/v1/approvals', () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(requireOrgRole).toHaveBeenCalled();
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ status: 'finalizat' }));
     expect(body.data.status).toBe('finalizat');
     expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({
@@ -101,7 +98,6 @@ describe('POST /api/v1/approvals', () => {
         id: '123e4567-e89b-42d3-a456-426614174000',
         email: 'admin@test.com',
       }),
-      requireOrgRole: vi.fn().mockResolvedValue('org_admin'),
       getPaginationParams: vi.fn(),
     }));
 
@@ -192,7 +188,6 @@ describe('POST /api/v1/approvals', () => {
         id: '123e4567-e89b-42d3-a456-426614174000',
         email: 'admin@test.com',
       }),
-      requireOrgRole: vi.fn().mockResolvedValue('org_admin'),
       getPaginationParams: vi.fn(),
     }));
 

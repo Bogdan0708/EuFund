@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { auditLog, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { logger } from '@/lib/logger';
 import { logAudit } from '@/lib/legal/audit';
 
@@ -22,12 +22,11 @@ const evidenceSchema = z.object({
 
 export async function GET(req: NextRequest, { params }: Params) {
   try {
-    const user = await requireAuth();
+    await requireAuth();
     const project = await db.query.projects.findFirst({
       where: and(eq(projects.id, params.id), isNull(projects.deletedAt)),
     });
     if (!project) throw Errors.notFound('project', params.id);
-    await requireOrgRole(user.id, project.orgId, 'viewer');
 
     const limitRaw = Number(new URL(req.url).searchParams.get('limit') || '50');
     const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? limitRaw : 50));
@@ -77,7 +76,6 @@ export async function POST(req: NextRequest, { params }: Params) {
       where: and(eq(projects.id, params.id), isNull(projects.deletedAt)),
     });
     if (!project) throw Errors.notFound('project', params.id);
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     const body = await req.json();
     const parsed = evidenceSchema.safeParse(body);

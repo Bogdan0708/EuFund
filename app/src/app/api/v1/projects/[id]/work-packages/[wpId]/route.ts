@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
 import { projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { getWorkPackage, updateWorkPackage, deleteWorkPackage } from '@/lib/services/work-packages';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -21,7 +21,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
       });
     });
     if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'viewer');
 
     const wp = await getWorkPackage(id, wpId, user.id);
     if (!wp) throw Errors.notFound('work_package', wpId);
@@ -47,7 +46,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
       });
     });
     if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     const body = await req.json();
     const wp = await updateWorkPackage(id, wpId, body, user.id);
@@ -84,7 +82,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       });
     });
     if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     const wp = await deleteWorkPackage(id, wpId, user.id);
     if (!wp) throw Errors.notFound('work_package', wpId);

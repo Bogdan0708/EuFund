@@ -11,7 +11,6 @@ describe('DELETE /api/v1/organizations/[id]/members', () => {
         id: '123e4567-e89b-42d3-a456-426614174000',
         email: 'admin@test.com',
       }),
-      requireOrgRole: vi.fn().mockResolvedValue('org_admin'),
     }));
     vi.doMock('@/lib/db', () => ({
       db: {
@@ -57,7 +56,6 @@ describe('DELETE /api/v1/organizations/[id]/members', () => {
         id: '123e4567-e89b-42d3-a456-426614174000',
         email: 'admin@test.com',
       }),
-      requireOrgRole: vi.fn().mockResolvedValue('org_admin'),
     }));
     vi.doMock('@/lib/db', () => ({
       db: {

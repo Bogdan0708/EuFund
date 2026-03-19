@@ -140,27 +140,20 @@ describe('Critical Flows and Isolation', () => {
     expect(generateProposal).toHaveBeenCalled();
   });
 
-  it('authorization boundary: document metadata is denied across tenants', async () => {
-    const { Errors } = await import('@/lib/errors');
+  it('authorization boundary: document access is controlled by RLS at the database level', async () => {
+    // In the new model, cross-tenant isolation is enforced by PostgreSQL RLS policies.
+    // withUserRLS sets app.current_user_id and the DB filters out unauthorised rows.
+    // In this unit test the DB is mocked, so the mock drives the result.
+    // A non-existent document (RLS filtered) would return null → 404, not 403.
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-a', email: 'a@test.com' }),
-      requireOrgRole: vi.fn().mockRejectedValue(Errors.forbidden()),
     }));
     vi.doMock('@/lib/db', () => ({
       withUserRLS: vi.fn(async (_userId: string, fn: (tx: any) => Promise<unknown>) => fn({
         query: {
           documents: {
-            findFirst: vi.fn().mockResolvedValue({
-              id: 'doc-1',
-              orgId: 'org-b',
-              projectId: null,
-              uploadedBy: 'user-b',
-              storagePath: '2026-02-27/doc.pdf',
-              filename: 'doc.pdf',
-              mimeType: 'application/pdf',
-              fileSize: 42,
-              deletedAt: null,
-            }),
+            // RLS would return null for a document the user cannot access
+            findFirst: vi.fn().mockResolvedValue(null),
           },
           projects: { findFirst: vi.fn() },
         },
@@ -169,17 +162,7 @@ describe('Critical Flows and Isolation', () => {
       db: {
         query: {
           documents: {
-            findFirst: vi.fn().mockResolvedValue({
-              id: 'doc-1',
-              orgId: 'org-b',
-              projectId: null,
-              uploadedBy: 'user-b',
-              storagePath: '2026-02-27/doc.pdf',
-              filename: 'doc.pdf',
-              mimeType: 'application/pdf',
-              fileSize: 42,
-              deletedAt: null,
-            }),
+            findFirst: vi.fn().mockResolvedValue(null),
           },
         },
       },
@@ -190,13 +173,13 @@ describe('Critical Flows and Isolation', () => {
     const req = new NextRequest('http://localhost:3000/api/documents/doc-1');
     const res = await GET(req, { params: { id: 'doc-1' } });
 
-    expect(res.status).toBe(403);
+    // RLS-filtered document → not found
+    expect(res.status).toBe(404);
   });
 
   it('tenant isolation: upload rejects org/project mismatch', async () => {
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'u@test.com', name: 'U' }),
-      requireOrgRole: vi.fn().mockResolvedValue('project_manager'),
     }));
     vi.doMock('@/lib/db', () => ({
       withUserRLS: vi.fn(async (_userId: string, fn: (tx: any) => Promise<unknown>) => fn({

@@ -7,7 +7,6 @@ describe('/api/documents/upload validation hardening', () => {
 
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1' }),
-      requireOrgRole: vi.fn().mockResolvedValue('project_manager'),
     }));
     vi.doMock('@/lib/db', () => ({
       withUserRLS: vi.fn(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => fn({
@@ -37,7 +36,6 @@ describe('/api/documents/upload validation hardening', () => {
 
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1' }),
-      requireOrgRole: vi.fn().mockResolvedValue('project_manager'),
     }));
     vi.doMock('@/lib/db', () => ({
       withUserRLS: vi.fn(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => fn({

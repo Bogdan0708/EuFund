@@ -9,7 +9,6 @@ describe('Timeline assignee org validation', () => {
 
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'u1', email: 'u1@test.com' }),
-      requireOrgRole: vi.fn().mockResolvedValue('project_manager'),
     }));
     vi.doMock('@/lib/services/timeline', () => ({
       getProjectTimeline: vi.fn(),
@@ -77,7 +76,6 @@ describe('Timeline assignee org validation', () => {
 
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'u1', email: 'u1@test.com' }),
-      requireOrgRole: vi.fn().mockResolvedValue('project_manager'),
     }));
     vi.doMock('@/lib/services/timeline', () => ({
       updateTimelineItem,
