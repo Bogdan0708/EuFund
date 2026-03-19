@@ -247,6 +247,12 @@ export const callsForProposals = pgTable('calls_for_proposals', {
   lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  // EC Portal fields (nullable — only set for calls imported from EC feed)
+  ecExternalId: varchar('ec_external_id', { length: 255 }),
+  ecTopics: jsonb('ec_topics'),
+  ecEligibilityCriteria: jsonb('ec_eligibility_criteria'),
+  ecSourceUrl: text('ec_source_url'),
+  ecSyncedAt: timestamp('ec_synced_at'),
 }, (table) => ({
   programIdx: index('idx_calls_program').on(table.programId),
   statusIdx: index('idx_calls_status').on(table.status),
