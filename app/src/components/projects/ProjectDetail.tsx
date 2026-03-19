@@ -75,13 +75,7 @@ export function ProjectDetail({ project, onBack }: ProjectDetailProps) {
   const handleExport = useCallback(async () => {
     setExporting(true);
     try {
-      const csrfRes = await fetch('/api/auth/csrf');
-      const csrfToken = csrfRes.headers.get('X-CSRF-Token') || '';
-
-      const res = await fetch(`/api/v1/projects/${project.id}/export`, {
-        method: 'POST',
-        headers: { 'X-CSRF-Token': csrfToken },
-      });
+      const res = await fetch(`/api/v1/projects/${project.id}/export?format=docx`);
 
       if (res.ok) {
         const blob = await res.blob();

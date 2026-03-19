@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { workflowSessions, workflowMessages } from '@/lib/db/schema'
+import { workflowSessions, workflowMessages, projects, projectDocuments, orgMembers } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import type { WorkflowContext, AgentFn, SSEStream, GatewayClient } from './types'
 import { STEP_LABELS } from './types'
@@ -149,7 +149,47 @@ export async function processMessage(
         .where(eq(workflowSessions.id, sessionId))
 
       if (isComplete) {
-        stream.send({ type: 'done', projectId: (updatedContext as unknown as { projectId?: string }).projectId })
+        // Persist project from completed workflow
+        const sections = (updatedContext as unknown as { projectSections?: unknown }).projectSections
+        if (sections) {
+          const title = (updatedContext as unknown as { enhancedIdea?: { refinedDescription?: string } }).enhancedIdea?.refinedDescription || 'Untitled Project'
+
+          // Resolve user's org for the required orgId field
+          const [membership] = await db
+            .select({ orgId: orgMembers.orgId })
+            .from(orgMembers)
+            .where(eq(orgMembers.userId, ctx.userId))
+            .limit(1)
+
+          if (membership) {
+            const [project] = await db.insert(projects).values({
+              orgId: membership.orgId,
+              userId: ctx.userId,
+              createdBy: ctx.userId,
+              title: title.slice(0, 200),
+              status: 'ciorna',
+              currentVersion: 1,
+            }).returning()
+
+            // Create project_documents version with sections
+            await db.insert(projectDocuments).values({
+              projectId: project.id,
+              version: 1,
+              sections: sections as Record<string, unknown>[],
+            })
+
+            // Link session to project
+            await db.update(workflowSessions)
+              .set({ projectId: project.id })
+              .where(eq(workflowSessions.id, sessionId))
+
+            stream.send({ type: 'done', projectId: project.id })
+          } else {
+            stream.send({ type: 'done' })
+          }
+        } else {
+          stream.send({ type: 'done' })
+        }
       }
     }
   } catch (error) {

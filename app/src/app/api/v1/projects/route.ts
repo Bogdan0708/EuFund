@@ -64,11 +64,52 @@ export async function GET(req: NextRequest) {
     const orgIds = userOrgs.map((o) => o.orgId);
 
     if (orgIds.length === 0) {
+      // Try user-owned projects (new model — projects created via orchestrator)
+      const userConditions = [
+        eq(projects.userId, user.id),
+        isNull(projects.deletedAt),
+      ];
+      if (status === 'aprobat' || status === 'finalizat') {
+        userConditions.push(inArray(projects.status, ['aprobat', 'finalizat'] as ProjectStatus[]));
+      } else if (status) {
+        userConditions.push(eq(projects.status, status as ProjectStatus));
+      }
+      if (search) {
+        userConditions.push(ilike(projects.title, `%${search}%`));
+      }
+      const userWhere = and(...userConditions);
+
+      const [userResults, userTotalResult] = await withUserRLS(user.id, async (tx) => {
+        return Promise.all([
+          tx
+            .select({
+              id: projects.id,
+              orgId: projects.orgId,
+              callId: projects.callId,
+              title: projects.title,
+              acronym: projects.acronym,
+              status: projects.status,
+              totalBudget: projects.totalBudget,
+              complianceScore: projects.complianceScore,
+              matchScore: projects.matchScore,
+              createdAt: projects.createdAt,
+              updatedAt: projects.updatedAt,
+            })
+            .from(projects)
+            .where(userWhere)
+            .orderBy(desc(projects.updatedAt))
+            .limit(perPage)
+            .offset(offset),
+          tx.select({ total: count() }).from(projects).where(userWhere),
+        ]);
+      });
+
+      const userTotal = userTotalResult[0]?.total || 0;
       return NextResponse.json({
         success: true,
         data: {
-          items: [],
-          meta: { page, perPage, total: 0, totalPages: 0 },
+          items: userResults,
+          meta: { page, perPage, total: userTotal, totalPages: Math.ceil(userTotal / perPage) },
         },
       });
     }
@@ -157,6 +198,7 @@ export async function POST(req: NextRequest) {
     const project = await withUserRLS(user.id, async (tx) => {
       const [createdProject] = await tx.insert(projects).values({
         orgId,
+        userId: user.id,
         callId: data.callId,
         createdBy: user.id,
         title: data.title,
