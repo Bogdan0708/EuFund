@@ -100,33 +100,6 @@ export const enhanceIdeaSchema = z.object({
   locale: z.enum(['ro', 'en']).default('ro'),
 });
 
-export const wizardMatchCallsSchema = z.object({
-  projectIdea: z.string().min(20).max(8000),
-  organization: z.object({
-    orgType: z.string().min(1),
-    employeeCount: z.number().int().nonnegative().optional(),
-    annualRevenue: z.number().nonnegative().optional(),
-  }),
-  budget: z.number().nonnegative().optional(),
-  locale: z.enum(['ro', 'en']).default('ro'),
-});
-
-export const wizardGenerateProjectSchema = z.object({
-  projectIdea: z.string().min(20).max(8000),
-  callId: z.string().uuid(),
-  organization: z.object({
-    orgName: z.string().min(1),
-    orgType: z.string().min(1),
-    sector: z.string().optional(),
-  }),
-  locale: z.enum(['ro', 'en']).default('ro'),
-});
-
-export const wizardSaveProjectSchema = z.object({
-  callId: z.string().uuid(),
-  orgId: z.string().uuid(),
-  proposal: z.any(), // Detailed validation handled by mapping logic
-});
 
 export const extractedCallSchema = z.object({
   callCode: z.string().min(1),
@@ -149,9 +122,6 @@ export const extractedCallSchema = z.object({
 export type ExtractedCall = z.infer<typeof extractedCallSchema>;
 
 export type EnhanceIdeaInput = z.infer<typeof enhanceIdeaSchema>;
-export type WizardMatchCallsInput = z.infer<typeof wizardMatchCallsSchema>;
-export type WizardGenerateProjectInput = z.infer<typeof wizardGenerateProjectSchema>;
-export type WizardSaveProjectInput = z.infer<typeof wizardSaveProjectSchema>;
 
 export type CheckEligibilityInput = z.infer<typeof checkEligibilitySchema>;
 

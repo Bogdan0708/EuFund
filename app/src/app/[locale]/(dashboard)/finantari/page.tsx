@@ -208,7 +208,7 @@ export default function FinantariPage() {
                       <TableCell>
                         <div className="flex flex-wrap gap-2">
                           <Button asChild size="sm" variant="outline">
-                            <Link href={`/${locale}/finantari/potriviri`}>Verifică eligibilitate</Link>
+                            <Link href={`/${locale}/proiecte/asistent-proiect?callId=${call.id}`}>Verifică eligibilitate</Link>
                           </Button>
                           <Button asChild size="sm">
                             <Link href={`/${locale}/proiecte/asistent-proiect?callId=${call.id}`}>Creează proiect</Link>

@@ -8,10 +8,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     '',
     '/finantari',
     '/finantari/live',
-    '/finantari/potriviri',
     '/preturi',
     '/autentificare',
-    '/inregistrare',
   ];
 
   const entries: MetadataRoute.Sitemap = [];
