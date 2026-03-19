@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createSSEStream } from '@/lib/ai/orchestrator/stream'
 
 describe('SSE Stream Manager', () => {
-  it('sends formatted SSE events', () => {
+  it('sends formatted SSE events', async () => {
+    const { createSSEStream } = await import('@/lib/ai/orchestrator/stream')
     const mockWrite = vi.fn()
     const mockRes = { write: mockWrite, on: vi.fn() } as any
     const stream = createSSEStream(mockRes)
@@ -16,7 +16,8 @@ describe('SSE Stream Manager', () => {
     expect(written).toContain('"step":1')
   })
 
-  it('increments eventId for each event', () => {
+  it('increments eventId for each event', async () => {
+    const { createSSEStream } = await import('@/lib/ai/orchestrator/stream')
     const mockWrite = vi.fn()
     const mockRes = { write: mockWrite, on: vi.fn() } as any
     const stream = createSSEStream(mockRes)
