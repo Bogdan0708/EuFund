@@ -1,90 +1,155 @@
-/**
- * Orchestrator type definitions — shared across the SSE stream manager,
- * agent runner, and any route handlers that surface events to the client.
- */
-
-// ---------------------------------------------------------------------------
-// SSE event payloads
-// ---------------------------------------------------------------------------
-
-export type SSEEventType =
-  | 'step_start'
-  | 'step_complete'
-  | 'step_error'
-  | 'agent_message'
-  | 'tool_call'
-  | 'tool_result'
-  | 'orchestrator_done'
-  | 'error'
-
-export interface BaseSSEEvent {
-  eventId: number
-  type: SSEEventType
-}
-
-export interface StepStartEvent extends BaseSSEEvent {
-  type: 'step_start'
+export interface WorkflowContext {
+  sessionId: string
+  userId: string
+  locale: 'ro' | 'en'
+  tier: string
   step: number
-  label: string
+  enhancedIdea: EnhancedIdea | null
+  matchedCalls: MatchedCall[] | null
+  validationResults: ValidationResult[] | null
+  researchResults: ResearchResult | null
+  actionPlan: ActionPlan | null
+  projectSections: ProjectSection[] | null
+  uploadedFiles: UploadedFile[]
 }
 
-export interface StepCompleteEvent extends BaseSSEEvent {
-  type: 'step_complete'
-  step: number
-  summary?: string
+export interface EnhancedIdea {
+  originalIdea: string
+  refinedDescription: string
+  sector: string
+  region: string
+  targetGroup: string
+  estimatedBudget: string
+  keyObjectives: string[]
 }
 
-export interface StepErrorEvent extends BaseSSEEvent {
-  type: 'step_error'
-  step: number
-  error: string
+export interface MatchedCall {
+  callId: string
+  title: string
+  program: string
+  score: number
+  thematicFit: number
+  eligibilityFit: number
+  budgetFit: number
+  deadline: string
+  sourceUrl: string
+  reasoning: string
 }
 
-export interface AgentMessageEvent extends BaseSSEEvent {
-  type: 'agent_message'
-  agent: string
+export interface ValidationResult {
+  callId: string
+  isOpen: boolean
+  lastVerified: string
+  updates: string[]
+  warnings: string[]
+}
+
+export interface ResearchResult {
+  callId: string
+  requirements: string[]
+  forms: { name: string; url?: string; description: string }[]
+  certificates: { name: string; source: string; estimatedTime: string }[]
+  deadlines: { item: string; date: string }[]
+  additionalSections: string[]
+  rawFindings: string
+}
+
+export interface ActionPlan {
+  matchedCall: {
+    title: string
+    program: string
+    deadline: string
+    budget: { min: number; max: number; currency: string }
+    sourceUrl: string
+  }
+  steps: {
+    order: number
+    title: string
+    description: string
+    category: 'document' | 'approval' | 'registration' | 'writing' | 'budget'
+    deadline?: string
+    responsible?: string
+    dependencies: number[]
+  }[]
+  requiredDocuments: {
+    name: string
+    source: string
+    estimatedTime: string
+    mandatory: boolean
+  }[]
+  estimatedTimeline: string
+}
+
+export interface ProjectSection {
+  title: string
   content: string
+  order: number
+  source: 'generated' | 'edited'
 }
 
-export interface ToolCallEvent extends BaseSSEEvent {
-  type: 'tool_call'
-  tool: string
-  input: unknown
+export interface UploadedFile {
+  fileId: string
+  filename: string
+  mimeType: string
+  extractedText?: string
 }
 
-export interface ToolResultEvent extends BaseSSEEvent {
-  type: 'tool_result'
-  tool: string
-  output: unknown
+export interface AgentResult {
+  data: Record<string, unknown>
+  checkpoint: CheckpointData | null
+  tokensUsed?: number
 }
 
-export interface OrchestratorDoneEvent extends BaseSSEEvent {
-  type: 'orchestrator_done'
-  result?: unknown
+export interface CheckpointData {
+  question: string
+  options?: { id: string; label: string; description?: string }[]
+  type: 'select' | 'confirm' | 'freetext'
 }
 
-export interface ErrorEvent extends BaseSSEEvent {
-  type: 'error'
-  message: string
-}
-
-export type SSEEvent =
-  | StepStartEvent
-  | StepCompleteEvent
-  | StepErrorEvent
-  | AgentMessageEvent
-  | ToolCallEvent
-  | ToolResultEvent
-  | OrchestratorDoneEvent
-  | ErrorEvent
-
-// ---------------------------------------------------------------------------
-// SSE stream interface
-// ---------------------------------------------------------------------------
+export type SSEEvent = {
+  eventId: number
+} & (
+  | { type: 'step_start'; step: number; label: string }
+  | { type: 'step_progress'; step: number; message: string }
+  | { type: 'ai_chunk'; step: number; content: string }
+  | { type: 'checkpoint'; step: number; data: CheckpointData }
+  | { type: 'step_complete'; step: number; summary: string }
+  | { type: 'discovery'; items: unknown[] }
+  | { type: 'error'; step: number; message: string; retryable: boolean }
+  | { type: 'done'; projectId?: string }
+)
 
 export interface SSEStream {
-  /** Send a typed SSE event to the client. */
   send(event: Omit<SSEEvent, 'eventId'>): void
-  /** Terminate the SSE connection. */
   close(): void
+}
+
+export interface GatewayClient {
+  generate(opts: {
+    provider: string
+    model: string
+    system: string
+    messages: { role: string; content: string }[]
+    maxTokens?: number
+    temperature?: number
+    stream?: boolean
+  }): Promise<{ content: string; tokensUsed: number }>
+  embed(text: string): Promise<number[]>
+}
+
+export type AgentFn = (
+  ctx: WorkflowContext,
+  input: string,
+  stream: SSEStream,
+  gateway: GatewayClient
+) => Promise<AgentResult>
+
+export const STEP_LABELS: Record<number, string> = {
+  1: 'Enhancing your idea...',
+  2: 'Matching with funding calls...',
+  3: 'Validating funding call status...',
+  4: 'Researching requirements...',
+  5: 'Updating knowledge base...',
+  6: 'Creating action plan...',
+  7: 'Building your project...',
 }
