@@ -18,7 +18,6 @@ export function ChatPage() {
     activeSessionId,
     isStreaming,
     startNewSession,
-    resumeSession,
     error,
   } = useOrchestrator(locale);
 
@@ -32,6 +31,11 @@ export function ChatPage() {
     },
     [sendMessage],
   );
+
+  const handleNewSession = useCallback(() => {
+    startNewSession();
+    setPendingQuickStart(null);
+  }, [startNewSession]);
 
   const handleCheckpointRespond = useCallback(
     (response: string) => {
@@ -59,8 +63,7 @@ export function ChatPage() {
         {/* Project selector */}
         <ProjectSelector
           activeSessionId={activeSessionId}
-          onNewSession={startNewSession}
-          onSelectSession={resumeSession}
+          onNewSession={handleNewSession}
         />
 
         {/* User menu placeholder */}

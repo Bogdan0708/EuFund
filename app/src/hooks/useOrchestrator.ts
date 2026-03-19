@@ -56,6 +56,9 @@ export function useOrchestrator(locale: string) {
   // Ref to avoid stale closure in reconnect timeout
   const activeSessionIdRef = useRef<string | null>(null);
   activeSessionIdRef.current = activeSessionId;
+  // Exponential backoff for SSE reconnect
+  const reconnectAttemptsRef = useRef<number>(0);
+  const MAX_RECONNECT_ATTEMPTS = 5;
 
   // ─── SSE Connection ──────────────────────────────────────────
 
@@ -80,6 +83,7 @@ export function useOrchestrator(locale: string) {
         setStatus('streaming');
         setIsStreaming(true);
         setError(null);
+        reconnectAttemptsRef.current = 0;
       };
 
       es.onmessage = (event) => {
@@ -96,13 +100,19 @@ export function useOrchestrator(locale: string) {
         es.close();
         eventSourceRef.current = null;
         setIsStreaming(false);
-        // Attempt reconnect after 2s if we have a session
-        if (sessionId) {
+
+        // Exponential backoff with max retries
+        if (sessionId && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+          const delay = Math.min(2000 * 2 ** reconnectAttemptsRef.current, 30000);
+          reconnectAttemptsRef.current += 1;
           setTimeout(() => {
             if (activeSessionIdRef.current === sessionId) {
               connectSSE(sessionId);
             }
-          }, 2000);
+          }, delay);
+        } else {
+          setStatus('error');
+          setError('Connection lost. Please refresh to retry.');
         }
       };
     },
@@ -286,7 +296,7 @@ export function useOrchestrator(locale: string) {
       setMessages((prev) => [...prev, userMsg]);
       setIsStreaming(true);
       setError(null);
-      setStatus('streaming');
+      setStatus('connecting');
 
       try {
         // Bootstrap CSRF if needed
