@@ -16,7 +16,7 @@ type Params = { params: { id: string } };
 
 export async function GET(req: NextRequest, { params }: Params) {
   try {
-    const user = await requireAuth();
+    await requireAuth();
     const orgId = params.id;
 
     const { page, perPage, offset } = getPaginationParams(req);
