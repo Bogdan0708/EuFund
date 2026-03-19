@@ -6,7 +6,6 @@ describe('/api/v1/projects/[id]/compliance/ghid-tasks', () => {
     vi.resetModules();
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'user@test.com' }),
-      requireOrgRole: vi.fn().mockResolvedValue('project_manager'),
     }));
     vi.doMock('@/lib/db', () => ({
       withUserRLS: vi.fn(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => fn({

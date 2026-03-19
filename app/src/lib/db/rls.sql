@@ -1,90 +1,104 @@
--- Row-Level Security Policies for FondEU
--- Applied after schema creation
+-- =============================================================
+-- Row-Level Security Policies — User-based isolation
+-- =============================================================
+-- Variable: app.current_user_id (set by withUserRLS in db/index.ts)
 
--- Enable RLS on sensitive tables
+-- Enable RLS on relevant tables
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
-ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE org_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_files ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workflow_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workflow_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE consent_records ENABLE ROW LEVEL SECURITY;
 
--- Force RLS even for table owners (security best practice)
+-- Force RLS for table owners too
 ALTER TABLE projects FORCE ROW LEVEL SECURITY;
-ALTER TABLE documents FORCE ROW LEVEL SECURITY;
-ALTER TABLE organizations FORCE ROW LEVEL SECURITY;
+ALTER TABLE project_documents FORCE ROW LEVEL SECURITY;
+ALTER TABLE project_files FORCE ROW LEVEL SECURITY;
+ALTER TABLE workflow_sessions FORCE ROW LEVEL SECURITY;
+ALTER TABLE workflow_messages FORCE ROW LEVEL SECURITY;
+ALTER TABLE notifications FORCE ROW LEVEL SECURITY;
+ALTER TABLE consent_records FORCE ROW LEVEL SECURITY;
 
--- Projects: users can only see projects from their organizations
-CREATE POLICY projects_org_isolation ON projects
-    FOR ALL
-    USING (org_id IN (
-        SELECT om.org_id FROM org_members om
-        WHERE om.user_id = current_setting('app.current_user_id', true)::uuid
-    ));
+-- Drop old org-based policies
+DROP POLICY IF EXISTS projects_org_isolation ON projects;
+DROP POLICY IF EXISTS documents_org_isolation ON documents;
+DROP POLICY IF EXISTS orgs_member_access ON organizations;
+DROP POLICY IF EXISTS org_members_visibility ON org_members;
+DROP POLICY IF EXISTS ai_reviews_org_isolation ON ai_reviews;
 
--- Documents: same org isolation
-CREATE POLICY documents_org_isolation ON documents
-    FOR ALL
-    USING (
-        org_id IN (
-            SELECT om.org_id FROM org_members om
-            WHERE om.user_id = current_setting('app.current_user_id', true)::uuid
-        )
-        OR org_id IS NULL -- system documents
-    );
+-- Projects: user owns directly, or is a team member of the owner
+CREATE POLICY projects_user_isolation ON projects
+  USING (
+    user_id = current_setting('app.current_user_id')::uuid
+    OR user_id IN (
+      SELECT owner_id FROM team_members
+      WHERE member_id = current_setting('app.current_user_id')::uuid
+      AND accepted_at IS NOT NULL
+    )
+  );
 
--- Organizations: members can see their orgs
-CREATE POLICY orgs_member_access ON organizations
-    FOR ALL
-    USING (id IN (
-        SELECT om.org_id FROM org_members om
-        WHERE om.user_id = current_setting('app.current_user_id', true)::uuid
-    ));
+-- Project documents: follows project access
+CREATE POLICY project_documents_isolation ON project_documents
+  USING (
+    project_id IN (
+      SELECT id FROM projects
+      WHERE user_id = current_setting('app.current_user_id')::uuid
+      OR user_id IN (
+        SELECT owner_id FROM team_members
+        WHERE member_id = current_setting('app.current_user_id')::uuid
+        AND accepted_at IS NOT NULL
+      )
+    )
+  );
 
--- Org Members: can see members of their orgs
-CREATE POLICY org_members_access ON org_members
-    FOR ALL
-    USING (org_id IN (
-        SELECT om2.org_id FROM org_members om2
-        WHERE om2.user_id = current_setting('app.current_user_id', true)::uuid
-    ));
+-- Project files: follows project access
+CREATE POLICY project_files_isolation ON project_files
+  USING (
+    project_id IN (
+      SELECT id FROM projects
+      WHERE user_id = current_setting('app.current_user_id')::uuid
+      OR user_id IN (
+        SELECT owner_id FROM team_members
+        WHERE member_id = current_setting('app.current_user_id')::uuid
+        AND accepted_at IS NOT NULL
+      )
+    )
+  );
 
--- Notifications: users can only see their own
-CREATE POLICY notifications_user_only ON notifications
-    FOR ALL
-    USING (user_id = current_setting('app.current_user_id', true)::uuid);
+-- Workflow sessions: user's own sessions
+CREATE POLICY workflow_sessions_user ON workflow_sessions
+  USING (user_id = current_setting('app.current_user_id')::uuid);
 
--- Consent records: users can only see their own
-CREATE POLICY consent_user_only ON consent_records
-    FOR ALL
-    USING (user_id = current_setting('app.current_user_id', true)::uuid);
+-- Workflow messages: via session ownership
+CREATE POLICY workflow_messages_user ON workflow_messages
+  USING (
+    session_id IN (
+      SELECT id FROM workflow_sessions
+      WHERE user_id = current_setting('app.current_user_id')::uuid
+    )
+  );
 
--- AI reviews: users can only see reviews in their org
-ALTER TABLE ai_reviews ENABLE ROW LEVEL SECURITY;
-CREATE POLICY ai_reviews_org_isolation ON ai_reviews
-    FOR ALL
-    USING (org_id IN (
-        SELECT om.org_id FROM org_members om
-        WHERE om.user_id = current_setting('app.current_user_id', true)::uuid
-    ));
+-- Notifications: user's own
+CREATE POLICY notifications_user ON notifications
+  USING (user_id = current_setting('app.current_user_id')::uuid);
 
--- Audit log: append-only (no UPDATE/DELETE), admin-only SELECT
+-- Consent records: user's own
+CREATE POLICY consent_records_user ON consent_records
+  USING (user_id = current_setting('app.current_user_id')::uuid);
+
+-- Audit log: append-only insert, admin-only read
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
-CREATE POLICY audit_insert_only ON audit_log
-    FOR INSERT
-    WITH CHECK (true);
+ALTER TABLE audit_log FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS audit_log_insert ON audit_log;
+DROP POLICY IF EXISTS audit_admin_read ON audit_log;
+
+CREATE POLICY audit_log_insert ON audit_log
+  FOR INSERT WITH CHECK (true);
 
 CREATE POLICY audit_admin_read ON audit_log
-    FOR SELECT
-    USING (
-        EXISTS (
-            SELECT 1 FROM org_members om
-            WHERE om.user_id = current_setting('app.current_user_id', true)::uuid
-            AND om.role = 'admin'
-        )
-    );
-
--- Service role bypass (for backend operations)
--- CREATE ROLE fondeu_service;
--- GRANT ALL ON ALL TABLES IN SCHEMA public TO fondeu_service;
--- ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO fondeu_service;
+  FOR SELECT USING (
+    (SELECT is_platform_admin FROM users WHERE id = current_setting('app.current_user_id')::uuid)
+  );

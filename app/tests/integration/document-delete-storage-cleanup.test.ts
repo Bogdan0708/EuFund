@@ -10,7 +10,6 @@ describe('/api/documents/[id] DELETE storage cleanup', () => {
 
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1' }),
-      requireOrgRole: vi.fn().mockResolvedValue('project_manager'),
     }));
 
     vi.doMock('@/lib/db', () => ({

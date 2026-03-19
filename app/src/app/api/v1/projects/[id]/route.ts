@@ -8,7 +8,7 @@ import { withUserRLS } from '@/lib/db';
 import { organizations, projects } from '@/lib/db/schema';
 import { updateProjectSectionSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
@@ -31,8 +31,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
     if (!project) {
       throw Errors.notFound('project', id);
     }
-
-    await requireOrgRole(user.id, project.orgId, 'viewer');
 
     const organization = await withUserRLS(user.id, async (tx) => {
       return tx.query.organizations.findFirst({
@@ -68,8 +66,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (!project) {
       throw Errors.notFound('project', id);
     }
-
-    const userRole = await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     const body = await req.json();
 
@@ -158,12 +154,12 @@ export async function PUT(req: NextRequest, { params }: Params) {
         });
       }
 
-      if (userRole !== 'org_admin' && userRole !== 'admin' && nextStatus === 'depus') {
+      if (!user.isPlatformAdmin && nextStatus === 'depus') {
         throw new FondEUError({
           code: 'FORBIDDEN',
           statusCode: 403,
-          messageEn: 'Only organization administrators can mark a project as submitted.',
-          messageRo: 'Doar administratorii organizației pot marca un proiect ca depus.',
+          messageEn: 'Only platform administrators can mark a project as submitted.',
+          messageRo: 'Doar administratorii platformei pot marca un proiect ca depus.',
           details: { reason: 'PROJECT_SUBMISSION_REQUIRES_ADMIN' },
           retryable: false,
         });
@@ -212,8 +208,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     if (!project) {
       throw Errors.notFound('project', id);
     }
-
-    await requireOrgRole(user.id, project.orgId, 'org_admin');
 
     await withUserRLS(user.id, async (tx) => {
       await tx

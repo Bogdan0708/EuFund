@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
 import { documents, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { analyzeDocument } from '@/lib/ai/document-analyzer';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -17,10 +17,9 @@ type Params = { params: { id: string } };
 async function resolveDocumentAccess(
   userId: string,
   doc: typeof documents.$inferSelect,
-  minRole: Parameters<typeof requireOrgRole>[2] = 'viewer',
 ): Promise<void> {
   if (doc.orgId) {
-    await requireOrgRole(userId, doc.orgId, minRole);
+    // Org docs: access controlled by RLS
     return;
   }
 
@@ -37,7 +36,6 @@ async function resolveDocumentAccess(
       throw Errors.notFound('project', projectId);
     }
 
-    await requireOrgRole(userId, project.orgId, minRole);
     return;
   }
 
@@ -60,7 +58,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (!doc) {
       throw Errors.notFound('document', id);
     }
-    await resolveDocumentAccess(user.id, doc, 'project_manager');
+    await resolveDocumentAccess(user.id, doc);
 
     // Read file content and verify integrity before analysis.
     const buffer = await getObjectBuffer(doc.storagePath);

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
 import { projects, complianceChecks } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { analyzeCompliance, type ComplianceCheckInput } from '@/lib/ai/compliance-engine';
 import { listComplianceChecks } from '@/lib/services/compliance';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -23,7 +23,6 @@ export async function POST(req: NextRequest, { params }: Params) {
       });
     });
     if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     const body = await req.json();
     const programId = body.programId || 'general';

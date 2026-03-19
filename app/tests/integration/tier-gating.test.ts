@@ -61,7 +61,6 @@ describe('Tier-gated routes', () => {
 
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'u@test.com' }),
-      requireOrgRole: vi.fn().mockResolvedValue('project_manager'),
     }));
     vi.doMock('@/lib/middleware/tier-gate', async () => {
       const actual = await vi.importActual<typeof import('@/lib/middleware/tier-gate')>('@/lib/middleware/tier-gate');

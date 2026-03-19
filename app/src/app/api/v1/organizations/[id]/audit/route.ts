@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { auditLog, orgMembers, users } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole, getPaginationParams } from '@/lib/auth/helpers';
+import { requireAuth, getPaginationParams } from '@/lib/auth/helpers';
 import { desc, eq, inArray, and, gte, lte, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -18,8 +18,6 @@ export async function GET(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
     const orgId = params.id;
-
-    await requireOrgRole(user.id, orgId, 'org_admin');
 
     const { page, perPage, offset } = getPaginationParams(req);
     const url = new URL(req.url);

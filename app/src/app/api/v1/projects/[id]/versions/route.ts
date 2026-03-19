@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
 import { projectVersions, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull, desc } from 'drizzle-orm';
 
@@ -21,7 +21,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
     });
     if (!project) throw Errors.notFound('project', id);
 
-    await requireOrgRole(user.id, project.orgId, 'viewer');
 
     const versions = await withUserRLS(user.id, async (tx) => {
       return tx
@@ -52,7 +51,6 @@ export async function POST(_req: NextRequest, { params }: Params) {
     });
     if (!project) throw Errors.notFound('project', id);
 
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     const nextVersion = (project.currentVersion || 1) + 1;
 

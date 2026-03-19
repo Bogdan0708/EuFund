@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
 import { orgMembers, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { updateTimelineItem, deleteTimelineItem, updateTimelineProgress } from '@/lib/services/timeline';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -21,7 +21,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
       });
     });
     if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     const body = await req.json();
 
@@ -118,7 +117,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       });
     });
     if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     await deleteTimelineItem(id, itemId, user.id);
     await logAudit({

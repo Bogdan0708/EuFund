@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
 import { projects, organizations, complianceReports, callsForProposals } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { validateCompliance } from '@/lib/ai/compliance-validator';
 import { logAudit } from '@/lib/legal/audit';
 import { listComplianceChecks, getComplianceOverview } from '@/lib/services/compliance';
@@ -27,7 +27,6 @@ export async function GET(req: NextRequest, { params }: Params) {
       });
     });
     if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'viewer');
 
     const [checks, overview, latestReport] = await Promise.all([
       listComplianceChecks(id, user.id),
@@ -79,7 +78,6 @@ export async function POST(_req: NextRequest, { params }: Params) {
     });
     if (!project) throw Errors.notFound('project', id);
 
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
     const ensureTier = requireTier('pro');
     await ensureTier(user.id);
 

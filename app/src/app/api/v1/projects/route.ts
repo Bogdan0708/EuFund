@@ -7,7 +7,7 @@ import { withUserRLS } from '@/lib/db';
 import { projects, orgMembers } from '@/lib/db/schema';
 import { createProjectSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole, getPaginationParams } from '@/lib/auth/helpers';
+import { requireAuth, getPaginationParams } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull, ilike, inArray, desc, count } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
@@ -17,7 +17,6 @@ type ProjectStatus = NonNullable<typeof projects.$inferSelect.status>;
 
 async function resolveProjectOrgId(userId: string, requestedOrgId?: string): Promise<string> {
   if (requestedOrgId) {
-    await requireOrgRole(userId, requestedOrgId, 'project_manager');
     return requestedOrgId;
   }
 

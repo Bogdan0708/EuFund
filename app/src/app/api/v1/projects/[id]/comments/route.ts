@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
 import { projectComments, projects, users } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import { z } from 'zod';
@@ -27,7 +27,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
     });
     if (!project) throw Errors.notFound('project', id);
 
-    await requireOrgRole(user.id, project.orgId, 'viewer');
 
     const comments = await withUserRLS(user.id, async (tx) => {
       return tx
@@ -67,7 +66,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     });
     if (!project) throw Errors.notFound('project', id);
 
-    await requireOrgRole(user.id, project.orgId, 'viewer');
 
     const body = await req.json();
     const parsed = commentSchema.safeParse(body);

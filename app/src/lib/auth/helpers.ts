@@ -2,11 +2,9 @@
 import { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
 import { withUserRLS } from '@/lib/db';
-import { orgMembers, users } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { users } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 import { Errors } from '@/lib/errors';
-
-export type UserRole = 'admin' | 'org_admin' | 'project_manager' | 'viewer';
 
 export interface SessionUser {
   id: string;
@@ -53,44 +51,6 @@ export async function requirePlatformAdmin(): Promise<SessionUser> {
   }
 
   return { ...user, isPlatformAdmin: true };
-}
-
-/**
- * Check if user has at least the required role in an organization
- */
-export async function requireOrgRole(
-  userId: string,
-  orgId: string,
-  minRole: UserRole = 'viewer',
-): Promise<UserRole> {
-  const roleHierarchy: Record<UserRole, number> = {
-    admin: 4,
-    org_admin: 3,
-    project_manager: 2,
-    viewer: 1,
-  };
-
-  const membership = await withUserRLS(userId, async (tx) => {
-    return tx.query.orgMembers.findFirst({
-      where: and(
-        eq(orgMembers.orgId, orgId),
-        eq(orgMembers.userId, userId),
-      ),
-    });
-  });
-
-  if (!membership) {
-    throw Errors.forbidden();
-  }
-
-  const userRoleLevel = roleHierarchy[membership.role as UserRole] || 0;
-  const requiredLevel = roleHierarchy[minRole];
-
-  if (userRoleLevel < requiredLevel) {
-    throw Errors.forbidden();
-  }
-
-  return membership.role as UserRole;
 }
 
 /**

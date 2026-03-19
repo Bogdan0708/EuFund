@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { orgMembers, users } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, inArray } from 'drizzle-orm';
 import { z } from 'zod';
@@ -25,9 +25,8 @@ const removeMemberSchema = z.object({
 
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
-    const user = await requireAuth();
+    await requireAuth();
     const { id } = params;
-    await requireOrgRole(user.id, id, 'viewer');
 
     const members = await db
       .select({
@@ -55,7 +54,6 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     const currentUser = await requireAuth();
     const { id } = params;
-    await requireOrgRole(currentUser.id, id, 'org_admin');
 
     const body = await req.json();
     const parsed = addMemberSchema.safeParse(body);
@@ -118,7 +116,6 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const currentUser = await requireAuth();
     const { id } = params;
-    await requireOrgRole(currentUser.id, id, 'org_admin');
 
     const body = await req.json();
     const parsed = removeMemberSchema.safeParse(body);

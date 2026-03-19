@@ -11,7 +11,6 @@ describe('POST /api/v1/organizations/[id]/approvals', () => {
         id: '123e4567-e89b-42d3-a456-426614174000',
         email: 'admin@test.com',
       }),
-      requireOrgRole: vi.fn().mockResolvedValue('org_admin'),
       getPaginationParams: vi.fn(),
     }));
     vi.doMock('@/lib/db', () => ({
@@ -65,7 +64,6 @@ describe('POST /api/v1/organizations/[id]/approvals', () => {
         id: '123e4567-e89b-42d3-a456-426614174000',
         email: 'admin@test.com',
       }),
-      requireOrgRole: vi.fn().mockResolvedValue('org_admin'),
       getPaginationParams: vi.fn(),
     }));
     vi.doMock('@/lib/db', () => ({

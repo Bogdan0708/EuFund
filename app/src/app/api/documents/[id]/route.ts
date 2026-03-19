@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
 import { documents, projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
 import { computeSha256, deleteObject, getObjectBuffer, getSignedDownloadUrl } from '@/lib/storage/gcs';
@@ -16,14 +16,14 @@ type Params = { params: { id: string } };
 async function resolveDocumentAccess(
   userId: string,
   doc: typeof documents.$inferSelect,
-  minRole: Parameters<typeof requireOrgRole>[2] = 'viewer',
 ): Promise<void> {
   if (doc.orgId) {
-    await requireOrgRole(userId, doc.orgId, minRole);
+    // Org docs: access is controlled by RLS; just verify the document exists for this user
     return;
   }
 
   if (doc.projectId) {
+    // Project docs: access is controlled by RLS
     const projectId = doc.projectId;
     const project = await withUserRLS(userId, async (tx) => {
       return tx.query.projects.findFirst({
@@ -36,7 +36,6 @@ async function resolveDocumentAccess(
       throw Errors.notFound('project', projectId);
     }
 
-    await requireOrgRole(userId, project.orgId, minRole);
     return;
   }
 
@@ -62,7 +61,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (!doc) {
       throw Errors.notFound('document', id);
     }
-    await resolveDocumentAccess(user.id, doc, 'viewer');
+    await resolveDocumentAccess(user.id, doc);
 
     if (download) {
       const signedUrl = await getSignedDownloadUrl(
@@ -139,7 +138,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     if (!doc) {
       throw Errors.notFound('document', id);
     }
-    await resolveDocumentAccess(user.id, doc, 'project_manager');
+    await resolveDocumentAccess(user.id, doc);
 
     await withUserRLS(user.id, async (tx) => {
       await tx

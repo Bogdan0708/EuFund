@@ -7,7 +7,6 @@ describe('/api/documents/[id] signed URL download', () => {
 
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1' }),
-      requireOrgRole: vi.fn().mockResolvedValue('viewer'),
     }));
 
     vi.doMock('@/lib/db', () => ({

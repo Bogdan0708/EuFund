@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
 import { projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { listRisks, createRisk, updateRisk, getRiskOverview } from '@/lib/services/risks';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -21,7 +21,6 @@ export async function GET(req: NextRequest, { params }: Params) {
       });
     });
     if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'viewer');
 
     const includeOverview = req.nextUrl.searchParams.get('overview') === 'true';
     const risks = await listRisks(id, user.id);
@@ -56,7 +55,6 @@ export async function POST(req: NextRequest, { params }: Params) {
       });
     });
     if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     const body = await req.json();
     if (!body.riskType) {
@@ -110,7 +108,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
       });
     });
     if (!project) throw Errors.notFound('project', id);
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     const body = await req.json();
     if (!body.riskId) {

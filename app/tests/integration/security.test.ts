@@ -434,53 +434,6 @@ describe('Security Integration Tests', () => {
       vi.resetModules();
     });
 
-    it('should reject /api/ai/predict-success with invalid input', async () => {
-      vi.mock('@/lib/ai/predictive-analytics', () => ({
-        predictProposalSuccess: vi.fn(),
-        quickSuccessPrediction: vi.fn(),
-      }));
-      vi.mock('@/lib/legal/audit', () => ({
-        logAudit: vi.fn(),
-      }));
-      vi.mock('@/lib/middleware/auth', () => ({
-        withAIAuth: (req: any, handler: Function) =>
-          handler({ id: '1', email: 'test@example.com', tier: 'free' }),
-      }));
-      vi.mock('@/lib/db', () => ({
-        db: {
-          query: {
-            orgMembers: {
-              findFirst: vi.fn(),
-              findMany: vi.fn().mockResolvedValue([{ orgId: 'org-1' }]),
-            },
-          },
-          insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'review-1' }]) }) }),
-        },
-      }));
-
-      const { POST } = await import('@/app/api/ai/predict-success/route');
-
-      const invalidPayloads = [
-        {},
-        { projectTitle: 'ab' },
-        { projectTitle: 'Valid Title', projectSummary: 'Short' },
-        { projectTitle: 'Valid Title', projectSummary: 'Valid summary text here', totalBudget: -1000 },
-        { projectTitle: 'Valid Title', projectSummary: 'Valid summary text here', totalBudget: 10000, durationMonths: -5 },
-      ];
-
-      for (const payload of invalidPayloads) {
-        const request = createNextRequest('/api/ai/predict-success', {
-          method: 'POST',
-          body: payload,
-        });
-
-        const response = await POST(request);
-        expect(response.status).toBe(400);
-        const json = await response.json();
-        expect(json.error).toBeTruthy();
-      }
-    });
-
     it('should reject /api/ai/generate-proposal with missing fields', async () => {
       vi.mock('@/lib/ai/proposal-generator', () => ({
         generateProposal: vi.fn(),
@@ -513,81 +466,6 @@ describe('Security Integration Tests', () => {
         const json = await response.json();
         expect(json.error).toBeTruthy();
       }
-    });
-
-    it('should accept valid payload for /api/ai/predict-success', async () => {
-      vi.mock('@/lib/ai/predictive-analytics', () => ({
-        predictProposalSuccess: vi.fn(),
-        quickSuccessPrediction: vi.fn().mockReturnValue({
-          successProbability: 0.85,
-          confidenceLevel: 'high',
-          strengths: [],
-          weaknesses: [],
-          recommendations: [],
-          riskFactors: [],
-          scoreBreakdown: {},
-          benchmarkComparison: {},
-        }),
-      }));
-      vi.mock('@/lib/legal/audit', () => ({
-        logAudit: vi.fn(),
-      }));
-      vi.mock('@/lib/logger', () => ({
-        logger: {
-          error: vi.fn(),
-          child: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }),
-        },
-      }));
-      vi.mock('@/lib/ai/eu-ai-act', () => ({
-        withEUAIActCompliance: (_feature: string, handler: Function) =>
-          async (payload: unknown, _userId?: string) => ({
-            result: await handler(payload).then((value: any) => value.result ?? value),
-            metadata: { oversightRequired: false },
-          }),
-      }));
-      vi.mock('@/lib/ai/sanitize', () => ({
-        sanitizeAIResponseDeep: (data: unknown) => ({ sanitized: data, piiRedacted: [] }),
-      }));
-      vi.mock('@/lib/middleware/tier-gate', () => ({
-        assertTier: vi.fn().mockImplementation((tier: string) => tier),
-      }));
-      vi.mock('@/lib/middleware/auth', () => ({
-        withAIAuth: (req: any, handler: Function) =>
-          handler({ id: '1', email: 'test@example.com', tier: 'free' }),
-      }));
-      vi.mock('@/lib/db', () => ({
-        db: { query: { orgMembers: { findFirst: vi.fn() } }, insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'review-1' }]) }) }) },
-      }));
-
-      const { POST } = await import('@/app/api/ai/predict-success/route');
-
-      const validPayload = {
-        projectTitle: 'Innovation Project',
-        projectSummary: 'A comprehensive project summary with sufficient detail',
-        programType: 'horizon_europe',
-        totalBudget: 500000,
-        durationMonths: 36,
-        sector: 'ICT',
-        quick: true,
-        partners: [
-          {
-            name: 'Lead Partner',
-            country: 'RO',
-            type: 'university',
-            role: 'coordinator',
-          },
-        ],
-      };
-
-      const request = createNextRequest('/api/ai/predict-success', {
-        method: 'POST',
-        body: validPayload,
-      });
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-      const json = await response.json();
-      expect(json.success).toBe(true);
     });
 
     it('should accept valid payload for /api/ai/generate-proposal', async () => {

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { withUserRLS } from '@/lib/db';
 import { orgMembers, projects, users } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { getPaginationParams, requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { getPaginationParams, requireAuth } from '@/lib/auth/helpers';
 import { logger } from '@/lib/logger';
 import { logAudit } from '@/lib/legal/audit';
 
@@ -20,7 +20,6 @@ const updateApprovalSchema = z.object({
 
 async function resolveAdminOrgId(userId: string, requestedOrgId: string | null): Promise<string> {
   if (requestedOrgId) {
-    await requireOrgRole(userId, requestedOrgId, 'org_admin');
     return requestedOrgId;
   }
 

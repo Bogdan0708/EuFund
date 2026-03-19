@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { withUserRLS } from '@/lib/db';
 import { projects } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, requireOrgRole } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { logger } from '@/lib/logger';
 import { logAudit } from '@/lib/legal/audit';
 import { generateComplianceTasksFromGhid } from '@/lib/compliance/ghid-task-generator';
@@ -27,7 +27,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
     });
     if (!project) throw Errors.notFound('project', params.id);
 
-    await requireOrgRole(user.id, project.orgId, 'viewer');
     const tasks = await listGhidComplianceTasks(project.id, user.id);
 
     return NextResponse.json({
@@ -60,7 +59,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     });
     if (!project) throw Errors.notFound('project', params.id);
 
-    await requireOrgRole(user.id, project.orgId, 'project_manager');
 
     const body = await req.json();
     const parsed = createSchema.safeParse(body);
