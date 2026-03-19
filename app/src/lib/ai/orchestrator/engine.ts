@@ -12,6 +12,7 @@ import { researchAgent } from './agents/research'
 import { knowledgeAgent } from './agents/knowledge'
 import { planAgent } from './agents/plan'
 import { buildAgent } from './agents/build'
+import { editAgent } from './agents/edit'
 
 const AGENTS: Record<number, AgentFn> = {
   1: enhanceAgent,
@@ -90,6 +91,12 @@ export async function processMessage(
     return
   }
 
+  // Check session status to route to edit agent for completed sessions
+  const [sessionRow] = await db.select({ status: workflowSessions.status })
+    .from(workflowSessions).where(eq(workflowSessions.id, sessionId)).limit(1)
+
+  const isCompleted = sessionRow?.status === 'completed'
+
   // Store user message
   await db.insert(workflowMessages).values({
     sessionId,
@@ -98,8 +105,8 @@ export async function processMessage(
     step: ctx.step,
   })
 
-  const agent = getAgentForStep(ctx.step)
-  const label = STEP_LABELS[ctx.step] || `Step ${ctx.step}...`
+  const agent = isCompleted ? editAgent : getAgentForStep(ctx.step)
+  const label = isCompleted ? 'Editing your project...' : (STEP_LABELS[ctx.step] || `Step ${ctx.step}...`)
 
   stream.send({ type: 'step_start', step: ctx.step, label })
 
@@ -118,7 +125,22 @@ export async function processMessage(
       metadata: result.checkpoint ? result.checkpoint as unknown as Record<string, unknown> : null,
     })
 
-    if (result.checkpoint) {
+    if (isCompleted) {
+      // Post-completion edit: update context only, don't advance step or change status
+      await db
+        .update(workflowSessions)
+        .set({
+          context: updatedContext as unknown as Record<string, unknown>,
+          updatedAt: new Date(),
+        })
+        .where(eq(workflowSessions.id, sessionId))
+
+      stream.send({
+        type: 'step_complete',
+        step: ctx.step,
+        summary: 'Edit applied',
+      })
+    } else if (result.checkpoint) {
       stream.send({ type: 'checkpoint', step: ctx.step, data: result.checkpoint })
 
       await db

@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
 import { requireAuth } from '@/lib/auth/helpers'
 import { db } from '@/lib/db'
-import { workflowSessions } from '@/lib/db/schema'
-import { eq, and } from 'drizzle-orm'
+import { workflowSessions, workflowMessages } from '@/lib/db/schema'
+import { eq, and, asc } from 'drizzle-orm'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -29,9 +29,35 @@ export async function GET(req: NextRequest) {
     return new Response('Session not found', { status: 404 })
   }
 
+  const lastEventId = req.headers.get('Last-Event-ID')
+
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder()
+
+      // Replay missed events if client reconnected with Last-Event-ID
+      if (lastEventId) {
+        ;(async () => {
+          try {
+            const replayMessages = await db
+              .select()
+              .from(workflowMessages)
+              .where(eq(workflowMessages.sessionId, sessionId))
+              .orderBy(asc(workflowMessages.createdAt))
+
+            for (const msg of replayMessages) {
+              const replayEvent = {
+                type: msg.role === 'user' ? 'replay_user' : 'replay_assistant',
+                content: msg.content,
+                step: msg.step,
+                eventType: msg.eventType,
+                metadata: msg.metadata,
+              }
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(replayEvent)}\n\n`))
+            }
+          } catch { /* replay is best-effort */ }
+        })()
+      }
 
       // Heartbeat
       const heartbeat = setInterval(() => {
