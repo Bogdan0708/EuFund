@@ -119,8 +119,13 @@ export type SSEEvent = {
   | { type: 'done'; projectId?: string }
 )
 
+// Distributive Omit that preserves union discrimination
+type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never
+
+export type SSEEventPayload = DistributiveOmit<SSEEvent, 'eventId'>
+
 export interface SSEStream {
-  send(event: Omit<SSEEvent, 'eventId'>): void
+  send(event: SSEEventPayload): void
   close(): void
 }
 

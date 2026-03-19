@@ -149,7 +149,7 @@ export async function processMessage(
         .where(eq(workflowSessions.id, sessionId))
 
       if (isComplete) {
-        stream.send({ type: 'done', projectId: (updatedContext as any).projectId })
+        stream.send({ type: 'done', projectId: (updatedContext as unknown as { projectId?: string }).projectId })
       }
     }
   } catch (error) {

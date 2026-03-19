@@ -1,7 +1,7 @@
 import type { AgentFn, MatchedCall } from '../types'
 import { getMatchPrompt } from '../prompts/match'
 
-export const matchAgent: AgentFn = async (ctx, input, stream, gateway) => {
+export const matchAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   if (!ctx.enhancedIdea) {
     throw new Error('Enhanced idea required before matching')
   }

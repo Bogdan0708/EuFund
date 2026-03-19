@@ -5,6 +5,7 @@ import { projects, projectDocuments } from '@/lib/db/schema'
 import { eq, and, desc } from 'drizzle-orm'
 import { generateDocx } from '@/lib/export/docx'
 import { Errors, FondEUError } from '@/lib/errors'
+import type { ProjectSection } from '@/lib/ai/orchestrator/types'
 
 type Params = { params: { id: string } }
 
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       )
     }
 
-    const sections = doc.sections as any[]
+    const sections = doc.sections as ProjectSection[]
     const buffer = await generateDocx(sections, {
       projectTitle: project.title,
       program: undefined, // Could load from call

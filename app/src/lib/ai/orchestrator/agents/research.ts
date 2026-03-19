@@ -1,7 +1,7 @@
 import type { AgentFn } from '../types'
 import { getResearchPrompt } from '../prompts/research'
 
-export const researchAgent: AgentFn = async (ctx, input, stream, gateway) => {
+export const researchAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   if (!ctx.matchedCalls || ctx.matchedCalls.length === 0) {
     throw new Error('No matched calls for research')
   }
