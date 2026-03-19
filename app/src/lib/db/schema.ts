@@ -260,6 +260,7 @@ export const callsForProposals = pgTable('calls_for_proposals', {
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organizations.id),
+  userId: uuid('user_id').references(() => users.id),
   callId: uuid('call_id').references(() => callsForProposals.id),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   title: varchar('title', { length: 1000 }).notNull(),
