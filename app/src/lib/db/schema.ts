@@ -106,6 +106,34 @@ export const users = pgTable('users', {
   stripeCustomerIdx: index('idx_users_stripe_customer').on(table.stripeCustomerId),
 }));
 
+// ─── NextAuth Accounts (OAuth linking) ─────────────────────────
+export const authAccounts = pgTable('auth_accounts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  type: varchar('type', { length: 50 }).notNull(), // 'oauth' | 'email' | 'credentials'
+  provider: varchar('provider', { length: 50 }).notNull(), // 'google' | 'microsoft-entra-id' | 'facebook'
+  providerAccountId: varchar('provider_account_id', { length: 255 }).notNull(),
+  refreshToken: text('refresh_token'),
+  accessToken: text('access_token'),
+  expiresAt: integer('expires_at'),
+  tokenType: varchar('token_type', { length: 50 }),
+  scope: text('scope'),
+  idToken: text('id_token'),
+  sessionState: text('session_state'),
+}, (table) => ({
+  providerIdx: uniqueIndex('idx_auth_accounts_provider').on(table.provider, table.providerAccountId),
+  userIdx: index('idx_auth_accounts_user').on(table.userId),
+}));
+
+// ─── NextAuth Verification Tokens (magic links) ───────────────
+export const authVerificationTokens = pgTable('auth_verification_tokens', {
+  identifier: varchar('identifier', { length: 255 }).notNull(), // email address
+  token: varchar('token', { length: 255 }).notNull(),
+  expires: timestamp('expires', { withTimezone: true }).notNull(),
+}, (table) => ({
+  compoundKey: uniqueIndex('idx_auth_verification_tokens_compound').on(table.identifier, table.token),
+}));
+
 // ─── Email Verification Tokens ──────────────────────────────────
 export const emailVerificationTokens = pgTable('email_verification_tokens', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -857,6 +885,11 @@ export const usersRelations = relations(users, ({ many }) => ({
   notifications: many(notifications),
   consentRecords: many(consentRecords),
   emailVerificationTokens: many(emailVerificationTokens),
+  authAccounts: many(authAccounts),
+}));
+
+export const authAccountsRelations = relations(authAccounts, ({ one }) => ({
+  user: one(users, { fields: [authAccounts.userId], references: [users.id] }),
 }));
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({

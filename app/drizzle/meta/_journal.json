@@ -85,6 +85,13 @@
       "when": 1773916451531,
       "tag": "0011_living_microbe",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1774051200000,
+      "tag": "0012_auth_accounts",
+      "breakpoints": true
     }
   ]
 }

@@ -1,18 +1,15 @@
 import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
+import Facebook from 'next-auth/providers/facebook';
 import EmailProvider from 'next-auth/providers/email';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { FondEUAdapter } from './adapter';
 
 const log = logger.child({ component: 'auth' });
-
-type AuthUserClaims = {
-  emailVerified?: boolean;
-  isPlatformAdmin?: boolean;
-};
 
 type SessionUserClaims = {
   id?: string;
@@ -25,6 +22,7 @@ export const {
   signIn,
   signOut,
 } = NextAuth({
+  adapter: FondEUAdapter(),
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -34,6 +32,11 @@ export const {
     MicrosoftEntraID({
       clientId: process.env.MICROSOFT_CLIENT_ID!,
       clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
+      allowDangerousEmailAccountLinking: true,
+    }),
+    Facebook({
+      clientId: process.env.FACEBOOK_CLIENT_ID!,
+      clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
       allowDangerousEmailAccountLinking: true,
     }),
     EmailProvider({
@@ -58,7 +61,8 @@ export const {
   },
   callbacks: {
     async signIn({ user, account }) {
-      if ((account?.provider === 'google' || account?.provider === 'microsoft-entra-id') && user.email) {
+      // For OAuth providers, link to existing user by email if one exists
+      if (account?.type === 'oauth' && user.email) {
         const existing = await db.query.users.findFirst({
           where: eq(users.email, user.email),
         });
@@ -70,10 +74,18 @@ export const {
     },
     async jwt({ token, user, trigger }) {
       if (user) {
-        const authUser = user as AuthUserClaims;
         token.userId = user.id;
-        token.emailVerified = authUser.emailVerified ?? false;
-        token.isPlatformAdmin = authUser.isPlatformAdmin ?? false;
+        // Look up actual DB flags (adapter gives us NextAuth-shaped user, not our full model)
+        if (user.id) {
+          const dbUser = await db.query.users.findFirst({
+            where: eq(users.id, user.id),
+            columns: { emailVerified: true, isPlatformAdmin: true },
+          });
+          if (dbUser) {
+            token.emailVerified = dbUser.emailVerified;
+            token.isPlatformAdmin = dbUser.isPlatformAdmin;
+          }
+        }
       }
       // Refresh flags from DB on session update
       if (trigger === 'update' && token.userId) {
