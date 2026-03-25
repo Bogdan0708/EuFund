@@ -647,5 +647,29 @@
     "confidence": "Încredere",
     "projectSaved": "Proiect salvat cu succes!",
     "goToProject": "Mergi la proiect"
+  },
+  "nav": {
+    "home": "Acasă",
+    "projects": "Proiecte",
+    "calls": "Apeluri",
+    "files": "Fișiere",
+    "ai": "Asistent AI",
+    "settings": "Setări",
+    "signOut": "Deconectare"
+  },
+  "commandPalette": {
+    "searchPlaceholder": "Caută pagini, proiecte, acțiuni...",
+    "pages": "Pagini",
+    "actions": "Acțiuni",
+    "home": "Acasă",
+    "projects": "Proiecte",
+    "fundingCalls": "Apeluri de finanțare",
+    "files": "Fișiere",
+    "aiAssistant": "Asistent AI",
+    "settings": "Setări",
+    "newProject": "Proiect nou",
+    "checkEligibility": "Verifică eligibilitatea",
+    "uploadFile": "Încarcă fișier",
+    "noResults": "Niciun rezultat"
   }
 }

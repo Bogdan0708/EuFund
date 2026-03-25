@@ -647,5 +647,29 @@
     "confidence": "Confidence",
     "projectSaved": "Project saved successfully!",
     "goToProject": "Go to project"
+  },
+  "nav": {
+    "home": "Home",
+    "projects": "Projects",
+    "calls": "Calls",
+    "files": "Files",
+    "ai": "AI Assistant",
+    "settings": "Settings",
+    "signOut": "Sign out"
+  },
+  "commandPalette": {
+    "searchPlaceholder": "Search pages, projects, actions...",
+    "pages": "Pages",
+    "actions": "Actions",
+    "home": "Home",
+    "projects": "Projects",
+    "fundingCalls": "Funding Calls",
+    "files": "Files",
+    "aiAssistant": "AI Assistant",
+    "settings": "Settings",
+    "newProject": "New project",
+    "checkEligibility": "Check eligibility",
+    "uploadFile": "Upload file",
+    "noResults": "No results"
   }
 }
