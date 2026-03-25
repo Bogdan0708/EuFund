@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
-import { projects, orgMembers } from '@/lib/db/schema';
+import { projects, orgMembers, organizations } from '@/lib/db/schema';
 import { createProjectSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, getPaginationParams } from '@/lib/auth/helpers';
@@ -30,6 +30,29 @@ async function resolveProjectOrgId(userId: string, requestedOrgId?: string): Pro
 
   if (memberships.length === 1) {
     return memberships[0].orgId;
+  }
+
+  if (memberships.length === 0) {
+    // Auto-create personal org for user
+    const [newOrg] = await withUserRLS(userId, async (tx) => {
+      const [org] = await tx
+        .insert(organizations)
+        .values({
+          name: `Personal Workspace`,
+          orgType: 'micro',
+        })
+        .returning({ id: organizations.id });
+
+      await tx.insert(orgMembers).values({
+        userId,
+        orgId: org.id,
+        role: 'admin',
+      });
+
+      return [org];
+    });
+
+    return newOrg.id;
   }
 
   throw new FondEUError(
