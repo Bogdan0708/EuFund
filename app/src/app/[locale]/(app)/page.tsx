@@ -1,5 +1,5 @@
 import { auth } from '@/lib/auth'
-import { db, withUserRLS } from '@/lib/db'
+import { withUserRLS } from '@/lib/db'
 import { workflowSessions, projects } from '@/lib/db/schema'
 import { eq, desc, and, count } from 'drizzle-orm'
 import { SmartLanding } from '@/components/landing/SmartLanding'
