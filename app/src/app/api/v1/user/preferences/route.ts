@@ -44,12 +44,12 @@ export async function PUT(request: Request) {
   try {
     body = await request.json()
   } catch {
-    return Errors.validation('body', 'Format JSON invalid', 'Invalid JSON body').toResponse('ro')
+    return NextResponse.json(Errors.validation('body', 'Format JSON invalid', 'Invalid JSON body').toResponse('ro'), { status: 400 })
   }
 
   const parsed = updatePreferencesSchema.safeParse(body)
   if (!parsed.success) {
-    return Errors.validation('preferences', 'Preferințe invalide', 'Invalid preferences').toResponse('ro')
+    return NextResponse.json(Errors.validation('preferences', 'Preferințe invalide', 'Invalid preferences').toResponse('ro'), { status: 400 })
   }
 
   const { defaultModel, responseStyle, autoApprove } = parsed.data
