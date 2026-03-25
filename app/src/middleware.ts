@@ -53,6 +53,10 @@ const publicPaths = [
   '/api/ai/diagnostic', // AI diagnostic (token-protected)
   '/ro/autentificare',
   '/en/autentificare',
+  '/ro/inregistrare',
+  '/en/inregistrare',
+  '/ro/resetare-parola',
+  '/en/resetare-parola',
   '/ro/preturi',
   '/en/pricing',
   '/pricing',
