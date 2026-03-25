@@ -50,7 +50,7 @@ export default async function LocaleLayout({
           <meta name="csp-nonce" content={nonce} />
         )}
       </head>
-      <body className="min-h-screen bg-gray-50 text-gray-900 antialiased">
+      <body className="min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)] antialiased">
         <AuthSessionProvider>
           <NextIntlClientProvider locale={locale} messages={messages}>
             {children}
