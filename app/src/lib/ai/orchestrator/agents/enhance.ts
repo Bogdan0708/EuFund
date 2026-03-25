@@ -14,19 +14,15 @@ export const enhanceAgent: AgentFn = async (ctx, input, stream, gateway) => {
   })
 
   let enhancedIdea: EnhancedIdea
-  try {
-    const parsed = parseAIJson<Record<string, unknown>>(result.content)
-    enhancedIdea = {
-      originalIdea: input,
-      refinedDescription: parsed.refinedDescription as string,
-      sector: parsed.sector as string,
-      region: parsed.region as string,
-      targetGroup: parsed.targetGroup as string,
-      estimatedBudget: parsed.estimatedBudget as string,
-      keyObjectives: parsed.keyObjectives as string[],
-    }
-  } catch {
-    throw new Error('Failed to parse AI response for idea enhancement')
+  const parsed = parseAIJson<Record<string, unknown>>(result.content)
+  enhancedIdea = {
+    originalIdea: input,
+    refinedDescription: (parsed.refinedDescription as string) || 'No description provided',
+    sector: (parsed.sector as string) || 'General',
+    region: (parsed.region as string) || 'National',
+    targetGroup: (parsed.targetGroup as string) || 'General public',
+    estimatedBudget: (parsed.estimatedBudget as string) || 'To be determined',
+    keyObjectives: Array.isArray(parsed.keyObjectives) ? parsed.keyObjectives as string[] : ['Objective to be defined'],
   }
 
   stream.send({
