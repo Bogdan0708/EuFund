@@ -281,6 +281,7 @@ export const callsForProposals = pgTable('calls_for_proposals', {
   ecEligibilityCriteria: jsonb('ec_eligibility_criteria'),
   ecSourceUrl: text('ec_source_url'),
   ecSyncedAt: timestamp('ec_synced_at'),
+  lastVerifiedAt: timestamp('last_verified_at'),
 }, (table) => ({
   programIdx: index('idx_calls_program').on(table.programId),
   statusIdx: index('idx_calls_status').on(table.status),
