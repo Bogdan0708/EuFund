@@ -671,5 +671,44 @@
     "checkEligibility": "Check eligibility",
     "uploadFile": "Upload file",
     "noResults": "No results"
+  },
+  "landing": {
+    "welcomeTitle": "Welcome to FondEU",
+    "welcomeSubtitle": "Describe your project idea and we'll guide you step by step",
+    "heroPlaceholder": "Describe your project idea...",
+    "greetingMorning": "Good morning, {name}",
+    "greetingAfternoon": "Good afternoon, {name}",
+    "greetingEvening": "Good evening, {name}",
+    "continue": "Continue",
+    "step": "Step",
+    "steps": {
+      "enhance": "Enhance idea",
+      "match": "Match calls",
+      "validate": "Validate eligibility",
+      "research": "Research",
+      "knowledge": "Knowledge base",
+      "plan": "Action plan",
+      "build": "Build proposal"
+    },
+    "myProjects": "My Projects",
+    "newMatches": "New Matches",
+    "noMatchesYet": "No matches yet. Create a project or explore calls.",
+    "browseCalls": "Browse calls",
+    "viewAll": "View all",
+    "viewAllCalls": "View all calls",
+    "quickStart": {
+      "browseCalls": "Browse calls",
+      "browseCallsDesc": "Search for open funding calls",
+      "checkEligibility": "Check eligibility",
+      "checkEligibilityDesc": "Check if your organization is eligible",
+      "uploadDocs": "Upload documents",
+      "uploadDocsDesc": "Upload documents for your projects"
+    },
+    "status": {
+      "draft": "Draft",
+      "action_plan": "Action Plan",
+      "built": "Built",
+      "exported": "Exported"
+    }
   }
 }

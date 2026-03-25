@@ -671,5 +671,44 @@
     "checkEligibility": "Verifică eligibilitatea",
     "uploadFile": "Încarcă fișier",
     "noResults": "Niciun rezultat"
+  },
+  "landing": {
+    "welcomeTitle": "Bine ai venit pe FondEU",
+    "welcomeSubtitle": "Descrie ideea ta de proiect și te ghidăm pas cu pas",
+    "heroPlaceholder": "Descrie ideea ta de proiect...",
+    "greetingMorning": "Bună dimineața, {name}",
+    "greetingAfternoon": "Bună ziua, {name}",
+    "greetingEvening": "Bună seara, {name}",
+    "continue": "Continuă",
+    "step": "Pas",
+    "steps": {
+      "enhance": "Îmbunătățire idee",
+      "match": "Potrivire apeluri",
+      "validate": "Validare eligibilitate",
+      "research": "Cercetare",
+      "knowledge": "Bază de cunoștințe",
+      "plan": "Plan de acțiune",
+      "build": "Construire propunere"
+    },
+    "myProjects": "Proiectele mele",
+    "newMatches": "Potriviri noi",
+    "noMatchesYet": "Încă nu ai potriviri. Creează un proiect sau explorează apelurile.",
+    "browseCalls": "Explorează apeluri",
+    "viewAll": "Vezi toate",
+    "viewAllCalls": "Vezi toate apelurile",
+    "quickStart": {
+      "browseCalls": "Explorează apeluri",
+      "browseCallsDesc": "Caută apeluri de finanțare deschise",
+      "checkEligibility": "Verifică eligibilitatea",
+      "checkEligibilityDesc": "Verifică dacă organizația ta este eligibilă",
+      "uploadDocs": "Încarcă documente",
+      "uploadDocsDesc": "Încarcă documente pentru proiectele tale"
+    },
+    "status": {
+      "draft": "Ciornă",
+      "action_plan": "Plan de acțiune",
+      "built": "Construit",
+      "exported": "Exportat"
+    }
   }
 }
