@@ -7,12 +7,12 @@ const text = {
   ro: {
     title: 'Pagina nu a fost găsită',
     description: 'Ne pare rău, pagina pe care o căutați nu există sau a fost mutată.',
-    button: 'Înapoi la Panou de control',
+    button: 'Înapoi la pagina principală',
   },
   en: {
     title: 'Page not found',
     description: 'Sorry, the page you are looking for does not exist or has been moved.',
-    button: 'Back to Dashboard',
+    button: 'Back to Home',
   },
 };
 
@@ -35,7 +35,7 @@ export default function LocaleNotFound() {
         </div>
         <div className="p-6 pt-0 flex flex-col gap-3 items-center">
           <Link
-            href={`/${locale}/panou`}
+            href={`/${locale}`}
             className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-6"
           >
             {t.button}

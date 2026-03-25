@@ -3,9 +3,9 @@ substitutions:
   _REGION: europe-west2
   _MIGRATION_JOB: fondeu-db-migrate
   _CLOUD_SQL_INSTANCE: fondeu-db
-  _GCS_BUCKET: ""
+  _GCS_BUCKET: fondeu-platform-storage
   _GCS_KEY_FILENAME: ""
-  _QDRANT_URL: ""
+  _QDRANT_URL: http://10.154.0.3:6333
   _AI_GATEWAY_URL: https://ai-gateway-j3dqdqxnyq-lm.a.run.app
   _AI_GATEWAY_TENANT_ID: fondeu-platform
   _PRODUCTION_URL: https://fondeu-platform-857599941951.europe-west2.run.app

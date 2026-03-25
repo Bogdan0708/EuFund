@@ -158,7 +158,7 @@ export default auth(async (req) => {
       }
 
       // Redirect web pages to verification prompt
-      const verifyUrl = pathname.startsWith('/en') ? '/en/verificare-email' : '/ro/verificare-email';
+      const verifyUrl = pathname.startsWith('/en') ? '/en/verifica-email' : '/ro/verifica-email';
       const response = NextResponse.redirect(new URL(verifyUrl, req.url));
       response.headers.set('x-request-id', requestId);
       return finalizeResponse(response);

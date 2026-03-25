@@ -33,7 +33,9 @@ function LandingPage() {
             <Link href={`/${locale}/autentificare`}>{t('auth.login')}</Link>
           </Button>
           <Button asChild variant="outline" size="lg">
-            <Link href={`/${locale}/inregistrare`}>{t('auth.register')}</Link>
+            <Link href={`/${locale}/preturi`}>
+              {locale === 'ro' ? 'Vezi prețuri' : 'View pricing'}
+            </Link>
           </Button>
         </div>
 

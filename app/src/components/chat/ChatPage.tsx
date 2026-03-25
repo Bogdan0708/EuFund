@@ -7,6 +7,7 @@ import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { ProjectSelector } from './ProjectSelector';
 import { QuickStarts } from './QuickStarts';
+import { UserMenu } from './UserMenu';
 
 export function ChatPage() {
   const locale = useLocale();
@@ -17,6 +18,7 @@ export function ChatPage() {
     activeSessionId,
     isStreaming,
     startNewSession,
+    resumeSession,
     error,
   } = useOrchestrator(locale);
 
@@ -63,21 +65,11 @@ export function ChatPage() {
         <ProjectSelector
           activeSessionId={activeSessionId}
           onNewSession={handleNewSession}
+          onResumeSession={resumeSession}
         />
 
-        {/* User menu placeholder */}
-        <div className="flex items-center gap-2">
-          <div
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-bg-secondary)]
-              text-xs font-medium"
-            style={{ color: 'var(--color-text-secondary)' }}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <circle cx="8" cy="5.5" r="2.5" />
-              <path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" strokeLinecap="round" />
-            </svg>
-          </div>
-        </div>
+        {/* User menu */}
+        <UserMenu />
       </header>
 
       {/* ─── Main Content ─────────────────────────────────────── */}

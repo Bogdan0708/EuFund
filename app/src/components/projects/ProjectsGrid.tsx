@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useLocale } from 'next-intl';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ProjectCard, type Project } from './ProjectCard';
 import { ProjectDetail } from './ProjectDetail';
+import { UserMenu } from '@/components/chat/UserMenu';
 
 interface PaginationMeta {
   page: number;
@@ -79,7 +81,38 @@ export function ProjectsGrid() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-screen flex-col bg-white">
+      {/* ─── Top Bar ──────────────────────────────────────────── */}
+      <header
+        className="flex shrink-0 items-center justify-between border-b border-[var(--color-border)] bg-white/80
+          px-4 py-3 backdrop-blur-sm"
+      >
+        <div className="flex items-center gap-3">
+          <Link href={`/${locale}`} className="text-lg font-bold" style={{ color: 'var(--color-accent)' }}>
+            FondEU
+          </Link>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/${locale}`}
+            className="flex items-center gap-1.5 rounded-[var(--radius-full)] border border-[var(--color-border)]
+              bg-white px-4 py-1.5 text-sm font-medium transition-all duration-200
+              hover:border-[var(--color-accent)] hover:shadow-[var(--shadow-sm)]"
+            style={{ color: 'var(--color-accent)' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M7 3v8M3 7h8" strokeLinecap="round" />
+            </svg>
+            {locale === 'ro' ? 'Proiect nou' : 'New project'}
+          </Link>
+        </div>
+
+        <UserMenu />
+      </header>
+
+      {/* ─── Content ──────────────────────────────────────────── */}
+      <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8">
       {/* Header */}
       <div>
         <h1 className="text-[var(--font-size-2xl)] font-semibold text-[var(--color-text)]">
@@ -155,11 +188,18 @@ export function ProjectsGrid() {
           <h3 className="text-[var(--font-size-base)] font-semibold text-[var(--color-text)] mb-1">
             {locale === 'ro' ? 'Niciun proiect inca' : 'No projects yet'}
           </h3>
-          <p className="text-[var(--font-size-sm)] text-[var(--color-text-secondary)]">
+          <p className="text-[var(--font-size-sm)] text-[var(--color-text-secondary)] mb-4">
             {locale === 'ro'
-              ? 'Creeaza un proiect nou pentru a incepe.'
-              : 'Create a new project to get started.'}
+              ? 'Foloseste asistentul AI pentru a crea primul proiect.'
+              : 'Use the AI assistant to create your first project.'}
           </p>
+          <Link
+            href={`/${locale}`}
+            className="inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white
+              transition-all hover:opacity-90"
+          >
+            {locale === 'ro' ? 'Incepe un proiect' : 'Start a project'}
+          </Link>
         </div>
       )}
 
@@ -209,6 +249,7 @@ export function ProjectsGrid() {
           )}
         </>
       )}
+      </div>
     </div>
   );
 }
