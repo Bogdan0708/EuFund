@@ -475,7 +475,7 @@ Four glass cards, stacked vertically.
 | Feature | Reason |
 |---------|--------|
 | Create project form (`/proiecte/nou`) | Projects created via AI flow |
-| Organization management | Move to user-owned model |
+| Organization management UI | Keep org auto-creation behind the scenes (see Section 11, C1) |
 | Live EU Portal as separate page | Merged into Calls page |
 | Separate billing page | Merged into Settings |
 
@@ -496,11 +496,10 @@ Four glass cards, stacked vertically.
 
 ### What Stays Untouched
 
-- All API routes (`/api/*`)
-- Database schema (`lib/db/schema.ts`)
-- Auth configuration (`lib/auth/`)
 - AI orchestrator engine (`lib/ai/orchestrator/`)
-- Middleware (`middleware.ts`)
+- Auth configuration (`lib/auth/`)
+- Most API routes (`/api/*`) — see Required Backend Changes below
+- Most of database schema (`lib/db/schema.ts`) — see Required Backend Changes below
 - All `lib/` utilities (errors, redis, storage, vectors, etc.)
 - i18n configuration (next-intl)
 
@@ -532,20 +531,73 @@ app/src/app/[locale]/
 │   │   └── page.tsx          # AI Workspace (chat+canvas)
 │   └── settings/
 │       └── page.tsx          # Settings (profile, AI, billing, privacy)
-├── (auth)/                   # Public auth pages (keep as-is)
-│   ├── autentificare/
-│   ├── inregistrare/
-│   └── resetare-parola/
+├── (auth)/                   # Public auth pages
+│   ├── autentificare/        # Exists — restyle with glass design
+│   ├── inregistrare/         # Needs page component (API exists)
+│   └── resetare-parola/      # Needs page component (API exists)
+├── verifica-email/           # Exists — restyle with glass design
+├── not-found.tsx             # Exists — restyle with glass design
 └── layout.tsx                # Root locale layout (keep as-is)
 ```
 
-### New API Routes Needed
+### Old Route Migration
 
-- `POST /api/ai/search-calls` — AI web search for funding calls
-- `POST /api/v1/calls/:id/verify` — single-call web verification
-- `GET /api/v1/calls` — add `lastVerifiedAt` to response
-- `GET /api/v1/user/preferences` — user AI preferences (model, style, auto-approve)
-- `PUT /api/v1/user/preferences` — update preferences
+The current `(dashboard)` route group is replaced by `(app)`. Migration strategy:
+- **Delete** old `(dashboard)/` directory after new `(app)/` is complete
+- **Redirects** for old Romanian paths (implemented in middleware or via Next.js rewrites):
+  - `/ro/panou` → `/ro` (home)
+  - `/ro/proiecte` → `/ro/projects`
+  - `/ro/proiecte/[id]` → `/ro/projects/[id]`
+  - `/ro/finantari` → `/ro/calls`
+  - `/ro/billing` → `/ro/settings`
+- Old paths in emails/bookmarks continue to work via redirects
+
+### Required Backend Changes
+
+Approach B is "keep backend, rewrite frontend" — but several features require targeted backend modifications. These are small, scoped changes, not a rewrite.
+
+**Database schema changes (migration required):**
+
+| Change | Table | Reason |
+|--------|-------|--------|
+| Add `lastVerifiedAt` column | `calls_for_proposals` | Web verification timestamps for funding calls (Section 6) |
+| Add `user_preferences` table | New table | AI model preference, response style, auto-approve toggle (Section 8) |
+| Make `orgId` nullable OR auto-create org | `projects` | `orgId` is NOT NULL but org management UI is removed. Solution: auto-create a personal org on first project creation. See C1 below. |
+
+**API route modifications:**
+
+| Route | Change | Reason |
+|-------|--------|--------|
+| `GET /api/ai/orchestrator/sessions` | Add `?status` and `?limit` query params | Landing page needs active session only (Section 3) |
+| `GET /api/v1/calls` | Include `lastVerifiedAt` in response | Trust badges on funding calls (Section 6) |
+
+**New API routes:**
+
+| Route | Purpose |
+|-------|---------|
+| `POST /api/ai/search-calls` | AI web search for funding calls when DB has no matches (Section 6) |
+| `POST /api/v1/calls/[id]/verify` | Trigger single-call web verification (Section 6) |
+| `GET /api/v1/user/preferences` | Read user AI preferences (Section 8) |
+| `PUT /api/v1/user/preferences` | Update user AI preferences (Section 8) |
+
+**Middleware changes:**
+
+| Change | Reason |
+|--------|--------|
+| Add `/ro/inregistrare`, `/en/inregistrare`, `/ro/resetare-parola`, `/en/resetare-parola` to `publicPaths` | Register and reset-password pages are currently not accessible to unauthenticated users |
+| Add redirect rules for old `(dashboard)` routes | Backward compatibility for bookmarks/emails |
+
+### Font Loading
+
+- Inter and JetBrains Mono loaded via `next/font/google` (self-hosted, CSP-safe)
+- Already compatible with the strict CSP policy in middleware
+
+### CSRF Token Bootstrapping
+
+- Current middleware sets `X-CSRF-Token` in response headers
+- New glass shell reads CSRF token from initial page load response
+- All client-side `fetch` calls for POST/PUT/DELETE/PATCH include `X-CSRF-Token` header
+- Existing pattern works — just needs consistent implementation in new components
 
 ### Stitch Integration Workflow
 
@@ -553,3 +605,48 @@ app/src/app/[locale]/
 2. User creates screens in Google Stitch based on spec
 3. User exports ZIPs to `app/designs/` (PNG + HTML/CSS)
 4. Code is built to match those designs using Next.js + Tailwind
+
+---
+
+## 11. Spec Review — Resolved Issues
+
+Issues identified during spec review and their resolutions.
+
+### C1: `projects.orgId` NOT NULL vs. "Kill org management"
+
+**Problem:** `projects.orgId` is NOT NULL. Removing org management UI means users can't create projects.
+**Resolution:** Keep org auto-creation behind the scenes. On first project creation (via AI orchestrator or API), if the user has no organization, auto-create a personal org named "{User's Name}'s Workspace". The user never sees org management UI, but the DB constraint is satisfied. This is a small change to the project creation API route, not a schema change.
+
+### C2: Middleware publicPaths missing register/reset pages
+
+**Problem:** `/ro/inregistrare` and `/ro/resetare-parola` are not in `publicPaths`, so unauthenticated users get redirected to login.
+**Resolution:** Add these paths to `publicPaths` array in middleware. Also create the page components for `inregistrare/` and `resetare-parola/` (API routes already exist). Listed in Required Backend Changes above.
+
+### C3: Sessions API filtering
+
+**Problem:** `GET /api/ai/orchestrator/sessions` has no query param support.
+**Resolution:** Add `?status` and `?limit` query parameter parsing to the sessions route. Listed in Required Backend Changes above.
+
+### I4: Project status enum mismatch
+
+**Problem:** Existing `projectStatusEnum` uses Romanian values (`ciorna`, `in_lucru`, etc.). Spec uses English (`draft`, `action_plan`, `built`, `exported`).
+**Resolution:** The `projectStatusEnumV2` already exists in the schema (added during orchestrator redesign). New projects created by the AI orchestrator already use V2 status values. The frontend maps V2 values to display labels via i18n. Old V1 statuses from legacy projects are mapped client-side: `ciorna`→`draft`, `in_lucru`→`action_plan`, `finalizat`→`built`, `depus`→`exported`. No schema change needed.
+
+### I5: Old `(dashboard)` routes
+
+**Problem:** What happens to old routes?
+**Resolution:** See "Old Route Migration" section above. Delete after new routes are complete, with redirects for backward compatibility.
+
+### I6: Call status enum mapping
+
+**Problem:** DB uses Romanian status values (`deschis`, `previzionat`), spec uses English filter labels.
+**Resolution:** Existing API already handles this mapping. Frontend filter chips pass English values (`open`, `forthcoming`), API translates to Romanian DB values. No change needed.
+
+### Additional Items
+
+- **Email verification page** (`/verifica-email`): exists, gets glass redesign treatment
+- **404 page** (`not-found.tsx`): exists, gets glass redesign treatment
+- **Logout:** sidebar user avatar area includes dropdown with "Sign out" / "Deconectare" action calling `signOut()`
+- **Loading states:** all data-dependent pages use glass-themed skeleton loaders (pulsing `--bg-surface` blocks matching card/content layout)
+- **Command palette data source:** client-side for Pages and Actions (static), debounced API calls for Projects (`GET /api/v1/projects?search=`) and Calls (`GET /api/v1/calls?search=`)
+- **Storage limits:** computed via aggregate query on `project_files` table (`SUM(sizeBytes) WHERE userId = ?`), tier limits defined in `getTierLimits()` config
