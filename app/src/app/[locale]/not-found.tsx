@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { GlassCard } from '@/components/glass/GlassCard';
 
 const text = {
   ro: {
@@ -22,26 +23,25 @@ export default function LocaleNotFound() {
   const t = text[locale];
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
-      <div className="rounded-lg border bg-card text-card-foreground shadow-sm w-full max-w-md">
-        <div className="flex flex-col space-y-1.5 p-6 text-center">
-          <h1 className="text-6xl font-bold text-primary">404</h1>
-          <h2 className="font-semibold tracking-tight text-xl mt-2">
-            {t.title}
-          </h2>
-          <p className="text-sm text-muted-foreground mt-2">
-            {t.description}
-          </p>
-        </div>
-        <div className="p-6 pt-0 flex flex-col gap-3 items-center">
-          <Link
-            href={`/${locale}`}
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-6"
-          >
-            {t.button}
-          </Link>
-        </div>
-      </div>
+    <main className="min-h-screen flex items-center justify-center p-4 bg-[var(--bg-base)]">
+      <GlassCard
+        hover={false}
+        className="w-full max-w-md p-10 flex flex-col items-center gap-4 text-center"
+      >
+        <h1 className="text-7xl font-bold text-[var(--accent)]">404</h1>
+        <h2 className="text-xl font-semibold text-[var(--text-primary)]">
+          {t.title}
+        </h2>
+        <p className="text-sm text-[var(--text-secondary)]">
+          {t.description}
+        </p>
+        <Link
+          href={`/${locale}`}
+          className="inline-flex items-center justify-center font-medium rounded-[var(--btn-radius)] transition-all duration-[var(--transition-fast)] bg-[var(--accent)] text-white hover:brightness-110 px-6 py-2.5 text-[15px]"
+        >
+          {t.button}
+        </Link>
+      </GlassCard>
     </main>
   );
 }
