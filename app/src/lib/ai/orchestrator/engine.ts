@@ -3,6 +3,9 @@ import { workflowSessions, workflowMessages, projects, projectDocuments, orgMemb
 import { eq } from 'drizzle-orm'
 import type { WorkflowContext, AgentFn, SSEStream, GatewayClient } from './types'
 import { STEP_LABELS } from './types'
+import { logger } from '@/lib/logger'
+
+const log = logger.child({ component: 'orchestrator-engine' })
 
 // Agent imports
 import { enhanceAgent } from './agents/enhance'
@@ -85,7 +88,17 @@ export async function processMessage(
   stream: SSEStream,
   gateway: GatewayClient
 ): Promise<void> {
-  const ctx = await loadSession(sessionId)
+  log.info({ sessionId }, 'processMessage start')
+
+  let ctx: WorkflowContext | null = null
+  try {
+    ctx = await loadSession(sessionId)
+  } catch (loadErr) {
+    log.error({ error: loadErr instanceof Error ? loadErr.message : String(loadErr), sessionId }, 'Failed to load session')
+    stream.send({ type: 'error', step: 0, message: 'Failed to load session', retryable: true })
+    return
+  }
+
   if (!ctx) {
     stream.send({ type: 'error', step: 0, message: 'Session not found', retryable: false })
     return
@@ -109,6 +122,7 @@ export async function processMessage(
   const label = isCompleted ? 'Editing your project...' : (STEP_LABELS[ctx.step] || `Step ${ctx.step}...`)
 
   stream.send({ type: 'step_start', step: ctx.step, label })
+  log.info({ sessionId, step: ctx.step, agent: isCompleted ? 'edit' : `step-${ctx.step}` }, 'Starting agent')
 
   try {
     const result = await agent(ctx, input, stream, gateway)
@@ -216,6 +230,7 @@ export async function processMessage(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
+    log.error({ error: message, stack: error instanceof Error ? error.stack : undefined, sessionId, step: ctx.step }, 'Agent execution failed')
     stream.send({ type: 'error', step: ctx.step, message, retryable: true })
 
     await db.insert(workflowMessages).values({
@@ -224,6 +239,8 @@ export async function processMessage(
       content: `Error: ${message}`,
       step: ctx.step,
       eventType: 'error',
+    }).catch((dbErr) => {
+      log.error({ error: dbErr instanceof Error ? dbErr.message : String(dbErr) }, 'Failed to store error message')
     })
   }
 }

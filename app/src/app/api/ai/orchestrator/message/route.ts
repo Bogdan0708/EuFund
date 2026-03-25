@@ -7,6 +7,9 @@ import { processMessage, createSession } from '@/lib/ai/orchestrator/engine'
 import { checkWorkflowLimit, incrementWorkflowCount } from '@/lib/billing/usage'
 import { createGatewayClient } from '@/lib/ai/orchestrator/gateway'
 import { createPubSubStream } from '@/lib/ai/orchestrator/pubsub'
+import { logger } from '@/lib/logger'
+
+const log = logger.child({ component: 'orchestrator-message' })
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,8 +37,9 @@ export async function POST(req: NextRequest) {
       // Process first message asynchronously
       const stream = createPubSubStream(session.id)
       const gateway = createGatewayClient('fondeu')
-      processMessage(session.id, message, stream, gateway).catch(() => {
-        // Error already sent via SSE
+      log.info({ sessionId: session.id, userId: user.id }, 'New session created, processing message')
+      processMessage(session.id, message, stream, gateway).catch((err) => {
+        log.error({ error: err instanceof Error ? err.message : String(err), sessionId: session.id }, 'processMessage failed')
       })
 
       return NextResponse.json({ sessionId: session.id }, { status: 202 })
@@ -58,12 +62,14 @@ export async function POST(req: NextRequest) {
     // Process message asynchronously
     const sseStream = createPubSubStream(sessionId)
     const gateway = createGatewayClient('fondeu')
-    processMessage(sessionId, message, sseStream, gateway).catch(() => {
-      // Error already sent via SSE
+    log.info({ sessionId, userId: user.id }, 'Resuming session, processing message')
+    processMessage(sessionId, message, sseStream, gateway).catch((err) => {
+      log.error({ error: err instanceof Error ? err.message : String(err), sessionId }, 'processMessage failed')
     })
 
     return NextResponse.json({ ok: true }, { status: 202 })
-  } catch {
+  } catch (err) {
+    log.error({ error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined }, 'Orchestrator message handler failed')
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }

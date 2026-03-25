@@ -132,7 +132,32 @@ export async function GET(req: NextRequest) {
     results.aiGateway = `FAIL: ${e instanceof Error ? e.message : String(e)}`;
   }
 
-  // Test 5: AI Orchestrator initialization
+  // Test 5: Workflow tables exist
+  try {
+    const { db } = await import('@/lib/db');
+    const { sql } = await import('drizzle-orm');
+    const tables = await db.execute(sql`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema='public' AND table_name IN ('workflow_sessions','workflow_messages','project_files','project_documents','discovered_calls')
+      ORDER BY table_name
+    `);
+    const tableNames = tables.map((r: Record<string, unknown>) => r.table_name);
+    results.workflowTables = tableNames.length >= 2 ? { status: 'OK', tables: tableNames } : { status: 'MISSING', found: tableNames };
+  } catch (e) {
+    results.workflowTables = `FAIL: ${e instanceof Error ? e.message : String(e)}`;
+  }
+
+  // Test 5b: Try creating and deleting a test session
+  try {
+    const { createSession } = await import('@/lib/ai/orchestrator/engine');
+    // Use a fake userId — just testing if the table accepts inserts
+    // Actually, we need a real user due to FK constraint. Skip insert test.
+    results.sessionCreate = 'SKIPPED (needs real userId)';
+  } catch (e) {
+    results.sessionCreate = `FAIL: ${e instanceof Error ? e.message : String(e)}`;
+  }
+
+  // Test 6: AI Orchestrator initialization
   try {
     const { getAIOrchestrator, createDefaultConfig } = await import('@/lib/ai/orchestrator');
     const orchestrator = getAIOrchestrator(createDefaultConfig());
