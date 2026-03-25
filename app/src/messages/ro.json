@@ -740,6 +740,7 @@
     "supportedFormats": "PDF, DOCX, XLSX, TXT (max 15MB)"
   },
   "settings": {
+    "title": "Setări",
     "profile": "Profil",
     "name": "Nume",
     "email": "Email",
