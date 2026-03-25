@@ -878,6 +878,25 @@ export const teamMembers = pgTable('team_members', {
   uniqueOwnerMember: unique('uq_team_owner_member').on(table.ownerId, table.memberId),
 }))
 
+// ─── User Preferences ───────────────────────────────────────────
+export const aiModelPreferenceEnum = pgEnum('ai_model_preference', [
+  'auto', 'claude-sonnet', 'gemini-pro', 'gpt-4o', 'perplexity'
+])
+
+export const responseStyleEnum = pgEnum('response_style', [
+  'concise', 'detailed', 'technical'
+])
+
+export const userPreferences = pgTable('user_preferences', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id).unique(),
+  defaultModel: aiModelPreferenceEnum('default_model').notNull().default('auto'),
+  responseStyle: responseStyleEnum('response_style').notNull().default('detailed'),
+  autoApprove: boolean('auto_approve').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
 // ─── Relations ──────────────────────────────────────────────────
 export const usersRelations = relations(users, ({ many }) => ({
   orgMemberships: many(orgMembers),
