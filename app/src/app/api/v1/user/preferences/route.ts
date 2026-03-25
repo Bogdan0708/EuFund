@@ -74,7 +74,7 @@ export async function PUT(request: Request) {
 
   await logAudit({
     userId: user.id,
-    action: 'user.update_preferences',
+    action: 'user.update',
     resourceType: 'user_preferences',
     resourceId: user.id,
     metadata: parsed.data,
