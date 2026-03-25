@@ -1,5 +1,6 @@
 import type { AgentFn, ProjectSection } from '../types'
 import { getBuildPrompt } from '../prompts/build'
+import { parseAIJson } from '../utils'
 
 export const buildAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   if (!ctx.actionPlan || !ctx.enhancedIdea) {
@@ -25,7 +26,7 @@ export const buildAgent: AgentFn = async (ctx, _input, stream, gateway) => {
 
   let projectSections: ProjectSection[]
   try {
-    projectSections = JSON.parse(result.content)
+    projectSections = parseAIJson<ProjectSection[]>(result.content)
   } catch {
     throw new Error('Failed to parse project sections from AI response')
   }

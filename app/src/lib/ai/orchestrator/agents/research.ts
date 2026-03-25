@@ -1,5 +1,6 @@
 import type { AgentFn } from '../types'
 import { getResearchPrompt } from '../prompts/research'
+import { parseAIJson } from '../utils'
 
 export const researchAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   if (!ctx.matchedCalls || ctx.matchedCalls.length === 0) {
@@ -18,9 +19,10 @@ export const researchAgent: AgentFn = async (ctx, _input, stream, gateway) => {
     maxTokens: 4000,
   })
 
-  let researchResults
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let researchResults: any
   try {
-    const parsed = JSON.parse(result.content)
+    const parsed = parseAIJson<Record<string, unknown>>(result.content)
     researchResults = { callId: selectedCall.callId, ...parsed }
   } catch {
     researchResults = { callId: selectedCall.callId, requirements: [], forms: [], certificates: [], deadlines: [], additionalSections: [], rawFindings: result.content }

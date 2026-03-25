@@ -1,5 +1,6 @@
 import type { AgentFn } from '../types'
 import { getValidatePrompt } from '../prompts/validate'
+import { parseAIJson } from '../utils'
 
 export const validateAgent: AgentFn = async (ctx, input, stream, gateway) => {
   if (!ctx.matchedCalls || ctx.matchedCalls.length === 0) {
@@ -20,9 +21,10 @@ export const validateAgent: AgentFn = async (ctx, input, stream, gateway) => {
     temperature: 0.1,
   })
 
-  let validationResults
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let validationResults: any[]
   try {
-    const parsed = JSON.parse(result.content)
+    const parsed = parseAIJson<Record<string, unknown>>(result.content)
     validationResults = [{ callId: selectedCall.callId, ...parsed }]
   } catch {
     validationResults = [{ callId: selectedCall.callId, isOpen: true, lastVerified: new Date().toISOString(), updates: [], warnings: ['Could not verify call status automatically'] }]

@@ -1,5 +1,6 @@
 import type { AgentFn } from '../types'
 import { getEditPrompt } from '../prompts/edit'
+import { parseAIJson } from '../utils'
 
 export const editAgent: AgentFn = async (ctx, input, stream, gateway) => {
   if (!ctx.projectSections) {
@@ -22,7 +23,7 @@ export const editAgent: AgentFn = async (ctx, input, stream, gateway) => {
 
   let editedSections
   try {
-    editedSections = JSON.parse(result.content)
+    editedSections = parseAIJson<{ order: number; title?: string; content?: string }[]>(result.content)
   } catch {
     throw new Error('Failed to parse edited sections')
   }

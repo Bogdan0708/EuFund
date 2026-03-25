@@ -1,5 +1,6 @@
 import type { AgentFn } from '../types'
 import { getPlanPrompt } from '../prompts/plan'
+import { parseAIJson } from '../utils'
 
 export const planAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   if (!ctx.matchedCalls || !ctx.researchResults) {
@@ -20,7 +21,8 @@ export const planAgent: AgentFn = async (ctx, _input, stream, gateway) => {
 
   let actionPlan
   try {
-    actionPlan = JSON.parse(result.content)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    actionPlan = parseAIJson<any>(result.content)
   } catch {
     throw new Error('Failed to parse action plan from AI response')
   }

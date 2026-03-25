@@ -1,5 +1,6 @@
 import type { AgentFn, MatchedCall } from '../types'
 import { getMatchPrompt } from '../prompts/match'
+import { parseAIJson } from '../utils'
 
 export const matchAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   if (!ctx.enhancedIdea) {
@@ -38,7 +39,7 @@ export const matchAgent: AgentFn = async (ctx, _input, stream, gateway) => {
 
   let matchedCalls: MatchedCall[]
   try {
-    matchedCalls = JSON.parse(result.content)
+    matchedCalls = parseAIJson<MatchedCall[]>(result.content)
   } catch {
     throw new Error('Failed to parse AI response for call matching')
   }

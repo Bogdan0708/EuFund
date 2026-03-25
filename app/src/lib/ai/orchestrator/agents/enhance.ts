@@ -1,5 +1,6 @@
 import type { AgentFn, EnhancedIdea } from '../types'
 import { getEnhancePrompt } from '../prompts/enhance'
+import { parseAIJson } from '../utils'
 
 export const enhanceAgent: AgentFn = async (ctx, input, stream, gateway) => {
   stream.send({ type: 'step_progress', step: 1, message: 'Analyzing your project idea...' })
@@ -14,15 +15,15 @@ export const enhanceAgent: AgentFn = async (ctx, input, stream, gateway) => {
 
   let enhancedIdea: EnhancedIdea
   try {
-    const parsed = JSON.parse(result.content)
+    const parsed = parseAIJson<Record<string, unknown>>(result.content)
     enhancedIdea = {
       originalIdea: input,
-      refinedDescription: parsed.refinedDescription,
-      sector: parsed.sector,
-      region: parsed.region,
-      targetGroup: parsed.targetGroup,
-      estimatedBudget: parsed.estimatedBudget,
-      keyObjectives: parsed.keyObjectives,
+      refinedDescription: parsed.refinedDescription as string,
+      sector: parsed.sector as string,
+      region: parsed.region as string,
+      targetGroup: parsed.targetGroup as string,
+      estimatedBudget: parsed.estimatedBudget as string,
+      keyObjectives: parsed.keyObjectives as string[],
     }
   } catch {
     throw new Error('Failed to parse AI response for idea enhancement')
