@@ -710,5 +710,17 @@
       "built": "Construit",
       "exported": "Exportat"
     }
+  },
+  "projects": {
+    "searchPlaceholder": "Caută proiecte...",
+    "noProjects": "Niciun proiect găsit",
+    "untitled": "Fără titlu",
+    "lastUpdated": "Ultima actualizare",
+    "filter": { "all": "Toate", "draft": "Ciornă", "action_plan": "Plan", "built": "Construit", "exported": "Exportat" },
+    "status": { "draft": "Ciornă", "action_plan": "Plan de acțiune", "built": "Construit", "exported": "Exportat" },
+    "tabs": { "sections": "Secțiuni", "files": "Fișiere", "history": "Istoric AI" },
+    "sectionsPlaceholder": "Secțiunile propunerii vor apărea aici",
+    "filesPlaceholder": "Fișierele proiectului vor apărea aici",
+    "historyPlaceholder": "Istoricul conversațiilor AI va apărea aici"
   }
 }

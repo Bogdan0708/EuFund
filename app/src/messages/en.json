@@ -710,5 +710,17 @@
       "built": "Built",
       "exported": "Exported"
     }
+  },
+  "projects": {
+    "searchPlaceholder": "Search projects...",
+    "noProjects": "No projects found",
+    "untitled": "Untitled",
+    "lastUpdated": "Last updated",
+    "filter": { "all": "All", "draft": "Draft", "action_plan": "Plan", "built": "Built", "exported": "Exported" },
+    "status": { "draft": "Draft", "action_plan": "Action Plan", "built": "Built", "exported": "Exported" },
+    "tabs": { "sections": "Sections", "files": "Files", "history": "AI History" },
+    "sectionsPlaceholder": "Proposal sections will appear here",
+    "filesPlaceholder": "Project files will appear here",
+    "historyPlaceholder": "AI chat history will appear here"
   }
 }

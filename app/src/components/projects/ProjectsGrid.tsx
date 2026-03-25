@@ -5,9 +5,22 @@ import { useLocale } from 'next-intl';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ProjectCard, type Project } from './ProjectCard';
-import { ProjectDetail } from './ProjectDetail';
 import { UserMenu } from '@/components/chat/UserMenu';
+
+export interface Project {
+  id: string;
+  orgId: string;
+  callId?: string | null;
+  title: string;
+  acronym?: string | null;
+  status: string;
+  totalBudget?: string | null;
+  complianceScore?: number | null;
+  matchScore?: number | null;
+  createdAt: string;
+  updatedAt: string;
+  programName?: string | null;
+}
 
 interface PaginationMeta {
   page: number;
@@ -70,13 +83,21 @@ export function ProjectsGrid() {
     setPage(1);
   }, [search, statusFilter]);
 
-  // Project detail view
+  // Project detail view — navigate to dedicated page instead
   if (selectedProject) {
     return (
-      <ProjectDetail
-        project={selectedProject}
-        onBack={() => setSelectedProject(null)}
-      />
+      <div className="space-y-6">
+        <button
+          type="button"
+          onClick={() => setSelectedProject(null)}
+          className="text-sm text-[var(--color-accent)] hover:underline"
+        >
+          {locale === 'ro' ? '← Înapoi la proiecte' : '← Back to projects'}
+        </button>
+        <h2 className="text-[var(--font-size-xl)] font-semibold text-[var(--color-text)]">
+          {selectedProject.title}
+        </h2>
+      </div>
     );
   }
 
@@ -208,11 +229,22 @@ export function ProjectsGrid() {
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((project) => (
-              <ProjectCard
+              <button
                 key={project.id}
-                project={project}
-                onClick={setSelectedProject}
-              />
+                type="button"
+                onClick={() => setSelectedProject(project)}
+                className="group w-full text-left rounded-[var(--radius-md)] border border-[var(--color-border)]
+                  bg-[var(--color-bg)] p-5 shadow-[var(--shadow-sm)]
+                  transition-all duration-[var(--transition)]
+                  hover:shadow-[var(--shadow-md)] hover:border-[var(--color-accent)]"
+              >
+                <h3 className="text-[var(--font-size-base)] font-semibold text-[var(--color-text)] leading-snug line-clamp-2">
+                  {project.title}
+                </h3>
+                <p className="mt-2 text-[var(--font-size-xs)] text-[var(--color-text-secondary)]">
+                  {project.status}
+                </p>
+              </button>
             ))}
           </div>
 
