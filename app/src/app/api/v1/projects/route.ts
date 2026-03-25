@@ -39,7 +39,7 @@ async function resolveProjectOrgId(userId: string, requestedOrgId?: string): Pro
         .insert(organizations)
         .values({
           name: `Personal Workspace`,
-          orgType: 'micro',
+          orgType: 'pfa',
         })
         .returning({ id: organizations.id });
 
