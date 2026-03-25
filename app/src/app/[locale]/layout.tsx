@@ -2,11 +2,24 @@ import type { Metadata } from 'next';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { notFound } from 'next/navigation';
+import { Inter, JetBrains_Mono } from 'next/font/google';
 import { locales } from '@/lib/i18n';
 import AuthSessionProvider from '@/components/providers/session-provider';
 import { CookieConsentBanner } from '@/components/ui/cookie-consent';
 import { getNonce } from '@/lib/security/nonce';
 import '@/app/globals.css';
+
+const inter = Inter({
+  subsets: ['latin', 'latin-ext'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+  display: 'swap',
+});
 
 export async function generateMetadata({ params: { locale } }: { params: { locale: string } }): Promise<Metadata> {
   return {
@@ -31,7 +44,7 @@ export default async function LocaleLayout({
   const [messages, nonce] = await Promise.all([getMessages({ locale }), getNonce()]);
 
   return (
-    <html lang={locale}>
+    <html lang={locale} className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <head>
         {nonce && (
           <meta name="csp-nonce" content={nonce} />
