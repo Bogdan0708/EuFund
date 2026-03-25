@@ -95,6 +95,26 @@ export default auth(async (req) => {
   const requestId = crypto.randomUUID();
   const log = baseLog.child({ requestId });
   const pathname = req.nextUrl.pathname;
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 0. PERMANENT REDIRECTS (old dashboard paths → new routes)
+  // ═══════════════════════════════════════════════════════════════════
+  const redirects: Record<string, string> = {
+    '/ro/panou': '/ro',
+    '/en/panou': '/en',
+    '/ro/proiecte': '/ro/projects',
+    '/en/proiecte': '/en/projects',
+    '/ro/finantari': '/ro/calls',
+    '/en/finantari': '/en/calls',
+    '/ro/billing': '/ro/settings',
+    '/en/billing': '/en/settings',
+  };
+
+  const redirectTo = redirects[pathname];
+  if (redirectTo) {
+    return NextResponse.redirect(new URL(redirectTo, req.url), 301);
+  }
+
   const isPublic = publicPaths.some(path => pathname.startsWith(path));
   const finalizeResponse = (response: NextResponse) => {
     try {
