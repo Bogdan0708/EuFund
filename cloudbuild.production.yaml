@@ -8,7 +8,7 @@ substitutions:
   _QDRANT_URL: ""
   _AI_GATEWAY_URL: https://ai-gateway-j3dqdqxnyq-lm.a.run.app
   _AI_GATEWAY_TENANT_ID: fondeu-platform
-  _PRODUCTION_URL: ""
+  _PRODUCTION_URL: https://fondeu-platform-857599941951.europe-west2.run.app
   _CLOUDSQL_CONNECTION_NAME: eufunding:europe-west2:fondeu-db
   _DB_SOCKET_PATH: /cloudsql/eufunding:europe-west2:fondeu-db
   _DB_NAME: fondeu
