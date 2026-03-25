@@ -722,5 +722,42 @@
     "sectionsPlaceholder": "Proposal sections will appear here",
     "filesPlaceholder": "Project files will appear here",
     "historyPlaceholder": "AI chat history will appear here"
+  },
+  "calls": {
+    "title": "Funding Calls",
+    "searchPlaceholder": "Search calls...",
+    "noCalls": "No calls found",
+    "verified": "Verified",
+    "unverified": "Unverified",
+    "deadline": "Deadline",
+    "viewOfficial": "View official source",
+    "status": { "all": "All", "deschis": "Open", "previzionat": "Upcoming", "inchis": "Closed" }
+  },
+  "files": {
+    "title": "Files",
+    "noFiles": "No files uploaded",
+    "dropHere": "Drag files here or click to upload",
+    "supportedFormats": "PDF, DOCX, XLSX, TXT (max 15MB)"
+  },
+  "settings": {
+    "profile": "Profile",
+    "name": "Name",
+    "email": "Email",
+    "aiPreferences": "AI Preferences",
+    "model": "Model",
+    "responseStyle": "Response Style",
+    "styleConcise": "Concise",
+    "styleDetailed": "Detailed",
+    "styleTechnical": "Technical",
+    "autoApprove": "Auto-approve AI suggestions",
+    "save": "Save",
+    "saving": "Saving...",
+    "subscription": "Subscription",
+    "currentPlan": "Current plan",
+    "upgrade": "Upgrade to Pro",
+    "privacy": "Privacy",
+    "manageConsent": "Manage consent",
+    "exportData": "Export my data",
+    "deleteAccount": "Delete account"
   }
 }

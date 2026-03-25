@@ -722,5 +722,42 @@
     "sectionsPlaceholder": "Secțiunile propunerii vor apărea aici",
     "filesPlaceholder": "Fișierele proiectului vor apărea aici",
     "historyPlaceholder": "Istoricul conversațiilor AI va apărea aici"
+  },
+  "calls": {
+    "title": "Apeluri de finanțare",
+    "searchPlaceholder": "Caută apeluri...",
+    "noCalls": "Niciun apel găsit",
+    "verified": "Verificat",
+    "unverified": "Neverificat",
+    "deadline": "Termen limită",
+    "viewOfficial": "Vezi sursa oficială",
+    "status": { "all": "Toate", "deschis": "Deschis", "previzionat": "Previzionat", "inchis": "Închis" }
+  },
+  "files": {
+    "title": "Fișiere",
+    "noFiles": "Niciun fișier încărcat",
+    "dropHere": "Trage fișiere aici sau apasă pentru a încărca",
+    "supportedFormats": "PDF, DOCX, XLSX, TXT (max 15MB)"
+  },
+  "settings": {
+    "profile": "Profil",
+    "name": "Nume",
+    "email": "Email",
+    "aiPreferences": "Preferințe AI",
+    "model": "Model",
+    "responseStyle": "Stil răspuns",
+    "styleConcise": "Concis",
+    "styleDetailed": "Detaliat",
+    "styleTechnical": "Tehnic",
+    "autoApprove": "Aprobă automat sugestiile AI",
+    "save": "Salvează",
+    "saving": "Se salvează...",
+    "subscription": "Abonament",
+    "currentPlan": "Plan curent",
+    "upgrade": "Upgrade la Pro",
+    "privacy": "Confidențialitate",
+    "manageConsent": "Gestionează consimțământul",
+    "exportData": "Exportă datele mele",
+    "deleteAccount": "Șterge contul"
   }
 }
