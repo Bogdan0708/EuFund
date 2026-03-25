@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useParams } from 'next/navigation';
+import { GlassCard } from '@/components/glass/GlassCard';
+import { GlassInput } from '@/components/glass/GlassInput';
+import { GlassButton } from '@/components/glass/GlassButton';
 
 export default function LoginPage() {
   const params = useParams();
@@ -43,106 +46,37 @@ export default function LoginPage() {
     }
   };
 
-  const btnBase: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '0.625rem',
-    width: '100%',
-    padding: '0.75rem 1rem',
-    borderRadius: 'var(--radius-md)',
-    border: '1px solid var(--color-border)',
-    background: 'var(--color-bg)',
-    color: 'var(--color-text)',
-    fontSize: 'var(--font-size-base)',
-    fontWeight: 500,
-    cursor: 'pointer',
-    transition: 'background var(--transition)',
-    fontFamily: 'var(--font-family)',
-  };
-
-  const oauthBtn = (provider: string): React.CSSProperties => ({
-    ...btnBase,
-    background: oauthLoading === provider ? 'var(--color-bg-secondary)' : 'var(--color-bg)',
-    cursor: oauthLoading === provider ? 'not-allowed' : 'pointer',
-  });
-
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '1rem',
-        background: 'var(--color-bg-secondary)',
-        fontFamily: 'var(--font-family)',
-      }}
-    >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: '400px',
-          background: 'var(--color-bg)',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: 'var(--shadow-lg)',
-          padding: '2.5rem 2rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1rem',
-        }}
+    <main className="min-h-screen flex items-center justify-center p-4 bg-[var(--bg-base)]">
+      <GlassCard
+        hover={false}
+        className="w-full max-w-[400px] p-10 flex flex-col gap-4"
       >
         {/* Logo / Title */}
-        <div style={{ textAlign: 'center' }}>
-          <h1
-            style={{
-              fontSize: 'var(--font-size-2xl)',
-              fontWeight: 600,
-              color: 'var(--color-text)',
-              margin: 0,
-              letterSpacing: '-0.02em',
-            }}
-          >
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold text-[var(--text-primary)] tracking-tight">
             FondEU
           </h1>
-          <p
-            style={{
-              marginTop: '0.5rem',
-              fontSize: 'var(--font-size-sm)',
-              color: 'var(--color-text-secondary)',
-            }}
-          >
+          <p className="mt-1.5 text-sm text-[var(--text-secondary)]">
             {isRo ? 'Intră în cont pentru a continua' : 'Sign in to continue'}
           </p>
         </div>
 
         {/* Error message */}
         {error && (
-          <div
-            style={{
-              padding: '0.75rem 1rem',
-              borderRadius: 'var(--radius-md)',
-              background: 'var(--color-error-bg, #fef2f2)',
-              color: 'var(--color-error, #dc2626)',
-              fontSize: 'var(--font-size-sm)',
-            }}
-          >
+          <div className="px-4 py-3 rounded-[var(--input-radius)] bg-[rgba(239,68,68,0.12)] border border-[rgba(239,68,68,0.25)] text-[var(--danger)] text-sm">
             {error}
           </div>
         )}
 
         {/* Google */}
-        <button
+        <GlassButton
           type="button"
+          variant="ghost"
+          size="md"
           onClick={() => handleOAuthSignIn('google')}
           disabled={!!oauthLoading}
-          style={oauthBtn('google')}
-          onMouseEnter={(e) => {
-            if (!oauthLoading) e.currentTarget.style.background = 'var(--color-bg-secondary)';
-          }}
-          onMouseLeave={(e) => {
-            if (!oauthLoading) e.currentTarget.style.background = 'var(--color-bg)';
-          }}
+          className="w-full gap-2.5"
         >
           <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
             <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4" />
@@ -153,20 +87,16 @@ export default function LoginPage() {
           {oauthLoading === 'google'
             ? (isRo ? 'Se conectează…' : 'Signing in…')
             : (isRo ? 'Continuă cu Google' : 'Continue with Google')}
-        </button>
+        </GlassButton>
 
         {/* Microsoft */}
-        <button
+        <GlassButton
           type="button"
+          variant="ghost"
+          size="md"
           onClick={() => handleOAuthSignIn('microsoft-entra-id')}
           disabled={!!oauthLoading}
-          style={oauthBtn('microsoft-entra-id')}
-          onMouseEnter={(e) => {
-            if (!oauthLoading) e.currentTarget.style.background = 'var(--color-bg-secondary)';
-          }}
-          onMouseLeave={(e) => {
-            if (!oauthLoading) e.currentTarget.style.background = 'var(--color-bg)';
-          }}
+          className="w-full gap-2.5"
         >
           <svg width="18" height="18" viewBox="0 0 21 21" aria-hidden="true">
             <rect x="1" y="1" width="9" height="9" fill="#F25022" />
@@ -177,20 +107,16 @@ export default function LoginPage() {
           {oauthLoading === 'microsoft-entra-id'
             ? (isRo ? 'Se conectează…' : 'Signing in…')
             : (isRo ? 'Continuă cu Microsoft' : 'Continue with Microsoft')}
-        </button>
+        </GlassButton>
 
         {/* Facebook */}
-        <button
+        <GlassButton
           type="button"
+          variant="ghost"
+          size="md"
           onClick={() => handleOAuthSignIn('facebook')}
           disabled={!!oauthLoading}
-          style={oauthBtn('facebook')}
-          onMouseEnter={(e) => {
-            if (!oauthLoading) e.currentTarget.style.background = 'var(--color-bg-secondary)';
-          }}
-          onMouseLeave={(e) => {
-            if (!oauthLoading) e.currentTarget.style.background = 'var(--color-bg)';
-          }}
+          className="w-full gap-2.5"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" fill="#1877F2" />
@@ -198,92 +124,47 @@ export default function LoginPage() {
           {oauthLoading === 'facebook'
             ? (isRo ? 'Se conectează…' : 'Signing in…')
             : (isRo ? 'Continuă cu Facebook' : 'Continue with Facebook')}
-        </button>
+        </GlassButton>
 
         {/* Divider */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ flex: 1, height: '1px', background: 'var(--color-border)' }} />
-          <span
-            style={{
-              fontSize: 'var(--font-size-xs)',
-              color: 'var(--color-text-secondary)',
-              whiteSpace: 'nowrap',
-            }}
-          >
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px bg-[var(--border-subtle)]" />
+          <span className="text-xs text-[var(--text-tertiary)] whitespace-nowrap">
             {isRo ? 'sau continuă cu email' : 'or continue with email'}
           </span>
-          <div style={{ flex: 1, height: '1px', background: 'var(--color-border)' }} />
+          <div className="flex-1 h-px bg-[var(--border-subtle)]" />
         </div>
 
         {/* Magic link form */}
         {emailSent ? (
-          <div
-            style={{
-              padding: '1rem',
-              borderRadius: 'var(--radius-md)',
-              background: 'var(--color-success-bg, #f0fdf4)',
-              color: 'var(--color-success, #16a34a)',
-              fontSize: 'var(--font-size-sm)',
-              textAlign: 'center',
-            }}
-          >
+          <div className="px-4 py-3 rounded-[var(--input-radius)] bg-[rgba(34,197,94,0.1)] border border-[rgba(34,197,94,0.25)] text-[var(--success)] text-sm text-center">
             {isRo
               ? 'Link-ul a fost trimis! Verificați email-ul pentru a vă conecta.'
               : 'Link sent! Check your email to sign in.'}
           </div>
         ) : (
-          <form onSubmit={handleMagicLink} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <input
+          <form onSubmit={handleMagicLink} noValidate className="flex flex-col gap-3">
+            <GlassInput
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={isRo ? 'adresa@exemplu.ro' : 'you@example.com'}
               required
-              style={{
-                width: '100%',
-                padding: '0.75rem 1rem',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border)',
-                fontSize: 'var(--font-size-base)',
-                color: 'var(--color-text)',
-                background: 'var(--color-bg)',
-                outline: 'none',
-                fontFamily: 'var(--font-family)',
-                boxSizing: 'border-box',
-              }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
-              onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--color-border)')}
             />
-            <button
+            <GlassButton
               type="submit"
+              variant="accent"
+              size="md"
               disabled={emailLoading}
-              style={{
-                width: '100%',
-                padding: '0.75rem 1rem',
-                borderRadius: 'var(--radius-md)',
-                border: 'none',
-                background: emailLoading ? 'var(--color-accent-hover)' : 'var(--color-accent)',
-                color: '#fff',
-                fontSize: 'var(--font-size-base)',
-                fontWeight: 500,
-                cursor: emailLoading ? 'not-allowed' : 'pointer',
-                transition: 'background var(--transition)',
-                fontFamily: 'var(--font-family)',
-              }}
-              onMouseEnter={(e) => {
-                if (!emailLoading) e.currentTarget.style.background = 'var(--color-accent-hover)';
-              }}
-              onMouseLeave={(e) => {
-                if (!emailLoading) e.currentTarget.style.background = 'var(--color-accent)';
-              }}
+              className="w-full"
             >
               {emailLoading
                 ? (isRo ? 'Se trimite…' : 'Sending…')
                 : (isRo ? 'Trimite link magic' : 'Send magic link')}
-            </button>
+            </GlassButton>
           </form>
         )}
-      </div>
+      </GlassCard>
     </main>
   );
 }
