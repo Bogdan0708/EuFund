@@ -8,7 +8,7 @@ import { ProjectDetail } from '@/components/projects/ProjectDetail'
 export default async function ProjectDetailPage({ params: { id } }: { params: { id: string } }) {
   const session = await auth()
   if (!session?.user?.id) return null
-  const userId = session.user.id
+  const userId = session.user.id as string
 
   const [project] = await withUserRLS(userId, async (tx) => {
     return tx

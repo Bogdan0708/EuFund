@@ -1,13 +1,13 @@
 import { auth } from '@/lib/auth'
 import { withUserRLS } from '@/lib/db'
 import { projects } from '@/lib/db/schema'
-import { eq, desc, isNull } from 'drizzle-orm'
+import { eq, desc } from 'drizzle-orm'
 import { ProjectGrid } from '@/components/projects/ProjectGrid'
 
 export default async function ProjectsPage() {
   const session = await auth()
   if (!session?.user?.id) return null
-  const userId = session.user.id
+  const userId = session.user.id as string
 
   const userProjects = await withUserRLS(userId, async (tx) => {
     return tx
