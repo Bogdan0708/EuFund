@@ -9,7 +9,7 @@ interface GlassDropZoneProps {
   className?: string
 }
 
-export function GlassDropZone({ onDrop, accept, maxSize, children, className = '' }: GlassDropZoneProps) {
+export function GlassDropZone({ onDrop, children, className = '' }: GlassDropZoneProps) {
   const [isDragging, setIsDragging] = useState(false)
 
   const handleDragOver = useCallback((e: DragEvent) => {
