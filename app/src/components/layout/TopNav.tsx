@@ -27,7 +27,7 @@ export function TopNav({ onMenuClick, sidebarCollapsed }: TopNavProps) {
   return (
     <header
       className={`fixed top-0 right-0 left-0 z-50 bg-white/[0.72] backdrop-blur-xl shadow-[0_20px_40px_rgba(0,0,0,0.04)] transition-[left] duration-200 ease-in-out ${
-        sidebarCollapsed ? 'md:left-[var(--sidebar-collapsed)]' : 'md:left-[var(--sidebar-width)]'
+        sidebarCollapsed ? 'md:left-[60px]' : 'md:left-[240px]'
       }`}
     >
       <div className="flex items-center justify-between h-16 px-4 md:px-8 max-w-[1440px] mx-auto">
