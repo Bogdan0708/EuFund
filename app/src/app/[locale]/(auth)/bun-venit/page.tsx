@@ -60,7 +60,7 @@ export default function WelcomePage() {
   };
 
   return (
-    <div className="font-body text-on-surface mesh-gradient min-h-screen flex flex-col items-center justify-center p-6">
+    <div className="font-body mesh-gradient min-h-screen flex flex-col items-center justify-center p-6" style={{ color: '#1a1b1f' }}>
       <div className="fixed top-[-10%] left-[20%] w-[600px] h-[600px] bg-secondary/10 rounded-full blur-[120px] pointer-events-none" />
 
       <main className="w-full max-w-md z-10">
@@ -72,8 +72,8 @@ export default function WelcomePage() {
 
         <div className="glass-card rounded-[1rem] p-10 shadow-[0_20px_40px_rgba(0,0,0,0.04)] border border-white/20">
           <div className="text-center mb-8">
-            <h1 className="font-headline text-2xl font-bold tracking-tight text-on-surface mb-2">{t('welcomeTitle')}</h1>
-            <p className="text-on-surface-variant text-sm">{t('welcomeSubtitle')}</p>
+            <h1 className="font-headline text-2xl font-bold tracking-tight mb-2" style={{ color: '#1a1b1f' }}>{t('welcomeTitle')}</h1>
+            <p className="text-sm" style={{ color: '#414753' }}>{t('welcomeSubtitle')}</p>
           </div>
 
           {error && (

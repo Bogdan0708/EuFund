@@ -45,7 +45,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="font-body text-on-surface mesh-gradient min-h-screen flex flex-col items-center justify-center p-6 selection:bg-primary-fixed selection:text-on-primary-fixed">
+    <div className="font-body mesh-gradient min-h-screen flex flex-col items-center justify-center p-6" style={{ color: '#1a1b1f' }}>
       {/* Atmospheric blobs */}
       <div className="fixed top-[-10%] left-[20%] w-[600px] h-[600px] bg-secondary/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="fixed bottom-[-10%] right-[-10%] w-[300px] h-[300px] bg-primary/5 rounded-full blur-[80px] pointer-events-none" />
@@ -55,8 +55,8 @@ export default function LoginPage() {
         <div className="glass-card rounded-[1rem] p-10 shadow-[0_20px_40px_rgba(0,0,0,0.04)] border border-white/20">
           {/* Branding */}
           <div className="text-center mb-10">
-            <h1 className="font-headline text-3xl font-extrabold tracking-tighter text-on-surface mb-2">FondEU</h1>
-            <p className="text-on-surface-variant font-medium text-sm tracking-wide">{t('brandSubtitle')}</p>
+            <h1 className="font-headline text-3xl font-extrabold tracking-tighter mb-2" style={{ color: '#1a1b1f' }}>FondEU</h1>
+            <p className="font-medium text-sm tracking-wide" style={{ color: '#414753' }}>{t('brandSubtitle')}</p>
           </div>
 
           {/* Error */}
