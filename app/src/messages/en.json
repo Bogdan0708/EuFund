@@ -908,6 +908,27 @@
     "sme_development": "SME Development",
     "urban_development": "Urban Development"
   },
+  "aiAssistant": {
+    "curatorTitle": "Grant Strategy Curator",
+    "curatorContext": "Optimizing for Horizon Europe Call #2024-B3",
+    "generating": "Generating Strategy Draft...",
+    "aiCurator": "AI Curator",
+    "you": "You",
+    "inputPlaceholder": "Ask anything about the grant requirements...",
+    "canvasTitle": "Grant Proposal Canvas",
+    "saveDraft": "Save Draft",
+    "reviewFinal": "Review Final",
+    "stepAnalysis": "Analysis",
+    "stepStrategy": "Strategy",
+    "stepDrafting": "Drafting",
+    "stepReview": "Review",
+    "section1Title": "Section 1.1: Project Summary",
+    "section2Title": "Section 2.4: Technical Methodology",
+    "section3Title": "Section 3.0: Impact Assessment",
+    "provisional": "Provisional",
+    "methodologyHeading": "Adaptive Sensor Network Topology",
+    "methodologyContent": "The proposed infrastructure utilizes a decentralized mesh network of carbon capture sensors. Each node operates on a low-latency protocol specifically designed for high-resolution atmospheric data ingestion..."
+  },
   "orgTypes": {
     "srl": "LLC",
     "sa": "Joint Stock",
