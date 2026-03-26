@@ -1,4 +1,5 @@
 import NextAuth from 'next-auth';
+import Apple from 'next-auth/providers/apple';
 import Google from 'next-auth/providers/google';
 import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
 import Facebook from 'next-auth/providers/facebook';
@@ -24,6 +25,11 @@ export const {
 } = NextAuth({
   adapter: FondEUAdapter(),
   providers: [
+    Apple({
+      clientId: process.env.APPLE_CLIENT_ID!,
+      clientSecret: process.env.APPLE_CLIENT_SECRET!,
+      allowDangerousEmailAccountLinking: true,
+    }),
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
@@ -79,11 +85,12 @@ export const {
         if (user.id) {
           const dbUser = await db.query.users.findFirst({
             where: eq(users.id, user.id),
-            columns: { emailVerified: true, isPlatformAdmin: true },
+            columns: { emailVerified: true, isPlatformAdmin: true, onboardingCompleted: true },
           });
           if (dbUser) {
             token.emailVerified = dbUser.emailVerified;
             token.isPlatformAdmin = dbUser.isPlatformAdmin;
+            token.onboardingCompleted = dbUser.onboardingCompleted ?? false;
           }
         }
       }
@@ -91,11 +98,12 @@ export const {
       if (trigger === 'update' && token.userId) {
         const dbUser = await db.query.users.findFirst({
           where: eq(users.id, String(token.userId)),
-          columns: { emailVerified: true, isPlatformAdmin: true },
+          columns: { emailVerified: true, isPlatformAdmin: true, onboardingCompleted: true },
         });
         if (dbUser) {
           token.emailVerified = dbUser.emailVerified;
           token.isPlatformAdmin = dbUser.isPlatformAdmin;
+          token.onboardingCompleted = dbUser.onboardingCompleted ?? false;
         }
       }
       return token;

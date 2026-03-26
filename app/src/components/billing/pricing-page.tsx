@@ -84,7 +84,7 @@ function getTierCta(locale: Locale, tier: BillingTier): { label: string; href: s
   if (tier === 'free') {
     return {
       label: locale === 'en' ? 'Start 30-day trial' : 'Începe trialul de 30 de zile',
-      href: locale === 'en' ? '/en/inregistrare' : '/ro/inregistrare',
+      href: locale === 'en' ? '/en/autentificare' : '/ro/autentificare',
     };
   }
 

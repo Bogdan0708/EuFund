@@ -98,6 +98,8 @@ export const users = pgTable('users', {
   isPlatformAdmin: boolean('is_platform_admin').default(false),
   dateOfBirth: date('date_of_birth'), // For age verification (Law 190/2018)
   ageVerified: boolean('age_verified').default(false), // 16+ confirmed
+  onboardingCompleted: boolean('onboarding_completed').default(false),
+  interests: text('interests').array(),  // e.g., ['digitalization', 'green_energy']
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

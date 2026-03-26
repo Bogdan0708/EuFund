@@ -23,6 +23,7 @@ export type AuditAction =
   | 'user.update'
   | 'user.delete'
   | 'user.export_data'
+  | 'user.onboarding_complete'
   // Organization
   | 'organization.create'
   | 'organization.update'
