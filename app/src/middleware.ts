@@ -53,10 +53,10 @@ const publicPaths = [
   '/api/ai/diagnostic', // AI diagnostic (token-protected)
   '/ro/autentificare',
   '/en/autentificare',
-  '/ro/inregistrare',
-  '/en/inregistrare',
-  '/ro/resetare-parola',
-  '/en/resetare-parola',
+  '/ro/bun-venit',
+  '/en/bun-venit',
+  '/ro/interese',
+  '/en/interese',
   '/ro/preturi',
   '/en/pricing',
   '/pricing',
@@ -188,6 +188,19 @@ export default auth(async (req) => {
       response.headers.set('x-request-id', requestId);
       return finalizeResponse(response);
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 2c. ONBOARDING ENFORCEMENT
+  // ═══════════════════════════════════════════════════════════════════
+  const locale = pathname.startsWith('/en') ? 'en' : 'ro';
+  const isApiRoute = pathname.startsWith('/api/');
+  const onboardingPaths = ['/bun-venit', '/interese'];
+  const isOnboardingPage = onboardingPaths.some(p => pathname.endsWith(p));
+  if (req.auth?.user && !req.auth.user.onboardingCompleted && !isOnboardingPage && !isPublic && !isApiRoute) {
+    const response = NextResponse.redirect(new URL(`/${locale}/bun-venit`, req.url));
+    response.headers.set('x-request-id', requestId);
+    return finalizeResponse(response);
   }
 
   // ═══════════════════════════════════════════════════════════════════
