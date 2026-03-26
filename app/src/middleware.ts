@@ -25,9 +25,9 @@ function buildCSP(nonce: string, isDev: boolean): string {
     isDev
       ? `script-src 'self' 'unsafe-eval' 'nonce-${nonce}' 'strict-dynamic'`
       : `script-src 'nonce-${nonce}' 'strict-dynamic'`,
-    `style-src 'self' 'unsafe-inline'`,
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
     "img-src 'self' data: https:",
-    "font-src 'self' data:",
+    "font-src 'self' data: https://fonts.gstatic.com",
     "connect-src 'self' https://api.anthropic.com https://*.googleapis.com https://eurlex.europa.eu",
     "object-src 'none'",
     "media-src 'self'",

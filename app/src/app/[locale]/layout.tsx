@@ -46,11 +46,12 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <head>
+        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
         {nonce && (
           <meta name="csp-nonce" content={nonce} />
         )}
       </head>
-      <body className="min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)] antialiased">
+      <body className="min-h-screen bg-background text-on-surface antialiased">
         <AuthSessionProvider>
           <NextIntlClientProvider locale={locale} messages={messages}>
             {children}
