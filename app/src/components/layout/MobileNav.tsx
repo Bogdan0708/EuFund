@@ -1,40 +1,58 @@
 'use client'
+
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useLocale, useTranslations } from 'next-intl'
-import { Home, FolderOpen, Search, Sparkles } from 'lucide-react'
+import { Icon } from '@/components/ui/ds-icon'
 
-export function MobileNav() {
-  const locale = useLocale()
+interface MobileNavProps {
+  locale: string
+}
+
+const NAV_ITEMS = [
+  { route: '/panou', icon: 'home', label: 'Acasa' },
+  { route: '/proiecte', icon: 'folder_open', label: 'Proiecte' },
+  { route: '/finantari', icon: 'euro_symbol', label: 'Finantari' },
+  { route: '/asistent-ai', icon: 'smart_toy', label: 'AI' },
+  { route: '/documente', icon: 'description', label: 'Documente' },
+] as const
+
+export function MobileNav({ locale }: MobileNavProps) {
   const pathname = usePathname()
-  const t = useTranslations('nav')
   const prefix = `/${locale}`
 
-  const items = [
-    { href: prefix, icon: Home, labelKey: 'home' as const },
-    { href: `${prefix}/projects`, icon: FolderOpen, labelKey: 'projects' as const },
-    { href: `${prefix}/calls`, icon: Search, labelKey: 'calls' as const },
-    { href: `${prefix}/ai`, icon: Sparkles, labelKey: 'ai' as const },
-  ]
-
-  const isActive = (href: string) => {
-    if (href === prefix) return pathname === prefix || pathname === `${prefix}/`
+  const isActive = (route: string) => {
+    const href = `${prefix}${route}`
+    if (route === '/panou') {
+      return pathname === prefix || pathname === `${prefix}/` || pathname === href
+    }
     return pathname.startsWith(href)
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden border-t border-[var(--border-subtle)] bg-[var(--bg-base)]">
-      <div className="flex items-center justify-around py-2">
-        {items.map(item => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`flex flex-col items-center gap-0.5 px-3 py-1 ${isActive(item.href) ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)]'}`}
-          >
-            <item.icon size={20} />
-            <span className="text-[10px]">{t(item.labelKey)}</span>
-          </Link>
-        ))}
+    <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-background border-t border-outline-variant/20">
+      <div className="flex items-center justify-around py-2 px-1">
+        {NAV_ITEMS.map((item) => {
+          const href = `${prefix}${item.route}`
+          const active = isActive(item.route)
+          return (
+            <Link
+              key={item.route}
+              href={href}
+              className={`
+                flex flex-col items-center justify-center gap-0.5
+                min-w-[48px] py-1 rounded-xl
+                transition-colors duration-200
+                ${active
+                  ? 'text-primary-container'
+                  : 'text-on-surface-variant hover:text-on-surface'
+                }
+              `}
+            >
+              <Icon name={item.icon} filled={active} size="md" />
+              <span className="text-[10px] font-medium leading-tight">{item.label}</span>
+            </Link>
+          )
+        })}
       </div>
     </nav>
   )

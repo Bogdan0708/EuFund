@@ -97,22 +97,31 @@ export default auth(async (req) => {
   const pathname = req.nextUrl.pathname;
 
   // ═══════════════════════════════════════════════════════════════════
-  // 0. PERMANENT REDIRECTS (old dashboard paths → new routes)
+  // 0. ROUTE REDIRECTS (English → Romanian canonical paths, root → /panou)
   // ═══════════════════════════════════════════════════════════════════
-  const redirects: Record<string, string> = {
-    '/ro/panou': '/ro',
-    '/en/panou': '/en',
-    '/ro/proiecte': '/ro/projects',
-    '/en/proiecte': '/en/projects',
-    '/ro/finantari': '/ro/calls',
-    '/en/finantari': '/en/calls',
-    '/ro/billing': '/ro/settings',
-    '/en/billing': '/en/settings',
+  // Redirect bare locale root to /panou (dashboard)
+  const localeMatch = pathname.match(/^\/(ro|en)\/?$/);
+  if (localeMatch) {
+    return NextResponse.redirect(new URL(`/${localeMatch[1]}/panou`, req.url), 302);
+  }
+
+  // Redirect old English route names to Romanian canonical paths
+  const routeRedirects: Record<string, string> = {
+    '/projects': '/proiecte',
+    '/calls': '/finantari',
+    '/files': '/documente',
+    '/ai': '/asistent-ai',
+    '/settings': '/setari',
   };
 
-  const redirectTo = redirects[pathname];
-  if (redirectTo) {
-    return NextResponse.redirect(new URL(redirectTo, req.url), 301);
+  for (const [englishPath, romanianPath] of Object.entries(routeRedirects)) {
+    const locales = ['ro', 'en'];
+    for (const loc of locales) {
+      if (pathname === `/${loc}${englishPath}` || pathname.startsWith(`/${loc}${englishPath}/`)) {
+        const newPath = pathname.replace(`/${loc}${englishPath}`, `/${loc}${romanianPath}`);
+        return NextResponse.redirect(new URL(newPath, req.url), 301);
+      }
+    }
   }
 
   const isPublic = publicPaths.some(path => pathname.startsWith(path));
