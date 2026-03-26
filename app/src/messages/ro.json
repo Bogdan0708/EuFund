@@ -62,7 +62,23 @@
     "passwordTooShort": "Parola trebuie să aibă cel puțin 8 caractere.",
     "platformDescription": "FondEU – Platforma de Finanțări Europene",
     "dateOfBirth": "Data nașterii",
-    "requiredConsents": "Consimțăminte obligatorii"
+    "requiredConsents": "Consimțăminte obligatorii",
+    "continueWithGoogle": "Continuă cu Google",
+    "continueWithMicrosoft": "Continuă cu Microsoft",
+    "continueWithFacebook": "Continuă cu Facebook",
+    "continueWithApple": "Continuă cu Apple",
+    "orDivider": "sau",
+    "magicLinkTitle": "Conectează-te cu un link magic",
+    "magicLinkPlaceholder": "adresa@exemplu.ro",
+    "magicLinkButton": "Trimite link magic",
+    "magicLinkHelp": "Vei primi un email cu un link de autentificare securizat.",
+    "magicLinkSent": "Link-ul a fost trimis! Verifică email-ul pentru a te conecta.",
+    "magicLinkEmptyEmail": "Introduceți adresa de email.",
+    "magicLinkError": "Nu am putut trimite link-ul. Verificați adresa de email.",
+    "magicLinkSendError": "Eroare la trimiterea link-ului.",
+    "brandSubtitle": "The Digital Curator",
+    "privacyLink": "Confidențialitate",
+    "termsLink": "Termeni și Condiții"
   },
   "nav": {
     "dashboard": "Panou de control",
@@ -651,11 +667,14 @@
   "nav": {
     "home": "Acasă",
     "projects": "Proiecte",
-    "calls": "Apeluri",
+    "fundingCalls": "Apeluri de finanțare",
     "files": "Fișiere",
-    "ai": "Asistent AI",
+    "aiAssistant": "Asistent AI",
     "settings": "Setări",
-    "signOut": "Deconectare"
+    "storage": "Spațiu de stocare",
+    "signOut": "Deconectare",
+    "calls": "Apeluri",
+    "ai": "Asistent AI"
   },
   "commandPalette": {
     "searchPlaceholder": "Caută pagini, proiecte, acțiuni...",

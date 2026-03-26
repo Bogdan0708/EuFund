@@ -1,31 +1,29 @@
 'use client'
 import Link from 'next/link'
-import { type LucideIcon } from 'lucide-react'
+import { Icon } from '@/components/ui/ds-icon'
 
 interface SidebarItemProps {
   href: string
-  icon: LucideIcon
+  icon: string
   label: string
   active?: boolean
-  collapsed?: boolean
 }
 
-export function SidebarItem({ href, icon: Icon, label, active = false, collapsed = false }: SidebarItemProps) {
+export function SidebarItem({ href, icon, label, active = false }: SidebarItemProps) {
   return (
     <Link
       href={href}
       className={`
-        flex items-center gap-3 px-3 py-2 rounded-[var(--btn-radius)]
-        text-[15px] transition-all duration-[var(--transition-fast)]
+        flex items-center gap-3 px-4 py-2 text-sm font-medium tracking-tight
+        transition-all duration-300
         ${active
-          ? 'bg-[var(--accent-soft)] text-[var(--accent)] border-l-2 border-[var(--accent)]'
-          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]'
+          ? 'bg-surface-container-highest text-primary-container rounded-full'
+          : 'text-on-surface-variant hover:bg-surface-container-highest hover:-translate-y-[1px] rounded-full'
         }
       `}
-      title={collapsed ? label : undefined}
     >
-      <Icon size={20} className="shrink-0" />
-      {!collapsed && <span className="truncate">{label}</span>}
+      <Icon name={icon} filled={active} size="md" className="shrink-0" />
+      <span className="truncate">{label}</span>
     </Link>
   )
 }
