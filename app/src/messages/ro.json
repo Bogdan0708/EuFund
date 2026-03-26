@@ -836,7 +836,31 @@
     "title": "Fișiere",
     "noFiles": "Niciun fișier încărcat",
     "dropHere": "Trage fișiere aici sau apasă pentru a încărca",
-    "supportedFormats": "PDF, DOCX, XLSX, TXT (max 15MB)"
+    "supportedFormats": "PDF, DOCX, XLSX, TXT (max 15MB)",
+    "pageTitle": "Fișiere",
+    "pageSubtitle": "Gestionează documentația și resursele de cercetare pentru granturi UE.",
+    "searchPlaceholder": "Caută fișiere...",
+    "upload": "Încarcă",
+    "filter": {
+      "all": "Toate",
+      "recent": "Recente",
+      "shared": "Partajate",
+      "archived": "Arhivate"
+    },
+    "projectDocuments": "Documente Proiect",
+    "viewAll": "Vezi Toate",
+    "updatedAgo": "Actualizat acum {time}",
+    "compliance": "Conformitate",
+    "status": {
+      "verified": "VERIFICAT",
+      "pending": "ÎN AȘTEPTARE"
+    },
+    "smartTemplatesTitle": "Șabloane Inteligente",
+    "smartTemplatesDescription": "Lasă AI-ul să completeze automat aplicațiile de granturi folosind datele proiectelor anterioare.",
+    "templateExecutiveSummary": "Rezumat Executiv",
+    "templateBudgetPlanner": "Planificator Buget",
+    "templateProjectRoadmap": "Foaie de Parcurs Proiect",
+    "browseTemplates": "Răsfoiește Șabloane"
   },
   "settings": {
     "title": "Setări",

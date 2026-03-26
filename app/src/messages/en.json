@@ -836,7 +836,31 @@
     "title": "Files",
     "noFiles": "No files uploaded",
     "dropHere": "Drag files here or click to upload",
-    "supportedFormats": "PDF, DOCX, XLSX, TXT (max 15MB)"
+    "supportedFormats": "PDF, DOCX, XLSX, TXT (max 15MB)",
+    "pageTitle": "Files",
+    "pageSubtitle": "Manage your EU grant documentation and research assets.",
+    "searchPlaceholder": "Search files...",
+    "upload": "Upload",
+    "filter": {
+      "all": "All",
+      "recent": "Recent",
+      "shared": "Shared",
+      "archived": "Archived"
+    },
+    "projectDocuments": "Project Documents",
+    "viewAll": "View All",
+    "updatedAgo": "Updated {time} ago",
+    "compliance": "Compliance",
+    "status": {
+      "verified": "VERIFIED",
+      "pending": "PENDING"
+    },
+    "smartTemplatesTitle": "Smart Templates",
+    "smartTemplatesDescription": "Let AI pre-fill your grant applications using historical project data.",
+    "templateExecutiveSummary": "Executive Summary",
+    "templateBudgetPlanner": "Budget Planner",
+    "templateProjectRoadmap": "Project Roadmap",
+    "browseTemplates": "Browse Templates"
   },
   "settings": {
     "title": "Settings",
