@@ -121,7 +121,7 @@ function TabTrigger({
 
 /* ---------- page component ---------- */
 export default function ProiectDetailPage({
-  params: { id },
+  params: { id: _id },
 }: {
   params: { id: string };
 }) {
