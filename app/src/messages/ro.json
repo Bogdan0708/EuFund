@@ -702,16 +702,32 @@
     "searchPlaceholder": "Caută pagini, proiecte, acțiuni...",
     "pages": "Pagini",
     "actions": "Acțiuni",
+    "recentProjects": "Proiecte recente",
     "home": "Acasă",
+    "homeDesc": "Tablou de bord",
     "projects": "Proiecte",
+    "projectsDesc": "Aplicații active de granturi",
     "fundingCalls": "Apeluri de finanțare",
+    "fundingCallsDesc": "Găsește granturi potrivite",
     "files": "Fișiere",
+    "filesDesc": "Depozit de documente",
     "aiAssistant": "Asistent AI",
+    "aiAssistantDesc": "Ajutor la redactarea granturilor",
     "settings": "Setări",
-    "newProject": "Proiect nou",
+    "settingsDesc": "Preferințe cont",
+    "recentProject1": "Digitalizăm Smart Solution",
+    "recentProject1Desc": "Modificat acum 2h",
+    "recentProject2": "Parc Fotovoltaic Nord",
+    "recentProject2Desc": "Modificat ieri",
+    "newProject": "Creează proiect nou",
+    "searchCalls": "Caută apeluri de finanțare",
+    "startChat": "Începe chat AI",
     "checkEligibility": "Verifică eligibilitatea",
-    "uploadFile": "Încarcă fișier",
-    "noResults": "Niciun rezultat"
+    "uploadFile": "Încarcă document",
+    "noResults": "Niciun rezultat",
+    "navigate": "Navighează",
+    "open": "Deschide",
+    "close": "Închide"
   },
   "landing": {
     "welcomeTitle": "Bine ai venit pe FondEU",
@@ -983,5 +999,53 @@
     "uat": "UAT",
     "institutie_publica": "Instituție Publică",
     "altul": "Altul"
+  },
+  "notifications": {
+    "title": "Notificări",
+    "markAllRead": "Marchează toate ca citite",
+    "viewAll": "Vezi toate notificările",
+    "matchTitle": "Nou apel de finanțare potrivit profilului tău",
+    "matchDescription": "Un nou grant pentru Energie Verde a fost publicat, compatibil cu proiectele tale active.",
+    "statusTitle": "Proiectul 'Digitalizăm Smart' actualizat la În Lucru",
+    "statusDescription": "Evaluarea administrativă este completă. Aplicația ta este acum în evaluare tehnică.",
+    "aiTitle": "Analiza AI completă pentru Horizon-2024",
+    "aiDescription": "Curatorul nostru AI a terminat scanarea documentației de licitație de 200 de pagini pentru riscuri.",
+    "warningTitle": "Reamintire: Apelul PNRR se închide în 5 zile",
+    "warningDescription": "Depunerea finală pentru grantul de modernizare a infrastructurii este scadentă vineri.",
+    "twoHoursAgo": "acum 2h",
+    "yesterday": "ieri",
+    "twoDaysAgo": "acum 2 zile",
+    "threeDaysAgo": "acum 3 zile",
+    "aiCuratorTitle": "Consilier AI Curator",
+    "aiCuratorMessage": "Am identificat un risc de conformitate în proiectul tău Horizon-2024 privind secțiunea 'Impact'. Formularea actuală nu respectă pe deplin noile criterii de sustenabilitate.",
+    "aiCuratorAction": "Repară cu sugestia AI"
+  },
+  "notFound": {
+    "title": "Pagina nu a fost găsită",
+    "description": "Pagina pe care o căutați nu există sau a fost mutată. Curatorul nostru digital nu a găsit această pagină în arhivele FondEU.",
+    "backToHome": "Înapoi acasă",
+    "tagline": "Curatorul Digital",
+    "links": {
+      "home": {
+        "label": "Acasă",
+        "title": "Tablou de bord",
+        "description": "Reveniți la pagina principală a platformei."
+      },
+      "projects": {
+        "label": "Proiecte",
+        "title": "Proiectele mele",
+        "description": "Accesați proiectele și aplicațiile salvate."
+      },
+      "fundingCalls": {
+        "label": "Finanțări",
+        "title": "Apeluri de finanțare",
+        "description": "Explorați oportunitățile de finanțare disponibile."
+      },
+      "aiAssistant": {
+        "label": "AI",
+        "title": "Asistent AI",
+        "description": "Obțineți ajutor de la asistentul nostru inteligent."
+      }
+    }
   }
 }
