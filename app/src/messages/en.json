@@ -702,16 +702,32 @@
     "searchPlaceholder": "Search pages, projects, actions...",
     "pages": "Pages",
     "actions": "Actions",
+    "recentProjects": "Recent Projects",
     "home": "Home",
+    "homeDesc": "Overview dashboard",
     "projects": "Projects",
+    "projectsDesc": "Active grant applications",
     "fundingCalls": "Funding Calls",
+    "fundingCallsDesc": "Find matching grants",
     "files": "Files",
+    "filesDesc": "Document repository",
     "aiAssistant": "AI Assistant",
+    "aiAssistantDesc": "Grant writing help",
     "settings": "Settings",
-    "newProject": "New project",
+    "settingsDesc": "Account preferences",
+    "recentProject1": "Digitalizăm Smart Solution",
+    "recentProject1Desc": "Modified 2h ago",
+    "recentProject2": "Parc Fotovoltaic Nord",
+    "recentProject2Desc": "Modified yesterday",
+    "newProject": "Create New Project",
+    "searchCalls": "Search Funding Calls",
+    "startChat": "Start AI Chat",
     "checkEligibility": "Check eligibility",
-    "uploadFile": "Upload file",
-    "noResults": "No results"
+    "uploadFile": "Upload Document",
+    "noResults": "No results",
+    "navigate": "Navigate",
+    "open": "Open",
+    "close": "Close"
   },
   "landing": {
     "welcomeTitle": "Welcome to FondEU",
@@ -983,5 +999,53 @@
     "uat": "Local Government",
     "institutie_publica": "Public Institution",
     "altul": "Other"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "viewAll": "View all notifications",
+    "matchTitle": "New funding call matches your profile",
+    "matchDescription": "A new Green Energy grant has been published that aligns with your active projects.",
+    "statusTitle": "Project 'Digitalizăm Smart' updated to In Progress",
+    "statusDescription": "The administrative review is complete. Your application is now under technical evaluation.",
+    "aiTitle": "AI analysis complete for Horizon-2024",
+    "aiDescription": "Our curator AI has finished scanning the 200-page tender documentation for risks.",
+    "warningTitle": "Deadline reminder: PNRR call closes in 5 days",
+    "warningDescription": "Final submission for the infrastructure modernization grant is due by Friday EOD.",
+    "twoHoursAgo": "2h ago",
+    "yesterday": "yesterday",
+    "twoDaysAgo": "2 days ago",
+    "threeDaysAgo": "3 days ago",
+    "aiCuratorTitle": "AI Curator Advisory",
+    "aiCuratorMessage": "I've identified a compliance risk in your Horizon-2024 draft regarding the 'Impact' section. The current wording doesn't fully meet the new sustainability criteria.",
+    "aiCuratorAction": "Fix with AI Suggestion"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "description": "The page you're looking for doesn't exist or has been moved. Our digital curator couldn't find this specific exhibit in the FondEU archives.",
+    "backToHome": "Back to Home",
+    "tagline": "The Digital Curator",
+    "links": {
+      "home": {
+        "label": "Home",
+        "title": "Dashboard",
+        "description": "Return to your main platform dashboard."
+      },
+      "projects": {
+        "label": "Portfolio",
+        "title": "My Projects",
+        "description": "Access your saved drafts and active grant submissions."
+      },
+      "fundingCalls": {
+        "label": "Search",
+        "title": "Grant Finder",
+        "description": "Explore funding opportunities curated for you."
+      },
+      "aiAssistant": {
+        "label": "AI",
+        "title": "AI Assistant",
+        "description": "Get help from our intelligent grant writing assistant."
+      }
+    }
   }
 }

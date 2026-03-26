@@ -1,16 +1,19 @@
 'use client'
 
+import { useState, useRef } from 'react'
 import { useFormatter } from 'next-intl'
 import { Icon } from '@/components/ui/ds-icon'
+import { NotificationsPanel } from './NotificationsPanel'
 
 interface TopNavProps {
   onMenuClick?: () => void
-  onNotificationsClick?: () => void
   sidebarCollapsed?: boolean
 }
 
-export function TopNav({ onMenuClick, onNotificationsClick, sidebarCollapsed }: TopNavProps) {
+export function TopNav({ onMenuClick, sidebarCollapsed }: TopNavProps) {
   const format = useFormatter()
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const bellRef = useRef<HTMLButtonElement>(null)
 
   const now = new Date()
   const formattedDate = format.dateTime(now, {
@@ -47,14 +50,25 @@ export function TopNav({ onMenuClick, onNotificationsClick, sidebarCollapsed }: 
 
         {/* Right side — action buttons */}
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onNotificationsClick}
-            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors"
-            aria-label="Notifications"
-          >
-            <Icon name="notifications" size="md" />
-          </button>
+          <div className="relative">
+            <button
+              ref={bellRef}
+              type="button"
+              onClick={() => setNotificationsOpen(prev => !prev)}
+              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors relative"
+              aria-label="Notifications"
+              aria-expanded={notificationsOpen}
+            >
+              <Icon name="notifications" size="md" />
+              {/* Unread badge */}
+              <span className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full border-2 border-white" />
+            </button>
+            <NotificationsPanel
+              open={notificationsOpen}
+              onClose={() => setNotificationsOpen(false)}
+              anchorRef={bellRef}
+            />
+          </div>
           <button
             type="button"
             className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors"
