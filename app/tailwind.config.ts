@@ -2,82 +2,86 @@ import type { Config } from 'tailwindcss';
 import tailwindcssAnimate from 'tailwindcss-animate';
 
 const config: Config = {
-  darkMode: ["class"],
+  darkMode: ['variant', '[data-theme="dark"] &'],
   content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
   theme: {
     extend: {
       colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        surface: {
+          DEFAULT: 'var(--surface)',
+          dim: 'var(--surface-dim)',
+          bright: 'var(--surface-bright)',
+          'container-lowest': 'var(--surface-container-lowest)',
+          'container-low': 'var(--surface-container-low)',
+          container: 'var(--surface-container)',
+          'container-high': 'var(--surface-container-high)',
+          'container-highest': 'var(--surface-container-highest)',
+          variant: 'var(--surface-variant)',
+          tint: 'var(--surface-tint)',
+        },
+        background: 'var(--background)',
+        'on-surface': {
+          DEFAULT: 'var(--on-surface)',
+          variant: 'var(--on-surface-variant)',
+        },
+        'on-background': 'var(--on-background)',
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT: 'var(--primary)',
+          container: 'var(--primary-container)',
+          fixed: 'var(--primary-fixed)',
+          'fixed-dim': 'var(--primary-fixed-dim)',
+        },
+        'on-primary': {
+          DEFAULT: 'var(--on-primary)',
+          container: 'var(--on-primary-container)',
+          fixed: 'var(--on-primary-fixed)',
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+          DEFAULT: 'var(--secondary)',
+          container: 'var(--secondary-container)',
+          fixed: 'var(--secondary-fixed)',
+          'fixed-dim': 'var(--secondary-fixed-dim)',
         },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
+        'on-secondary': {
+          DEFAULT: 'var(--on-secondary)',
+          container: 'var(--on-secondary-container)',
         },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+        tertiary: {
+          DEFAULT: 'var(--tertiary)',
+          container: 'var(--tertiary-container)',
         },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+        'on-tertiary': 'var(--on-tertiary)',
+        error: {
+          DEFAULT: 'var(--error)',
+          container: 'var(--error-container)',
         },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
+        'on-error': {
+          DEFAULT: 'var(--on-error)',
+          container: 'var(--on-error-container)',
         },
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+        outline: {
+          DEFAULT: 'var(--outline)',
+          variant: 'var(--outline-variant)',
         },
-        brand: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          500: '#003399',
-          600: '#002b80',
-          700: '#002266',
-        },
-        success: '#16a34a',
-        warning: '#ea580c',
-        danger: '#dc2626',
-        'g-surface': 'var(--bg-surface)',
-        'g-surface-hover': 'var(--bg-surface-hover)',
-        'g-glass': 'var(--bg-glass)',
-        'g-border': 'var(--border-subtle)',
-        'g-border-focus': 'var(--border-focus)',
-        'g-text': 'var(--text-primary)',
-        'g-text-secondary': 'var(--text-secondary)',
-        'g-text-tertiary': 'var(--text-tertiary)',
-        'g-accent': 'var(--accent)',
-        'g-accent-soft': 'var(--accent-soft)',
-        'g-success': 'var(--success)',
-        'g-warning': 'var(--warning)',
-        'g-danger': 'var(--danger)',
+        'inverse-surface': 'var(--inverse-surface)',
+        'inverse-on-surface': 'var(--inverse-on-surface)',
+        'inverse-primary': 'var(--inverse-primary)',
       },
-      backdropBlur: {
-        glass: '16px',
+      fontFamily: {
+        headline: ['Inter', 'system-ui', 'sans-serif'],
+        body: ['Inter', 'system-ui', 'sans-serif'],
+        label: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
-        glass: '16px',
-        btn: '12px',
-        input: '10px',
-        badge: '6px',
+        DEFAULT: '1rem',
+        lg: '2rem',
+        xl: '3rem',
+        full: '9999px',
       },
     },
   },
   plugins: [tailwindcssAnimate],
 };
+
 export default config;
