@@ -971,7 +971,13 @@
     "healthcare": "Healthcare",
     "education": "Education",
     "sme_development": "SME Development",
-    "urban_development": "Urban Development"
+    "urban_development": "Urban Development",
+    "tourism": "Tourism",
+    "transport": "Transport",
+    "environment": "Environment",
+    "culture": "Culture",
+    "public_administration": "Public Administration",
+    "energy_efficiency": "Energy Efficiency"
   },
   "aiAssistant": {
     "curatorTitle": "Grant Strategy Curator",

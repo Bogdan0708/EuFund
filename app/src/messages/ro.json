@@ -971,7 +971,13 @@
     "healthcare": "Sănătate",
     "education": "Educație",
     "sme_development": "Dezvoltare IMM",
-    "urban_development": "Dezvoltare Urbană"
+    "urban_development": "Dezvoltare Urbană",
+    "tourism": "Turism",
+    "transport": "Transport",
+    "environment": "Mediu",
+    "culture": "Cultură",
+    "public_administration": "Administrație Publică",
+    "energy_efficiency": "Eficiență Energetică"
   },
   "aiAssistant": {
     "curatorTitle": "Curator Strategie Granturi",
