@@ -62,7 +62,23 @@
     "passwordTooShort": "Password must be at least 8 characters.",
     "platformDescription": "FondEU – European Funding Platform",
     "dateOfBirth": "Date of Birth",
-    "requiredConsents": "Required consents"
+    "requiredConsents": "Required consents",
+    "continueWithGoogle": "Continue with Google",
+    "continueWithMicrosoft": "Continue with Microsoft",
+    "continueWithFacebook": "Continue with Facebook",
+    "continueWithApple": "Continue with Apple",
+    "orDivider": "or",
+    "magicLinkTitle": "Sign in with a magic link",
+    "magicLinkPlaceholder": "you@example.com",
+    "magicLinkButton": "Send Magic Link",
+    "magicLinkHelp": "You will receive an email with a secure sign-in link.",
+    "magicLinkSent": "Link sent! Check your email to sign in.",
+    "magicLinkEmptyEmail": "Enter your email address.",
+    "magicLinkError": "Could not send link. Check your email address.",
+    "magicLinkSendError": "Error sending link.",
+    "brandSubtitle": "The Digital Curator",
+    "privacyLink": "Privacy",
+    "termsLink": "Terms of Service"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -651,11 +667,14 @@
   "nav": {
     "home": "Home",
     "projects": "Projects",
-    "calls": "Calls",
+    "fundingCalls": "Funding Calls",
     "files": "Files",
-    "ai": "AI Assistant",
+    "aiAssistant": "AI Assistant",
     "settings": "Settings",
-    "signOut": "Sign out"
+    "storage": "Storage",
+    "signOut": "Sign out",
+    "calls": "Calls",
+    "ai": "AI Assistant"
   },
   "commandPalette": {
     "searchPlaceholder": "Search pages, projects, actions...",
