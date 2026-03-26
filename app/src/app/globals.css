@@ -7,15 +7,15 @@
 @layer base {
   body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    background-color: var(--background);
-    color: var(--on-surface);
+    background-color: rgb(var(--background));
+    color: rgb(var(--on-surface));
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   ::selection {
-    background-color: var(--primary-fixed);
-    color: var(--on-primary-fixed);
+    background-color: rgb(var(--primary-fixed));
+    color: rgb(var(--on-primary-fixed));
   }
 }
 
@@ -33,7 +33,7 @@
   }
 
   .mesh-gradient {
-    background-color: var(--surface);
+    background-color: rgb(var(--surface));
     background-image:
       radial-gradient(at 0% 0%, rgba(0, 113, 227, 0.15) 0px, transparent 50%),
       radial-gradient(at 100% 0%, rgba(74, 71, 210, 0.15) 0px, transparent 50%),

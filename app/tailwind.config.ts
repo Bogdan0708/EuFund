@@ -1,6 +1,9 @@
 import type { Config } from 'tailwindcss';
 import tailwindcssAnimate from 'tailwindcss-animate';
 
+/** Helper: wrap CSS var as rgb() with alpha support */
+const c = (v: string) => `rgb(var(--${v}) / <alpha-value>)`;
+
 const config: Config = {
   darkMode: ['variant', '[data-theme="dark"] &'],
   content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
@@ -8,64 +11,64 @@ const config: Config = {
     extend: {
       colors: {
         surface: {
-          DEFAULT: 'var(--surface)',
-          dim: 'var(--surface-dim)',
-          bright: 'var(--surface-bright)',
-          'container-lowest': 'var(--surface-container-lowest)',
-          'container-low': 'var(--surface-container-low)',
-          container: 'var(--surface-container)',
-          'container-high': 'var(--surface-container-high)',
-          'container-highest': 'var(--surface-container-highest)',
-          variant: 'var(--surface-variant)',
-          tint: 'var(--surface-tint)',
+          DEFAULT: c('surface'),
+          dim: c('surface-dim'),
+          bright: c('surface-bright'),
+          'container-lowest': c('surface-container-lowest'),
+          'container-low': c('surface-container-low'),
+          container: c('surface-container'),
+          'container-high': c('surface-container-high'),
+          'container-highest': c('surface-container-highest'),
+          variant: c('surface-variant'),
+          tint: c('surface-tint'),
         },
-        background: 'var(--background)',
+        background: c('background'),
         'on-surface': {
-          DEFAULT: 'var(--on-surface)',
-          variant: 'var(--on-surface-variant)',
+          DEFAULT: c('on-surface'),
+          variant: c('on-surface-variant'),
         },
-        'on-background': 'var(--on-background)',
+        'on-background': c('on-background'),
         primary: {
-          DEFAULT: 'var(--primary)',
-          container: 'var(--primary-container)',
-          fixed: 'var(--primary-fixed)',
-          'fixed-dim': 'var(--primary-fixed-dim)',
+          DEFAULT: c('primary'),
+          container: c('primary-container'),
+          fixed: c('primary-fixed'),
+          'fixed-dim': c('primary-fixed-dim'),
         },
         'on-primary': {
-          DEFAULT: 'var(--on-primary)',
-          container: 'var(--on-primary-container)',
-          fixed: 'var(--on-primary-fixed)',
+          DEFAULT: c('on-primary'),
+          container: c('on-primary-container'),
+          fixed: c('on-primary-fixed'),
         },
         secondary: {
-          DEFAULT: 'var(--secondary)',
-          container: 'var(--secondary-container)',
-          fixed: 'var(--secondary-fixed)',
-          'fixed-dim': 'var(--secondary-fixed-dim)',
+          DEFAULT: c('secondary'),
+          container: c('secondary-container'),
+          fixed: c('secondary-fixed'),
+          'fixed-dim': c('secondary-fixed-dim'),
         },
         'on-secondary': {
-          DEFAULT: 'var(--on-secondary)',
-          container: 'var(--on-secondary-container)',
+          DEFAULT: c('on-secondary'),
+          container: c('on-secondary-container'),
         },
         tertiary: {
-          DEFAULT: 'var(--tertiary)',
-          container: 'var(--tertiary-container)',
+          DEFAULT: c('tertiary'),
+          container: c('tertiary-container'),
         },
-        'on-tertiary': 'var(--on-tertiary)',
+        'on-tertiary': c('on-tertiary'),
         error: {
-          DEFAULT: 'var(--error)',
-          container: 'var(--error-container)',
+          DEFAULT: c('error'),
+          container: c('error-container'),
         },
         'on-error': {
-          DEFAULT: 'var(--on-error)',
-          container: 'var(--on-error-container)',
+          DEFAULT: c('on-error'),
+          container: c('on-error-container'),
         },
         outline: {
-          DEFAULT: 'var(--outline)',
-          variant: 'var(--outline-variant)',
+          DEFAULT: c('outline'),
+          variant: c('outline-variant'),
         },
-        'inverse-surface': 'var(--inverse-surface)',
-        'inverse-on-surface': 'var(--inverse-on-surface)',
-        'inverse-primary': 'var(--inverse-primary)',
+        'inverse-surface': c('inverse-surface'),
+        'inverse-on-surface': c('inverse-on-surface'),
+        'inverse-primary': c('inverse-primary'),
       },
       fontFamily: {
         headline: ['Inter', 'system-ui', 'sans-serif'],
