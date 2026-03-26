@@ -1,25 +1,25 @@
 'use client'
 import Link from 'next/link'
-import { type LucideIcon } from 'lucide-react'
-import { GlassCard } from '@/components/glass'
+import { DsCard } from '@/components/ui/ds-card'
+import { Icon } from '@/components/ui/ds-icon'
 
 interface QuickStartCardProps {
   href: string
-  icon: LucideIcon
+  icon: string
   title: string
   description: string
   metric?: string
 }
 
-export function QuickStartCard({ href, icon: Icon, title, description, metric }: QuickStartCardProps) {
+export function QuickStartCard({ href, icon, title, description, metric }: QuickStartCardProps) {
   return (
     <Link href={href}>
-      <GlassCard className="p-6 h-full flex flex-col gap-3">
-        <Icon size={24} className="text-[var(--accent)]" />
-        <h3 className="text-[var(--text-primary)] font-semibold text-base">{title}</h3>
-        <p className="text-[var(--text-secondary)] text-sm flex-1">{description}</p>
-        {metric && <p className="text-[var(--text-tertiary)] text-xs">{metric}</p>}
-      </GlassCard>
+      <DsCard className="p-6 h-full flex flex-col gap-3 hover:shadow-lg transition-shadow cursor-pointer">
+        <Icon name={icon} size="lg" className="text-primary" />
+        <h3 className="text-on-surface font-semibold text-base">{title}</h3>
+        <p className="text-on-surface-variant text-sm flex-1">{description}</p>
+        {metric && <p className="text-outline text-xs">{metric}</p>}
+      </DsCard>
     </Link>
   )
 }

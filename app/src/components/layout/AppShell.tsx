@@ -44,7 +44,7 @@ export function AppShell({ locale, userName, userInitials, children }: AppShellP
           min-h-screen transition-[margin-left] duration-300 ease-out
           pb-20 md:pb-0
           pt-20
-          ${collapsed ? 'md:ml-[var(--sidebar-collapsed)]' : 'md:ml-[var(--sidebar-width)]'}
+          ${collapsed ? 'md:ml-[60px]' : 'md:ml-[240px]'}
         `}
       >
         <div className="max-w-[1400px] mx-auto px-6 md:px-12 lg:px-24 py-6">
