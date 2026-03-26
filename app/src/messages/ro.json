@@ -908,6 +908,27 @@
     "sme_development": "Dezvoltare IMM",
     "urban_development": "Dezvoltare Urbană"
   },
+  "aiAssistant": {
+    "curatorTitle": "Curator Strategie Granturi",
+    "curatorContext": "Optimizare pentru Apelul Horizon Europe #2024-B3",
+    "generating": "Se generează schița strategiei...",
+    "aiCurator": "Curator AI",
+    "you": "Tu",
+    "inputPlaceholder": "Întreabă orice despre cerințele grantului...",
+    "canvasTitle": "Canvas Propunere de Grant",
+    "saveDraft": "Salvează Ciornă",
+    "reviewFinal": "Revizuire Finală",
+    "stepAnalysis": "Analiză",
+    "stepStrategy": "Strategie",
+    "stepDrafting": "Redactare",
+    "stepReview": "Revizuire",
+    "section1Title": "Secțiunea 1.1: Rezumatul Proiectului",
+    "section2Title": "Secțiunea 2.4: Metodologie Tehnică",
+    "section3Title": "Secțiunea 3.0: Evaluarea Impactului",
+    "provisional": "Provizorie",
+    "methodologyHeading": "Topologie Adaptivă de Rețea de Senzori",
+    "methodologyContent": "Infrastructura propusă utilizează o rețea descentralizată de tip mesh de senzori de captare a carbonului. Fiecare nod operează pe un protocol de latență scăzută proiectat special pentru ingestia de date atmosferice de înaltă rezoluție..."
+  },
   "orgTypes": {
     "srl": "SRL",
     "sa": "SA",
