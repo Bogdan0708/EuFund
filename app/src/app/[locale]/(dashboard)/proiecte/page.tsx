@@ -155,7 +155,7 @@ const FILTERS = ['all', 'in_progress', 'submitted', 'approved'] as const;
 /* ---------- page component ---------- */
 export default function ProiectePage() {
   const t = useTranslations('projects');
-  const tc = useTranslations('common');
+
 
   return (
     <div className="fade-in-up max-w-7xl mx-auto">
