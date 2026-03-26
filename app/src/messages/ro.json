@@ -77,6 +77,9 @@
     "magicLinkError": "Nu am putut trimite link-ul. Verificați adresa de email.",
     "magicLinkSendError": "Eroare la trimiterea link-ului.",
     "brandSubtitle": "The Digital Curator",
+    "signingIn": "Se conectează…",
+    "sending": "Se trimite…",
+    "emailRequired": "Introduceți adresa de email",
     "privacyLink": "Confidențialitate",
     "termsLink": "Termeni și Condiții"
   },
