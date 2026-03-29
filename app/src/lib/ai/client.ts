@@ -5,6 +5,7 @@ import { CircuitBreaker, Errors, withRetry } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { AI_CONFIG } from './config';
 import { TaskType } from './types';
+import { getAnyClient } from './providers';
 const log = logger.child({ component: 'ai-client' });
 
 // Circuit breakers per service
@@ -52,12 +53,8 @@ function getGatewayClient(): OpenAI | null {
   return gatewayClient;
 }
 
-function requireGatewayClient(): OpenAI {
-  const gateway = getGatewayClient();
-  if (!gateway) {
-    throw Errors.serviceUnavailable('AI gateway is required but not configured');
-  }
-  return gateway;
+function requireClient(): OpenAI {
+  return getAnyClient(getGatewayClient());
 }
 
 function schemaToJsonSchema(schema: z.ZodType): unknown {
@@ -82,7 +79,7 @@ export async function aiGenerate(opts: {
   maxTokens?: number;
 }): Promise<{ text: string; tokensUsed: number }> {
   const startTime = performance.now();
-  const gateway = requireGatewayClient();
+  const gateway = requireClient();
   try {
     return await generationBreaker.execute(() =>
       withRetry(async () => {
@@ -123,7 +120,7 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
   temperature?: number;
 }): Promise<{ object: z.infer<T>; tokensUsed: number }> {
   const startTime = performance.now();
-  const gateway = requireGatewayClient();
+  const gateway = requireClient();
   try {
     return await analysisBreaker.execute(() =>
       withRetry(async () => {
@@ -165,7 +162,7 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
  */
 export async function aiEmbed(text: string): Promise<{ embedding: number[]; tokensUsed: number }> {
   const startTime = performance.now();
-  const gateway = requireGatewayClient();
+  const gateway = requireClient();
   try {
     return await embeddingBreaker.execute(() =>
       withRetry(async () => {
