@@ -6,7 +6,7 @@ import { db, schema } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { eq } from 'drizzle-orm';
 import { LRUCache } from 'lru-cache';
-import { sanitizeAIResponseDeep } from '@/lib/ai/sanitize';
+import { sanitizeAIResponseDeep, sanitizeUserInput } from '@/lib/ai/sanitize';
 import { AI_CONFIG } from '@/lib/ai/config';
 import { trackRequest, metrics } from '@/lib/monitoring/metrics';
 import { resolveBillingTrialState } from '@/lib/billing/trial';
@@ -265,6 +265,25 @@ export async function authenticateAIUser(
       return result;
     }
 
+    // Sanitize AI input if present in request body
+    if (request.method === 'POST') {
+      try {
+        const body = await request.clone().json();
+        const fieldsToSanitize = ['message', 'prompt', 'query', 'goal', 'description'];
+        for (const field of fieldsToSanitize) {
+          if (typeof body[field] === 'string') {
+            const sanitizeResult = sanitizeUserInput(body[field]);
+            if (!sanitizeResult.clean) {
+              log.warn({ field, patterns: sanitizeResult.matched, userId: result.user.id },
+                `[AI Sanitize] Injection patterns detected in field "${field}"`);
+            }
+          }
+        }
+      } catch {
+        // Body parsing may fail for non-JSON requests — that's fine
+      }
+    }
+
     return { user: result.user };
   } catch (error) {
     log.error({ error }, 'AI authentication error:');
@@ -286,6 +305,25 @@ export async function withAIAuth(
     const result = await guardAIRequest(request, options);
     if ('errorResponse' in result) {
       return result.errorResponse;
+    }
+
+    // Sanitize AI input if present in request body
+    if (request.method === 'POST') {
+      try {
+        const body = await request.clone().json();
+        const fieldsToSanitize = ['message', 'prompt', 'query', 'goal', 'description'];
+        for (const field of fieldsToSanitize) {
+          if (typeof body[field] === 'string') {
+            const sanitizeResult = sanitizeUserInput(body[field]);
+            if (!sanitizeResult.clean) {
+              log.warn({ field, patterns: sanitizeResult.matched, userId: result.user.id },
+                `[AI Sanitize] Injection patterns detected in field "${field}"`);
+            }
+          }
+        }
+      } catch {
+        // Body parsing may fail for non-JSON requests — that's fine
+      }
     }
 
     // Add rate limit headers
