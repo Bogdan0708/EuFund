@@ -61,6 +61,14 @@ function toSourceId(result: SearchResult): string {
   return `unknown:${result.id}`;
 }
 
+function getFreshnessStatus(lastVerified: string | undefined, thresholdDays = 7): 'verified' | 'stale' | 'unverified' {
+  if (!lastVerified) return 'unverified';
+  const verified = new Date(lastVerified);
+  const ageMs = Date.now() - verified.getTime();
+  const ageDays = ageMs / (1000 * 60 * 60 * 24);
+  return ageDays <= thresholdDays ? 'verified' : 'stale';
+}
+
 function validateRetrievedChunk(result: SearchResult): { valid: boolean; sanitized: string; reason?: string } {
   const sanitized = normalizeChunkContent(result.content);
 
@@ -200,6 +208,7 @@ export async function hybridSearch(opts: RAGQuery): Promise<SearchResult[]> {
         ...result.metadata,
         sourceId: toSourceId(result),
         sourceDocumentId: toSourceId(result),
+        freshness: getFreshnessStatus(result.metadata?.last_verified as string | undefined),
       },
     }];
   });

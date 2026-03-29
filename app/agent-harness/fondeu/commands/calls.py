@@ -58,8 +58,41 @@ def list_calls(ctx, status, limit):
 @click.pass_context
 def verify(ctx, call_id):
     """Verify a funding call against its live source"""
-    console.print(f"[dim]Verifying call {call_id} against live source...[/dim]")
-    console.print("[yellow]Freshness verification not yet implemented — see Task 15[/yellow]")
+    import hashlib
+    import httpx as hx
+
+    console.print(f"[dim]Verifying call {call_id}...[/dim]")
+
+    resp = api_get(f"/api/v1/calls/{call_id}")
+    if resp.status_code != 200:
+        console.print(f"[red]Call {call_id} not found[/red]")
+        return
+
+    call_data = resp.json()
+    source_url = call_data.get("guideUrl") or call_data.get("sourceUrl")
+
+    if not source_url:
+        console.print("[yellow]No source URL for this call — cannot verify[/yellow]")
+        return
+
+    try:
+        live_resp = hx.get(source_url, timeout=15.0, follow_redirects=True)
+        live_hash = hashlib.sha256(live_resp.content).hexdigest()
+        stored_hash = call_data.get("contentHash", "")
+
+        if stored_hash and live_hash == stored_hash:
+            console.print(f"[green]VERIFIED — content matches stored hash[/green]")
+        elif stored_hash:
+            console.print(f"[yellow]STALE — content has changed since ingestion[/yellow]")
+            console.print(f"  Stored hash: {stored_hash[:16]}...")
+            console.print(f"  Live hash:   {live_hash[:16]}...")
+        else:
+            console.print(f"[dim]Source reachable but no stored hash to compare[/dim]")
+
+        console.print(f"  Source: {source_url}")
+        console.print(f"  HTTP status: {live_resp.status_code}")
+    except Exception as e:
+        console.print(f"[red]UNVERIFIABLE — cannot reach source: {e}[/red]")
 
 
 @calls.command()
