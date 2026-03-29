@@ -1,8 +1,7 @@
 import * as cheerio from 'cheerio';
 import { CrawlerSourceConfig } from './sources/config';
 import { normalizeAndUpsertCall } from './normalize';
-import { validateStructure, hashContent } from './validate';
-import type { StructureCheck } from './contract';
+import { validateStructure } from './validate';
 import { db } from '@/lib/db';
 import { sourceRuns, fundingDocumentsRaw } from '@/lib/db/schema';
 import { createHash } from 'crypto';
