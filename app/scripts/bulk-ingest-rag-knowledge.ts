@@ -363,8 +363,8 @@ async function processFile(
           titleRo: file.titleRo || null,
           chunkIndex: chunk.index,
           totalChunks: rawChunks.length,
-          source_url: (file as Record<string, unknown>).sourceUrl as string
-            || (file as Record<string, unknown>).guideUrl as string
+          source_url: (file as unknown as Record<string, unknown>).sourceUrl as string
+            || (file as unknown as Record<string, unknown>).guideUrl as string
             || '',
           last_verified: new Date().toISOString(),
           content_hash: createHash('sha256').update(chunk.content).digest('hex'),
