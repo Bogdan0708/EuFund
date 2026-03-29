@@ -1,6 +1,8 @@
 import * as cheerio from 'cheerio';
 import { CrawlerSourceConfig } from './sources/config';
 import { normalizeAndUpsertCall } from './normalize';
+import { validateStructure, hashContent } from './validate';
+import type { StructureCheck } from './contract';
 import { db } from '@/lib/db';
 import { sourceRuns, fundingDocumentsRaw } from '@/lib/db/schema';
 import { createHash } from 'crypto';
@@ -105,6 +107,18 @@ export async function runCrawler(config: CrawlerSourceConfig, connectorId: strin
     if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
     
     const html = await response.text();
+
+    // Validate page structure before parsing
+    if (config.structureChecks) {
+      const { valid, missing } = validateStructure(html, config.structureChecks);
+      if (!valid) {
+        log.warn(
+          { source: config.slug, missing },
+          `Structure validation failed. Missing: ${missing.join(', ')}`
+        );
+      }
+    }
+
     const $ = cheerio.load(html);
     const items = $(config.itemSelector);
     

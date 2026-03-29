@@ -1,3 +1,5 @@
+import type { StructureCheck } from '../contract';
+
 export interface CrawlerSourceConfig {
   slug: string;
   name: string;
@@ -10,6 +12,7 @@ export interface CrawlerSourceConfig {
   defaultInstrument?: 'grant' | 'state_aid' | 'guarantee' | 'loan';
   defaultChannel: 'mysmis' | 'pnrr_portal' | 'bank_network' | 'afm_portal' | 'minister_portal';
   programmeDetectionKeywords: Record<string, string[]>;
+  structureChecks?: StructureCheck[];
 }
 
 export const ROMANIAN_SOURCES: CrawlerSourceConfig[] = [
