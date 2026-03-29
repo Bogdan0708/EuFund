@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_INITDB_ARGS: '--locale=ro_RO.utf8'
     ports:
-      - '5432:5432'
+      - '5433:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./app/src/lib/db/rls.sql:/docker-entrypoint-initdb.d/02-rls.sql
@@ -18,7 +18,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - '6379:6379'
+      - '6380:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
@@ -28,12 +28,12 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.12.1
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "6335:6333"
+      - "6336:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:6333/healthz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -44,7 +44,7 @@ services:
       context: ./app
       dockerfile: Dockerfile
     ports:
-      - '3000:3000'
+      - '3001:3000'
     env_file: .env.docker
     depends_on:
       postgres:

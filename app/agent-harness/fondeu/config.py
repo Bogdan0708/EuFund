@@ -3,8 +3,8 @@ from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".fondeu"
 SESSION_FILE = CONFIG_DIR / "session.json"
-DEFAULT_BASE_URL = "http://localhost:3000"
-DEFAULT_QDRANT_URL = "http://localhost:6333"
+DEFAULT_BASE_URL = "http://localhost:3002"
+DEFAULT_QDRANT_URL = "http://localhost:6335"
 
 
 def ensure_config_dir():
