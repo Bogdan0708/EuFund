@@ -256,7 +256,8 @@ def security(ctx):
     import httpx
 
     results = []
-    base = "http://localhost:3000"
+    from ..config import get_base_url
+    base = get_base_url()
 
     # Test 1: CSRF-less POST to protected endpoint should get 403
     console.print("Testing CSRF protection...")
