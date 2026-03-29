@@ -217,16 +217,18 @@ export default auth(async (req) => {
   // ═══════════════════════════════════════════════════════════════════
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
     const csrfExemptPaths = [
-      '/api/auth/callback',
-      '/api/auth/session',
-      '/api/webhooks',
-      '/api/health',
-      '/api/csp-report',
+      '/api/auth/callback', // NextAuth requires this
+      '/api/auth/session',  // read-only session check
+      '/api/webhooks',      // external webhooks use signature verification
+      '/api/health',        // read-only health check
+      '/api/ready',         // read-only readiness probe
+      '/api/csp-report',    // browser-initiated CSP violation reports
+      '/api/metrics',       // read-only Prometheus scrape
     ];
 
     const isExempt = csrfExemptPaths.some(p => pathname.startsWith(p));
 
-    if (!isExempt && !isPublic && pathname.startsWith('/api/')) {
+    if (!isExempt && pathname.startsWith('/api/')) {
       if (!validateCSRF(req)) {
         log.warn({ ip, path: pathname }, '[middleware] CSRF validation failed');
         const response = NextResponse.json(
