@@ -296,13 +296,21 @@ No shared abstraction, no custom hook factory, no data layer. Each page owns its
 
 ---
 
-## Out of Scope
+## Out of Scope (This Spec)
 
-- Document upload/preview/delete (UI exists, backend partially exists, defer wiring)
-- Legislație page (doesn't exist, not in scope)
-- Inline proposal editing in canvas (show sections read-only, editing via chat "Ask AI to improve")
-- DOCX export (button exists, wire later)
+Items deferred from this spec are sequenced into future phases:
+
+### Phase 2 — Complete the AI Workflow Loop (Next Sprint)
+- **DOCX export** — wire "Export DOCX" button to existing `GET /api/v1/projects/[id]/export`, trigger blob download
+- **Inline proposal editing** — `contentEditable` toggle per canvas section, PATCH back to project document, track `source: 'edited'` vs `'generated'` provenance
+- **Document upload** — wire drag-and-drop zone to `POST /api/v1/projects/[id]/files`, progress bar, 15MB max
+- **Document preview + delete** — preview modal with PDF viewer, delete with confirmation → `DELETE /api/v1/projects/[id]/files/[fileId]`
+
+### Phase 3 — Knowledge Compounding
+- **Knowledge store persistence (Step 5)** — connect knowledge agent to `getVectorStore().upsert()`. Chunk research text, embed via OpenAI, upsert to Qdrant with metadata (source URL, content hash, session ID). Dedup by content hash. This is the platform's compounding moat — each user's research enriches the knowledge base for future users.
+
+### Not Planned
+- Legislație page
 - Notifications panel
 - Session cleanup cron
-- Knowledge store persistence (Step 5 Qdrant upsert)
 - Billing mid-workflow checks
