@@ -20,6 +20,15 @@
 }
 
 @layer components {
+  /* Glass card — Stitch V2 canonical */
+  .glass {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+  }
+
+  /* Keep glass-card as alias for backwards compat during migration */
   .glass-card {
     background: rgba(255, 255, 255, 0.72);
     backdrop-filter: blur(20px);
@@ -27,6 +36,7 @@
     border: 1px solid rgba(0, 0, 0, 0.06);
   }
 
+  [data-theme="dark"] .glass,
   [data-theme="dark"] .glass-card {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -45,12 +55,24 @@
     background: radial-gradient(circle at center, rgba(74, 71, 210, 0.08) 0%, transparent 70%);
   }
 
-  .fade-in-up {
-    animation: fadeInUp 0.6s ease-out forwards;
+  /* Live background orb keyframes */
+  @keyframes float-orb-1 {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    25% { transform: translate3d(60px, 40px, 0); }
+    50% { transform: translate3d(30px, -30px, 0); }
+    75% { transform: translate3d(-40px, 20px, 0); }
   }
 
-  @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
+  @keyframes float-orb-2 {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    25% { transform: translate3d(-50px, -30px, 0); }
+    50% { transform: translate3d(40px, 20px, 0); }
+    75% { transform: translate3d(20px, -40px, 0); }
+  }
+
+  @keyframes float-orb-3 {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    33% { transform: translate3d(-30px, 50px, 0); }
+    66% { transform: translate3d(50px, -20px, 0); }
   }
 }
