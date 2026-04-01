@@ -39,7 +39,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     // Pages
     { id: 'home', label: t('home'), description: t('homeDesc'), icon: 'home', action: () => navigate(`${prefix}/panou`), group: t('pages') },
     { id: 'projects', label: t('projects'), description: t('projectsDesc'), icon: 'folder_special', action: () => navigate(`${prefix}/proiecte`), group: t('pages') },
-    { id: 'calls', label: t('fundingCalls'), description: t('fundingCallsDesc'), icon: 'search_insights', action: () => navigate(`${prefix}/finantari`), group: t('pages') },
+    { id: 'calls', label: t('fundingCalls'), description: t('fundingCallsDesc'), icon: 'smart_toy', action: () => navigate(`${prefix}/asistent-ai`), group: t('pages') },
     { id: 'files', label: t('files'), description: t('filesDesc'), icon: 'description', action: () => navigate(`${prefix}/documente`), group: t('pages') },
     { id: 'ai', label: t('aiAssistant'), description: t('aiAssistantDesc'), icon: 'auto_awesome', action: () => navigate(`${prefix}/asistent-ai`), group: t('pages') },
     { id: 'settings', label: t('settings'), description: t('settingsDesc'), icon: 'settings', action: () => navigate(`${prefix}/setari`), group: t('pages') },
@@ -48,7 +48,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     { id: 'project-2', label: t('recentProject2'), description: t('recentProject2Desc'), icon: 'wb_sunny', action: () => navigate(`${prefix}/proiecte`), group: t('recentProjects') },
     // Actions
     { id: 'new-project', label: t('newProject'), icon: 'add', action: () => navigate(`${prefix}/proiecte`), group: t('actions'), isAction: true },
-    { id: 'search-calls', label: t('searchCalls'), icon: 'manage_search', action: () => navigate(`${prefix}/finantari`), group: t('actions') },
+    { id: 'search-calls', label: t('searchCalls'), icon: 'manage_search', action: () => navigate(`${prefix}/asistent-ai`), group: t('actions') },
     { id: 'upload-file', label: t('uploadFile'), icon: 'upload_file', action: () => navigate(`${prefix}/documente`), group: t('actions') },
     { id: 'start-chat', label: t('startChat'), icon: 'chat_bubble', action: () => navigate(`${prefix}/asistent-ai`), group: t('actions') },
   ]
