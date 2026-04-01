@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { requireAuth } from '@/lib/auth/helpers'
 import { db } from '@/lib/db'
 import { workflowSessions, workflowMessages } from '@/lib/db/schema'
-import { eq, and, asc } from 'drizzle-orm'
+import { eq, and, asc, gt } from 'drizzle-orm'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -39,10 +39,14 @@ export async function GET(req: NextRequest) {
       if (lastEventId) {
         ;(async () => {
           try {
+            const parsedId = parseInt(lastEventId, 10)
             const replayMessages = await db
               .select()
               .from(workflowMessages)
-              .where(eq(workflowMessages.sessionId, sessionId))
+              .where(and(
+                eq(workflowMessages.sessionId, sessionId),
+                gt(workflowMessages.eventId, isNaN(parsedId) ? 0 : parsedId)
+              ))
               .orderBy(asc(workflowMessages.createdAt))
 
             for (const msg of replayMessages) {
