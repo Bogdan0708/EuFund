@@ -198,11 +198,13 @@ File: `app/src/app/[locale]/(dashboard)/finantari/page.tsx`
   - No `lastVerifiedAt` → no badge (curated, unverified)
 - No new API needed — just render existing field
 
-**Layer 3 — AI Discovery (deferred if endpoint missing):**
-- When filter results are empty or user explicitly searches: trigger `POST /api/ai/search-calls`
-- If endpoint exists: show "Searching the web..." animation, render results with "Web result" badge at reduced opacity
-- If endpoint doesn't exist: defer. Show empty state with "No calls found matching your criteria"
-- Proactive: subtle card at bottom "AI found N more calls not in our database" (only if search-calls endpoint exists)
+**Layer 3 — AI Discovery (endpoint confirmed: `app/src/app/api/ai/search-calls/route.ts`):**
+- When filter results are few/empty OR user clicks "AI Smart Match": trigger `POST /api/ai/search-calls` with `{ query, region?, sector? }`
+- Show "Searching the web for matching calls..." animation while loading
+- Render results with "Web result" badge at reduced opacity, distinct from DB calls
+- Each result includes: title, program, sourceUrl, deadline, budgetRange, status, summary
+- "Start project with this call" → navigates to `/asistent-ai`
+- Proactive: subtle expandable card at bottom "AI found N more calls not in our database"
 
 ---
 
@@ -298,7 +300,6 @@ No shared abstraction, no custom hook factory, no data layer. Each page owns its
 
 - Document upload/preview/delete (UI exists, backend partially exists, defer wiring)
 - Legislație page (doesn't exist, not in scope)
-- AI discovery endpoint creation (`POST /api/ai/search-calls` — wire if exists, skip if not)
 - Inline proposal editing in canvas (show sections read-only, editing via chat "Ask AI to improve")
 - DOCX export (button exists, wire later)
 - Notifications panel
