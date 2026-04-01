@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar'
 import { TopNav } from './TopNav'
 import { MobileNav } from './MobileNav'
 import { CommandPalette } from './CommandPalette'
+import { LiveBackground } from '@/components/ui/LiveBackground'
 import { useCommandPalette } from '@/hooks/useCommandPalette'
 import { useSidebar } from '@/hooks/useSidebar'
 
@@ -22,6 +23,9 @@ export function AppShell({ locale, userName, userInitials, children }: AppShellP
 
   return (
     <>
+      {/* Live animated background */}
+      <LiveBackground />
+
       {/* Sidebar — desktop only */}
       <div className="hidden md:flex">
         <Sidebar
@@ -38,10 +42,10 @@ export function AppShell({ locale, userName, userInitials, children }: AppShellP
         sidebarCollapsed={collapsed}
       />
 
-      {/* Main content area */}
+      {/* Main content area — z-10 above live background */}
       <main
         className={`
-          min-h-screen transition-[margin-left] duration-300 ease-out
+          relative z-10 min-h-screen transition-[margin-left] duration-300 ease-out
           pb-20 md:pb-0
           pt-20
           ${collapsed ? 'md:ml-[60px]' : 'md:ml-[240px]'}
