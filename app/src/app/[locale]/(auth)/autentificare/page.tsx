@@ -15,6 +15,10 @@ export default function LoginPage() {
   const [emailSent, setEmailSent] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
   const [error, setError] = useState('');
+  const [devEmail, setDevEmail] = useState('');
+  const [devPassword, setDevPassword] = useState('');
+  const [devLoading, setDevLoading] = useState(false);
+  const isDev = process.env.NEXT_PUBLIC_NODE_ENV === 'development' || process.env.NODE_ENV === 'development';
 
   const handleOAuthSignIn = async (provider: string) => {
     setOauthLoading(provider);
@@ -161,6 +165,57 @@ export default function LoginPage() {
           )}
         </div>
       </main>
+
+      {/* Dev Login (development only) */}
+      {isDev && (
+        <div className="w-full max-w-md z-10 mt-6">
+          <div className="rounded-lg p-6 border-2 border-dashed border-yellow-500/50 bg-yellow-500/5">
+            <h3 className="text-sm font-bold text-yellow-600 mb-3">Dev Login (local only)</h3>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setDevLoading(true);
+                setError('');
+                const result = await signIn('credentials', {
+                  email: devEmail,
+                  password: devPassword,
+                  redirect: false,
+                  callbackUrl: `/${locale}/panou`,
+                });
+                setDevLoading(false);
+                if (result?.error) {
+                  setError('Invalid email or password');
+                } else if (result?.url) {
+                  window.location.href = result.url;
+                }
+              }}
+              className="space-y-3"
+            >
+              <input
+                type="email"
+                value={devEmail}
+                onChange={(e) => setDevEmail(e.target.value)}
+                placeholder="Email"
+                className="w-full px-4 py-3 rounded-lg border border-outline-variant/20 bg-surface-container-lowest text-sm"
+              />
+              <input
+                type="password"
+                value={devPassword}
+                onChange={(e) => setDevPassword(e.target.value)}
+                placeholder="Password"
+                className="w-full px-4 py-3 rounded-lg border border-outline-variant/20 bg-surface-container-lowest text-sm"
+              />
+              <button
+                type="submit"
+                disabled={devLoading}
+                className="w-full py-3 bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded-lg transition-all disabled:opacity-50 text-sm"
+              >
+                {devLoading ? 'Signing in...' : 'Dev Sign In'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="mt-16 text-center z-10">

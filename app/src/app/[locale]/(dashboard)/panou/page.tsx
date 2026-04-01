@@ -100,9 +100,13 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
     }
   }
 
-  const hours = new Date().getHours();
-  const greetingKey =
-    hours < 12 ? 'greetingMorning' : hours < 18 ? 'greetingAfternoon' : 'greetingEvening';
+  const [greetingKey, setGreetingKey] = useState('greetingMorning');
+  useEffect(() => {
+    const hours = new Date().getHours();
+    setGreetingKey(
+      hours < 12 ? 'greetingMorning' : hours < 18 ? 'greetingAfternoon' : 'greetingEvening'
+    );
+  }, []);
 
   const isNewUser = !loading && projects.length === 0 && !activeSession;
 
