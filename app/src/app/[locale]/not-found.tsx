@@ -9,7 +9,7 @@ import { Icon } from '@/components/ui/ds-icon'
 const HELPFUL_LINKS = [
   { key: 'home', icon: 'home', path: '/panou' },
   { key: 'projects', icon: 'folder_special', path: '/proiecte' },
-  { key: 'fundingCalls', icon: 'search_insights', path: '/finantari' },
+  { key: 'fundingCalls', icon: 'smart_toy', path: '/asistent-ai' },
   { key: 'aiAssistant', icon: 'auto_awesome', path: '/asistent-ai' },
 ] as const
 
