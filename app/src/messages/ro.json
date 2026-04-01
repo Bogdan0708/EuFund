@@ -981,24 +981,72 @@
   },
   "aiAssistant": {
     "curatorTitle": "Curator Strategie Granturi",
-    "curatorContext": "Optimizare pentru Apelul Horizon Europe #2024-B3",
-    "generating": "Se generează schița strategiei...",
+    "curatorContext": "Asistent AI pentru propuneri de finanțare",
     "aiCurator": "Curator AI",
     "you": "Tu",
-    "inputPlaceholder": "Întreabă orice despre cerințele grantului...",
-    "canvasTitle": "Canvas Propunere de Grant",
-    "saveDraft": "Salvează Ciornă",
-    "reviewFinal": "Revizuire Finală",
-    "stepAnalysis": "Analiză",
-    "stepStrategy": "Strategie",
-    "stepDrafting": "Redactare",
-    "stepReview": "Revizuire",
-    "section1Title": "Secțiunea 1.1: Rezumatul Proiectului",
-    "section2Title": "Secțiunea 2.4: Metodologie Tehnică",
-    "section3Title": "Secțiunea 3.0: Evaluarea Impactului",
-    "provisional": "Provizorie",
-    "methodologyHeading": "Topologie Adaptivă de Rețea de Senzori",
-    "methodologyContent": "Infrastructura propusă utilizează o rețea descentralizată de tip mesh de senzori de captare a carbonului. Fiecare nod operează pe un protocol de latență scăzută proiectat special pentru ingestia de date atmosferice de înaltă rezoluție..."
+    "inputPlaceholder": "Descrie ideea ta de proiect...",
+    "send": "Trimite",
+    "emptyState": "Descrie ideea ta de proiect pentru a începe",
+    "connecting": "Se conectează...",
+    "streaming": "Se generează...",
+    "errorBanner": "A apărut o eroare",
+    "retry": "Reîncearcă",
+    "newSession": "Conversație nouă",
+    "stepLabel": "Pas {step}",
+    "steps": {
+      "1": "Îmbunătățire idee",
+      "2": "Potrivire apeluri",
+      "3": "Validare status",
+      "4": "Cercetare cerințe",
+      "5": "Actualizare cunoștințe",
+      "6": "Plan de acțiune",
+      "7": "Construire proiect"
+    },
+    "tabs": {
+      "calls": "Apeluri",
+      "plan": "Plan",
+      "proposal": "Propunere"
+    },
+    "callsTab": {
+      "title": "Apeluri potrivite",
+      "waiting": "Se așteaptă rezultatele potrivirii...",
+      "score": "Scor",
+      "deadline": "Termen limită",
+      "thematicFit": "Potrivire tematică",
+      "eligibilityFit": "Potrivire eligibilitate",
+      "budgetFit": "Potrivire buget"
+    },
+    "planTab": {
+      "title": "Plan de acțiune",
+      "waiting": "Se așteaptă planul de acțiune...",
+      "timeline": "Durată estimată",
+      "requiredDocs": "Documente necesare",
+      "mandatory": "Obligatoriu",
+      "optional": "Opțional",
+      "source": "Sursă",
+      "estimatedTime": "Timp estimat",
+      "categories": {
+        "document": "Document",
+        "approval": "Aprobare",
+        "registration": "Înregistrare",
+        "writing": "Redactare",
+        "budget": "Buget"
+      }
+    },
+    "proposalTab": {
+      "title": "Secțiuni propunere",
+      "waiting": "Se așteaptă propunerea...",
+      "generated": "Generat AI",
+      "edited": "Editat",
+      "improveSection": "Îmbunătățește cu AI",
+      "sectionOrder": "Secțiunea {order}"
+    },
+    "checkpoint": {
+      "continue": "Continuă",
+      "modify": "Modifică",
+      "sendResponse": "Trimite răspunsul",
+      "typeResponse": "Scrie răspunsul tău..."
+    }
   },
   "orgTypes": {
     "srl": "SRL",

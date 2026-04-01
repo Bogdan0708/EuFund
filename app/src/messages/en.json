@@ -981,24 +981,72 @@
   },
   "aiAssistant": {
     "curatorTitle": "Grant Strategy Curator",
-    "curatorContext": "Optimizing for Horizon Europe Call #2024-B3",
-    "generating": "Generating Strategy Draft...",
+    "curatorContext": "AI assistant for funding proposals",
     "aiCurator": "AI Curator",
     "you": "You",
-    "inputPlaceholder": "Ask anything about the grant requirements...",
-    "canvasTitle": "Grant Proposal Canvas",
-    "saveDraft": "Save Draft",
-    "reviewFinal": "Review Final",
-    "stepAnalysis": "Analysis",
-    "stepStrategy": "Strategy",
-    "stepDrafting": "Drafting",
-    "stepReview": "Review",
-    "section1Title": "Section 1.1: Project Summary",
-    "section2Title": "Section 2.4: Technical Methodology",
-    "section3Title": "Section 3.0: Impact Assessment",
-    "provisional": "Provisional",
-    "methodologyHeading": "Adaptive Sensor Network Topology",
-    "methodologyContent": "The proposed infrastructure utilizes a decentralized mesh network of carbon capture sensors. Each node operates on a low-latency protocol specifically designed for high-resolution atmospheric data ingestion..."
+    "inputPlaceholder": "Describe your project idea...",
+    "send": "Send",
+    "emptyState": "Describe your project idea to begin",
+    "connecting": "Connecting...",
+    "streaming": "Generating...",
+    "errorBanner": "An error occurred",
+    "retry": "Retry",
+    "newSession": "New conversation",
+    "stepLabel": "Step {step}",
+    "steps": {
+      "1": "Enhance idea",
+      "2": "Match calls",
+      "3": "Validate status",
+      "4": "Research requirements",
+      "5": "Update knowledge",
+      "6": "Action plan",
+      "7": "Build project"
+    },
+    "tabs": {
+      "calls": "Calls",
+      "plan": "Plan",
+      "proposal": "Proposal"
+    },
+    "callsTab": {
+      "title": "Matched Calls",
+      "waiting": "Waiting for matching results...",
+      "score": "Score",
+      "deadline": "Deadline",
+      "thematicFit": "Thematic fit",
+      "eligibilityFit": "Eligibility fit",
+      "budgetFit": "Budget fit"
+    },
+    "planTab": {
+      "title": "Action Plan",
+      "waiting": "Waiting for action plan...",
+      "timeline": "Estimated timeline",
+      "requiredDocs": "Required documents",
+      "mandatory": "Mandatory",
+      "optional": "Optional",
+      "source": "Source",
+      "estimatedTime": "Estimated time",
+      "categories": {
+        "document": "Document",
+        "approval": "Approval",
+        "registration": "Registration",
+        "writing": "Writing",
+        "budget": "Budget"
+      }
+    },
+    "proposalTab": {
+      "title": "Proposal Sections",
+      "waiting": "Waiting for proposal...",
+      "generated": "AI Generated",
+      "edited": "Edited",
+      "improveSection": "Improve with AI",
+      "sectionOrder": "Section {order}"
+    },
+    "checkpoint": {
+      "continue": "Continue",
+      "modify": "Modify",
+      "sendResponse": "Send response",
+      "typeResponse": "Type your response..."
+    }
   },
   "orgTypes": {
     "srl": "LLC",
