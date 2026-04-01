@@ -8,8 +8,32 @@ import { checkWorkflowLimit, incrementWorkflowCount } from '@/lib/billing/usage'
 import { createGatewayClient } from '@/lib/ai/orchestrator/gateway'
 import { createPubSubStream } from '@/lib/ai/orchestrator/pubsub'
 import { logger } from '@/lib/logger'
+import { getRedis } from '@/lib/redis/client'
 
 const log = logger.child({ component: 'orchestrator-message' })
+
+const LOCK_TTL_SECONDS = 300 // 5 minutes
+
+async function acquireLock(sessionId: string): Promise<boolean> {
+  try {
+    const redis = getRedis()
+    if (!redis) return true // fail-open when Redis is not configured
+    const result = await redis.set(`orchestrator:lock:${sessionId}`, '1', 'EX', LOCK_TTL_SECONDS, 'NX')
+    return result === 'OK'
+  } catch {
+    return true // fail-open for lock — if Redis is down, allow the request
+  }
+}
+
+async function releaseLock(sessionId: string): Promise<void> {
+  try {
+    const redis = getRedis()
+    if (!redis) return
+    await redis.del(`orchestrator:lock:${sessionId}`)
+  } catch {
+    // Best-effort release — TTL handles cleanup
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,7 +62,11 @@ export async function POST(req: NextRequest) {
       const stream = createPubSubStream(session.id)
       const gateway = createGatewayClient('fondeu')
       log.info({ sessionId: session.id, userId: user.id }, 'New session created, processing message')
-      processMessage(session.id, message, stream, gateway).catch((err) => {
+      await acquireLock(session.id)
+      processMessage(session.id, message, stream, gateway).then(() => {
+        releaseLock(session.id)
+      }).catch((err) => {
+        releaseLock(session.id)
         log.error({ error: err instanceof Error ? err.message : String(err), sessionId: session.id }, 'processMessage failed')
       })
 
@@ -56,14 +84,23 @@ export async function POST(req: NextRequest) {
       .limit(1)
 
     if (!session) {
+      await releaseLock(sessionId)
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+    }
+
+    const locked = await acquireLock(sessionId)
+    if (!locked) {
+      return NextResponse.json({ error: 'Session is already processing a message. Please wait.' }, { status: 409 })
     }
 
     // Process message asynchronously
     const sseStream = createPubSubStream(sessionId)
     const gateway = createGatewayClient('fondeu')
     log.info({ sessionId, userId: user.id }, 'Resuming session, processing message')
-    processMessage(sessionId, message, sseStream, gateway).catch((err) => {
+    processMessage(sessionId, message, sseStream, gateway).then(() => {
+      releaseLock(sessionId)
+    }).catch((err) => {
+      releaseLock(sessionId)
       log.error({ error: err instanceof Error ? err.message : String(err), sessionId }, 'processMessage failed')
     })
 
