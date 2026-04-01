@@ -1,5 +1,7 @@
 'use client'
+
 import Link from 'next/link'
+import { motion } from 'motion/react'
 import { Icon } from '@/components/ui/ds-icon'
 
 interface SidebarItemProps {
@@ -7,23 +9,35 @@ interface SidebarItemProps {
   icon: string
   label: string
   active?: boolean
+  collapsed?: boolean
 }
 
-export function SidebarItem({ href, icon, label, active = false }: SidebarItemProps) {
+export function SidebarItem({ href, icon, label, active = false, collapsed = false }: SidebarItemProps) {
   return (
     <Link
       href={href}
       className={`
-        flex items-center gap-3 px-4 py-2 text-sm font-medium tracking-tight
-        transition-all duration-300
+        relative flex items-center gap-3 px-4 py-2 font-medium text-sm tracking-tight
+        rounded-full transition-all duration-300 hover:translate-y-[-1px]
         ${active
-          ? 'bg-surface-container-highest text-primary-container rounded-full'
-          : 'text-on-surface-variant hover:bg-surface-container-highest hover:-translate-y-[1px] rounded-full'
+          ? 'text-[#0071E3]'
+          : 'text-[#414753] hover:text-slate-900 hover:bg-[#E3E2E7]'
         }
       `}
     >
-      <Icon name={icon} filled={active} size="md" className="shrink-0" />
-      <span className="truncate">{label}</span>
+      {active && (
+        <motion.div
+          layoutId="sidebar-active"
+          className="absolute inset-0 bg-[#E3E2E7] rounded-full"
+          transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+        />
+      )}
+      <span className="relative z-10">
+        <Icon name={icon} filled={active} size="md" className="shrink-0" />
+      </span>
+      {!collapsed && (
+        <span className="relative z-10 truncate">{label}</span>
+      )}
     </Link>
   )
 }
