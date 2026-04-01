@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { useTranslations } from 'next-intl';
+import { motion } from 'motion/react';
 import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
 import { Icon } from '@/components/ui/ds-icon';
-import { DsButton } from '@/components/ui/ds-button';
+import { staggerContainer, staggerItem, staggerTransition } from '@/lib/motion';
 
 interface AISession {
   id: string;
@@ -33,25 +35,34 @@ function getRelativeTime(dateStr: string): string {
   return `${diffD}d ago`;
 }
 
-function SkeletonCard() {
-  return (
-    <div className="bg-surface-container-lowest rounded-[1rem] p-5 shadow-[0_20px_40px_rgba(0,0,0,0.04)] animate-pulse">
-      <div className="h-4 bg-surface-container-high rounded w-3/4 mb-3" />
-      <div className="h-3 bg-surface-container-high rounded w-1/2" />
-    </div>
-  );
+function getProgressPercent(status: string): number {
+  switch (status) {
+    case 'deschis': return 100;
+    case 'in_lucru': return 60;
+    case 'ciorna': return 20;
+    default: return 30;
+  }
 }
 
 export default function PanouPage({ params }: { params: { locale: string } }) {
   const { locale } = params;
   const t = useTranslations('dashboard');
   const router = useRouter();
+  const { data: session } = useSession();
 
   const [loading, setLoading] = useState(true);
   const [activeSession, setActiveSession] = useState<AISession | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [inputText, setInputText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [greetingKey, setGreetingKey] = useState('greetingMorning');
+
+  useEffect(() => {
+    const hours = new Date().getHours();
+    setGreetingKey(
+      hours < 12 ? 'greetingMorning' : hours < 18 ? 'greetingAfternoon' : 'greetingEvening'
+    );
+  }, []);
 
   useEffect(() => {
     async function fetchData() {
@@ -100,192 +111,307 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
     }
   }
 
-  const [greetingKey, setGreetingKey] = useState('greetingMorning');
-  useEffect(() => {
-    const hours = new Date().getHours();
-    setGreetingKey(
-      hours < 12 ? 'greetingMorning' : hours < 18 ? 'greetingAfternoon' : 'greetingEvening'
-    );
-  }, []);
-
-  const isNewUser = !loading && projects.length === 0 && !activeSession;
-
-  const heroInput = (compact = false) => (
-    <form
-      onSubmit={handleHeroSubmit}
-      className={`bg-surface-container-lowest rounded-[1.5rem] p-6 shadow-[0_20px_40px_rgba(0,0,0,0.04)] ${compact ? '' : ''}`}
-    >
-      <textarea
-        value={inputText}
-        onChange={(e) => setInputText(e.target.value)}
-        placeholder={t('heroPlaceholder')}
-        rows={compact ? 3 : 5}
-        className="w-full resize-none bg-transparent text-on-surface placeholder:text-on-surface-variant text-base outline-none"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-            handleHeroSubmit(e as unknown as React.FormEvent);
-          }
-        }}
-      />
-      <div className="flex justify-end mt-4">
-        <DsButton type="submit" variant="primary" size="md" disabled={submitting || !inputText.trim()}>
-          {submitting ? (
-            <span className="flex items-center gap-2">
-              <Icon name="progress_activity" className="animate-spin" size="sm" />
-              {t('heroCta')}
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Icon name="auto_awesome" size="sm" />
-              {t('heroCta')}
-            </span>
-          )}
-        </DsButton>
-      </div>
-    </form>
-  );
+  // Derive first name from session
+  const firstName = session?.user?.name?.split(' ')[0] ?? 'Alex';
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto fade-in-up space-y-6">
-        <div className="h-8 bg-surface-container-high rounded w-64 animate-pulse" />
-        <div className="h-4 bg-surface-container-high rounded w-96 animate-pulse" />
-        <div className="bg-surface-container-lowest rounded-[1.5rem] p-6 shadow-[0_20px_40px_rgba(0,0,0,0.04)] animate-pulse h-40" />
-        <div className="grid grid-cols-3 gap-4">
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
+      <div className="pt-24 px-6 md:px-12 lg:px-24 max-w-[1400px] mx-auto">
+        <div className="mb-12 animate-pulse">
+          <div className="h-6 bg-surface-container-high rounded w-48 mb-3" />
+          <div className="h-4 bg-surface-container-high rounded w-80" />
+        </div>
+        <div className="mb-24">
+          <div className="h-16 bg-surface-container-high rounded w-96 mb-8 animate-pulse" />
+          <div className="glass p-2 rounded-full h-14 w-full max-w-2xl animate-pulse" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-24">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="glass p-8 rounded-lg h-40 animate-pulse" />
+          ))}
         </div>
       </div>
     );
   }
 
-  if (isNewUser) {
-    return (
-      <div className="max-w-4xl mx-auto fade-in-up space-y-8">
-        {/* Heading */}
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-on-surface">{t('welcome')}</h1>
-          <p className="text-on-surface-variant text-base">{t('welcomeSubtitle')}</p>
-        </div>
+  const hasReturningContent = projects.length > 0 || !!activeSession;
 
-        {/* Hero input */}
-        {heroInput(false)}
-
-        {/* Quick-start cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <button
-            onClick={() => router.push(`/${locale}/finantari`)}
-            className="bg-surface-container-lowest rounded-[1rem] p-5 shadow-[0_20px_40px_rgba(0,0,0,0.04)] text-left hover:shadow-lg hover:-translate-y-[1px] transition-all"
-          >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center">
-                <Icon name="search" size="sm" className="text-primary" />
-              </div>
-              <span className="font-semibold text-on-surface text-sm">{t('browseCalls')}</span>
-            </div>
-            <p className="text-on-surface-variant text-xs">{t('quickStartBrowseCallsDesc')}</p>
-          </button>
-
-          <button
-            onClick={() => router.push(`/${locale}/asistent-ai`)}
-            className="bg-surface-container-lowest rounded-[1rem] p-5 shadow-[0_20px_40px_rgba(0,0,0,0.04)] text-left hover:shadow-lg hover:-translate-y-[1px] transition-all"
-          >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center">
-                <Icon name="auto_awesome" size="sm" className="text-primary" />
-              </div>
-              <span className="font-semibold text-on-surface text-sm">{t('startAI')}</span>
-            </div>
-            <p className="text-on-surface-variant text-xs">{t('quickStartNewProjectDesc')}</p>
-          </button>
-
-          <button
-            onClick={() => router.push(`/${locale}/documente`)}
-            className="bg-surface-container-lowest rounded-[1rem] p-5 shadow-[0_20px_40px_rgba(0,0,0,0.04)] text-left hover:shadow-lg hover:-translate-y-[1px] transition-all"
-          >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center">
-                <Icon name="upload_file" size="sm" className="text-primary" />
-              </div>
-              <span className="font-semibold text-on-surface text-sm">{t('uploadDocs')}</span>
-            </div>
-            <p className="text-on-surface-variant text-xs">{t('quickStartUploadDesc')}</p>
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Returning user state
   return (
-    <div className="max-w-4xl mx-auto fade-in-up space-y-8">
-      {/* Time-of-day greeting */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-on-surface">{t(greetingKey)}</h1>
-      </div>
+    <div className="pt-24 px-6 md:px-12 lg:px-24 max-w-[1400px] mx-auto">
+      {/* Greeting Banner */}
+      <motion.div
+        className="mb-12"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+      >
+        <h2 className="text-lg font-medium text-primary">
+          {t(greetingKey)}, {firstName}
+        </h2>
+        <p className="text-on-surface-variant">{t('welcomeSubtitle')}</p>
+      </motion.div>
 
-      {/* Continue banner — active session */}
-      {activeSession && (
-        <div className="bg-surface-container-lowest rounded-[1rem] shadow-[0_20px_40px_rgba(0,0,0,0.04)] border-l-4 border-primary p-5 flex items-center justify-between gap-4">
-          <div className="space-y-1">
-            <p className="font-semibold text-on-surface text-sm">{t('continueSession')}</p>
-            <p className="text-on-surface-variant text-xs">
-              Step {activeSession.currentStep}/7 &middot; {getRelativeTime(activeSession.updatedAt)}
-            </p>
-          </div>
-          <DsButton
-            variant="primary"
-            size="sm"
-            onClick={() => router.push(`/${locale}/asistent-ai?session=${activeSession.id}`)}
-          >
-            <Icon name="play_arrow" size="sm" />
-            {t('resume')}
-          </DsButton>
-        </div>
-      )}
-
-      {/* Recent projects */}
-      {projects.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-on-surface text-base">{t('recentProjects')}</h2>
-            <button
-              onClick={() => router.push(`/${locale}/proiecte`)}
-              className="text-primary text-sm font-medium hover:underline"
-            >
-              {t('viewAll')}
-            </button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {projects.map((project) => (
+      {/* Hero Section */}
+      <section className="mb-24 text-center md:text-left">
+        <motion.h1
+          className="text-5xl md:text-7xl font-bold tracking-[-0.03em] text-on-surface leading-tight mb-8 max-w-4xl"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+        >
+          Pregătește-ți proiectul european
+        </motion.h1>
+        <motion.div
+          className="relative max-w-2xl"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease: 'easeOut' }}
+        >
+          <form onSubmit={handleHeroSubmit}>
+            <div className="glass p-2 rounded-full flex items-center shadow-xl">
+              <Icon name="search" className="ml-6 text-on-surface-variant" size="md" />
+              <input
+                className="bg-transparent border-none focus:ring-0 flex-1 px-4 py-3 text-lg placeholder:text-on-surface-variant/50 outline-none"
+                placeholder={t('heroPlaceholder')}
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+              />
               <button
-                key={project.id}
-                onClick={() => router.push(`/${locale}/proiecte/${project.id}`)}
-                className="bg-surface-container-lowest rounded-[1rem] p-5 shadow-[0_20px_40px_rgba(0,0,0,0.04)] text-left hover:shadow-lg hover:-translate-y-[1px] transition-all"
+                type="submit"
+                disabled={submitting || !inputText.trim()}
+                className="bg-[#2997FF] hover:bg-[#0071E3] text-white px-8 py-3 rounded-full font-semibold transition-all hover:translate-y-[-1px] active:scale-95 shadow-lg shadow-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <p className="font-semibold text-on-surface text-sm mb-2 line-clamp-2">
-                  {project.title}
+                {submitting ? (
+                  <Icon name="progress_activity" className="animate-spin" size="sm" />
+                ) : (
+                  t('heroCta')
+                )}
+              </button>
+            </div>
+          </form>
+          <div className="mt-4 flex gap-4 overflow-x-auto pb-2 scrollbar-hide px-4">
+            <span className="text-xs font-medium text-on-surface-variant px-3 py-1 bg-surface-container-high rounded-full whitespace-nowrap">
+              Digitalizare IMM
+            </span>
+            <span className="text-xs font-medium text-on-surface-variant px-3 py-1 bg-surface-container-high rounded-full whitespace-nowrap">
+              Energie Verde
+            </span>
+            <span className="text-xs font-medium text-on-surface-variant px-3 py-1 bg-surface-container-high rounded-full whitespace-nowrap">
+              Startup Tech
+            </span>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* Quick-start Glass Cards */}
+      <motion.div
+        className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-24"
+        variants={staggerContainer}
+        initial="initial"
+        animate="animate"
+      >
+        <motion.div
+          variants={staggerItem}
+          transition={staggerTransition}
+          className="glass p-8 rounded-lg group hover:bg-white transition-all duration-300 cursor-pointer"
+          onClick={() => router.push(`/${locale}/proiecte/novo`)}
+        >
+          <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mb-6 group-hover:scale-110 transition-transform">
+            <Icon name="add_circle" filled size="lg" />
+          </div>
+          <h3 className="text-xl font-bold mb-2">New Project</h3>
+          <p className="text-on-surface-variant text-sm leading-relaxed">
+            Începe o nouă cerere de finanțare cu ajutorul asistentului AI.
+          </p>
+        </motion.div>
+
+        <motion.div
+          variants={staggerItem}
+          transition={staggerTransition}
+          className="glass p-8 rounded-lg group hover:bg-white transition-all duration-300 cursor-pointer"
+          onClick={() => router.push(`/${locale}/asistent-ai`)}
+        >
+          <div className="w-12 h-12 bg-secondary/10 rounded-2xl flex items-center justify-center text-secondary mb-6 group-hover:scale-110 transition-transform">
+            <Icon name="manage_search" filled size="lg" />
+          </div>
+          <h3 className="text-xl font-bold mb-2">Find Funding</h3>
+          <p className="text-on-surface-variant text-sm leading-relaxed">
+            Explorează baza de date actualizată a apelurilor active din UE.
+          </p>
+        </motion.div>
+
+        <motion.div
+          variants={staggerItem}
+          transition={staggerTransition}
+          className="glass p-8 rounded-lg group hover:bg-white transition-all duration-300 cursor-pointer"
+          onClick={() => router.push(`/${locale}/documente`)}
+        >
+          <div className="w-12 h-12 bg-tertiary-container/10 rounded-2xl flex items-center justify-center text-tertiary mb-6 group-hover:scale-110 transition-transform">
+            <Icon name="upload_file" filled size="lg" />
+          </div>
+          <h3 className="text-xl font-bold mb-2">Upload Documents</h3>
+          <p className="text-on-surface-variant text-sm leading-relaxed">
+            Încarcă actele companiei pentru o analiză rapidă de eligibilitate.
+          </p>
+        </motion.div>
+      </motion.div>
+
+      {/* Returning User Content */}
+      {hasReturningContent && (
+        <motion.div
+          className="grid grid-cols-1 lg:grid-cols-3 gap-12 items-start"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: 'easeOut', delay: 0.2 }}
+        >
+          {/* Continue Session & Recent Projects */}
+          <div className="lg:col-span-2 space-y-12">
+            <div className="flex items-center justify-between">
+              <h3 className="text-2xl font-bold tracking-tight">Continuă activitatea</h3>
+              <button
+                onClick={() => router.push(`/${locale}/proiecte`)}
+                className="text-primary text-sm font-semibold hover:underline"
+              >
+                {t('viewAll')}
+              </button>
+            </div>
+
+            <div className="bg-surface-container-low rounded-lg p-1 space-y-1">
+              {/* Active AI session row */}
+              {activeSession && (
+                <div
+                  className="bg-white rounded-[1.5rem] p-6 shadow-sm flex items-center gap-6 group cursor-pointer border border-transparent hover:border-outline-variant/20 transition-all"
+                  onClick={() => router.push(`/${locale}/asistent-ai?session=${activeSession.id}`)}
+                >
+                  <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-primary/10 flex items-center justify-center text-primary">
+                    <Icon name="smart_toy" filled size="lg" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-lg">{t('continueSession')}</h4>
+                    <div className="flex items-center gap-4 mt-1">
+                      <span className="text-xs text-on-surface-variant flex items-center gap-1">
+                        <Icon name="schedule" size="sm" />
+                        {getRelativeTime(activeSession.updatedAt)}
+                      </span>
+                      <div className="w-32 h-1.5 bg-surface-container rounded-full overflow-hidden">
+                        <div
+                          className="bg-primary h-full"
+                          style={{ width: `${Math.round((activeSession.currentStep / 7) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-bold text-primary">
+                        {Math.round((activeSession.currentStep / 7) * 100)}% Complet
+                      </span>
+                    </div>
+                  </div>
+                  <Icon
+                    name="chevron_right"
+                    className="text-on-surface-variant group-hover:translate-x-1 transition-transform"
+                    size="md"
+                  />
+                </div>
+              )}
+
+              {/* Recent project rows */}
+              {projects.map((project, idx) => {
+                const pct = getProgressPercent(project.status);
+                return (
+                  <div
+                    key={project.id}
+                    className={`${idx === 0 && !activeSession ? 'bg-white' : 'bg-white/50'} rounded-[1.5rem] p-6 flex items-center gap-6 group cursor-pointer hover:bg-white transition-all`}
+                    onClick={() => router.push(`/${locale}/proiecte/${project.id}`)}
+                  >
+                    <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-primary/10 flex items-center justify-center text-primary">
+                      <Icon name="business" size="lg" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-lg line-clamp-1">{project.title}</h4>
+                      <div className="flex items-center gap-4 mt-1">
+                        <span className="text-xs text-on-surface-variant flex items-center gap-1">
+                          <Icon name="schedule" size="sm" />
+                          {getRelativeTime(project.updatedAt)}
+                        </span>
+                        <div className="w-32 h-1.5 bg-surface-container rounded-full overflow-hidden">
+                          <div className="bg-primary h-full" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-[10px] font-bold text-primary">{pct}% Complet</span>
+                      </div>
+                    </div>
+                    <Icon
+                      name="chevron_right"
+                      className="text-on-surface-variant group-hover:translate-x-1 transition-transform"
+                      size="md"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Top Funding Matches Sidebar */}
+          <div className="space-y-8">
+            <h3 className="text-2xl font-bold tracking-tight">Potriviri de Top</h3>
+            <div className="space-y-4">
+              {/* Match Card 1 */}
+              <div className="glass p-6 rounded-lg relative overflow-hidden group transition-all hover:translate-y-[-4px]">
+                <div className="absolute top-0 right-0 p-3 bg-primary text-white text-[10px] font-bold rounded-bl-xl">
+                  98% Match
+                </div>
+                <h4 className="font-bold text-base pr-12 mb-2">Digital Transformation Grant 2024</h4>
+                <p className="text-xs text-on-surface-variant mb-4">
+                  Finanțare nerambursabilă pentru adoptarea tehnologiilor cloud și AI.
                 </p>
                 <div className="flex items-center justify-between">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-primary-fixed text-primary font-medium">
-                    {project.status}
-                  </span>
-                  <span className="text-on-surface-variant text-xs">
-                    {getRelativeTime(project.updatedAt)}
+                  <span className="text-sm font-bold text-primary">€200,000</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Termen: 15 Noi
                   </span>
                 </div>
-              </button>
-            ))}
+              </div>
+
+              {/* Match Card 2 */}
+              <div className="glass p-6 rounded-lg relative overflow-hidden group transition-all hover:translate-y-[-4px]">
+                <div className="absolute top-0 right-0 p-3 bg-secondary text-white text-[10px] font-bold rounded-bl-xl">
+                  85% Match
+                </div>
+                <h4 className="font-bold text-base pr-12 mb-2">Eco-Innovation Seed Fund</h4>
+                <p className="text-xs text-on-surface-variant mb-4">
+                  Sprijin pentru prototiparea soluțiilor de economie circulară.
+                </p>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-primary">€50,000</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Termen: 2 Dec
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* AI Assistant Floating Teaser */}
+            <div
+              className="bg-gradient-to-br from-primary to-secondary p-6 rounded-lg text-white shadow-xl shadow-primary/20 relative overflow-hidden group cursor-pointer"
+              onClick={() => router.push(`/${locale}/asistent-ai`)}
+            >
+              <div className="absolute -right-4 -bottom-4 opacity-20 transform group-hover:scale-125 transition-transform">
+                <Icon name="smart_toy" className="text-[9rem]" />
+              </div>
+              <div className="relative z-10">
+                <h4 className="font-bold text-lg mb-1">Întreabă AI Curatorul</h4>
+                <p className="text-xs opacity-90 mb-4">
+                  &quot;Care sunt șansele mele pentru fonduri norvegiene?&quot;
+                </p>
+                <button className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full text-xs font-bold hover:bg-white/30 transition-all">
+                  Start Chat
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
-      {/* Hero input — compact variant at the bottom */}
-      <div className="space-y-2">
-        <p className="text-on-surface-variant text-sm">{t('heroDescription')}</p>
-        {heroInput(true)}
-      </div>
+      {/* New user — no returning content, show bottom padding */}
+      {!hasReturningContent && <div className="pb-24" />}
     </div>
   );
 }
