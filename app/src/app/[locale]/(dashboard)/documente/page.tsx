@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
+import { motion } from 'motion/react';
 import { Icon } from '@/components/ui/ds-icon';
-import { DsButton } from '@/components/ui/ds-button';
+import { staggerContainer, staggerItem, staggerTransition } from '@/lib/motion';
 
 /* ---------- types ---------- */
 type FileFilter = 'all' | 'recent' | 'shared' | 'archived';
@@ -29,6 +30,21 @@ const SMART_TEMPLATES = [
   { iconName: 'timeline', labelKey: 'templateProjectRoadmap' },
 ];
 
+const COMPLIANCE_FILES = [
+  {
+    icon: 'verified_user',
+    name: 'GDPR_Audit_Q3.pdf',
+    meta: 'Regulatory • 4.5 MB',
+    status: 'verified' as const,
+  },
+  {
+    icon: 'policy',
+    name: 'Ethics_Framework_2024.pdf',
+    meta: 'Internal • 1.2 MB',
+    status: 'pending' as const,
+  },
+];
+
 /* ---------- helpers ---------- */
 function getFileIcon(mimeType: string): { name: string; bg: string; color: string } {
   if (mimeType.includes('pdf')) return { name: 'picture_as_pdf', bg: 'bg-red-50', color: 'text-red-500' };
@@ -36,7 +52,7 @@ function getFileIcon(mimeType: string): { name: string; bg: string; color: strin
     return { name: 'description', bg: 'bg-blue-50', color: 'text-blue-500' };
   if (mimeType.includes('sheet') || mimeType.includes('xlsx') || mimeType.includes('excel'))
     return { name: 'table_chart', bg: 'bg-green-50', color: 'text-green-500' };
-  return { name: 'insert_drive_file', bg: 'bg-gray-50', color: 'text-gray-500' };
+  return { name: 'folder_zip', bg: 'bg-amber-50', color: 'text-amber-600' };
 }
 
 function formatBytes(bytes: number | null): string {
@@ -59,7 +75,7 @@ function formatRelativeTime(dateStr: string): string {
 /* ---------- skeleton component ---------- */
 function FileSkeleton() {
   return (
-    <div className="glass-card p-6 rounded-[1rem] border border-white/20 shadow-[0_20px_40px_rgba(0,0,0,0.04)] animate-pulse">
+    <div className="glass-card p-6 rounded-lg border border-white/20 shadow-[0_20px_40px_rgba(0,0,0,0.04)] animate-pulse">
       <div className="flex justify-between items-start mb-6">
         <div className="w-12 h-12 bg-surface-container-highest rounded-xl" />
         <div className="w-6 h-6 bg-surface-container-highest rounded" />
@@ -71,6 +87,49 @@ function FileSkeleton() {
         <div className="h-3 bg-surface-container-highest rounded w-1/3" />
       </div>
     </div>
+  );
+}
+
+/* ---------- file card component ---------- */
+function FileCard({ file }: { file: AggregatedFile }) {
+  const t = useTranslations('files');
+  const icon = getFileIcon(file.mimeType);
+  const isGenerated = file.source === 'generated';
+
+  return (
+    <motion.div
+      variants={staggerItem}
+      transition={staggerTransition}
+      className="glass-card p-6 rounded-lg border border-white/20 shadow-[0_20px_40px_rgba(0,0,0,0.04)] hover:translate-y-[-4px] transition-all duration-300 group"
+    >
+      <div className="flex justify-between items-start mb-6">
+        <div className={`w-12 h-12 ${icon.bg} ${icon.color} rounded-xl flex items-center justify-center`}>
+          <Icon name={icon.name} size="lg" />
+        </div>
+        <button className="text-on-surface-variant/40 hover:text-on-surface transition-colors">
+          <Icon name="more_vert" />
+        </button>
+      </div>
+      <h4 className="font-bold text-on-surface text-lg mb-1 truncate">{file.name}</h4>
+      <p className="text-sm text-on-surface-variant mb-6">
+        {formatBytes(file.size)} &bull; {t('updatedAgo', { time: formatRelativeTime(file.updatedAt) })}
+      </p>
+      <div className="flex items-center gap-2 border-t border-slate-100 pt-4">
+        {isGenerated ? (
+          <>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+              <Icon name="auto_awesome" size="sm" />
+              AI
+            </span>
+            <span className="text-[10px] text-on-surface-variant">{file.projectTitle}</span>
+          </>
+        ) : (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-highest text-[10px] font-semibold text-on-surface-variant">
+            {file.projectTitle}
+          </span>
+        )}
+      </div>
+    </motion.div>
   );
 }
 
@@ -172,12 +231,14 @@ export default function DocumentePage() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <div title={t('comingSoon')}>
-            <DsButton disabled>
-              <Icon name="upload" />
-              <span>{t('upload')}</span>
-            </DsButton>
-          </div>
+          <button
+            disabled
+            title={t('comingSoon')}
+            className="bg-[#0071e3] text-white px-8 py-3 rounded-full font-semibold flex items-center gap-2 hover:translate-y-[-1px] transition-transform shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Icon name="upload" />
+            <span>{t('upload')}</span>
+          </button>
         </div>
       </header>
 
@@ -244,38 +305,16 @@ export default function DocumentePage() {
               <Icon name="chevron_right" size="sm" className="ml-1" />
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {uploadedFiles.map((file) => {
-              const icon = getFileIcon(file.mimeType);
-              return (
-                <div
-                  key={file.id}
-                  className="glass-card p-6 rounded-[1rem] border border-white/20 shadow-[0_20px_40px_rgba(0,0,0,0.04)] hover:translate-y-[-4px] transition-all duration-300 group"
-                >
-                  <div className="flex justify-between items-start mb-6">
-                    <div
-                      className={`w-12 h-12 ${icon.bg} ${icon.color} rounded-xl flex items-center justify-center`}
-                    >
-                      <Icon name={icon.name} size="lg" />
-                    </div>
-                    <button className="text-on-surface-variant/40 hover:text-on-surface transition-colors">
-                      <Icon name="more_vert" />
-                    </button>
-                  </div>
-                  <h4 className="font-bold text-on-surface text-lg mb-1 truncate">{file.name}</h4>
-                  <p className="text-sm text-on-surface-variant mb-6">
-                    {formatBytes(file.size)} &bull;{' '}
-                    {t('updatedAgo', { time: formatRelativeTime(file.updatedAt) })}
-                  </p>
-                  <div className="flex items-center gap-2 border-t border-slate-100 pt-4">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-highest text-[10px] font-semibold text-on-surface-variant">
-                      {file.projectTitle}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <motion.div
+            variants={staggerContainer}
+            initial="initial"
+            animate="animate"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+          >
+            {uploadedFiles.map((file) => (
+              <FileCard key={file.id} file={file} />
+            ))}
+          </motion.div>
         </section>
       )}
 
@@ -285,48 +324,61 @@ export default function DocumentePage() {
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-xl font-bold tracking-tight">{t('generated')}</h3>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {generatedFiles.map((file) => {
-              const icon = getFileIcon(file.mimeType);
-              return (
-                <div
-                  key={file.id}
-                  className="glass-card p-6 rounded-[1rem] border border-white/20 shadow-[0_20px_40px_rgba(0,0,0,0.04)] hover:translate-y-[-4px] transition-all duration-300 group"
-                >
-                  <div className="flex justify-between items-start mb-6">
-                    <div
-                      className={`w-12 h-12 ${icon.bg} ${icon.color} rounded-xl flex items-center justify-center`}
-                    >
-                      <Icon name={icon.name} size="lg" />
-                    </div>
-                    <button className="text-on-surface-variant/40 hover:text-on-surface transition-colors">
-                      <Icon name="more_vert" />
-                    </button>
-                  </div>
-                  <h4 className="font-bold text-on-surface text-lg mb-1 truncate">{file.name}</h4>
-                  <p className="text-sm text-on-surface-variant mb-6">
-                    {formatBytes(file.size)} &bull;{' '}
-                    {t('updatedAgo', { time: formatRelativeTime(file.updatedAt) })}
-                  </p>
-                  <div className="flex items-center gap-2 border-t border-slate-100 pt-4">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-                      <Icon name="auto_awesome" size="sm" />
-                      {t('generated')}
-                    </span>
-                    <span className="text-[10px] text-on-surface-variant">{file.projectTitle}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <motion.div
+            variants={staggerContainer}
+            initial="initial"
+            animate="animate"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+          >
+            {generatedFiles.map((file) => (
+              <FileCard key={file.id} file={file} />
+            ))}
+          </motion.div>
         </section>
       )}
 
-      {/* ── Section: Smart Templates (static, informational) ── */}
+      {/* ── Section: Compliance & Smart Templates (12-col bento) ── */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-20">
-        {/* Smart Templates Right (Asymmetric) */}
-        <div className="lg:col-span-4 lg:col-start-9">
-          <div className="bg-primary-container p-8 rounded-[1rem] text-white h-full relative overflow-hidden group">
+        {/* Compliance — Left 8 cols */}
+        <div className="lg:col-span-8">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-xl font-bold tracking-tight">{t('compliance')}</h3>
+          </div>
+          <div className="space-y-4">
+            {COMPLIANCE_FILES.map((cf) => (
+              <div
+                key={cf.name}
+                className="glass-card p-4 rounded-lg flex items-center justify-between hover:bg-white transition-colors"
+              >
+                <div className="flex items-center gap-4">
+                  <Icon name={cf.icon} className="text-tertiary-container" />
+                  <div>
+                    <p className="font-semibold text-sm">{cf.name}</p>
+                    <p className="text-xs text-on-surface-variant">{cf.meta}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-6">
+                  {cf.status === 'verified' ? (
+                    <span className="px-3 py-1 bg-green-100 text-green-700 text-[10px] font-bold rounded-full">
+                      {t('status.verified')}
+                    </span>
+                  ) : (
+                    <span className="px-3 py-1 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full">
+                      {t('status.pending')}
+                    </span>
+                  )}
+                  <button className="text-on-surface-variant/40 hover:text-on-surface transition-colors">
+                    <Icon name="download" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Smart Templates — Right 4 cols */}
+        <div className="lg:col-span-4 mt-12 lg:mt-0">
+          <div className="bg-primary-container p-8 rounded-lg text-white h-full relative overflow-hidden group">
             {/* Subtle mesh background */}
             <div className="absolute inset-0 opacity-20 pointer-events-none bg-gradient-to-br from-white to-transparent" />
             <div className="relative z-10">
