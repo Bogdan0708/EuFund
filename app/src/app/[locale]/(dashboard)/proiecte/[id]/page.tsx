@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import * as Tabs from '@radix-ui/react-tabs';
+import { AnimatePresence, motion } from 'motion/react';
 import { Icon } from '@/components/ui/ds-icon';
-import { DsButton } from '@/components/ui/ds-button';
+import { pageVariants, pageTransition } from '@/lib/motion';
 
 /* ---------- types ---------- */
 interface ProjectDetail {
@@ -47,16 +48,16 @@ interface WorkflowSession {
 }
 
 /* ---------- status display map ---------- */
-const STATUS_DISPLAY: Record<string, { label: string; color: string }> = {
-  ciorna:      { label: 'Draft',        color: 'text-on-surface-variant bg-surface-container' },
-  in_lucru:    { label: 'In Progress',  color: 'text-primary bg-primary-fixed' },
-  verificare:  { label: 'Under Review', color: 'text-amber-700 bg-amber-50' },
-  aprobat:     { label: 'Approved',     color: 'text-green-700 bg-green-50' },
-  finalizat:   { label: 'Completed',    color: 'text-green-700 bg-green-50' },
-  draft:       { label: 'Draft',        color: 'text-on-surface-variant bg-surface-container' },
-  action_plan: { label: 'Action Plan',  color: 'text-amber-700 bg-amber-50' },
-  built:       { label: 'Built',        color: 'text-primary bg-primary-fixed' },
-  exported:    { label: 'Exported',     color: 'text-green-700 bg-green-50' },
+const STATUS_DISPLAY: Record<string, { label: string; className: string }> = {
+  ciorna:      { label: 'Draft',        className: 'bg-surface-container text-on-surface-variant' },
+  in_lucru:    { label: 'In Progress',  className: 'bg-[#0071E3]/10 text-[#0071E3]' },
+  verificare:  { label: 'Under Review', className: 'bg-amber-50 text-amber-700' },
+  aprobat:     { label: 'Approved',     className: 'bg-green-50 text-green-700' },
+  finalizat:   { label: 'Completed',    className: 'bg-green-50 text-green-700' },
+  draft:       { label: 'Draft',        className: 'bg-surface-container text-on-surface-variant' },
+  action_plan: { label: 'Action Plan',  className: 'bg-amber-50 text-amber-700' },
+  built:       { label: 'Built',        className: 'bg-[#0071E3]/10 text-[#0071E3]' },
+  exported:    { label: 'Exported',     className: 'bg-green-50 text-green-700' },
 };
 
 /* ---------- helpers ---------- */
@@ -183,6 +184,7 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
   const [aiSessionId, setAiSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('overview');
 
   // Fetch project details
   useEffect(() => {
@@ -232,17 +234,20 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
       <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-32 gap-6">
         <Icon name="error_outline" size="lg" className="text-error" />
         <h2 className="text-2xl font-bold text-on-surface">{t('projectNotFound')}</h2>
-        <DsButton variant="ghost" onClick={() => router.push('/proiecte')}>
+        <button
+          onClick={() => router.push('/proiecte')}
+          className="flex items-center gap-2 px-5 py-3 rounded-full border border-outline-variant/30 text-on-surface font-semibold text-sm hover:bg-surface-container-high transition-colors"
+        >
           <Icon name="arrow_back" size="sm" />
           <span>{t('backToProjects')}</span>
-        </DsButton>
+        </button>
       </div>
     );
   }
 
   const statusInfo = STATUS_DISPLAY[project.status] ?? {
     label: project.status,
-    color: 'text-on-surface-variant bg-surface-container',
+    className: 'bg-surface-container text-on-surface-variant',
   };
 
   const complianceScore = project.complianceScore ? Math.round(parseFloat(project.complianceScore)) : 0;
@@ -266,7 +271,7 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
       <div className="flex flex-col md:flex-row justify-between items-start gap-8 mb-16">
         <div className="space-y-4 max-w-3xl">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className={`px-4 py-1.5 text-xs font-bold rounded-full uppercase tracking-wider ${statusInfo.color}`}>
+            <span className={`px-4 py-1.5 text-xs font-bold rounded-full uppercase tracking-wider ${statusInfo.className}`}>
               {statusInfo.label}
             </span>
             {project.acronym && (
@@ -285,34 +290,32 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
           )}
         </div>
         <div className="flex gap-3 shrink-0">
-          <DsButton variant="ghost" className="border border-outline-variant/30">
+          <button className="flex items-center gap-2 px-5 py-3 rounded-full border border-outline-variant/30 text-on-surface font-semibold text-sm hover:bg-surface-container-high transition-colors">
             <Icon name="share" size="sm" />
             <span>{t('share')}</span>
-          </DsButton>
+          </button>
           {aiSessionId ? (
-            <DsButton
-              variant="primary"
-              className="bg-on-surface hover:bg-on-surface/90"
+            <button
               onClick={() => router.push(`/asistent-ai?session=${aiSessionId}`)}
+              className="flex items-center gap-2 px-5 py-3 rounded-full bg-on-surface text-white font-semibold text-sm hover:opacity-90 transition-opacity"
             >
               <Icon name="smart_toy" size="sm" />
               <span>{t('resumeAI')}</span>
-            </DsButton>
+            </button>
           ) : (
-            <DsButton
-              variant="primary"
-              className="bg-on-surface hover:bg-on-surface/90"
+            <button
               onClick={() => router.push('/asistent-ai')}
+              className="flex items-center gap-2 px-5 py-3 rounded-full bg-on-surface text-white font-semibold text-sm hover:opacity-90 transition-opacity"
             >
               <Icon name="smart_toy" size="sm" />
               <span>{t('startAI')}</span>
-            </DsButton>
+            </button>
           )}
         </div>
       </div>
 
       {/* Tabs */}
-      <Tabs.Root defaultValue="overview">
+      <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
         <Tabs.List className="flex gap-10 mb-12 border-b border-outline-variant/15">
           <TabTrigger value="overview">{t('tabs.overview')}</TabTrigger>
           <TabTrigger value="documents">{t('tabs.documents')}</TabTrigger>
@@ -320,195 +323,271 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
           <TabTrigger value="timeline">{t('tabs.timeline')}</TabTrigger>
         </Tabs.List>
 
-        {/* ---- Overview Tab ---- */}
-        <Tabs.Content value="overview">
-          <div className="grid grid-cols-12 gap-8">
-            {/* Main Content */}
-            <div className="col-span-12 lg:col-span-8 space-y-8">
-              {/* Executive Summary */}
-              <div className="glass-card rounded-[1rem] p-10 shadow-[0_20px_40px_rgba(0,0,0,0.04)]">
-                <h3 className="text-2xl font-bold mb-6">{t('executiveSummary')}</h3>
-                {project.sectionSummary ? (
-                  <p className="text-on-surface-variant text-lg leading-relaxed mb-8">
-                    {project.sectionSummary}
-                  </p>
-                ) : project.sectionContext ? (
-                  <p className="text-on-surface-variant text-lg leading-relaxed mb-8">
-                    {project.sectionContext}
-                  </p>
-                ) : (
-                  <p className="text-on-surface-variant text-lg leading-relaxed mb-8 italic opacity-60">
-                    {t('noSummaryYet')}
-                  </p>
-                )}
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-8 pt-8 border-t border-outline-variant/10">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">
-                      {t('grantAllocation')}
-                    </p>
-                    <p className="text-2xl font-bold text-on-surface">
-                      {formatBudget(project.totalBudget)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">
-                      {t('duration')}
-                    </p>
-                    <p className="text-2xl font-bold text-on-surface">
-                      {project.durationMonths ? `${project.durationMonths} ${t('months')}` : '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">
-                      {t('matchScore')}
-                    </p>
-                    <p className="text-2xl font-bold text-on-surface">
-                      {matchScore !== null ? `${matchScore}%` : '—'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Project metadata */}
-              <div className="bg-surface-container-low rounded-[1rem] p-10">
-                <h3 className="text-xl font-bold mb-6">{t('projectDetails')}</h3>
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">
-                      {t('createdAt')}
-                    </p>
-                    <p className="font-semibold text-on-surface">{formatDate(project.createdAt)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">
-                      {t('lastUpdated')}
-                    </p>
-                    <p className="font-semibold text-on-surface">{formatDate(project.updatedAt)}</p>
-                  </div>
-                  {project.euContribution && (
-                    <div>
-                      <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">
-                        {t('euContribution')}
-                      </p>
-                      <p className="font-semibold text-on-surface">{formatBudget(project.euContribution)}</p>
+        <AnimatePresence mode="wait">
+          {/* ---- Overview Tab ---- */}
+          {activeTab === 'overview' && (
+            <Tabs.Content value="overview" forceMount asChild>
+              <motion.div
+                key="overview"
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={pageTransition}
+              >
+                <div className="grid grid-cols-12 gap-8">
+                  {/* Main Content */}
+                  <div className="col-span-12 lg:col-span-8 space-y-8">
+                    {/* Executive Summary */}
+                    <div className="glass-card rounded-lg p-10 shadow-[0_20px_40px_rgba(0,0,0,0.04)]">
+                      <h3 className="text-2xl font-bold mb-6">{t('executiveSummary')}</h3>
+                      {project.sectionSummary ? (
+                        <p className="text-on-surface-variant text-lg leading-relaxed mb-8">
+                          {project.sectionSummary}
+                        </p>
+                      ) : project.sectionContext ? (
+                        <p className="text-on-surface-variant text-lg leading-relaxed mb-8">
+                          {project.sectionContext}
+                        </p>
+                      ) : (
+                        <p className="text-on-surface-variant text-lg leading-relaxed mb-8 italic opacity-60">
+                          {t('noSummaryYet')}
+                        </p>
+                      )}
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-8 pt-8 border-t border-outline-variant/10">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">
+                            {t('grantAllocation')}
+                          </p>
+                          <p className="text-2xl font-bold text-on-surface">
+                            {formatBudget(project.totalBudget)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">
+                            {t('duration')}
+                          </p>
+                          <p className="text-2xl font-bold text-on-surface">
+                            {project.durationMonths ? `${project.durationMonths} ${t('months')}` : '—'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">
+                            {t('matchScore')}
+                          </p>
+                          <p className="text-2xl font-bold text-on-surface">
+                            {matchScore !== null ? `${matchScore}%` : '—'}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            </div>
 
-            {/* Sidebar */}
-            <div className="col-span-12 lg:col-span-4 space-y-8">
-              {/* Progress Ring Card */}
-              <div className="bg-white rounded-[1rem] p-10 shadow-sm flex flex-col items-center text-center">
-                <LargeProgressRing progress={complianceScore} />
-                <h4 className="text-lg font-bold mb-2">{t('complianceScore')}</h4>
-                <p className="text-on-surface-variant text-sm mb-6">
-                  {t('complianceDescription')}
-                </p>
-                {complianceScore === 0 && (
-                  <p className="text-xs text-on-surface-variant opacity-60 italic">
-                    {t('noComplianceYet')}
-                  </p>
-                )}
-              </div>
+                    {/* Project Team */}
+                    <div className="bg-surface-container-low rounded-lg p-10">
+                      <div className="flex justify-between items-center mb-8">
+                        <h3 className="text-xl font-bold">{t('projectDetails')}</h3>
+                        <button className="text-primary font-bold text-sm hover:opacity-80 transition-opacity">
+                          {t('inviteMember') || 'Invite Member'}
+                        </button>
+                      </div>
+                      {/* Metadata grid */}
+                      <div className="grid grid-cols-2 gap-6 mb-8">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">
+                            {t('createdAt')}
+                          </p>
+                          <p className="font-semibold text-on-surface">{formatDate(project.createdAt)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">
+                            {t('lastUpdated')}
+                          </p>
+                          <p className="font-semibold text-on-surface">{formatDate(project.updatedAt)}</p>
+                        </div>
+                        {project.euContribution && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">
+                              {t('euContribution')}
+                            </p>
+                            <p className="font-semibold text-on-surface">{formatBudget(project.euContribution)}</p>
+                          </div>
+                        )}
+                      </div>
+                      {/* Team avatars placeholder */}
+                      <div className="flex flex-wrap gap-12">
+                        <div className="flex flex-col items-center gap-3">
+                          <div className="w-16 h-16 rounded-full bg-primary-fixed ring-4 ring-white shadow-sm flex items-center justify-center">
+                            <Icon name="person" className="text-primary" />
+                          </div>
+                          <span className="text-sm font-bold text-on-surface">
+                            {project.organizationName?.slice(0, 8) || 'Admin'}
+                          </span>
+                        </div>
+                        <div className="w-16 h-16 rounded-full border-2 border-dashed border-outline-variant flex items-center justify-center text-outline-variant cursor-pointer hover:border-primary hover:text-primary transition-colors">
+                          <Icon name="add" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-              {/* AI Insight Card */}
-              <div className="glass-card rounded-[1rem] p-8 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-secondary opacity-10 blur-3xl" />
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-white">
-                    <Icon name="smart_toy" filled />
-                  </div>
-                  <span className="font-bold text-sm">{t('curatorInsights')}</span>
-                </div>
-                <p className="text-sm text-on-surface-variant italic leading-relaxed mb-6">
-                  {t('curatorSuggestion')}
-                </p>
-                <button
-                  onClick={() => router.push(aiSessionId ? `/asistent-ai?session=${aiSessionId}` : '/asistent-ai')}
-                  className="w-full py-3 bg-secondary/10 text-secondary font-bold text-sm rounded-full hover:bg-secondary/20 transition-colors"
-                >
-                  {aiSessionId ? t('resumeAI') : t('startAI')}
-                </button>
-              </div>
-            </div>
-          </div>
-        </Tabs.Content>
+                  {/* Sidebar */}
+                  <div className="col-span-12 lg:col-span-4 space-y-8">
+                    {/* Progress Ring Card */}
+                    <div className="bg-white rounded-lg p-10 shadow-sm flex flex-col items-center text-center">
+                      <LargeProgressRing progress={complianceScore} />
+                      <h4 className="text-lg font-bold mb-2">{t('complianceScore')}</h4>
+                      <p className="text-on-surface-variant text-sm mb-6">
+                        {t('complianceDescription')}
+                      </p>
+                      {complianceScore === 0 && (
+                        <p className="text-xs text-on-surface-variant opacity-60 italic">
+                          {t('noComplianceYet')}
+                        </p>
+                      )}
+                      {/* Deadline bar */}
+                      <div className="w-full bg-surface-container p-4 rounded-xl flex justify-between items-center mt-2">
+                        <div className="flex items-center gap-2">
+                          <Icon name="event_upcoming" className="text-primary" size="sm" />
+                          <span className="text-sm font-semibold">{t('deadline') || 'Deadline'}</span>
+                        </div>
+                        <span className="text-sm font-bold text-on-surface-variant">
+                          {project.durationMonths ? `${project.durationMonths}mo` : '—'}
+                        </span>
+                      </div>
+                    </div>
 
-        {/* ---- Documents Tab ---- */}
-        <Tabs.Content value="documents">
-          {filesLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {[1, 2, 3].map(i => (
-                <SkeletonBlock key={i} className="h-24" />
-              ))}
-            </div>
-          ) : files.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {files.map(file => (
-                <div
-                  key={file.id}
-                  className="glass-card rounded-[1rem] p-6 flex items-center gap-5 hover:shadow-[0_20px_40px_rgba(0,0,0,0.04)] transition-all group cursor-pointer"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-primary-fixed flex items-center justify-center shrink-0">
-                    <Icon name={mimeTypeToIcon(file.mimeType)} className="text-primary" />
+                    {/* AI Insight Card */}
+                    <div className="glass-card rounded-lg p-8 relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-secondary opacity-10 blur-3xl" />
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-white">
+                          <Icon name="smart_toy" filled />
+                        </div>
+                        <span className="font-bold text-sm">{t('curatorInsights')}</span>
+                      </div>
+                      <p className="text-sm text-on-surface-variant italic leading-relaxed mb-6">
+                        {t('curatorSuggestion')}
+                      </p>
+                      <button
+                        onClick={() => router.push(aiSessionId ? `/asistent-ai?session=${aiSessionId}` : '/asistent-ai')}
+                        className="w-full py-3 bg-secondary/10 text-secondary font-bold text-sm rounded-full hover:bg-secondary/20 transition-colors"
+                      >
+                        {aiSessionId ? t('resumeAI') : t('startAI')}
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-on-surface truncate group-hover:text-primary transition-colors">
-                      {file.filename}
-                    </h4>
-                    <p className="text-sm text-on-surface-variant">
-                      {formatBytes(file.sizeBytes)} &bull; {formatDate(file.createdAt)}
-                    </p>
-                    {file.category && file.category !== 'uploaded' && (
-                      <span className="text-xs text-primary font-semibold capitalize">{file.category}</span>
-                    )}
-                  </div>
-                  <Icon
-                    name="download"
-                    className="text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity"
-                  />
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-16">
-              <Icon name="folder_open" size="lg" className="text-on-surface-variant/40 mx-auto mb-4" />
-              <p className="font-bold text-on-surface mb-2">{t('noDocuments')}</p>
-              <p className="text-sm text-on-surface-variant">{t('uploadTitle')}</p>
-            </div>
+              </motion.div>
+            </Tabs.Content>
           )}
 
-          {/* Upload area */}
-          <div className="mt-8 border-2 border-dashed border-outline-variant/30 rounded-[1rem] p-12 text-center">
-            <Icon name="cloud_upload" size="lg" className="text-primary/40 mx-auto mb-4" />
-            <p className="font-bold text-on-surface mb-1">{t('uploadTitle')}</p>
-            <p className="text-sm text-on-surface-variant">{t('uploadFormats')}</p>
-          </div>
-        </Tabs.Content>
+          {/* ---- Documents Tab ---- */}
+          {activeTab === 'documents' && (
+            <Tabs.Content value="documents" forceMount asChild>
+              <motion.div
+                key="documents"
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={pageTransition}
+              >
+                {filesLoading ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {[1, 2, 3].map(i => (
+                      <SkeletonBlock key={i} className="h-24" />
+                    ))}
+                  </div>
+                ) : files.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {files.map(file => (
+                      <div
+                        key={file.id}
+                        className="glass-card rounded-lg p-6 flex items-center gap-5 hover:shadow-[0_20px_40px_rgba(0,0,0,0.04)] transition-all group cursor-pointer"
+                      >
+                        <div className="w-12 h-12 rounded-xl bg-primary-fixed flex items-center justify-center shrink-0">
+                          <Icon name={mimeTypeToIcon(file.mimeType)} className="text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-bold text-on-surface truncate group-hover:text-primary transition-colors">
+                            {file.filename}
+                          </h4>
+                          <p className="text-sm text-on-surface-variant">
+                            {formatBytes(file.sizeBytes)} &bull; {formatDate(file.createdAt)}
+                          </p>
+                          {file.category && file.category !== 'uploaded' && (
+                            <span className="text-xs text-primary font-semibold capitalize">{file.category}</span>
+                          )}
+                        </div>
+                        <Icon
+                          name="download"
+                          className="text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-16">
+                    <Icon name="folder_open" size="lg" className="text-on-surface-variant/40 mx-auto mb-4" />
+                    <p className="font-bold text-on-surface mb-2">{t('noDocuments')}</p>
+                    <p className="text-sm text-on-surface-variant">{t('uploadTitle')}</p>
+                  </div>
+                )}
 
-        {/* ---- Tasks Tab ---- */}
-        <Tabs.Content value="tasks">
-          <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <Icon name="task_alt" size="lg" className="text-on-surface-variant/40" />
-            <h3 className="text-xl font-bold text-on-surface">{t('noTasks')}</h3>
-            <p className="text-sm text-on-surface-variant text-center max-w-md">
-              {t('tasksPlaceholder')}
-            </p>
-          </div>
-        </Tabs.Content>
+                {/* Upload area */}
+                <div className="mt-8 border-2 border-dashed border-outline-variant/30 rounded-lg p-12 text-center">
+                  <Icon name="cloud_upload" size="lg" className="text-primary/40 mx-auto mb-4" />
+                  <p className="font-bold text-on-surface mb-1">{t('uploadTitle')}</p>
+                  <p className="text-sm text-on-surface-variant">{t('uploadFormats')}</p>
+                </div>
+              </motion.div>
+            </Tabs.Content>
+          )}
 
-        {/* ---- Timeline Tab ---- */}
-        <Tabs.Content value="timeline">
-          <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <Icon name="timeline" size="lg" className="text-on-surface-variant/40" />
-            <h3 className="text-xl font-bold text-on-surface">{t('timelinePlaceholder')}</h3>
-            <p className="text-sm text-on-surface-variant text-center max-w-md">
-              {t('timelineDescription')}
-            </p>
-          </div>
-        </Tabs.Content>
+          {/* ---- Tasks Tab ---- */}
+          {activeTab === 'tasks' && (
+            <Tabs.Content value="tasks" forceMount asChild>
+              <motion.div
+                key="tasks"
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={pageTransition}
+              >
+                <div className="flex flex-col items-center justify-center py-24 gap-4">
+                  <Icon name="task_alt" size="lg" className="text-on-surface-variant/40" />
+                  <h3 className="text-xl font-bold text-on-surface">{t('noTasks')}</h3>
+                  <p className="text-sm text-on-surface-variant text-center max-w-md">
+                    {t('tasksPlaceholder')}
+                  </p>
+                </div>
+              </motion.div>
+            </Tabs.Content>
+          )}
+
+          {/* ---- Timeline Tab ---- */}
+          {activeTab === 'timeline' && (
+            <Tabs.Content value="timeline" forceMount asChild>
+              <motion.div
+                key="timeline"
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={pageTransition}
+              >
+                <div className="flex flex-col items-center justify-center py-24 gap-4">
+                  <Icon name="timeline" size="lg" className="text-on-surface-variant/40" />
+                  <h3 className="text-xl font-bold text-on-surface">{t('timelinePlaceholder')}</h3>
+                  <p className="text-sm text-on-surface-variant text-center max-w-md">
+                    {t('timelineDescription')}
+                  </p>
+                </div>
+              </motion.div>
+            </Tabs.Content>
+          )}
+        </AnimatePresence>
       </Tabs.Root>
     </div>
   );
