@@ -86,12 +86,6 @@ function formatDeadline(submissionEnd: string | null): {
   return { display: end.toLocaleDateString('ro-RO'), daysLeft: null, urgent: false };
 }
 
-function mapStatusToFilter(status: string): StatusFilter {
-  if (status === 'deschis') return 'open';
-  if (status === 'previzionat') return 'upcoming';
-  return 'closed';
-}
-
 /* ---------- page component ---------- */
 export default function FinantariPage({ params }: { params: { locale: string } }) {
   const { locale } = params;
