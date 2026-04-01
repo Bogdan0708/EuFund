@@ -153,6 +153,11 @@ export async function processMessage(
         type: 'step_complete',
         step: ctx.step,
         summary: 'Edit applied',
+        context: {
+          matchedCalls: updatedContext.matchedCalls,
+          actionPlan: updatedContext.actionPlan,
+          projectSections: updatedContext.projectSections,
+        },
       })
     } else if (result.checkpoint) {
       stream.send({ type: 'checkpoint', step: ctx.step, data: result.checkpoint })
@@ -172,6 +177,11 @@ export async function processMessage(
         type: 'step_complete',
         step: ctx.step,
         summary: `Step ${ctx.step} complete`,
+        context: {
+          matchedCalls: updatedContext.matchedCalls,
+          actionPlan: updatedContext.actionPlan,
+          projectSections: updatedContext.projectSections,
+        },
       })
 
       await db
