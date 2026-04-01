@@ -895,7 +895,14 @@
     "templateExecutiveSummary": "Rezumat Executiv",
     "templateBudgetPlanner": "Planificator Buget",
     "templateProjectRoadmap": "Foaie de Parcurs Proiect",
-    "browseTemplates": "Răsfoiește Șabloane"
+    "browseTemplates": "Răsfoiește Șabloane",
+    "noFilesTitle": "Niciun document",
+    "noFilesDescription": "Nu există documente încă. Fișierele vor apărea aici când le încarci sau când AI-ul generează documente de proiect.",
+    "generated": "Generate",
+    "comingSoon": "Disponibil curând",
+    "loading": "Se încarcă documentele...",
+    "errorLoading": "Nu s-au putut încărca documentele",
+    "project": "Proiect"
   },
   "settings": {
     "title": "Setări",

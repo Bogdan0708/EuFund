@@ -895,7 +895,14 @@
     "templateExecutiveSummary": "Executive Summary",
     "templateBudgetPlanner": "Budget Planner",
     "templateProjectRoadmap": "Project Roadmap",
-    "browseTemplates": "Browse Templates"
+    "browseTemplates": "Browse Templates",
+    "noFilesTitle": "No documents",
+    "noFilesDescription": "No documents yet. Files will appear here when you upload them or the AI generates project documents.",
+    "generated": "Generated",
+    "comingSoon": "Coming soon",
+    "loading": "Loading documents...",
+    "errorLoading": "Could not load documents",
+    "project": "Project"
   },
   "settings": {
     "title": "Settings",
