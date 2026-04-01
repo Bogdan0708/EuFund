@@ -27,12 +27,12 @@ function getRelativeTime(dateStr: string): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return 'just now';
-  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 1) return '<1m';
+  if (diffMin < 60) return `${diffMin}m`;
   const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) return `${diffH}h ago`;
+  if (diffH < 24) return `${diffH}h`;
   const diffD = Math.floor(diffH / 24);
-  return `${diffD}d ago`;
+  return `${diffD}d`;
 }
 
 function getProgressPercent(status: string): number {
@@ -159,7 +159,7 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
         >
-          Pregătește-ți proiectul european
+          {t('heroTitle')}
         </motion.h1>
         <motion.div
           className="relative max-w-2xl"
@@ -192,13 +192,13 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
           </form>
           <div className="mt-4 flex gap-4 overflow-x-auto pb-2 scrollbar-hide px-4">
             <span className="text-xs font-medium text-on-surface-variant px-3 py-1 bg-surface-container-high rounded-full whitespace-nowrap">
-              Digitalizare IMM
+              {t('chipDigitalization')}
             </span>
             <span className="text-xs font-medium text-on-surface-variant px-3 py-1 bg-surface-container-high rounded-full whitespace-nowrap">
-              Energie Verde
+              {t('chipGreenEnergy')}
             </span>
             <span className="text-xs font-medium text-on-surface-variant px-3 py-1 bg-surface-container-high rounded-full whitespace-nowrap">
-              Startup Tech
+              {t('chipStartup')}
             </span>
           </div>
         </motion.div>
@@ -220,9 +220,9 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
           <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mb-6 group-hover:scale-110 transition-transform">
             <Icon name="add_circle" filled size="lg" />
           </div>
-          <h3 className="text-xl font-bold mb-2">New Project</h3>
+          <h3 className="text-xl font-bold mb-2">{t('quickStartNewProject')}</h3>
           <p className="text-on-surface-variant text-sm leading-relaxed">
-            Începe o nouă cerere de finanțare cu ajutorul asistentului AI.
+            {t('quickStartNewProjectDesc')}
           </p>
         </motion.div>
 
@@ -235,9 +235,9 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
           <div className="w-12 h-12 bg-secondary/10 rounded-2xl flex items-center justify-center text-secondary mb-6 group-hover:scale-110 transition-transform">
             <Icon name="manage_search" filled size="lg" />
           </div>
-          <h3 className="text-xl font-bold mb-2">Find Funding</h3>
+          <h3 className="text-xl font-bold mb-2">{t('quickStartBrowseCalls')}</h3>
           <p className="text-on-surface-variant text-sm leading-relaxed">
-            Explorează baza de date actualizată a apelurilor active din UE.
+            {t('quickStartBrowseCallsDesc')}
           </p>
         </motion.div>
 
@@ -250,9 +250,9 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
           <div className="w-12 h-12 bg-tertiary-container/10 rounded-2xl flex items-center justify-center text-tertiary mb-6 group-hover:scale-110 transition-transform">
             <Icon name="upload_file" filled size="lg" />
           </div>
-          <h3 className="text-xl font-bold mb-2">Upload Documents</h3>
+          <h3 className="text-xl font-bold mb-2">{t('quickStartUpload')}</h3>
           <p className="text-on-surface-variant text-sm leading-relaxed">
-            Încarcă actele companiei pentru o analiză rapidă de eligibilitate.
+            {t('quickStartUploadDesc')}
           </p>
         </motion.div>
       </motion.div>
@@ -268,7 +268,7 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
           {/* Continue Session & Recent Projects */}
           <div className="lg:col-span-2 space-y-12">
             <div className="flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight">Continuă activitatea</h3>
+              <h3 className="text-2xl font-bold tracking-tight">{t('continueActivity')}</h3>
               <button
                 onClick={() => router.push(`/${locale}/proiecte`)}
                 className="text-primary text-sm font-semibold hover:underline"
@@ -301,7 +301,7 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
                         />
                       </div>
                       <span className="text-[10px] font-bold text-primary">
-                        {Math.round((activeSession.currentStep / 7) * 100)}% Complet
+                        {t('complete', { percent: Math.round((activeSession.currentStep / 7) * 100) })}
                       </span>
                     </div>
                   </div>
@@ -335,7 +335,7 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
                         <div className="w-32 h-1.5 bg-surface-container rounded-full overflow-hidden">
                           <div className="bg-primary h-full" style={{ width: `${pct}%` }} />
                         </div>
-                        <span className="text-[10px] font-bold text-primary">{pct}% Complet</span>
+                        <span className="text-[10px] font-bold text-primary">{t('complete', { percent: pct })}</span>
                       </div>
                     </div>
                     <Icon
@@ -351,21 +351,21 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
 
           {/* Top Funding Matches Sidebar */}
           <div className="space-y-8">
-            <h3 className="text-2xl font-bold tracking-tight">Potriviri de Top</h3>
+            <h3 className="text-2xl font-bold tracking-tight">{t('topMatches')}</h3>
             <div className="space-y-4">
               {/* Match Card 1 */}
               <div className="glass p-6 rounded-lg relative overflow-hidden group transition-all hover:translate-y-[-4px]">
                 <div className="absolute top-0 right-0 p-3 bg-primary text-white text-[10px] font-bold rounded-bl-xl">
-                  98% Match
+                  {t('matchPercent', { percent: 98 })}
                 </div>
                 <h4 className="font-bold text-base pr-12 mb-2">Digital Transformation Grant 2024</h4>
                 <p className="text-xs text-on-surface-variant mb-4">
-                  Finanțare nerambursabilă pentru adoptarea tehnologiilor cloud și AI.
+                  {t('matchDescription1')}
                 </p>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-bold text-primary">€200,000</span>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                    Termen: 15 Noi
+                    {t('deadline', { date: '15 Nov' })}
                   </span>
                 </div>
               </div>
@@ -373,16 +373,16 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
               {/* Match Card 2 */}
               <div className="glass p-6 rounded-lg relative overflow-hidden group transition-all hover:translate-y-[-4px]">
                 <div className="absolute top-0 right-0 p-3 bg-secondary text-white text-[10px] font-bold rounded-bl-xl">
-                  85% Match
+                  {t('matchPercent', { percent: 85 })}
                 </div>
                 <h4 className="font-bold text-base pr-12 mb-2">Eco-Innovation Seed Fund</h4>
                 <p className="text-xs text-on-surface-variant mb-4">
-                  Sprijin pentru prototiparea soluțiilor de economie circulară.
+                  {t('matchDescription2')}
                 </p>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-bold text-primary">€50,000</span>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                    Termen: 2 Dec
+                    {t('deadline', { date: '2 Dec' })}
                   </span>
                 </div>
               </div>
@@ -397,12 +397,12 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
                 <Icon name="smart_toy" className="text-[9rem]" />
               </div>
               <div className="relative z-10">
-                <h4 className="font-bold text-lg mb-1">Întreabă AI Curatorul</h4>
+                <h4 className="font-bold text-lg mb-1">{t('askAiCurator')}</h4>
                 <p className="text-xs opacity-90 mb-4">
-                  &quot;Care sunt șansele mele pentru fonduri norvegiene?&quot;
+                  {t('askAiCuratorHint')}
                 </p>
                 <button className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full text-xs font-bold hover:bg-white/30 transition-all">
-                  Start Chat
+                  {t('startChat')}
                 </button>
               </div>
             </div>

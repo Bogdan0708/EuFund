@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { Icon } from '@/components/ui/ds-icon'
 
 interface MobileNavProps {
@@ -9,14 +10,15 @@ interface MobileNavProps {
 }
 
 const NAV_ITEMS = [
-  { route: '/panou', icon: 'home', label: 'Home' },
-  { route: '/proiecte', icon: 'folder_open', label: 'Projects' },
-  { route: '/asistent-ai', icon: 'smart_toy', label: 'AI' },
-  { route: '/documente', icon: 'description', label: 'Files' },
-  { route: '/setari', icon: 'settings', label: 'Settings' },
+  { route: '/panou', icon: 'home', labelKey: 'home' },
+  { route: '/proiecte', icon: 'folder_open', labelKey: 'projects' },
+  { route: '/asistent-ai', icon: 'smart_toy', labelKey: 'ai' },
+  { route: '/documente', icon: 'description', labelKey: 'files' },
+  { route: '/setari', icon: 'settings', labelKey: 'settings' },
 ] as const
 
 export function MobileNav({ locale }: MobileNavProps) {
+  const t = useTranslations('nav')
   const pathname = usePathname()
   const prefix = `/${locale}`
 
@@ -47,7 +49,7 @@ export function MobileNav({ locale }: MobileNavProps) {
           >
             <Icon name={item.icon} filled={active} size="md" />
             {!active && (
-              <span className="text-[10px] font-bold uppercase tracking-widest">{item.label}</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest">{t(item.labelKey)}</span>
             )}
           </Link>
         )

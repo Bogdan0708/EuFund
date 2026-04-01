@@ -438,6 +438,8 @@
     "chipDigitalization": "Digitalizare IMM",
     "chipGreenEnergy": "Energie Verde",
     "chipStartup": "Startup Tech",
+    "matchDescription1": "Finanțare nerambursabilă pentru adoptarea tehnologiilor cloud și AI.",
+    "matchDescription2": "Sprijin pentru prototiparea soluțiilor de economie circulară.",
     "recentCalls": "Apeluri recente",
     "recentCallsDescription": "Cele mai recente apeluri de finanțare deschise",
     "createFromCall": "Creează proiect",
@@ -873,7 +875,16 @@
     "createdAt": "Creat La",
     "lastUpdated": "Ultima Actualizare",
     "euContribution": "Contribuție UE",
-    "matchScore": "Scor Potrivire"
+    "matchScore": "Scor Potrivire",
+    "progressComplete": "Complet",
+    "statusDraft": "Ciornă",
+    "statusInProgress": "În Lucru",
+    "statusUnderReview": "În Verificare",
+    "statusApproved": "Aprobat",
+    "statusCompleted": "Finalizat",
+    "statusActionPlan": "Plan de Acțiune",
+    "statusBuilt": "Construit",
+    "statusExported": "Exportat"
   },
   "calls": {
     "title": "Apeluri de finanțare",
@@ -966,7 +977,9 @@
     "privacyPolicy": "Politica de Confidențialitate",
     "termsOfService": "Termeni și Condiții",
     "complianceHub": "Hub Conformitate",
-    "footerBuild": "FondEU - 2024 - Build v4.2.0-Alpha"
+    "footerBuild": "FondEU - 2024 - Build v4.2.0-Alpha",
+    "priceFree": "Gratuit",
+    "priceMonthly": "€{price}/lună"
   },
   "fundingCallsPage": {
     "heroTitle": "Identifică următoarea ta <highlight>Oportunitate Strategică.</highlight>",
