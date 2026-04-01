@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
+import type { MatchedCall, ActionPlan, ProjectSection, WorkflowContext } from '@/lib/ai/orchestrator/types';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -21,6 +22,19 @@ export interface ChatMessage {
   timestamp?: string;
 }
 
+export interface CanvasState {
+  matchedCalls: MatchedCall[] | null;
+  actionPlan: ActionPlan | null;
+  proposalSections: ProjectSection[] | null;
+  activeTab: 'calls' | 'plan' | 'proposal';
+}
+
+function deriveActiveTab(step: number): 'calls' | 'plan' | 'proposal' {
+  if (step >= 7) return 'proposal';
+  if (step >= 6) return 'plan';
+  return 'calls';
+}
+
 type SSEEvent = { eventId: number } & (
   | { type: 'step_start'; step: number; label: string }
   | { type: 'step_progress'; step: number; message: string }
@@ -30,7 +44,7 @@ type SSEEvent = { eventId: number } & (
       step: number;
       data: CheckpointData;
     }
-  | { type: 'step_complete'; step: number; summary: string }
+  | { type: 'step_complete'; step: number; summary: string; context?: Partial<WorkflowContext> }
   | { type: 'discovery'; items: unknown[] }
   | { type: 'error'; step: number; message: string; retryable: boolean }
   | { type: 'done'; projectId?: string }
@@ -47,6 +61,12 @@ export function useOrchestrator(locale: string) {
   const [error, setError] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [canvasState, setCanvasState] = useState<CanvasState>({
+    matchedCalls: null,
+    actionPlan: null,
+    proposalSections: null,
+    activeTab: 'calls',
+  });
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const lastEventIdRef = useRef<number>(0);
@@ -209,6 +229,21 @@ export function useOrchestrator(locale: string) {
             step: event.step,
           },
         ]);
+        // Update canvas state from context snapshot if present
+        if ('context' in event && event.context) {
+          const ctx = event.context as Partial<WorkflowContext>;
+          setCanvasState((prev) => ({
+            matchedCalls: ctx.matchedCalls ?? prev.matchedCalls,
+            actionPlan: ctx.actionPlan ?? prev.actionPlan,
+            proposalSections: ctx.projectSections ?? prev.proposalSections,
+            activeTab: deriveActiveTab(event.step),
+          }));
+        } else {
+          setCanvasState((prev) => ({
+            ...prev,
+            activeTab: deriveActiveTab(event.step),
+          }));
+        }
         break;
 
       case 'discovery':
@@ -275,6 +310,15 @@ export function useOrchestrator(locale: string) {
       }
       if (data.session?.currentStep) {
         setCurrentStep(data.session.currentStep);
+      }
+      if (data.session?.context) {
+        const ctx = data.session.context as Partial<WorkflowContext>;
+        setCanvasState({
+          matchedCalls: ctx.matchedCalls ?? null,
+          actionPlan: ctx.actionPlan ?? null,
+          proposalSections: ctx.projectSections ?? null,
+          activeTab: deriveActiveTab(data.session.currentStep || 1),
+        });
       }
     } catch {
       // Fail silently — user can still send new messages
@@ -351,6 +395,12 @@ export function useOrchestrator(locale: string) {
     setIsStreaming(false);
     lastEventIdRef.current = 0;
     flushChunkBuffer();
+    setCanvasState({
+      matchedCalls: null,
+      actionPlan: null,
+      proposalSections: null,
+      activeTab: 'calls',
+    });
   }, []);
 
   // ─── Resume session ────────────────────────────────────────────
@@ -385,5 +435,6 @@ export function useOrchestrator(locale: string) {
     startNewSession,
     resumeSession,
     error,
+    canvasState,
   };
 }
