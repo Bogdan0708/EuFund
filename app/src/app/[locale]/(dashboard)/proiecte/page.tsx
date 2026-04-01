@@ -4,8 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { motion } from 'motion/react';
 import { Icon } from '@/components/ui/ds-icon';
-import { DsButton } from '@/components/ui/ds-button';
+import { staggerContainer, staggerItem, staggerTransition } from '@/lib/motion';
 
 /* ---------- types ---------- */
 type ProjectStatus = 'in_progress' | 'submitted' | 'approved' | 'draft';
@@ -140,7 +141,7 @@ function TeamAvatars({ count }: { count: number }) {
 /* ---------- loading skeleton card ---------- */
 function SkeletonCard() {
   return (
-    <div className="glass-card rounded-[1.5rem] p-8 flex flex-col animate-pulse min-h-[200px]">
+    <div className="glass-card p-8 flex flex-col animate-pulse min-h-[200px]">
       <div className="flex justify-between items-start mb-6">
         <div className="h-5 w-20 rounded-full bg-slate-200" />
         <div className="w-12 h-12 rounded-full bg-slate-200" />
@@ -211,8 +212,8 @@ export default function ProiectePage({
   }, [page, search, statusFilter]);
 
   return (
-    <div className="fade-in-up max-w-7xl mx-auto">
-      {/* Header */}
+    <main className="flex-1 px-12 py-10 max-w-7xl mx-auto">
+      {/* Header Section */}
       <header className="mb-16">
         <div className="flex justify-between items-end mb-8">
           <div>
@@ -223,10 +224,13 @@ export default function ProiectePage({
               {t('pageSubtitle')}
             </p>
           </div>
-          <DsButton size="lg" onClick={() => router.push(`/${locale}/asistent-ai`)}>
+          <button
+            onClick={() => router.push(`/${locale}/asistent-ai`)}
+            className="bg-primary-container text-white px-8 py-4 rounded-full font-semibold hover:-translate-y-px transition-all flex items-center space-x-2"
+          >
             <Icon name="add" />
             <span>{t('createProject')}</span>
-          </DsButton>
+          </button>
         </div>
 
         {/* Search & Filters */}
@@ -269,9 +273,11 @@ export default function ProiectePage({
       )}
 
       {/* Projects Grid */}
-      <section
+      <motion.section
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-24"
-        style={{ animationDelay: '100ms' }}
+        variants={staggerContainer}
+        initial="initial"
+        animate="animate"
       >
         {/* Loading skeletons */}
         {loading &&
@@ -283,13 +289,12 @@ export default function ProiectePage({
             <Icon name="folder_open" size="lg" className="text-on-surface-variant mb-4" />
             <h3 className="text-lg font-semibold text-on-surface">{t('emptyTitle')}</h3>
             <p className="text-on-surface-variant mt-2">{t('emptyDescription')}</p>
-            <DsButton
-              variant="primary"
-              className="mt-6"
+            <button
+              className="mt-6 bg-primary-container text-white px-8 py-4 rounded-full font-semibold hover:-translate-y-px transition-all"
               onClick={() => router.push(`/${locale}/asistent-ai`)}
             >
               {t('startFirstProject')}
-            </DsButton>
+            </button>
           </div>
         )}
 
@@ -300,56 +305,63 @@ export default function ProiectePage({
             const style = STATUS_STYLES[uiStatus];
             const progress = project.complianceScore || 0;
             return (
-              <Link
+              <motion.div
                 key={project.id}
-                href={`/${locale}/proiecte/${project.id}`}
-                className="glass-card rounded-[1.5rem] p-8 flex flex-col hover:shadow-[0_20px_40px_rgba(0,0,0,0.04)] transition-all cursor-pointer group"
+                variants={staggerItem}
+                transition={staggerTransition}
               >
-                {/* Status + Progress */}
-                <div className="flex justify-between items-start mb-6">
-                  <span
-                    className={`${style.bg} ${style.text} px-3 py-1 rounded-full text-[11px] font-bold tracking-wider uppercase`}
-                  >
-                    {t(`statusLabels.${uiStatus}`)}
-                  </span>
-                  <ProgressRing progress={progress} status={uiStatus} />
-                </div>
+                <Link
+                  href={`/${locale}/proiecte/${project.id}`}
+                  className="glass-card p-8 flex flex-col hover:shadow-[0_20px_40px_rgba(0,0,0,0.04)] transition-all cursor-pointer group h-full"
+                >
+                  {/* Status + Progress */}
+                  <div className="flex justify-between items-start mb-6">
+                    <span
+                      className={`${style.bg} ${style.text} px-3 py-1 rounded-full text-[11px] font-bold tracking-wider uppercase`}
+                    >
+                      {t(`statusLabels.${uiStatus}`)}
+                    </span>
+                    <ProgressRing progress={progress} status={uiStatus} />
+                  </div>
 
-                {/* Title */}
-                <h3 className="text-xl font-bold text-on-surface leading-tight mb-2 group-hover:text-primary transition-colors">
-                  {project.title}
-                </h3>
-                <p className="text-on-surface-variant text-sm mb-8">
-                  {project.acronym || ''} &bull; ID: {project.id.slice(0, 8)}
-                </p>
-
-                {/* Footer */}
-                <div className="mt-auto flex items-center justify-between">
-                  <TeamAvatars count={1} />
-                  <p className="text-[10px] text-on-surface-variant/60 font-medium uppercase">
-                    {t('modified')} {relativeTime(project.updatedAt)}
+                  {/* Title */}
+                  <h3 className="text-xl font-bold text-on-surface leading-tight mb-2 group-hover:text-primary transition-colors">
+                    {project.title}
+                  </h3>
+                  <p className="text-on-surface-variant text-sm mb-8">
+                    {project.acronym || ''} &bull; ID: {project.id.slice(0, 8)}
                   </p>
-                </div>
-              </Link>
+
+                  {/* Footer */}
+                  <div className="mt-auto flex items-center justify-between">
+                    <TeamAvatars count={1} />
+                    <p className="text-[10px] text-on-surface-variant/60 font-medium uppercase">
+                      {t('modified')} {relativeTime(project.updatedAt)}
+                    </p>
+                  </div>
+                </Link>
+              </motion.div>
             );
           })}
 
         {/* Ghost "add" card — always last when not loading */}
         {!loading && (
-          <Link
-            href={`/${locale}/asistent-ai`}
-            className="flex items-center justify-center border-2 border-dashed border-outline-variant/30 rounded-[1rem] min-h-[200px] hover:border-primary/30 transition-colors"
-          >
-            <Icon name="add" size="lg" className="text-on-surface-variant" />
-          </Link>
+          <motion.div variants={staggerItem} transition={staggerTransition}>
+            <Link
+              href={`/${locale}/asistent-ai`}
+              className="flex items-center justify-center border-2 border-dashed border-outline-variant/30 rounded-[1.5rem] min-h-[200px] hover:border-primary/30 transition-colors"
+            >
+              <Icon name="add" size="lg" className="text-on-surface-variant" />
+            </Link>
+          </motion.div>
         )}
-      </section>
+      </motion.section>
 
       {/* Archive Section */}
-      <section className="max-w-4xl mx-auto py-24 text-center fade-in-up" style={{ animationDelay: '200ms' }}>
+      <section className="max-w-4xl mx-auto py-24 text-center">
         <div className="relative inline-block mb-10">
           <div className="absolute inset-0 bg-secondary/10 blur-[80px] rounded-full scale-150" />
-          <div className="relative glass-card rounded-[1.5rem] w-64 h-64 flex flex-col items-center justify-center mx-auto">
+          <div className="relative glass-card w-64 h-64 flex flex-col items-center justify-center mx-auto">
             <Icon name="inventory_2" size="lg" className="text-on-surface-variant/40 mb-4" />
             <p className="text-on-surface-variant/60 font-medium text-sm">
               {t('archiveEmpty')}
@@ -364,6 +376,6 @@ export default function ProiectePage({
           {t('archiveLearnMore')}
         </button>
       </section>
-    </div>
+    </main>
   );
 }
