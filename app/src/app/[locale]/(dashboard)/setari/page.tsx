@@ -351,7 +351,7 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
                     className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm ${tier.tier === currentTier ? 'bg-primary/10 text-primary font-semibold' : 'bg-surface-container-low text-on-surface-variant'}`}
                   >
                     <span>{tier.displayName}</span>
-                    <span>{tier.monthlyPriceEur === 0 ? 'Gratuit' : `€${tier.monthlyPriceEur}/lună`}</span>
+                    <span>{tier.monthlyPriceEur === 0 ? t('priceFree') : t('priceMonthly', { price: tier.monthlyPriceEur })}</span>
                   </div>
                 ))}
               </div>

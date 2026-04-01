@@ -48,16 +48,16 @@ interface WorkflowSession {
 }
 
 /* ---------- status display map ---------- */
-const STATUS_DISPLAY: Record<string, { label: string; className: string }> = {
-  ciorna:      { label: 'Draft',        className: 'bg-surface-container text-on-surface-variant' },
-  in_lucru:    { label: 'In Progress',  className: 'bg-[#0071E3]/10 text-[#0071E3]' },
-  verificare:  { label: 'Under Review', className: 'bg-amber-50 text-amber-700' },
-  aprobat:     { label: 'Approved',     className: 'bg-green-50 text-green-700' },
-  finalizat:   { label: 'Completed',    className: 'bg-green-50 text-green-700' },
-  draft:       { label: 'Draft',        className: 'bg-surface-container text-on-surface-variant' },
-  action_plan: { label: 'Action Plan',  className: 'bg-amber-50 text-amber-700' },
-  built:       { label: 'Built',        className: 'bg-[#0071E3]/10 text-[#0071E3]' },
-  exported:    { label: 'Exported',     className: 'bg-green-50 text-green-700' },
+const STATUS_KEYS: Record<string, { labelKey: string; className: string }> = {
+  ciorna:      { labelKey: 'statusDraft',       className: 'bg-surface-container text-on-surface-variant' },
+  in_lucru:    { labelKey: 'statusInProgress',  className: 'bg-[#0071E3]/10 text-[#0071E3]' },
+  verificare:  { labelKey: 'statusUnderReview', className: 'bg-amber-50 text-amber-700' },
+  aprobat:     { labelKey: 'statusApproved',    className: 'bg-green-50 text-green-700' },
+  finalizat:   { labelKey: 'statusCompleted',   className: 'bg-green-50 text-green-700' },
+  draft:       { labelKey: 'statusDraft',       className: 'bg-surface-container text-on-surface-variant' },
+  action_plan: { labelKey: 'statusActionPlan',  className: 'bg-amber-50 text-amber-700' },
+  built:       { labelKey: 'statusBuilt',       className: 'bg-[#0071E3]/10 text-[#0071E3]' },
+  exported:    { labelKey: 'statusExported',    className: 'bg-green-50 text-green-700' },
 };
 
 /* ---------- helpers ---------- */
@@ -93,7 +93,7 @@ function formatBudget(val: string | null): string {
 }
 
 /* ---------- large progress ring ---------- */
-function LargeProgressRing({ progress }: { progress: number }) {
+function LargeProgressRing({ progress, label }: { progress: number; label: string }) {
   const circumference = 2 * Math.PI * 70;
   const offset = circumference - (progress / 100) * circumference;
 
@@ -116,7 +116,7 @@ function LargeProgressRing({ progress }: { progress: number }) {
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-4xl font-extrabold text-on-surface">{progress}%</span>
         <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">
-          Complete
+          {label}
         </span>
       </div>
     </div>
@@ -245,10 +245,11 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
     );
   }
 
-  const statusInfo = STATUS_DISPLAY[project.status] ?? {
-    label: project.status,
+  const statusEntry = STATUS_KEYS[project.status] ?? {
+    labelKey: project.status,
     className: 'bg-surface-container text-on-surface-variant',
   };
+  const statusLabel = t(statusEntry.labelKey as Parameters<typeof t>[0]);
 
   const complianceScore = project.complianceScore ? Math.round(parseFloat(project.complianceScore)) : 0;
   const matchScore = project.matchScore ? Math.round(parseFloat(project.matchScore)) : null;
@@ -271,8 +272,8 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
       <div className="flex flex-col md:flex-row justify-between items-start gap-8 mb-16">
         <div className="space-y-4 max-w-3xl">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className={`px-4 py-1.5 text-xs font-bold rounded-full uppercase tracking-wider ${statusInfo.className}`}>
-              {statusInfo.label}
+            <span className={`px-4 py-1.5 text-xs font-bold rounded-full uppercase tracking-wider ${statusEntry.className}`}>
+              {statusLabel}
             </span>
             {project.acronym && (
               <span className="text-on-surface-variant text-sm font-medium">
@@ -387,7 +388,7 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
                       <div className="flex justify-between items-center mb-8">
                         <h3 className="text-xl font-bold">{t('projectDetails')}</h3>
                         <button className="text-primary font-bold text-sm hover:opacity-80 transition-opacity">
-                          {t('inviteMember') || 'Invite Member'}
+                          {t('inviteMember')}
                         </button>
                       </div>
                       {/* Metadata grid */}
@@ -434,7 +435,7 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
                   <div className="col-span-12 lg:col-span-4 space-y-8">
                     {/* Progress Ring Card */}
                     <div className="bg-white rounded-lg p-10 shadow-sm flex flex-col items-center text-center">
-                      <LargeProgressRing progress={complianceScore} />
+                      <LargeProgressRing progress={complianceScore} label={t('progressComplete')} />
                       <h4 className="text-lg font-bold mb-2">{t('complianceScore')}</h4>
                       <p className="text-on-surface-variant text-sm mb-6">
                         {t('complianceDescription')}
@@ -448,7 +449,7 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
                       <div className="w-full bg-surface-container p-4 rounded-xl flex justify-between items-center mt-2">
                         <div className="flex items-center gap-2">
                           <Icon name="event_upcoming" className="text-primary" size="sm" />
-                          <span className="text-sm font-semibold">{t('deadline') || 'Deadline'}</span>
+                          <span className="text-sm font-semibold">{t('deadline')}</span>
                         </div>
                         <span className="text-sm font-bold text-on-surface-variant">
                           {project.durationMonths ? `${project.durationMonths}mo` : '—'}

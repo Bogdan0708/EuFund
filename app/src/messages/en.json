@@ -438,6 +438,8 @@
     "chipDigitalization": "SME Digitalization",
     "chipGreenEnergy": "Green Energy",
     "chipStartup": "Tech Startup",
+    "matchDescription1": "Non-refundable funding for adopting cloud and AI technologies.",
+    "matchDescription2": "Support for prototyping circular economy solutions.",
     "recentCalls": "Recent calls",
     "recentCallsDescription": "Latest open funding calls",
     "createFromCall": "Create project",
@@ -873,7 +875,16 @@
     "createdAt": "Created At",
     "lastUpdated": "Last Updated",
     "euContribution": "EU Contribution",
-    "matchScore": "Match Score"
+    "matchScore": "Match Score",
+    "progressComplete": "Complete",
+    "statusDraft": "Draft",
+    "statusInProgress": "In Progress",
+    "statusUnderReview": "Under Review",
+    "statusApproved": "Approved",
+    "statusCompleted": "Completed",
+    "statusActionPlan": "Action Plan",
+    "statusBuilt": "Built",
+    "statusExported": "Exported"
   },
   "calls": {
     "title": "Funding Calls",
@@ -966,7 +977,9 @@
     "privacyPolicy": "Privacy Policy",
     "termsOfService": "Terms of Service",
     "complianceHub": "Compliance Hub",
-    "footerBuild": "FondEU - 2024 - Build v4.2.0-Alpha"
+    "footerBuild": "FondEU - 2024 - Build v4.2.0-Alpha",
+    "priceFree": "Free",
+    "priceMonthly": "€{price}/month"
   },
   "fundingCallsPage": {
     "heroTitle": "Identify your next <highlight>Strategic Opportunity.</highlight>",
