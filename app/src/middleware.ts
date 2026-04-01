@@ -108,7 +108,7 @@ export default auth(async (req) => {
   // Redirect old English route names to Romanian canonical paths
   const routeRedirects: Record<string, string> = {
     '/projects': '/proiecte',
-    '/calls': '/finantari',
+    '/calls': '/asistent-ai',
     '/files': '/documente',
     '/ai': '/asistent-ai',
     '/settings': '/setari',
@@ -122,6 +122,12 @@ export default auth(async (req) => {
         return NextResponse.redirect(new URL(newPath, req.url), 301);
       }
     }
+  }
+
+  // Redirect removed funding calls page to AI assistant
+  if (pathname.match(/^\/(ro|en)\/finantari/)) {
+    const locale = pathname.startsWith('/en') ? 'en' : 'ro'
+    return NextResponse.redirect(new URL(`/${locale}/asistent-ai`, req.url))
   }
 
   const isPublic = publicPaths.some(path => pathname.startsWith(path));
