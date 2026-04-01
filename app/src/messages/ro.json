@@ -855,7 +855,25 @@
       "completed": "Finalizat"
     },
     "milestoneCompleted": "Finalizat",
-    "milestoneInProgress": "În Lucru"
+    "milestoneInProgress": "În Lucru",
+    "projectNotFound": "Proiectul nu a fost găsit",
+    "backToProjects": "Înapoi la Proiecte",
+    "resumeAI": "Continuă Sesiunea AI",
+    "startAI": "Începe Sesiunea AI",
+    "noDocuments": "Niciun document încărcat",
+    "noTasks": "Nicio sarcină încă",
+    "tasksPlaceholder": "Sarcinile vor apărea pe măsură ce avansezi prin fluxul de lucru AI.",
+    "timelinePlaceholder": "Cronologia va apărea pe măsură ce avansezi prin fluxul de lucru AI",
+    "timelineDescription": "Progresul proiectului și etapele cheie vor fi urmărite automat pe baza sesiunilor AI.",
+    "noSummaryYet": "Rezumatul proiectului va fi generat de AI pe parcursul sesiunii de lucru.",
+    "complianceScore": "Scor de Conformitate",
+    "complianceDescription": "Evaluare bazată pe criteriile apelului de finanțare.",
+    "noComplianceYet": "Rulează o verificare de conformitate pentru a genera scorul.",
+    "projectDetails": "Detalii Proiect",
+    "createdAt": "Creat La",
+    "lastUpdated": "Ultima Actualizare",
+    "euContribution": "Contribuție UE",
+    "matchScore": "Scor Potrivire"
   },
   "calls": {
     "title": "Apeluri de finanțare",
