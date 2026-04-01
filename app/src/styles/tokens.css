@@ -13,7 +13,7 @@
   --surface-container-highest: 227 226 231;/* #e3e2e7 */
   --background: 245 245 247;          /* #F5F5F7 */
   --on-surface: 26 27 31;             /* #1a1b1f */
-  --on-surface-variant: 65 71 83;     /* #414753 */
+  --on-surface-variant: 55 58 65;     /* #373a41 */
   --on-background: 26 27 31;          /* #1a1b1f */
   --primary: 0 89 181;                /* #0059b5 */
   --primary-container: 0 113 227;     /* #0071e3 */
@@ -35,7 +35,7 @@
   --error-container: 255 218 214;     /* #ffdad6 */
   --on-error: 255 255 255;            /* #ffffff */
   --on-error-container: 147 0 10;     /* #93000a */
-  --outline: 113 119 133;             /* #717785 */
+  --outline: 85 90 100;               /* #555a64 */
   --outline-variant: 193 198 214;     /* #c1c6d6 */
   --surface-tint: 0 92 187;           /* #005cbb */
   --surface-variant: 227 226 231;     /* #e3e2e7 */
