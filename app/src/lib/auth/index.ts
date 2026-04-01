@@ -4,6 +4,8 @@ import Google from 'next-auth/providers/google';
 import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
 import Facebook from 'next-auth/providers/facebook';
 import EmailProvider from 'next-auth/providers/email';
+import Credentials from 'next-auth/providers/credentials';
+import bcrypt from 'bcryptjs';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -56,6 +58,33 @@ export const {
       },
       from: process.env.EMAIL_FROM || 'noreply@platformafinantare.eu',
     }),
+    // Dev-only credentials provider for local testing without OAuth
+    ...(process.env.NODE_ENV === 'development'
+      ? [
+          Credentials({
+            name: 'Dev Login',
+            credentials: {
+              email: { label: 'Email', type: 'email' },
+              password: { label: 'Password', type: 'password' },
+            },
+            async authorize(credentials) {
+              const email = credentials?.email as string;
+              const password = credentials?.password as string;
+              if (!email || !password) return null;
+
+              const user = await db.query.users.findFirst({
+                where: eq(users.email, email),
+              });
+              if (!user?.passwordHash) return null;
+
+              const valid = await bcrypt.compare(password, user.passwordHash);
+              if (!valid) return null;
+
+              return { id: user.id, email: user.email, name: user.fullName };
+            },
+          }),
+        ]
+      : []),
   ],
   pages: {
     signIn: '/ro/autentificare',
@@ -129,7 +158,7 @@ export const {
   cookies: process.env.NODE_ENV === 'production'
     ? {
         sessionToken: {
-          name: '__Secure-next-auth.session-token',
+          name: '__Secure-authjs.session-token',
           options: {
             httpOnly: true,
             sameSite: 'lax',
@@ -138,7 +167,7 @@ export const {
           },
         },
         csrfToken: {
-          name: '__Host-next-auth.csrf-token',
+          name: '__Host-authjs.csrf-token',
           options: {
             httpOnly: true,
             sameSite: 'lax',

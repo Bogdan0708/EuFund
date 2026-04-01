@@ -1,66 +1,116 @@
 import { test, expect } from '@playwright/test';
+import { ADMIN_EMAIL, dismissCookieBanner, submitDevLogin } from './test-config';
 
-test.describe('Authentication', () => {
-  test('login page loads correctly', async ({ page }) => {
+test.describe('Authentication — Login Page', () => {
+  test('login page loads with all elements (OAuth, magic link, dev login)', async ({ page }) => {
     await page.goto('/ro/autentificare');
+    await dismissCookieBanner(page);
 
-    // Verify the login form elements are visible
-    await expect(page.getByLabel('Adresă de email')).toBeVisible();
-    await expect(page.getByLabel('Parolă')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Autentificare' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Am uitat parola' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Înregistrare' })).toBeVisible();
+    // OAuth buttons (4 providers)
+    await expect(page.locator('button:has-text("Google")')).toBeVisible();
+    await expect(page.locator('button:has-text("Microsoft")')).toBeVisible();
+    await expect(page.locator('button:has-text("Facebook")')).toBeVisible();
+    await expect(page.locator('button:has-text("Apple")')).toBeVisible();
+
+    // Magic link section
+    await expect(page.locator('input[type="email"]').first()).toBeVisible();
+
+    // Dev login box
+    await expect(page.locator('input[placeholder="Email"]')).toBeVisible();
+    await expect(page.locator('input[placeholder="Password"]')).toBeVisible();
+    await expect(page.locator('button:has-text("Dev Sign In")')).toBeVisible();
   });
 
-  test('login with valid credentials redirects to dashboard', async ({ page }) => {
+  test('login page in English loads correctly', async ({ page }) => {
+    await page.goto('/en/autentificare');
+    await dismissCookieBanner(page);
+
+    await expect(page.locator('button:has-text("Google")')).toBeVisible();
+    await expect(page.locator('button:has-text("Microsoft")')).toBeVisible();
+    await expect(page.locator('input[placeholder="Email"]')).toBeVisible();
+    await expect(page.locator('button:has-text("Dev Sign In")')).toBeVisible();
+  });
+
+  test('login page has correct title', async ({ page }) => {
     await page.goto('/ro/autentificare');
+    await dismissCookieBanner(page);
+    await expect(page).toHaveTitle(/FondEU/);
+  });
+});
 
-    await page.getByLabel('Adresă de email').fill('godjabogdan@gmail.com');
-    await page.getByLabel('Parolă').fill('Bogdangvb0708.,');
-    await page.getByRole('button', { name: 'Autentificare' }).click();
+test.describe('Authentication — Dev Login', () => {
+  // Run login tests serially to avoid exhausting the rate limit (10 reqs / 15 min)
+  test.describe.configure({ mode: 'serial' });
 
-    // Check for rate limiting — may show same error as wrong password
-    const rateLimited = page.getByText(/prea multe|rate.?limit/i);
-    const wrongPassword = page.getByText('Email sau parolă incorectă');
-    const isRateLimited = await rateLimited.or(wrongPassword).isVisible({ timeout: 3000 }).catch(() => false);
+  test('dev login with valid credentials redirects to dashboard', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto('/ro/autentificare');
+    await dismissCookieBanner(page);
 
-    if (isRateLimited) {
-      // Auth setup already validated login — skip if rate limited
-      test.skip(true, 'Rate limited — login was already validated by auth setup');
+    const callbackRes = await submitDevLogin(page);
+
+    if (callbackRes?.status() === 429) {
+      test.skip(true, 'Rate limited — credentials endpoint exhausted (10 reqs / 15 min)');
       return;
     }
 
-    // Should redirect to dashboard (not stay on login)
-    await expect(page).not.toHaveURL(/autentificare/, { timeout: 15000 });
-    await expect(page.getByLabel('Adresă de email')).not.toBeVisible({ timeout: 5000 });
+    // Wait for client-side redirect (window.location.href = result.url)
+    await expect(page).not.toHaveURL(/autentificare/, { timeout: 15_000 });
   });
 
-  test('login with invalid password shows error', async ({ page }) => {
+  test('dev login with invalid password shows error', async ({ page }) => {
+    test.setTimeout(60_000);
     await page.goto('/ro/autentificare');
+    await dismissCookieBanner(page);
 
-    await page.getByLabel('Adresă de email').fill('godjabogdan@gmail.com');
-    await page.getByLabel('Parolă').fill('wrong-password-123');
-    await page.getByRole('button', { name: 'Autentificare' }).click();
+    const callbackRes = await submitDevLogin(page, ADMIN_EMAIL, 'wrong-password-123');
 
-    // Should show an error message (or rate limit) and remain on the login page
-    const errorMsg = page.getByText(/Email sau parolă incorectă|prea multe/i);
-    await expect(errorMsg).toBeVisible({ timeout: 10000 });
-    await expect(page.getByLabel('Adresă de email')).toBeVisible();
+    if (callbackRes?.status() === 429) {
+      test.skip(true, 'Rate limited — credentials endpoint exhausted (10 reqs / 15 min)');
+      return;
+    }
+
+    // Should show error and remain on login page
+    await expect(page.getByText(/Invalid email or password/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveURL(/autentificare/);
+  });
+});
+
+test.describe('Authentication — Protected Routes', () => {
+  test('unauthenticated access to /ro/panou redirects to /ro/autentificare', async ({ page }) => {
+    await page.goto('/ro/panou');
+    await expect(page).toHaveURL(/\/ro\/autentificare/, { timeout: 10_000 });
   });
 
-  test('forgot password link navigates to reset page', async ({ page }) => {
-    await page.goto('/ro/autentificare');
-
-    await page.getByRole('link', { name: 'Am uitat parola' }).click();
-
-    await expect(page).toHaveURL(/\/ro\/resetare-parola/);
+  test('unauthenticated access to /en/panou redirects to /en/autentificare', async ({ page }) => {
+    await page.goto('/en/panou');
+    await expect(page).toHaveURL(/\/en\/autentificare/, { timeout: 10_000 });
   });
 
-  test('register link navigates to registration page', async ({ page }) => {
+  test('unauthenticated API call to /api/v1/projects returns 401', async ({ request }) => {
+    const response = await request.get('/api/v1/projects');
+    expect(response.status()).toBe(401);
+  });
+});
+
+test.describe('Authentication — Cookie Consent Banner', () => {
+  test('cookie consent banner appears and can be dismissed', async ({ page }) => {
     await page.goto('/ro/autentificare');
+    await page.evaluate(() =>
+      localStorage.removeItem('eufund:cookie-consent-dismissed:v1')
+    );
+    await page.reload();
+    await page.waitForLoadState('networkidle');
 
-    await page.getByRole('link', { name: 'Înregistrare' }).click();
+    const banner = page.locator('.fixed.inset-x-4.bottom-4.z-50');
+    await expect(banner).toBeVisible({ timeout: 5_000 });
 
-    await expect(page).toHaveURL(/\/ro\/inregistrare/);
+    await page.evaluate(() =>
+      localStorage.setItem('eufund:cookie-consent-dismissed:v1', '1')
+    );
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    await expect(banner).not.toBeVisible({ timeout: 5_000 });
   });
 });

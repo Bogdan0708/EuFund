@@ -5,7 +5,7 @@
 // Key insight: Auth.js derives encryption keys using @panva/hkdf with:
 //   - digest: sha256
 //   - ikm: NEXTAUTH_SECRET
-//   - salt: cookie name (e.g. "__Secure-next-auth.session-token")
+//   - salt: cookie name (e.g. "__Secure-authjs.session-token")
 //   - info: "Auth.js Generated Encryption Key (<cookie_name>)"
 //   - length: 64 bytes (for A256CBC-HS512)
 
@@ -14,8 +14,8 @@ import { hkdf } from '@panva/hkdf';
 import { NextRequest } from 'next/server';
 
 const COOKIE_NAME = process.env.NODE_ENV === 'production'
-  ? '__Secure-next-auth.session-token'
-  : 'next-auth.session-token';
+  ? '__Secure-authjs.session-token'
+  : 'authjs.session-token';
 
 interface EdgeSession {
   user?: {
