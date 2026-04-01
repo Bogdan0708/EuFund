@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
+import { motion } from 'motion/react';
 import { Icon } from '@/components/ui/ds-icon';
-import { DsButton } from '@/components/ui/ds-button';
 import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
+import { staggerContainer, staggerItem, staggerTransition } from '@/lib/motion';
 
 /* ---------- types ---------- */
 interface Preferences {
@@ -165,9 +166,18 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
       </div>
 
       {/* ── 2x2 Bento Grid ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
+      <motion.div
+        className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12"
+        variants={staggerContainer}
+        initial="initial"
+        animate="animate"
+      >
         {/* ── Profile Card ── */}
-        <div className="glass-card rounded-[1rem] p-10 flex flex-col space-y-8 shadow-[0_20px_40px_rgba(0,0,0,0.02)] transition-all hover:translate-y-[-4px]">
+        <motion.div
+          className="glass-card rounded-lg p-10 flex flex-col space-y-8 shadow-[0_20px_40px_rgba(0,0,0,0.02)] transition-all hover:translate-y-[-4px]"
+          variants={staggerItem}
+          transition={staggerTransition}
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3 text-primary">
               <Icon name="person" />
@@ -217,10 +227,14 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* ── AI Preferences Card ── */}
-        <div className="glass-card rounded-[1rem] p-10 flex flex-col space-y-8 shadow-[0_20px_40px_rgba(0,0,0,0.02)] transition-all hover:translate-y-[-4px]">
+        <motion.div
+          className="glass-card rounded-lg p-10 flex flex-col space-y-8 shadow-[0_20px_40px_rgba(0,0,0,0.02)] transition-all hover:translate-y-[-4px]"
+          variants={staggerItem}
+          transition={staggerTransition}
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3 text-secondary">
               <Icon name="auto_awesome" filled />
@@ -308,10 +322,14 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
               </label>
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* ── Subscription Card ── */}
-        <div className="glass-card rounded-[1rem] p-10 flex flex-col space-y-8 shadow-[0_20px_40px_rgba(0,0,0,0.02)] transition-all hover:translate-y-[-4px]">
+        <motion.div
+          className="glass-card rounded-lg p-10 flex flex-col space-y-8 shadow-[0_20px_40px_rgba(0,0,0,0.02)] transition-all hover:translate-y-[-4px]"
+          variants={staggerItem}
+          transition={staggerTransition}
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3 text-tertiary">
               <Icon name="payments" />
@@ -362,13 +380,20 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
               </div>
             )}
           </div>
-          <DsButton className="w-full py-4" onClick={handleBillingPortal}>
+          <button
+            className="w-full bg-primary text-white font-bold py-4 rounded-full hover:translate-y-[-1px] active:scale-[0.98] transition-transform"
+            onClick={handleBillingPortal}
+          >
             {t('manageBilling')}
-          </DsButton>
-        </div>
+          </button>
+        </motion.div>
 
         {/* ── GDPR & Privacy Card ── */}
-        <div className="glass-card rounded-[1rem] p-10 flex flex-col space-y-8 shadow-[0_20px_40px_rgba(0,0,0,0.02)] transition-all hover:translate-y-[-4px]">
+        <motion.div
+          className="glass-card rounded-lg p-10 flex flex-col space-y-8 shadow-[0_20px_40px_rgba(0,0,0,0.02)] transition-all hover:translate-y-[-4px]"
+          variants={staggerItem}
+          transition={staggerTransition}
+        >
           <div className="flex items-center space-x-3 text-on-surface-variant">
             <Icon name="security" />
             <span className="text-xs font-bold uppercase tracking-widest">
@@ -420,8 +445,8 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
               </label>
             </div>
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
       {/* ── Footer Section ── */}
       <div className="mt-32 flex flex-col md:flex-row justify-between items-center opacity-40 text-[12px] font-medium text-on-surface-variant uppercase tracking-widest gap-6">
