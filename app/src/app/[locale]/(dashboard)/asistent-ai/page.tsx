@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { motion } from 'motion/react';
 import { useOrchestrator } from '@/hooks/useOrchestrator';
 import { Icon } from '@/components/ui/ds-icon';
-import { DsButton } from '@/components/ui/ds-button';
+import { canvasSlideIn } from '@/lib/motion';
 
 /* ────────────────────────────────────────────────────────────────── */
 /*  Step Progress Bar                                                */
@@ -108,12 +109,18 @@ function CheckpointConfirm({
 }) {
   return (
     <div className="flex gap-3 mt-3">
-      <DsButton variant="primary" size="sm" onClick={onContinue}>
+      <button
+        onClick={onContinue}
+        className="px-5 py-2 bg-primary-container text-white text-sm font-bold rounded-full hover:opacity-90 transition-opacity"
+      >
         {t('checkpoint.continue')}
-      </DsButton>
-      <DsButton variant="ghost" size="sm" onClick={onModify}>
+      </button>
+      <button
+        onClick={onModify}
+        className="px-5 py-2 text-sm font-bold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
+      >
         {t('checkpoint.modify')}
-      </DsButton>
+      </button>
     </div>
   );
 }
@@ -141,9 +148,7 @@ function CheckpointFreetext({
           }
         }}
       />
-      <DsButton
-        variant="primary"
-        size="sm"
+      <button
         disabled={!text.trim()}
         onClick={() => {
           if (text.trim()) {
@@ -151,9 +156,10 @@ function CheckpointFreetext({
             setText('');
           }
         }}
+        className="px-5 py-2 bg-primary-container text-white text-sm font-bold rounded-full hover:opacity-90 transition-opacity disabled:opacity-40"
       >
         {t('checkpoint.sendResponse')}
-      </DsButton>
+      </button>
     </div>
   );
 }
@@ -451,16 +457,13 @@ function ProposalTabContent({
             </div>
 
             <div className="pt-2 border-t border-outline-variant/10">
-              <DsButton
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  sendMessage(`Improve section: ${section.title}`)
-                }
+              <button
+                onClick={() => sendMessage(`Improve section: ${section.title}`)}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-bold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
               >
                 <Icon name="auto_awesome" size="sm" />
                 {t('proposalTab.improveSection')}
-              </DsButton>
+              </button>
             </div>
           </div>
         ))}
@@ -589,13 +592,12 @@ function AsistentAIInner({ locale }: { locale: string }) {
               <Icon name="error" filled className="text-error" />
               <span className="text-sm text-error">{error}</span>
             </div>
-            <DsButton
-              variant="ghost"
-              size="sm"
+            <button
               onClick={() => startNewSession()}
+              className="px-4 py-1.5 text-sm font-bold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
             >
               {t('retry')}
-            </DsButton>
+            </button>
           </div>
         )}
 
@@ -774,7 +776,10 @@ function AsistentAIInner({ locale }: { locale: string }) {
 
       {/* ── Right Panel: Document Canvas ── */}
       {showCanvas && (
-        <section className="w-[45%] flex flex-col bg-surface-container-lowest rounded-[1rem] shadow-[0_20px_40px_rgba(0,0,0,0.02)] border border-outline-variant/10 overflow-hidden transition-all duration-500 fade-in-up">
+        <motion.section
+          {...canvasSlideIn}
+          className="w-[45%] flex flex-col bg-surface-container-lowest rounded-[1rem] shadow-[0_20px_40px_rgba(0,0,0,0.02)] border border-outline-variant/10 overflow-hidden"
+        >
           {/* Tab Bar */}
           <div className="px-8 pt-6">
             <TabBar
@@ -800,7 +805,7 @@ function AsistentAIInner({ locale }: { locale: string }) {
               />
             )}
           </div>
-        </section>
+        </motion.section>
       )}
     </div>
   );
