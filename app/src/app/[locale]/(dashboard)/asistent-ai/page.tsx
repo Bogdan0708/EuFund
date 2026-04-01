@@ -73,7 +73,7 @@ function CheckpointSelect({
   onSelect,
 }: {
   options: { id: string; label: string; description?: string }[];
-  onSelect: (id: string) => void;
+  onSelect: (id: string) => void | Promise<void>;
 }) {
   return (
     <div className="grid gap-3 mt-3">
