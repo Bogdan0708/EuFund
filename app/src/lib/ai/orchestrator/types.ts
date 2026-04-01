@@ -113,7 +113,7 @@ export type SSEEvent = {
   | { type: 'step_progress'; step: number; message: string }
   | { type: 'ai_chunk'; step: number; content: string }
   | { type: 'checkpoint'; step: number; data: CheckpointData }
-  | { type: 'step_complete'; step: number; summary: string }
+  | { type: 'step_complete'; step: number; summary: string; context?: Partial<WorkflowContext> }
   | { type: 'discovery'; items: unknown[] }
   | { type: 'error'; step: number; message: string; retryable: boolean }
   | { type: 'done'; projectId?: string }
