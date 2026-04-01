@@ -1,65 +1,36 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/ui/ds-icon';
 import { DsButton } from '@/components/ui/ds-button';
 
 /* ---------- types ---------- */
 type ProjectStatus = 'in_progress' | 'submitted' | 'approved' | 'draft';
 
-interface PlaceholderProject {
+interface ApiProject {
   id: string;
   title: string;
-  organization: string;
-  code: string;
-  status: ProjectStatus;
-  progress: number;
-  teamCount: number;
-  lastActivity: string;
+  status: string; // 'ciorna' | 'in_lucru' | 'verificare' | 'aprobat' | 'finalizat'
+  totalBudget: number | null;
+  complianceScore: number | null;
+  matchScore: number | null;
+  createdAt: string;
+  updatedAt: string;
+  orgId: string;
+  acronym: string | null;
 }
 
-/* ---------- placeholder data ---------- */
-const PROJECTS: PlaceholderProject[] = [
-  {
-    id: '1',
-    title: 'Digitalizarea Administrației Publice Locale',
-    organization: 'Green City Alliance',
-    code: 'EU-77291',
-    status: 'in_progress',
-    progress: 75,
-    teamCount: 5,
-    lastActivity: '2h',
-  },
-  {
-    id: '2',
-    title: 'Diagnosticare Cancer cu AI',
-    organization: 'BioMed Research Lab',
-    code: 'EU-90112',
-    status: 'submitted',
-    progress: 100,
-    teamCount: 1,
-    lastActivity: 'Mar 12',
-  },
-  {
-    id: '3',
-    title: 'Infrastructura Eoliana Offshore Baltică',
-    organization: 'Nordic Energy Group',
-    code: 'EU-11200',
-    status: 'approved',
-    progress: 100,
-    teamCount: 2,
-    lastActivity: 'Feb 28',
-  },
-  {
-    id: '4',
-    title: 'Inițiativa Transfrontalieră de Alfabetizare Digitală',
-    organization: 'EduGlobal Foundation',
-    code: 'EU-PENDING',
-    status: 'draft',
-    progress: 15,
-    teamCount: 1,
-    lastActivity: 'now',
-  },
-];
+/* ---------- status mapping ---------- */
+const STATUS_MAP: Record<string, ProjectStatus> = {
+  ciorna: 'draft',
+  in_lucru: 'in_progress',
+  verificare: 'submitted',
+  aprobat: 'approved',
+  finalizat: 'approved',
+};
 
 /* ---------- status styling ---------- */
 const STATUS_STYLES: Record<ProjectStatus, { bg: string; text: string; ring: string }> = {
@@ -68,6 +39,23 @@ const STATUS_STYLES: Record<ProjectStatus, { bg: string; text: string; ring: str
   approved: { bg: 'bg-emerald-100', text: 'text-emerald-700', ring: 'stroke-emerald-500' },
   draft: { bg: 'bg-slate-200', text: 'text-slate-600', ring: 'stroke-slate-400' },
 };
+
+/* ---------- relative time helper ---------- */
+function relativeTime(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMs = now - then;
+  const diffMin = Math.floor(diffMs / 60_000);
+  const diffHrs = Math.floor(diffMs / 3_600_000);
+  const diffDays = Math.floor(diffMs / 86_400_000);
+
+  if (diffMin < 1) return 'acum';
+  if (diffMin < 60) return `${diffMin}m`;
+  if (diffHrs < 24) return `${diffHrs}h`;
+  if (diffDays < 30) return `${diffDays}z`;
+  const months = Math.floor(diffDays / 30);
+  return `${months}l`;
+}
 
 /* ---------- progress ring ---------- */
 function ProgressRing({
@@ -149,13 +137,78 @@ function TeamAvatars({ count }: { count: number }) {
   );
 }
 
+/* ---------- loading skeleton card ---------- */
+function SkeletonCard() {
+  return (
+    <div className="glass-card rounded-[1.5rem] p-8 flex flex-col animate-pulse min-h-[200px]">
+      <div className="flex justify-between items-start mb-6">
+        <div className="h-5 w-20 rounded-full bg-slate-200" />
+        <div className="w-12 h-12 rounded-full bg-slate-200" />
+      </div>
+      <div className="h-6 w-3/4 rounded bg-slate-200 mb-2" />
+      <div className="h-4 w-1/2 rounded bg-slate-100 mb-8" />
+      <div className="mt-auto flex items-center justify-between">
+        <div className="flex -space-x-2">
+          <div className="w-6 h-6 rounded-full bg-slate-200 border-2 border-white" />
+        </div>
+        <div className="h-3 w-16 rounded bg-slate-100" />
+      </div>
+    </div>
+  );
+}
+
 /* ---------- filter chips ---------- */
 const FILTERS = ['all', 'in_progress', 'submitted', 'approved'] as const;
+type FilterKey = (typeof FILTERS)[number];
 
 /* ---------- page component ---------- */
-export default function ProiectePage() {
+export default function ProiectePage({
+  params: { locale },
+}: {
+  params: { locale: string };
+}) {
   const t = useTranslations('projects');
+  const router = useRouter();
 
+  const [projects, setProjects] = useState<ApiProject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<FilterKey>('all');
+  const [page] = useState(1);
+
+  const searchTimeoutRef = useRef<NodeJS.Timeout>();
+
+  const handleSearchChange = (value: string) => {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => setSearch(value), 300);
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    const params = new URLSearchParams({ page: String(page), perPage: '12' });
+    if (search) params.set('search', search);
+    if (statusFilter !== 'all') {
+      const statusMap: Record<string, string> = {
+        draft: 'ciorna',
+        in_progress: 'in_lucru',
+        submitted: 'verificare',
+        approved: 'aprobat',
+      };
+      params.set('status', statusMap[statusFilter] || statusFilter);
+    }
+    fetch(`/api/v1/projects?${params}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setProjects(data.data?.items || []);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, [page, search, statusFilter]);
 
   return (
     <div className="fade-in-up max-w-7xl mx-auto">
@@ -170,7 +223,7 @@ export default function ProiectePage() {
               {t('pageSubtitle')}
             </p>
           </div>
-          <DsButton size="lg">
+          <DsButton size="lg" onClick={() => router.push(`/${locale}/asistent-ai`)}>
             <Icon name="add" />
             <span>{t('createProject')}</span>
           </DsButton>
@@ -187,14 +240,16 @@ export default function ProiectePage() {
               className="w-full pl-12 pr-4 py-4 bg-surface-container-high border-none rounded-full focus:ring-2 focus:ring-primary/20 transition-all text-on-surface placeholder:text-on-surface-variant/50"
               placeholder={t('searchPlaceholder')}
               type="text"
+              onChange={(e) => handleSearchChange(e.target.value)}
             />
           </div>
           <div className="flex gap-3 overflow-x-auto pb-2 w-full md:w-auto">
-            {FILTERS.map((filter, idx) => (
+            {FILTERS.map((filter) => (
               <button
                 key={filter}
+                onClick={() => setStatusFilter(filter)}
                 className={`px-6 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                  idx === 0
+                  statusFilter === filter
                     ? 'bg-on-surface text-surface'
                     : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest'
                 }`}
@@ -206,47 +261,88 @@ export default function ProiectePage() {
         </div>
       </header>
 
+      {/* Error state */}
+      {error && !loading && (
+        <div className="text-center py-10 text-red-600">
+          <p>{t('errorLoading')}: {error}</p>
+        </div>
+      )}
+
       {/* Projects Grid */}
       <section
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-24"
         style={{ animationDelay: '100ms' }}
       >
-        {PROJECTS.map((project) => {
-          const style = STATUS_STYLES[project.status];
-          return (
-            <Link
-              key={project.id}
-              href={`proiecte/${project.id}`}
-              className="glass-card rounded-[1.5rem] p-8 flex flex-col hover:shadow-[0_20px_40px_rgba(0,0,0,0.04)] transition-all cursor-pointer group"
+        {/* Loading skeletons */}
+        {loading &&
+          Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+
+        {/* Empty state */}
+        {!loading && !error && projects.length === 0 && (
+          <div className="col-span-full text-center py-20">
+            <Icon name="folder_open" size="lg" className="text-on-surface-variant mb-4" />
+            <h3 className="text-lg font-semibold text-on-surface">{t('emptyTitle')}</h3>
+            <p className="text-on-surface-variant mt-2">{t('emptyDescription')}</p>
+            <DsButton
+              variant="primary"
+              className="mt-6"
+              onClick={() => router.push(`/${locale}/asistent-ai`)}
             >
-              {/* Status + Progress */}
-              <div className="flex justify-between items-start mb-6">
-                <span
-                  className={`${style.bg} ${style.text} px-3 py-1 rounded-full text-[11px] font-bold tracking-wider uppercase`}
-                >
-                  {t(`statusLabels.${project.status}`)}
-                </span>
-                <ProgressRing progress={project.progress} status={project.status} />
-              </div>
+              {t('startFirstProject')}
+            </DsButton>
+          </div>
+        )}
 
-              {/* Title */}
-              <h3 className="text-xl font-bold text-on-surface leading-tight mb-2 group-hover:text-primary transition-colors">
-                {project.title}
-              </h3>
-              <p className="text-on-surface-variant text-sm mb-8">
-                {project.organization} &bull; ID: {project.code}
-              </p>
+        {/* Project cards */}
+        {!loading &&
+          projects.map((project) => {
+            const uiStatus: ProjectStatus = STATUS_MAP[project.status] ?? 'draft';
+            const style = STATUS_STYLES[uiStatus];
+            const progress = project.complianceScore || 0;
+            return (
+              <Link
+                key={project.id}
+                href={`/${locale}/proiecte/${project.id}`}
+                className="glass-card rounded-[1.5rem] p-8 flex flex-col hover:shadow-[0_20px_40px_rgba(0,0,0,0.04)] transition-all cursor-pointer group"
+              >
+                {/* Status + Progress */}
+                <div className="flex justify-between items-start mb-6">
+                  <span
+                    className={`${style.bg} ${style.text} px-3 py-1 rounded-full text-[11px] font-bold tracking-wider uppercase`}
+                  >
+                    {t(`statusLabels.${uiStatus}`)}
+                  </span>
+                  <ProgressRing progress={progress} status={uiStatus} />
+                </div>
 
-              {/* Footer */}
-              <div className="mt-auto flex items-center justify-between">
-                <TeamAvatars count={project.teamCount} />
-                <p className="text-[10px] text-on-surface-variant/60 font-medium uppercase">
-                  {t('modified')} {project.lastActivity}
+                {/* Title */}
+                <h3 className="text-xl font-bold text-on-surface leading-tight mb-2 group-hover:text-primary transition-colors">
+                  {project.title}
+                </h3>
+                <p className="text-on-surface-variant text-sm mb-8">
+                  {project.acronym || ''} &bull; ID: {project.id.slice(0, 8)}
                 </p>
-              </div>
-            </Link>
-          );
-        })}
+
+                {/* Footer */}
+                <div className="mt-auto flex items-center justify-between">
+                  <TeamAvatars count={1} />
+                  <p className="text-[10px] text-on-surface-variant/60 font-medium uppercase">
+                    {t('modified')} {relativeTime(project.updatedAt)}
+                  </p>
+                </div>
+              </Link>
+            );
+          })}
+
+        {/* Ghost "add" card — always last when not loading */}
+        {!loading && (
+          <Link
+            href={`/${locale}/asistent-ai`}
+            className="flex items-center justify-center border-2 border-dashed border-outline-variant/30 rounded-[1rem] min-h-[200px] hover:border-primary/30 transition-colors"
+          >
+            <Icon name="add" size="lg" className="text-on-surface-variant" />
+          </Link>
+        )}
       </section>
 
       {/* Archive Section */}
