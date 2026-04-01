@@ -136,3 +136,96 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: quality
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: fondeu
+          POSTGRES_USER: fondeu
+          POSTGRES_PASSWORD: fondeu_dev_2026
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fondeu"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      qdrant:
+        image: qdrant/qdrant:v1.12.1
+        ports:
+          - 6333:6333
+
+    defaults:
+      run:
+        working-directory: ./app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Push DB schema
+        env:
+          DATABASE_URL: postgresql://fondeu:fondeu_dev_2026@localhost:5432/fondeu
+        run: npx drizzle-kit push
+
+      - name: Seed admin user
+        env:
+          DATABASE_URL: postgresql://fondeu:fondeu_dev_2026@localhost:5432/fondeu
+        run: npx tsx scripts/seed-admin.ts
+
+      - name: Flush Redis rate limits
+        run: redis-cli -h localhost -p 6379 FLUSHDB 2>/dev/null || docker exec "$(docker ps -qf ancestor=redis:7-alpine)" redis-cli FLUSHDB 2>/dev/null || true
+
+      - name: Run Playwright E2E tests
+        env:
+          CI: true
+          NODE_ENV: development
+          DATABASE_URL: postgresql://fondeu:fondeu_dev_2026@localhost:5432/fondeu
+          REDIS_URL: redis://localhost:6379
+          NEXTAUTH_URL: http://localhost:3000
+          NEXTAUTH_SECRET: ci-test-secret-not-for-production
+          VECTOR_PROVIDER: memory
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+        run: |
+          PORT=3000 npm run dev &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000/api/health > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://localhost:3000/api/health || (echo "App failed to start" && exit 1)
+          npx playwright test
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: app/test-results/
+          retention-days: 7
