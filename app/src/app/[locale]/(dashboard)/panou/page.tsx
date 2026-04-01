@@ -105,7 +105,6 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
     hours < 12 ? 'greetingMorning' : hours < 18 ? 'greetingAfternoon' : 'greetingEvening';
 
   const isNewUser = !loading && projects.length === 0 && !activeSession;
-  const isReturning = !loading && (projects.length > 0 || activeSession !== null);
 
   const heroInput = (compact = false) => (
     <form
