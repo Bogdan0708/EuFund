@@ -194,6 +194,11 @@ export async function processMessage(
         })
         .where(eq(workflowSessions.id, sessionId))
 
+      // Auto-advance to next step if no checkpoint and not complete
+      if (!isComplete) {
+        return processMessage(sessionId, input, stream, gateway)
+      }
+
       if (isComplete) {
         // Persist project from completed workflow
         const sections = (updatedContext as unknown as { projectSections?: unknown }).projectSections
