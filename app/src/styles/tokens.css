@@ -12,9 +12,9 @@
   --surface-container-high: 210 210 218;   /* #d2d2da */
   --surface-container-highest: 202 202 212;/* #cacad4 */
   --background: 208 208 216;          /* #D0D0D8 */
-  --on-surface: 26 27 31;             /* #1a1b1f */
-  --on-surface-variant: 55 58 65;     /* #373a41 */
-  --on-background: 26 27 31;          /* #1a1b1f */
+  --on-surface: 0 0 0;                /* #000000 */
+  --on-surface-variant: 0 0 0;        /* #000000 */
+  --on-background: 0 0 0;             /* #000000 */
   --primary: 0 89 181;                /* #0059b5 */
   --primary-container: 0 113 227;     /* #0071e3 */
   --primary-fixed: 215 226 255;       /* #d7e2ff */
@@ -35,7 +35,7 @@
   --error-container: 255 218 214;     /* #ffdad6 */
   --on-error: 255 255 255;            /* #ffffff */
   --on-error-container: 147 0 10;     /* #93000a */
-  --outline: 85 90 100;               /* #555a64 */
+  --outline: 30 30 35;                /* #1e1e23 */
   --outline-variant: 193 198 214;     /* #c1c6d6 */
   --surface-tint: 0 92 187;           /* #005cbb */
   --surface-variant: 227 226 231;     /* #e3e2e7 */
