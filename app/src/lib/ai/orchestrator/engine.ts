@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { workflowSessions, workflowMessages, projects, projectDocuments, orgMembers } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, and, desc } from 'drizzle-orm'
 import type { WorkflowContext, AgentFn, SSEStream, GatewayClient } from './types'
 import { STEP_LABELS } from './types'
 import { logger } from '@/lib/logger'
@@ -109,6 +109,22 @@ export async function processMessage(
     .from(workflowSessions).where(eq(workflowSessions.id, sessionId)).limit(1)
 
   const isCompleted = sessionRow?.status === 'completed'
+
+  // Check if the last assistant message was a checkpoint — if so, this is a
+  // checkpoint response: advance to the next step instead of re-running current agent
+  const [lastAssistantMsg] = await db.select({ eventType: workflowMessages.eventType })
+    .from(workflowMessages)
+    .where(and(eq(workflowMessages.sessionId, sessionId), eq(workflowMessages.role, 'assistant')))
+    .orderBy(desc(workflowMessages.createdAt))
+    .limit(1)
+
+  if (!isCompleted && lastAssistantMsg?.eventType === 'checkpoint') {
+    ctx.step = ctx.step + 1
+    await db.update(workflowSessions).set({
+      currentStep: ctx.step,
+      updatedAt: new Date(),
+    }).where(eq(workflowSessions.id, sessionId))
+  }
 
   // Store user message
   await db.insert(workflowMessages).values({
