@@ -19,16 +19,27 @@ export const planAgent: AgentFn = async (ctx, _input, stream, gateway) => {
     maxTokens: 4000,
   })
 
-  let actionPlan
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let actionPlan: any
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    actionPlan = parseAIJson<any>(result.content)
+    actionPlan = parseAIJson<Record<string, unknown>>(result.content)
   } catch {
-    throw new Error('Failed to parse action plan from AI response')
+    // If JSON parsing fails, wrap the raw response as a simple plan
+    actionPlan = {
+      matchedCall: { title: selectedCall.title, program: selectedCall.program, deadline: selectedCall.deadline, budget: { min: 0, max: 0, currency: 'EUR' }, sourceUrl: selectedCall.sourceUrl },
+      steps: [{ order: 1, title: 'Review AI-generated plan', description: result.content, category: 'document', dependencies: [] }],
+      requiredDocuments: [],
+      estimatedTimeline: 'To be determined',
+    }
   }
 
-  const stepList = actionPlan.steps?.map((s: { order: number; title: string }) => `${s.order}. ${s.title}`).join('\n') || ''
-  stream.send({ type: 'ai_chunk', step: 6, content: `Action Plan:\n${stepList}\n\nEstimated timeline: ${actionPlan.estimatedTimeline}` })
+  // Ensure steps array exists
+  if (!actionPlan.steps || !Array.isArray(actionPlan.steps)) {
+    actionPlan.steps = []
+  }
+
+  const stepList = actionPlan.steps.map((s: { order: number; title: string }) => `${s.order}. ${s.title}`).join('\n') || ''
+  stream.send({ type: 'ai_chunk', step: 6, content: `Action Plan:\n${stepList}\n\nEstimated timeline: ${actionPlan.estimatedTimeline || 'TBD'}` })
 
   return {
     data: { actionPlan },
