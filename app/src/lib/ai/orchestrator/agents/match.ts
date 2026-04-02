@@ -74,25 +74,38 @@ If you cannot find any matching open calls, return an empty array [].`,
       content: `PROJECT:\n${JSON.stringify(ctx.enhancedIdea, null, 2)}\n\nAVAILABLE CALLS:\n${ragContext || 'No calls found. Search your knowledge of Romanian EU funding programs (PNRR, PEO, POCIDIF, POTJ, PR-*, POIM, etc.) and suggest the most likely matching open calls. Generate realistic entries with callId, title, program, scores, and reasoning.'}`,
     }],
     temperature: 0.2,
+    maxTokens: 4096,
   })
 
-  let matchedCalls: MatchedCall[]
+  let matchedCalls: MatchedCall[] = []
   try {
-    const parsed = parseAIJson<MatchedCall[] | Record<string, unknown>>(result.content)
-    // AI may return { calls: [...] } or { matchedCalls: [...] } instead of a plain array
-    if (Array.isArray(parsed)) {
-      matchedCalls = parsed
-    } else if (parsed && typeof parsed === 'object') {
-      const arr = (parsed as Record<string, unknown>).calls
-        || (parsed as Record<string, unknown>).matchedCalls
-        || (parsed as Record<string, unknown>).results
-        || Object.values(parsed).find(v => Array.isArray(v))
-      matchedCalls = Array.isArray(arr) ? arr as MatchedCall[] : []
-    } else {
-      matchedCalls = []
+    const parsed = parseAIJson<unknown>(result.content)
+    // Normalize: AI may return a plain array, or wrap it in an object
+    const arr = Array.isArray(parsed)
+      ? parsed
+      : (parsed && typeof parsed === 'object')
+        ? (Array.isArray((parsed as Record<string, unknown>).calls) ? (parsed as Record<string, unknown>).calls
+          : Array.isArray((parsed as Record<string, unknown>).matchedCalls) ? (parsed as Record<string, unknown>).matchedCalls
+          : Array.isArray((parsed as Record<string, unknown>).results) ? (parsed as Record<string, unknown>).results
+          : Object.values(parsed as Record<string, unknown>).find(v => Array.isArray(v)))
+        : null
+
+    if (Array.isArray(arr)) {
+      matchedCalls = (arr as Record<string, unknown>[]).map((c, i) => ({
+        callId: String(c.callId || c.id || `call-${i + 1}`),
+        title: String(c.title || 'Unknown Call'),
+        program: String(c.program || 'Unknown'),
+        score: Number(c.score) || 0,
+        thematicFit: Number(c.thematicFit) || 0,
+        eligibilityFit: Number(c.eligibilityFit) || 0,
+        budgetFit: Number(c.budgetFit) || 0,
+        deadline: String(c.deadline || 'TBD'),
+        sourceUrl: String(c.sourceUrl || ''),
+        reasoning: String(c.reasoning || ''),
+      }))
     }
   } catch {
-    matchedCalls = []
+    // Parsing failed — matchedCalls stays empty
   }
 
   // Stream results to user
