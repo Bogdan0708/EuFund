@@ -49,10 +49,11 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="font-body text-on-surface mesh-gradient min-h-screen flex flex-col items-center justify-center p-6 selection:bg-primary-fixed selection:text-on-primary-fixed">
-      {/* Atmospheric blobs */}
-      <div className="fixed top-[-10%] left-[20%] w-[600px] h-[600px] bg-secondary/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="fixed bottom-[-10%] right-[-10%] w-[300px] h-[300px] bg-primary/5 rounded-full blur-[80px] pointer-events-none" />
+    <div className="font-body text-on-surface bg-background min-h-screen flex flex-col items-center justify-center p-6 selection:bg-primary-fixed selection:text-on-primary-fixed relative overflow-hidden">
+      {/* Atmospheric blobs — same as LiveBackground */}
+      <div className="fixed top-[-10%] left-[-5%] w-[600px] h-[600px] bg-[#0071E3] opacity-[0.15] rounded-full blur-[120px] pointer-events-none" style={{ animation: 'float-orb-1 25s ease-in-out infinite' }} />
+      <div className="fixed bottom-[-10%] right-[-5%] w-[500px] h-[500px] bg-[#4A47D2] opacity-[0.10] rounded-full blur-[120px] pointer-events-none" style={{ animation: 'float-orb-2 30s ease-in-out infinite' }} />
+      <div className="fixed top-[40%] left-[30%] w-[400px] h-[400px] bg-[#00637F] opacity-[0.07] rounded-full blur-[120px] pointer-events-none" style={{ animation: 'float-orb-3 35s ease-in-out infinite' }} />
 
       <main className="w-full max-w-md z-10">
         {/* Login Card */}

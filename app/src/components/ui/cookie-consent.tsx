@@ -184,7 +184,7 @@ export function CookieConsentBanner() {
   const t = locale === 'en' ? i18n.en : i18n.ro;
 
   return (
-    <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-3xl rounded-xl border bg-white p-4 shadow-xl">
+    <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-3xl rounded-xl glass-card p-4 shadow-xl">
       <div className="space-y-3">
         <div>
           <h2 className="text-sm font-semibold">{t.title}</h2>
