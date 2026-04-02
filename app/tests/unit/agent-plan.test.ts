@@ -65,14 +65,18 @@ describe('Plan Agent', () => {
     expect(result.checkpoint?.question).toContain('Do you agree')
   })
 
-  it('throws when AI response is not valid JSON', async () => {
+  it('wraps invalid JSON as a fallback plan', async () => {
     const mockStream: SSEStream = { send: vi.fn(), close: vi.fn() }
     const mockGateway: GatewayClient = {
       generate: vi.fn().mockResolvedValue({ content: 'Invalid JSON response', tokensUsed: 100 }),
       embed: vi.fn(),
     }
     const { planAgent } = await import('@/lib/ai/orchestrator/agents/plan')
-    await expect(planAgent(baseCtx, '', mockStream, mockGateway)).rejects.toThrow('Failed to parse action plan from AI response')
+    const result = await planAgent(baseCtx, '', mockStream, mockGateway)
+    expect(result.data.actionPlan).toBeDefined()
+    const plan = result.data.actionPlan as { steps: { title: string }[] }
+    expect(plan.steps).toHaveLength(1)
+    expect(plan.steps[0].title).toBe('Review AI-generated plan')
   })
 
   it('throws when matchedCalls or researchResults are missing', async () => {
