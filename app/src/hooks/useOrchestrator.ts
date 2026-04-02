@@ -371,9 +371,21 @@ export function useOrchestrator(locale: string) {
           connectSSE(newSessionId);
         }
       } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         setIsStreaming(false);
         setStatus('error');
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        setError(errorMessage);
+        // Remove the user message that was never processed and add error as visible chat message
+        setMessages((prev) => [
+          ...prev.filter((m) => m.id !== userMsg.id),
+          {
+            id: `error-send-${Date.now()}`,
+            role: 'assistant',
+            content: errorMessage,
+            eventType: 'error',
+            step: 0,
+          },
+        ]);
       }
     },
     [activeSessionId, locale, connectSSE],
