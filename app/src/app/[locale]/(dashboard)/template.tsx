@@ -8,7 +8,7 @@ export default function DashboardTemplate({ children }: { children: React.ReactN
   const pathname = usePathname()
 
   return (
-    <AnimatePresence mode="wait">
+    <AnimatePresence mode="wait" initial={false}>
       <motion.div
         key={pathname}
         variants={pageVariants}
