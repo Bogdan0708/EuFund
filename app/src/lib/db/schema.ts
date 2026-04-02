@@ -304,6 +304,7 @@ export const projects = pgTable('projects', {
   acronym: varchar('acronym', { length: 50 }),
   status: projectStatusEnum('status').default('ciorna'),
   currentVersion: integer('current_version').default(1),
+  completionStatus: varchar('completion_status', { length: 30 }),
   startDate: date('start_date'),
   endDate: date('end_date'),
   durationMonths: integer('duration_months'),
@@ -807,6 +808,25 @@ export const workflowMessages = pgTable('workflow_messages', {
 }, (table) => ({
   sessionIdIdx: index('idx_workflow_messages_session').on(table.sessionId),
   createdAtIdx: index('idx_workflow_messages_created').on(table.createdAt),
+}))
+
+export const callKnowledge = pgTable('call_knowledge', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  callId: text('call_id').notNull(),
+  program: text('program').notNull(),
+  callTitle: text('call_title').notNull(),
+  sections: jsonb('sections').notNull().default(sql`'[]'`),
+  requirements: jsonb('requirements').notNull().default(sql`'{}'`),
+  evaluation: jsonb('evaluation').notNull().default(sql`'{}'`),
+  eligibility: jsonb('eligibility').notNull().default(sql`'{}'`),
+  source: text('source').notNull().default('notebooklm'),
+  verifiedAt: timestamp('verified_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  callIdUnique: uniqueIndex('idx_call_knowledge_call_id').on(table.callId),
+  programIdx: index('idx_call_knowledge_program').on(table.program),
+  verifiedIdx: index('idx_call_knowledge_verified').on(table.verifiedAt),
 }))
 
 export const discoveredCalls = pgTable('discovered_calls', {
