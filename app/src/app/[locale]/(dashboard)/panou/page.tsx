@@ -80,8 +80,8 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
 
         if (projRes.ok) {
           const projData = await projRes.json();
-          const projectList: Project[] = projData.projects ?? projData.data ?? [];
-          setProjects(projectList);
+          const projectList: Project[] = projData.data?.items ?? projData.projects ?? projData.data ?? [];
+          setProjects(Array.isArray(projectList) ? projectList : []);
         }
       } catch {
         // Graceful degradation — show new user state
@@ -171,7 +171,7 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
             <div className="glass p-2 rounded-full flex items-center shadow-xl">
               <Icon name="search" className="ml-6 text-on-surface-variant" size="md" />
               <input
-                className="bg-transparent border-none focus:ring-0 flex-1 px-4 py-3 text-lg placeholder:text-on-surface-variant/50 outline-none"
+                className="bg-transparent border-none focus:ring-0 flex-1 px-4 py-3 text-lg placeholder:text-on-surface-variant/70 outline-none"
                 placeholder={t('heroPlaceholder')}
                 type="text"
                 value={inputText}
