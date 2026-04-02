@@ -51,6 +51,15 @@ function getClient(provider: string): OpenAI {
   return clients[provider]
 }
 
+// ─── Fallback providers ─────────────────────────────────────────
+
+const FALLBACK_PROVIDER: Record<string, { provider: string; model: string }> = {
+  perplexity: { provider: 'gemini', model: 'gemini-2.5-flash' },
+  claude:     { provider: 'gemini', model: 'gemini-2.5-flash' },
+  gemini:     { provider: 'claude', model: 'claude-sonnet-4-6' },
+  openai:     { provider: 'gemini', model: 'gemini-2.5-flash' },
+}
+
 // ─── Embedding client (always OpenAI) ───────────────────────────
 
 function getEmbeddingClient(): OpenAI {
@@ -59,13 +68,64 @@ function getEmbeddingClient(): OpenAI {
   return clients['_embed']
 }
 
+// ─── Retry helper ───────────────────────────────────────────────
+
+async function callWithRetry(
+  provider: string,
+  model: string,
+  messages: OpenAI.ChatCompletionMessageParam[],
+  maxTokens: number,
+  temperature: number,
+): Promise<{ content: string; tokensUsed: number }> {
+  // Attempt 1: primary provider
+  try {
+    return await singleCall(provider, model, messages, maxTokens, temperature)
+  } catch (err) {
+    log.warn({ provider, model, error: err instanceof Error ? err.message : String(err) }, 'Primary call failed, retrying...')
+  }
+
+  // Attempt 2: retry same provider after 1s backoff
+  await new Promise(r => setTimeout(r, 1000))
+  try {
+    return await singleCall(provider, model, messages, maxTokens, temperature)
+  } catch (err) {
+    log.warn({ provider, model, error: err instanceof Error ? err.message : String(err) }, 'Retry failed, trying fallback provider')
+  }
+
+  // Attempt 3: fallback provider
+  const fallback = FALLBACK_PROVIDER[provider]
+  if (fallback) {
+    log.info({ from: provider, to: fallback.provider, model: fallback.model }, 'Falling back to alternate provider')
+    return await singleCall(fallback.provider, fallback.model, messages, maxTokens, temperature)
+  }
+
+  throw new Error(`All attempts failed for provider ${provider}`)
+}
+
+async function singleCall(
+  provider: string,
+  model: string,
+  messages: OpenAI.ChatCompletionMessageParam[],
+  maxTokens: number,
+  temperature: number,
+): Promise<{ content: string; tokensUsed: number }> {
+  const client = getClient(provider)
+  const response = await client.chat.completions.create({
+    model,
+    messages,
+    max_tokens: maxTokens,
+    temperature,
+  })
+  const content = response.choices?.[0]?.message?.content ?? ''
+  const tokensUsed = response.usage?.total_tokens ?? 0
+  return { content, tokensUsed }
+}
+
 // ─── Public API ─────────────────────────────────────────────────
 
 export function createGatewayClient(_tenantId: string): GatewayClient {
   return {
     async generate(opts) {
-      const client = getClient(opts.provider)
-
       const messages: OpenAI.ChatCompletionMessageParam[] = []
       if (opts.system) {
         messages.push({ role: 'system', content: opts.system })
@@ -79,17 +139,13 @@ export function createGatewayClient(_tenantId: string): GatewayClient {
 
       log.info({ provider: opts.provider, model: opts.model }, 'AI request')
 
-      const response = await client.chat.completions.create({
-        model: opts.model,
+      return callWithRetry(
+        opts.provider,
+        opts.model,
         messages,
-        max_tokens: opts.maxTokens ?? 4096,
-        temperature: opts.temperature ?? 0.7,
-      })
-
-      const content = response.choices?.[0]?.message?.content ?? ''
-      const tokensUsed = response.usage?.total_tokens ?? 0
-
-      return { content, tokensUsed }
+        opts.maxTokens ?? 4096,
+        opts.temperature ?? 0.7,
+      )
     },
 
     async embed(text: string) {
