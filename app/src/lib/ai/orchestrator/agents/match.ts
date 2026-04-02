@@ -78,9 +78,21 @@ If you cannot find any matching open calls, return an empty array [].`,
 
   let matchedCalls: MatchedCall[]
   try {
-    matchedCalls = parseAIJson<MatchedCall[]>(result.content)
+    const parsed = parseAIJson<MatchedCall[] | Record<string, unknown>>(result.content)
+    // AI may return { calls: [...] } or { matchedCalls: [...] } instead of a plain array
+    if (Array.isArray(parsed)) {
+      matchedCalls = parsed
+    } else if (parsed && typeof parsed === 'object') {
+      const arr = (parsed as Record<string, unknown>).calls
+        || (parsed as Record<string, unknown>).matchedCalls
+        || (parsed as Record<string, unknown>).results
+        || Object.values(parsed).find(v => Array.isArray(v))
+      matchedCalls = Array.isArray(arr) ? arr as MatchedCall[] : []
+    } else {
+      matchedCalls = []
+    }
   } catch {
-    throw new Error('Failed to parse AI response for call matching')
+    matchedCalls = []
   }
 
   // Stream results to user
