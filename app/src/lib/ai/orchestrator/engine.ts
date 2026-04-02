@@ -1,18 +1,18 @@
 import { db } from '@/lib/db'
 import { workflowSessions, workflowMessages, projects, projectDocuments, orgMembers } from '@/lib/db/schema'
 import { eq, and, desc } from 'drizzle-orm'
-import type { WorkflowContext, AgentFn, SSEStream, GatewayClient } from './types'
+import type { WorkflowContext, AgentFn, SSEStream, GatewayClient, ProjectCompletionStatus, SectionResult, CallBlueprint } from './types'
 import { STEP_LABELS } from './types'
 import { logger } from '@/lib/logger'
+import { runPostBuildQA } from './qa'
+import { buildSectionSpecs } from './section-specs'
 
 const log = logger.child({ component: 'orchestrator-engine' })
 
 // Agent imports
 import { enhanceAgent } from './agents/enhance'
 import { matchAgent } from './agents/match'
-import { validateAgent } from './agents/validate'
 import { researchAgent } from './agents/research'
-import { knowledgeAgent } from './agents/knowledge'
 import { planAgent } from './agents/plan'
 import { buildAgent } from './agents/build'
 import { editAgent } from './agents/edit'
@@ -20,16 +20,14 @@ import { editAgent } from './agents/edit'
 const AGENTS: Record<number, AgentFn> = {
   1: enhanceAgent,
   2: matchAgent,
-  3: validateAgent,
-  4: researchAgent,
-  5: knowledgeAgent,
-  6: planAgent,
-  7: buildAgent,
+  3: researchAgent,
+  4: planAgent,
+  5: buildAgent,
 }
 
 export function getAgentForStep(step: number): AgentFn {
   const agent = AGENTS[step]
-  if (!agent) throw new Error(`Invalid step: ${step}. Must be 1-7.`)
+  if (!agent) throw new Error(`Invalid step: ${step}. Must be 1-5.`)
   return agent
 }
 
@@ -202,7 +200,7 @@ export async function processMessage(
         .where(eq(workflowSessions.id, sessionId))
     } else {
       const nextStep = ctx.step + 1
-      const isComplete = nextStep > 7
+      const isComplete = nextStep > 5
 
       stream.send({
         type: 'step_complete',
@@ -218,7 +216,7 @@ export async function processMessage(
       await db
         .update(workflowSessions)
         .set({
-          currentStep: isComplete ? 7 : nextStep,
+          currentStep: isComplete ? 5 : nextStep,
           context: updatedContext as unknown as Record<string, unknown>,
           status: isComplete ? 'completed' : 'active',
           updatedAt: new Date(),
@@ -232,9 +230,26 @@ export async function processMessage(
 
       if (isComplete) {
         // Persist project from completed workflow
-        const sections = (updatedContext as unknown as { projectSections?: unknown }).projectSections
+        const sections = updatedContext.projectSections as SectionResult[] | null
         if (sections) {
           const title = (updatedContext as unknown as { enhancedIdea?: { refinedDescription?: string } }).enhancedIdea?.refinedDescription || 'Untitled Project'
+
+          // Run post-build QA
+          const blueprint = (updatedContext.callBlueprint as CallBlueprint | null) || {
+            normalized: { requiredSections: [], mandatoryAnnexes: [], eligibilityCriteria: [], evaluationGrid: [], cofinancingRate: 0 },
+          } as unknown as CallBlueprint
+          const specs = buildSectionSpecs(blueprint)
+          const qaResult = runPostBuildQA(sections, specs)
+
+          // Determine completion status
+          let completionStatus: ProjectCompletionStatus = 'complete'
+          if (!qaResult.passed || sections.some(s => s.source === 'failed')) {
+            completionStatus = qaResult.missingSections.length > 0 ? 'needs_review' : 'complete_with_gaps'
+          }
+          if ((updatedContext.callBlueprint as CallBlueprint | null)?.structureConfidence !== undefined &&
+              (updatedContext.callBlueprint as CallBlueprint).structureConfidence < 0.4) {
+            completionStatus = 'needs_review'
+          }
 
           // Resolve user's org for the required orgId field
           const [membership] = await db
@@ -250,14 +265,16 @@ export async function processMessage(
               createdBy: ctx.userId,
               title: title.slice(0, 200),
               status: 'ciorna',
+              completionStatus,
               currentVersion: 1,
             }).returning()
 
-            // Create project_documents version with sections
+            // Create project_documents version with sections and QA metadata
             await db.insert(projectDocuments).values({
               projectId: project.id,
               version: 1,
-              sections: sections as Record<string, unknown>[],
+              sections: sections as unknown as Record<string, unknown>[],
+              metadata: { qaResult } as unknown as Record<string, unknown>,
             })
 
             // Link session to project
@@ -265,7 +282,7 @@ export async function processMessage(
               .set({ projectId: project.id })
               .where(eq(workflowSessions.id, sessionId))
 
-            stream.send({ type: 'done', projectId: project.id })
+            stream.send({ type: 'done', projectId: project.id, completionStatus })
           } else {
             stream.send({ type: 'done' })
           }
