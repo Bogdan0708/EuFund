@@ -8,11 +8,13 @@ export const planAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   }
 
   const selectedCall = (ctx.selectedCallId && ctx.matchedCalls.find(c => c.callId === ctx.selectedCallId)) || ctx.matchedCalls[0]
-  stream.send({ type: 'step_progress', step: 6, message: 'Creating your action plan...' })
+  stream.send({ type: 'step_progress', step: 4, message: 'Creating your action plan...' })
 
+  const provider = 'anthropic'
+  const model = 'claude-opus-4-6'
   const result = await gateway.generate({
-    provider: 'claude',
-    model: 'claude-sonnet-4-6',
+    provider,
+    model,
     system: getPlanPrompt(ctx),
     messages: [{ role: 'user', content: `Create an action plan for:\n\nProject: ${JSON.stringify(ctx.enhancedIdea)}\n\nCall: ${JSON.stringify(selectedCall)}\n\nBlueprint: ${JSON.stringify(ctx.callBlueprint)}` }],
     temperature: 0.3,
@@ -39,7 +41,7 @@ export const planAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   }
 
   const stepList = actionPlan.steps.map((s: { order: number; title: string }) => `${s.order}. ${s.title}`).join('\n') || ''
-  stream.send({ type: 'ai_chunk', step: 6, content: `Action Plan:\n${stepList}\n\nEstimated timeline: ${actionPlan.estimatedTimeline || 'TBD'}` })
+  stream.send({ type: 'ai_chunk', step: 4, content: `Action Plan:\n${stepList}\n\nEstimated timeline: ${actionPlan.estimatedTimeline || 'TBD'}` })
 
   return {
     data: { actionPlan },
