@@ -1,6 +1,9 @@
 import type { AgentFn, MatchedCall } from '../types'
 import { getMatchPrompt } from '../prompts/match'
 import { parseAIJson } from '../utils'
+import { logger } from '@/lib/logger'
+
+const log = logger.child({ component: 'match-agent' })
 
 export const matchAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   if (!ctx.enhancedIdea) {
@@ -78,8 +81,10 @@ If you cannot find any matching open calls, return an empty array [].`,
   })
 
   let matchedCalls: MatchedCall[] = []
+  log.info({ responseLength: result.content.length, preview: result.content.slice(0, 300) }, 'Gemini match response')
   try {
     const parsed = parseAIJson<unknown>(result.content)
+    log.info({ parsedType: typeof parsed, isArray: Array.isArray(parsed), keys: parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? Object.keys(parsed as Record<string, unknown>) : null }, 'Parsed match result')
     // Normalize: AI may return a plain array, or wrap it in an object
     const arr = Array.isArray(parsed)
       ? parsed
