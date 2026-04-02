@@ -106,7 +106,7 @@ function FileCard({ file }: { file: AggregatedFile }) {
         <div className={`w-12 h-12 ${icon.bg} ${icon.color} rounded-xl flex items-center justify-center`}>
           <Icon name={icon.name} size="lg" />
         </div>
-        <button className="text-on-surface-variant/40 hover:text-on-surface transition-colors">
+        <button className="text-on-surface-variant hover:text-on-surface transition-colors">
           <Icon name="more_vert" />
         </button>
       </div>
@@ -143,20 +143,29 @@ export default function DocumentePage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
+    const controller = new AbortController();
+
     (async () => {
       try {
-        const projRes = await fetch('/api/v1/projects?perPage=50');
+        const projRes = await fetch('/api/v1/projects?perPage=50', {
+          signal: controller.signal,
+        });
         const projData = await projRes.json();
         const projects = projData.data?.items || [];
 
         const allFiles: AggregatedFile[] = [];
 
-        // Fetch files for each project (limit to first 10 projects to avoid too many requests)
+        // Fetch files for first 10 projects, 5s timeout each
         const projectsToFetch = projects.slice(0, 10);
         await Promise.all(
           projectsToFetch.map(async (project: { id: string; title: string }) => {
             try {
-              const filesRes = await fetch(`/api/v1/projects/${project.id}/files`);
+              const fileController = new AbortController();
+              const timeout = setTimeout(() => fileController.abort(), 5000);
+              const filesRes = await fetch(`/api/v1/projects/${project.id}/files`, {
+                signal: fileController.signal,
+              });
+              clearTimeout(timeout);
               if (!filesRes.ok) return;
               const filesData = await filesRes.json();
               const projectFiles = filesData.data || filesData.files || [];
@@ -174,18 +183,22 @@ export default function DocumentePage() {
                 });
               }
             } catch {
-              // Skip projects with no files endpoint
+              // Skip projects with no files or timeout
             }
           })
         );
 
         setFiles(allFiles);
-        setLoading(false);
       } catch (err) {
-        setError(err instanceof Error ? err.message : t('errorLoading'));
+        if (!controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : t('errorLoading'));
+        }
+      } finally {
         setLoading(false);
       }
     })();
+
+    return () => controller.abort();
   }, [t]);
 
   const filteredFiles = files
@@ -221,7 +234,7 @@ export default function DocumentePage() {
           <div className="relative group">
             <Icon
               name="search"
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/50"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant"
             />
             <input
               className="pl-12 pr-6 py-3 bg-surface-container-high rounded-full border-none focus:ring-2 focus:ring-primary/20 transition-all w-64 text-sm font-medium"
@@ -285,7 +298,7 @@ export default function DocumentePage() {
         <section className="mb-20">
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-16 h-16 bg-surface-container-highest rounded-2xl flex items-center justify-center mb-6">
-              <Icon name="folder_open" size="lg" className="text-on-surface-variant/50" />
+              <Icon name="folder_open" size="lg" className="text-on-surface-variant" />
             </div>
             <h3 className="text-xl font-bold text-on-surface mb-2">{t('noFilesTitle')}</h3>
             <p className="text-on-surface-variant text-sm max-w-md leading-relaxed">
@@ -367,7 +380,7 @@ export default function DocumentePage() {
                       {t('status.pending')}
                     </span>
                   )}
-                  <button className="text-on-surface-variant/40 hover:text-on-surface transition-colors">
+                  <button className="text-on-surface-variant hover:text-on-surface transition-colors">
                     <Icon name="download" />
                   </button>
                 </div>
