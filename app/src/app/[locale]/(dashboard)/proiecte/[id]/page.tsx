@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import * as Tabs from '@radix-ui/react-tabs';
 import { AnimatePresence, motion } from 'motion/react';
@@ -174,9 +174,12 @@ function PageSkeleton() {
 }
 
 /* ---------- page component ---------- */
-export default function ProiectDetailPage({ params }: { params: { id: string } }) {
+export default function ProiectDetailPage() {
   const t = useTranslations('projectDetail');
   const router = useRouter();
+  const params = useParams<{ id: string; locale: string }>();
+  const id = params.id;
+  const locale = params.locale || 'ro';
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [files, setFiles] = useState<ProjectFile[]>([]);
@@ -188,7 +191,7 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
 
   // Fetch project details
   useEffect(() => {
-    fetch(`/api/v1/projects/${params.id}`)
+    fetch(`/api/v1/projects/${id}`)
       .then(res => {
         if (!res.ok) throw new Error('Project not found');
         return res.json();
@@ -201,18 +204,18 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
         setError(err.message);
         setLoading(false);
       });
-  }, [params.id]);
+  }, [id]);
 
   // Fetch files when project loads
   useEffect(() => {
     if (!project) return;
     setFilesLoading(true);
-    fetch(`/api/v1/projects/${params.id}/files`)
+    fetch(`/api/v1/projects/${id}/files`)
       .then(res => res.ok ? res.json() : { files: [] })
       .then(data => setFiles(data.files ?? []))
       .catch(() => setFiles([]))
       .finally(() => setFilesLoading(false));
-  }, [params.id, project]);
+  }, [id, project]);
 
   // Find linked AI session
   useEffect(() => {
@@ -221,11 +224,11 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
       .then(res => res.ok ? res.json() : { sessions: [] })
       .then(data => {
         const sessions: WorkflowSession[] = data.sessions ?? [];
-        const linked = sessions.find(s => s.projectId === params.id && s.status === 'active');
+        const linked = sessions.find(s => s.projectId === id && s.status === 'active');
         setAiSessionId(linked?.id ?? null);
       })
       .catch(() => setAiSessionId(null));
-  }, [params.id, project]);
+  }, [id, project]);
 
   if (loading) return <PageSkeleton />;
 
@@ -235,7 +238,7 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
         <Icon name="error_outline" size="lg" className="text-error" />
         <h2 className="text-2xl font-bold text-on-surface">{t('projectNotFound')}</h2>
         <button
-          onClick={() => router.push('/proiecte')}
+          onClick={() => router.push(`/${locale}/proiecte`)}
           className="flex items-center gap-2 px-5 py-3 rounded-full border border-outline-variant/30 text-on-surface font-semibold text-sm hover:bg-surface-container-high transition-colors"
         >
           <Icon name="arrow_back" size="sm" />
@@ -259,7 +262,7 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
       {/* Breadcrumb */}
       <div className="text-on-surface-variant font-medium text-sm mb-8">
         <button
-          onClick={() => router.push('/proiecte')}
+          onClick={() => router.push(`/${locale}/proiecte`)}
           className="hover:text-primary transition-colors"
         >
           {t('breadcrumb')}
@@ -529,7 +532,7 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
                   </div>
                 ) : (
                   <div className="text-center py-16">
-                    <Icon name="folder_open" size="lg" className="text-on-surface-variant/40 mx-auto mb-4" />
+                    <Icon name="folder_open" size="lg" className="text-on-surface-variant mx-auto mb-4" />
                     <p className="font-bold text-on-surface mb-2">{t('noDocuments')}</p>
                     <p className="text-sm text-on-surface-variant">{t('uploadTitle')}</p>
                   </div>
@@ -557,7 +560,7 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
                 transition={pageTransition}
               >
                 <div className="flex flex-col items-center justify-center py-24 gap-4">
-                  <Icon name="task_alt" size="lg" className="text-on-surface-variant/40" />
+                  <Icon name="task_alt" size="lg" className="text-on-surface-variant" />
                   <h3 className="text-xl font-bold text-on-surface">{t('noTasks')}</h3>
                   <p className="text-sm text-on-surface-variant text-center max-w-md">
                     {t('tasksPlaceholder')}
@@ -579,7 +582,7 @@ export default function ProiectDetailPage({ params }: { params: { id: string } }
                 transition={pageTransition}
               >
                 <div className="flex flex-col items-center justify-center py-24 gap-4">
-                  <Icon name="timeline" size="lg" className="text-on-surface-variant/40" />
+                  <Icon name="timeline" size="lg" className="text-on-surface-variant" />
                   <h3 className="text-xl font-bold text-on-surface">{t('timelinePlaceholder')}</h3>
                   <p className="text-sm text-on-surface-variant text-center max-w-md">
                     {t('timelineDescription')}
