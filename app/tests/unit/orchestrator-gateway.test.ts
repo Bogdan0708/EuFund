@@ -1,6 +1,6 @@
+// app/tests/unit/orchestrator-gateway.test.ts
 import { describe, it, expect, vi } from 'vitest'
 
-// Mock OpenAI constructor — gateway now uses OpenAI SDK directly
 const mockCreate = vi.fn().mockResolvedValue({
   choices: [{ message: { content: 'test response' } }],
   usage: { total_tokens: 100 },
@@ -13,17 +13,29 @@ class MockOpenAI {
 
 vi.mock('openai', () => ({ default: MockOpenAI }))
 
-describe('Gateway Client', () => {
-  it('generate calls OpenAI SDK with provider/model', async () => {
+describe('Gateway Client V2', () => {
+  it('routes GPT-5.4 through OpenAI provider', async () => {
     const { createGatewayClient } = await import('@/lib/ai/orchestrator/gateway')
-    const client = createGatewayClient('tenant-fondeu')
+    const client = createGatewayClient('fondeu')
     const result = await client.generate({
-      provider: 'claude',
-      model: 'claude-sonnet-4-6',
+      provider: 'openai',
+      model: 'gpt-5.4',
       system: 'You are helpful',
       messages: [{ role: 'user', content: 'Hello' }],
     })
     expect(result.content).toBe('test response')
-    expect(result.tokensUsed).toBe(100)
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'gpt-5.4' }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+  })
+
+  it('applies model-specific timeouts', async () => {
+    const { getTimeout } = await import('@/lib/ai/orchestrator/gateway')
+    expect(getTimeout('claude-opus-4-6')).toBe(180_000)
+    expect(getTimeout('gpt-5.4')).toBe(60_000)
+    expect(getTimeout('gemini-2.5-flash')).toBe(45_000)
+    expect(getTimeout('sonar')).toBe(30_000)
+    expect(getTimeout('unknown-model')).toBe(60_000)
   })
 })
