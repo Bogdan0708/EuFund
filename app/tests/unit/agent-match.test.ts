@@ -24,7 +24,7 @@ describe('Match Agent', () => {
     const ctx: WorkflowContext = {
       sessionId: 'test', userId: 'user-1', locale: 'ro', tier: 'plus', step: 2,
       enhancedIdea: { originalIdea: 'solar panels', refinedDescription: 'Solar panels for schools', sector: 'Energy', region: 'Nord-Est', targetGroup: 'Schools', estimatedBudget: '500000 EUR', keyObjectives: ['Install panels'] },
-      matchedCalls: null, validationResults: null, researchResults: null, actionPlan: null, projectSections: null, uploadedFiles: [],
+      matchedCalls: null, validationResults: null, researchResults: null, actionPlan: null, projectSections: null, selectedCallId: null, uploadedFiles: [],
     }
 
     const { matchAgent } = await import('@/lib/ai/orchestrator/agents/match')

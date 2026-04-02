@@ -19,7 +19,7 @@ const baseCtx: WorkflowContext = {
   matchedCalls: [{ callId: 'call-1', title: 'PNRR 4.2', program: 'PNRR', score: 90, thematicFit: 90, eligibilityFit: 90, budgetFit: 90, deadline: '2026-06-30', sourceUrl: 'https://example.com', reasoning: 'test' }],
   validationResults: null,
   researchResults: { callId: 'call-1', requirements: ['Legal entity'], forms: [], certificates: [], deadlines: [], additionalSections: [], rawFindings: 'research' },
-  actionPlan: mockActionPlan, projectSections: null, uploadedFiles: [],
+  actionPlan: mockActionPlan, projectSections: null, selectedCallId: null, uploadedFiles: [],
 }
 
 describe('Build Agent', () => {

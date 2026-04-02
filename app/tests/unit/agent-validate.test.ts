@@ -15,7 +15,7 @@ describe('Validate Agent', () => {
       sessionId: 'test', userId: 'user-1', locale: 'ro', tier: 'plus', step: 3,
       enhancedIdea: { originalIdea: 'test', refinedDescription: 'test', sector: 'Energy', region: 'Nord-Est', targetGroup: 'Schools', estimatedBudget: '500000', keyObjectives: ['test'] },
       matchedCalls: [{ callId: 'call-1', title: 'PNRR 4.2', program: 'PNRR', score: 90, thematicFit: 90, eligibilityFit: 90, budgetFit: 90, deadline: '2026-06-30', sourceUrl: 'https://example.com', reasoning: 'test' }],
-      validationResults: null, researchResults: null, actionPlan: null, projectSections: null, uploadedFiles: [],
+      validationResults: null, researchResults: null, actionPlan: null, projectSections: null, selectedCallId: null, uploadedFiles: [],
     }
     const { validateAgent } = await import('@/lib/ai/orchestrator/agents/validate')
     const result = await validateAgent(ctx, '', mockStream, mockGateway)
@@ -33,7 +33,7 @@ describe('Validate Agent', () => {
       sessionId: 'test', userId: 'user-1', locale: 'en', tier: 'free', step: 3,
       enhancedIdea: { originalIdea: 'test', refinedDescription: 'test', sector: 'Education', region: 'Sud', targetGroup: 'Students', estimatedBudget: '100000', keyObjectives: ['learn'] },
       matchedCalls: [{ callId: 'call-2', title: 'PEO 1.1', program: 'PEO', score: 80, thematicFit: 80, eligibilityFit: 80, budgetFit: 80, deadline: '2026-09-01', sourceUrl: 'https://example.com/peo', reasoning: 'good fit' }],
-      validationResults: null, researchResults: null, actionPlan: null, projectSections: null, uploadedFiles: [],
+      validationResults: null, researchResults: null, actionPlan: null, projectSections: null, selectedCallId: null, uploadedFiles: [],
     }
     const { validateAgent } = await import('@/lib/ai/orchestrator/agents/validate')
     const result = await validateAgent(ctx, '', mockStream, mockGateway)
@@ -58,7 +58,7 @@ describe('Validate Agent', () => {
         { callId: 'call-1', title: 'PNRR 4.2', program: 'PNRR', score: 90, thematicFit: 90, eligibilityFit: 90, budgetFit: 90, deadline: '2026-06-30', sourceUrl: 'https://example.com', reasoning: 'test' },
         { callId: 'call-2', title: 'PEO 2.3', program: 'PEO', score: 75, thematicFit: 75, eligibilityFit: 75, budgetFit: 75, deadline: '2025-12-01', sourceUrl: 'https://example.com/2', reasoning: 'ok fit' },
       ],
-      validationResults: null, researchResults: null, actionPlan: null, projectSections: null, uploadedFiles: [],
+      validationResults: null, researchResults: null, actionPlan: null, projectSections: null, selectedCallId: null, uploadedFiles: [],
     }
     const { validateAgent } = await import('@/lib/ai/orchestrator/agents/validate')
     const result = await validateAgent(ctx, 'call-2', mockStream, mockGateway)
@@ -72,7 +72,7 @@ describe('Validate Agent', () => {
     const ctx: WorkflowContext = {
       sessionId: 'test', userId: 'user-1', locale: 'ro', tier: 'free', step: 3,
       enhancedIdea: null, matchedCalls: null,
-      validationResults: null, researchResults: null, actionPlan: null, projectSections: null, uploadedFiles: [],
+      validationResults: null, researchResults: null, actionPlan: null, projectSections: null, selectedCallId: null, uploadedFiles: [],
     }
     const { validateAgent } = await import('@/lib/ai/orchestrator/agents/validate')
     await expect(validateAgent(ctx, '', mockStream, mockGateway)).rejects.toThrow('No matched calls to validate')
