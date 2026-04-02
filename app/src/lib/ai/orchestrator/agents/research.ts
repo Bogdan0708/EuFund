@@ -11,8 +11,8 @@ export const researchAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   stream.send({ type: 'step_progress', step: 4, message: `Researching requirements for ${selectedCall.title}...` })
 
   const result = await gateway.generate({
-    provider: 'gemini',
-    model: 'gemini-2.5-flash',
+    provider: 'perplexity',
+    model: 'sonar-pro',
     system: getResearchPrompt(ctx),
     messages: [{ role: 'user', content: `Research all requirements for funding call: "${selectedCall.title}" (${selectedCall.program}). Source: ${selectedCall.sourceUrl}. Project concept: ${ctx.enhancedIdea?.refinedDescription}` }],
     temperature: 0.2,
