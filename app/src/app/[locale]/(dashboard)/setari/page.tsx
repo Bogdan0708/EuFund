@@ -19,12 +19,6 @@ interface Org {
   orgType: string;
 }
 
-interface PricingTier {
-  tier: string;
-  displayName: string;
-  monthlyPriceEur: number;
-}
-
 interface SessionUser {
   name?: string | null;
   email?: string | null;
@@ -62,7 +56,6 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
   const [preferences, setPreferences] = useState<Preferences | null>(null);
   const [savedPreferences, setSavedPreferences] = useState<Preferences | null>(null);
   const [org, setOrg] = useState<Org | null>(null);
-  const [pricing, setPricing] = useState<PricingTier[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -77,8 +70,7 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
       fetch('/api/auth/session').then(r => r.json()).catch(() => null),
       fetch('/api/v1/user/preferences').then(r => r.json()).catch(() => ({ defaultModel: 'auto', responseStyle: 'detailed', autoApprove: false })),
       fetch('/api/v1/organizations').then(r => r.json()).catch(() => ({ data: { items: [] } })),
-      fetch('/api/billing/pricing').then(r => r.json()).catch(() => []),
-    ]).then(([session, prefs, orgs, prices]) => {
+    ]).then(([session, prefs, orgs]) => {
       setSessionUser(session?.user || null);
       const normalizedPrefs: Preferences = {
         defaultModel: prefs?.defaultModel || 'auto',
@@ -88,7 +80,6 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
       setPreferences(normalizedPrefs);
       setSavedPreferences(normalizedPrefs);
       setOrg(orgs?.data?.items?.[0] || null);
-      setPricing(Array.isArray(prices) ? prices : []);
       setLoading(false);
     });
   }, []);
@@ -120,22 +111,7 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
     }
   };
 
-  const handleBillingPortal = async () => {
-    try {
-      await bootstrapCSRFToken();
-      const res = await csrfFetch('/api/billing/portal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const { url } = await res.json();
-      if (url) window.location.href = url;
-    } catch {
-      // silently fail — portal is optional
-    }
-  };
-
   const otherLocale = locale === 'ro' ? 'en' : 'ro';
-  const currentTier = (sessionUser as { tier?: string } | null)?.tier || 'free';
 
   if (loading) {
     return (
@@ -322,70 +298,6 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
               </label>
             </div>
           </div>
-        </motion.div>
-
-        {/* ── Subscription Card ── */}
-        <motion.div
-          className="glass-card rounded-lg p-10 flex flex-col space-y-8 shadow-[0_20px_40px_rgba(0,0,0,0.02)] transition-all hover:translate-y-[-4px]"
-          variants={staggerItem}
-          transition={staggerTransition}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3 text-tertiary">
-              <Icon name="payments" />
-              <span className="text-xs font-bold uppercase tracking-widest">
-                {t('subscriptionStatus')}
-              </span>
-            </div>
-            <span className="px-4 py-1 bg-tertiary-fixed text-on-tertiary-fixed text-[11px] font-bold rounded-full uppercase tracking-tighter">
-              {pricing.find(p => p.tier === currentTier)?.displayName || currentTier}
-            </span>
-          </div>
-          <div className="space-y-4">
-            <p className="text-xs font-bold text-on-surface-variant opacity-60 uppercase">{t('currentPlan')}</p>
-            {pricing.length > 0 ? (
-              <div className="space-y-2">
-                {pricing.map(tier => (
-                  <div
-                    key={tier.tier}
-                    className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm ${tier.tier === currentTier ? 'bg-primary/10 text-primary font-semibold' : 'bg-surface-container-low text-on-surface-variant'}`}
-                  >
-                    <span>{tier.displayName}</span>
-                    <span>{tier.monthlyPriceEur === 0 ? t('priceFree') : t('priceMonthly', { price: tier.monthlyPriceEur })}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* AI Credits placeholder */}
-                <div className="space-y-3">
-                  <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-                    <span>{t('aiCredits')}</span>
-                    <span>—</span>
-                  </div>
-                  <div className="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
-                    <div className="h-full bg-tertiary-container rounded-full w-0" />
-                  </div>
-                </div>
-                {/* Storage placeholder */}
-                <div className="space-y-3">
-                  <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-                    <span>{t('storageLabel')}</span>
-                    <span>—</span>
-                  </div>
-                  <div className="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
-                    <div className="h-full bg-primary-container rounded-full w-0" />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-          <button
-            className="w-full bg-primary text-white font-bold py-4 rounded-full hover:translate-y-[-1px] active:scale-[0.98] transition-transform"
-            onClick={handleBillingPortal}
-          >
-            {t('manageBilling')}
-          </button>
         </motion.div>
 
         {/* ── GDPR & Privacy Card ── */}
