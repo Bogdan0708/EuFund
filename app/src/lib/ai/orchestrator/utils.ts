@@ -69,6 +69,24 @@ export function parseAIJson<T = unknown>(raw: string): T {
     }
   }
 
+  // Strategy 6: Handle truncated JSON arrays by finding last complete object
+  const arrayStart = cleaned.indexOf('[')
+  if (arrayStart !== -1) {
+    let truncated = cleaned.slice(arrayStart)
+    // Find the last complete object boundary (closing brace followed by optional whitespace/comma)
+    const lastCompleteObj = truncated.lastIndexOf('}')
+    if (lastCompleteObj > 0) {
+      truncated = truncated.slice(0, lastCompleteObj + 1) + ']'
+      try {
+        const result = JSON.parse(truncated)
+        log.warn({ rawLength: raw.length, recoveredItems: Array.isArray(result) ? result.length : 1 }, 'Recovered truncated JSON array')
+        return result as T
+      } catch {
+        // Continue to failure
+      }
+    }
+  }
+
   // All strategies failed — log the raw response for debugging
   log.error({ rawLength: raw.length, rawPreview: raw.slice(0, 500) }, 'All JSON parsing strategies failed')
   throw new Error(`Failed to extract JSON from AI response (${raw.length} chars). Preview: ${raw.slice(0, 100)}...`)
