@@ -112,13 +112,20 @@ export async function processMessage(
 
   // Check if the last assistant message was a checkpoint — if so, this is a
   // checkpoint response: advance to the next step instead of re-running current agent
-  const [lastAssistantMsg] = await db.select({ eventType: workflowMessages.eventType })
+  const [lastAssistantMsg] = await db.select({
+    eventType: workflowMessages.eventType,
+    step: workflowMessages.step,
+  })
     .from(workflowMessages)
-    .where(and(eq(workflowMessages.sessionId, sessionId), eq(workflowMessages.role, 'assistant')))
+    .where(and(
+      eq(workflowMessages.sessionId, sessionId),
+      eq(workflowMessages.role, 'assistant'),
+      eq(workflowMessages.step, ctx.step),
+    ))
     .orderBy(desc(workflowMessages.createdAt))
     .limit(1)
 
-  if (!isCompleted && lastAssistantMsg?.eventType === 'checkpoint') {
+  if (!isCompleted && lastAssistantMsg?.eventType === 'checkpoint' && lastAssistantMsg.step === ctx.step) {
     ctx.step = ctx.step + 1
     await db.update(workflowSessions).set({
       currentStep: ctx.step,
