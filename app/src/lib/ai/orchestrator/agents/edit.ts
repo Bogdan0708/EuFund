@@ -9,8 +9,8 @@ export const editAgent: AgentFn = async (ctx, input, stream, gateway) => {
 
   stream.send({ type: 'step_progress', step: 7, message: 'Editing your project...' })
 
-  const provider = 'claude'
-  const model = 'claude-sonnet-4-6'
+  const provider = 'openai'
+  const model = 'gpt-5.4'
 
   const result = await gateway.generate({
     provider,

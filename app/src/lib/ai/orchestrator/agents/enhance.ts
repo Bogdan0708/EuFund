@@ -5,9 +5,11 @@ import { parseAIJson } from '../utils'
 export const enhanceAgent: AgentFn = async (ctx, input, stream, gateway) => {
   stream.send({ type: 'step_progress', step: 1, message: 'Analyzing your project idea...' })
 
+  const provider = 'openai'
+  const model = 'gpt-5.4'
   const result = await gateway.generate({
-    provider: 'gemini',
-    model: 'gemini-2.5-flash',
+    provider,
+    model,
     system: getEnhancePrompt(ctx),
     messages: [{ role: 'user', content: input }],
     temperature: 0.3,
