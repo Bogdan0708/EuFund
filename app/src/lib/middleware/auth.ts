@@ -185,70 +185,15 @@ async function guardAIRequest(
     };
   }
 
-  const userTier = await getUserTier(session.user.id);
   const user: AuthenticatedUser = {
     id: session.user.id,
     email: session.user.email!,
     name: session.user.name || undefined,
-    tier: userTier,
+    tier: 'free' as UserTier,
   };
 
-  if (!await isRedisAvailable()) {
-    log.warn({ userId: user.id }, '[auth] Redis unavailable — rejecting AI request (fail-closed)');
-    return {
-      errorResponse: NextResponse.json(
-        {
-          error: 'Service temporarily unavailable',
-          code: 'RATE_LIMIT_UNAVAILABLE',
-          message: 'Rate limiting service is unavailable. Please try again shortly.',
-        },
-        { status: 503 },
-      ),
-    };
-  }
-
-  const rateLimit = await checkRateLimit(
-    `ai_requests:${user.id}`,
-    RATE_LIMITS[user.tier],
-    60 * 60 * 1000,
-  );
-
-  if (!rateLimit.allowed) {
-    return {
-      errorResponse: NextResponse.json(
-        {
-          error: 'Rate limit exceeded',
-          code: 'RATE_LIMIT_EXCEEDED',
-          tier: user.tier,
-          limit: RATE_LIMITS[user.tier],
-          resetTime: rateLimit.resetTime,
-        },
-        { status: 429 },
-      ),
-    };
-  }
-
-  if (options?.feature) {
-    const featureLimit = FEATURE_DAILY_LIMITS[options.feature];
-    const featureRate = await checkFeatureDailyLimit(user.id, options.feature, featureLimit);
-
-    if (!featureRate.allowed) {
-      return {
-        errorResponse: NextResponse.json(
-          {
-            error: 'Daily feature limit exceeded',
-            code: 'FEATURE_LIMIT_EXCEEDED',
-            feature: options.feature,
-            limit: featureLimit,
-            resetTime: featureRate.resetTime,
-          },
-          { status: 429 },
-        ),
-      };
-    }
-  }
-
-  return { user, rateLimit };
+  // Rate limiting disabled — single-user dev mode
+  return { user, rateLimit: { remaining: 9999, resetTime: Date.now() + 3600000 } };
 }
 
 /**
