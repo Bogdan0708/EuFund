@@ -3,15 +3,15 @@
    Usage in Tailwind config: rgb(var(--color) / <alpha-value>) */
 
 :root {
-  --surface: 235 235 240;             /* #ebebf0 */
-  --surface-dim: 210 210 218;         /* #d2d2da */
-  --surface-bright: 240 240 245;      /* #f0f0f5 */
+  --surface: 215 215 222;             /* #d7d7de */
+  --surface-dim: 195 195 205;         /* #c3c3cd */
+  --surface-bright: 225 225 232;      /* #e1e1e8 */
   --surface-container-lowest: 255 255 255; /* #ffffff */
-  --surface-container-low: 238 238 243;    /* #eeeef3 */
-  --surface-container: 230 230 236;        /* #e6e6ec */
-  --surface-container-high: 224 224 230;   /* #e0e0e6 */
-  --surface-container-highest: 218 218 224;/* #dadae0 */
-  --background: 228 228 234;          /* #E4E4EA */
+  --surface-container-low: 225 225 232;    /* #e1e1e8 */
+  --surface-container: 218 218 226;        /* #dadae2 */
+  --surface-container-high: 210 210 218;   /* #d2d2da */
+  --surface-container-highest: 202 202 212;/* #cacad4 */
+  --background: 208 208 216;          /* #D0D0D8 */
   --on-surface: 26 27 31;             /* #1a1b1f */
   --on-surface-variant: 55 58 65;     /* #373a41 */
   --on-background: 26 27 31;          /* #1a1b1f */
