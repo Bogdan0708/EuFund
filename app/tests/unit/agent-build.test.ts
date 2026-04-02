@@ -66,7 +66,7 @@ describe('Build Agent', () => {
     expect(mockGateway.generate).toHaveBeenCalledWith(expect.objectContaining({ provider: 'claude', model: 'claude-sonnet-4-6' }))
   })
 
-  it('uses gemini for free tier users', async () => {
+  it('always uses claude regardless of tier', async () => {
     const mockStream: SSEStream = { send: vi.fn(), close: vi.fn() }
     const mockGateway: GatewayClient = {
       generate: vi.fn().mockResolvedValue({ content: JSON.stringify(mockSections), tokensUsed: 1500 }),
@@ -74,17 +74,21 @@ describe('Build Agent', () => {
     }
     const { buildAgent } = await import('@/lib/ai/orchestrator/agents/build')
     await buildAgent({ ...baseCtx, tier: 'free' }, '', mockStream, mockGateway)
-    expect(mockGateway.generate).toHaveBeenCalledWith(expect.objectContaining({ provider: 'gemini' }))
+    expect(mockGateway.generate).toHaveBeenCalledWith(expect.objectContaining({ provider: 'claude', model: 'claude-sonnet-4-6' }))
   })
 
-  it('throws when AI response is not valid JSON', async () => {
+  it('wraps invalid JSON as a single fallback section', async () => {
     const mockStream: SSEStream = { send: vi.fn(), close: vi.fn() }
     const mockGateway: GatewayClient = {
       generate: vi.fn().mockResolvedValue({ content: 'Not valid JSON', tokensUsed: 100 }),
       embed: vi.fn(),
     }
     const { buildAgent } = await import('@/lib/ai/orchestrator/agents/build')
-    await expect(buildAgent(baseCtx, '', mockStream, mockGateway)).rejects.toThrow('Failed to parse project sections from AI response')
+    const result = await buildAgent(baseCtx, '', mockStream, mockGateway)
+    const sections = result.data.projectSections as ProjectSection[]
+    expect(sections).toHaveLength(1)
+    expect(sections[0].title).toBe('Generated Proposal')
+    expect(sections[0].content).toBe('Not valid JSON')
   })
 
   it('throws when actionPlan or enhancedIdea are missing', async () => {
