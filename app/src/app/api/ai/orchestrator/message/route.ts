@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/helpers'
 import { db } from '@/lib/db'
-import { users, workflowSessions } from '@/lib/db/schema'
+import { workflowSessions } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { processMessage, createSession } from '@/lib/ai/orchestrator/engine'
-import { checkWorkflowLimit, incrementWorkflowCount } from '@/lib/billing/usage'
 import { createGatewayClient } from '@/lib/ai/orchestrator/gateway'
 import { createPubSubStream } from '@/lib/ai/orchestrator/pubsub'
 import { logger } from '@/lib/logger'
@@ -45,18 +44,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'message or sessionId required' }, { status: 400 })
     }
 
-    // Get user tier
-    const [dbUser] = await db.select({ tier: users.tier }).from(users).where(eq(users.id, user.id)).limit(1)
-    const tier = dbUser?.tier || 'free'
-
     if (!sessionId) {
-      // Create new session
-      const limitCheck = await checkWorkflowLimit(user.id, tier)
-      if (!limitCheck.allowed) {
-        return NextResponse.json({ error: limitCheck.message }, { status: 429 })
-      }
-      await incrementWorkflowCount(user.id)
-      const session = await createSession(user.id, locale || 'ro', tier)
+      // Create new session (no billing gates — single-user dev mode)
+      const session = await createSession(user.id, locale || 'ro', 'free')
 
       // Process first message asynchronously
       const stream = createPubSubStream(session.id)
