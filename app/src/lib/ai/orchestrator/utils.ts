@@ -9,16 +9,13 @@ const log = logger.child({ component: 'orchestrator-utils' })
 export function parseAIJson<T = unknown>(raw: string): T {
   let cleaned = raw.trim()
 
-  // Strategy 1: Strip ALL markdown code fences (greedy — handles large responses)
-  // Use greedy match to capture the LAST closing fence, not the first
-  const fenceMatch = cleaned.match(/```(?:json)?\s*\n([\s\S]*)\n\s*```/)
-  if (fenceMatch) {
-    cleaned = fenceMatch[1].trim()
-  } else {
-    // Also try without newlines (single-line fence)
-    const inlineFence = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
-    if (inlineFence) {
-      cleaned = inlineFence[1].trim()
+  // Strategy 1: Strip markdown code fences using indexOf (no regex backtracking on large strings)
+  const fenceStart = cleaned.indexOf('```')
+  if (fenceStart !== -1) {
+    const contentStart = cleaned.indexOf('\n', fenceStart)
+    const fenceEnd = cleaned.lastIndexOf('```')
+    if (contentStart !== -1 && fenceEnd > contentStart) {
+      cleaned = cleaned.slice(contentStart + 1, fenceEnd).trim()
     }
   }
 
