@@ -7,7 +7,7 @@ export const enhanceAgent: AgentFn = async (ctx, input, stream, gateway) => {
 
   const result = await gateway.generate({
     provider: 'gemini',
-    model: 'gemini-2.5-flash-preview',
+    model: 'gemini-2.5-flash',
     system: getEnhancePrompt(ctx),
     messages: [{ role: 'user', content: input }],
     temperature: 0.3,

@@ -28,7 +28,7 @@ export const matchAgent: AgentFn = async (ctx, _input, stream, gateway) => {
 
   const result = await gateway.generate({
     provider: 'gemini',
-    model: 'gemini-2.5-flash-preview',
+    model: 'gemini-2.5-flash',
     system: getMatchPrompt(ctx),
     messages: [{
       role: 'user',
