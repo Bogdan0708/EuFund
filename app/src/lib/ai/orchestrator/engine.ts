@@ -46,11 +46,10 @@ export async function createSession(
     step: 1,
     enhancedIdea: null,
     matchedCalls: null,
-    validationResults: null,
-    researchResults: null,
+    selectedCallId: null,
+    callBlueprint: null,
     actionPlan: null,
     projectSections: null,
-    selectedCallId: null,
     uploadedFiles: [],
   }
 

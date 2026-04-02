@@ -402,7 +402,7 @@ function ProposalTabContent({
   sendMessage,
   t,
 }: {
-  proposalSections: import('@/lib/ai/orchestrator/types').ProjectSection[] | null;
+  proposalSections: import('@/lib/ai/orchestrator/types').SectionResult[] | null;
   sendMessage: (msg: string) => void;
   t: ReturnType<typeof useTranslations>;
 }) {

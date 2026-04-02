@@ -3,8 +3,8 @@ import { getPlanPrompt } from '../prompts/plan'
 import { parseAIJson } from '../utils'
 
 export const planAgent: AgentFn = async (ctx, _input, stream, gateway) => {
-  if (!ctx.matchedCalls || !ctx.researchResults) {
-    throw new Error('Matched calls and research results required for planning')
+  if (!ctx.matchedCalls || !ctx.callBlueprint) {
+    throw new Error('Matched calls and call blueprint required for planning')
   }
 
   const selectedCall = (ctx.selectedCallId && ctx.matchedCalls.find(c => c.callId === ctx.selectedCallId)) || ctx.matchedCalls[0]
@@ -14,7 +14,7 @@ export const planAgent: AgentFn = async (ctx, _input, stream, gateway) => {
     provider: 'claude',
     model: 'claude-sonnet-4-6',
     system: getPlanPrompt(ctx),
-    messages: [{ role: 'user', content: `Create an action plan for:\n\nProject: ${JSON.stringify(ctx.enhancedIdea)}\n\nCall: ${JSON.stringify(selectedCall)}\n\nResearch: ${JSON.stringify(ctx.researchResults)}` }],
+    messages: [{ role: 'user', content: `Create an action plan for:\n\nProject: ${JSON.stringify(ctx.enhancedIdea)}\n\nCall: ${JSON.stringify(selectedCall)}\n\nBlueprint: ${JSON.stringify(ctx.callBlueprint)}` }],
     temperature: 0.3,
     maxTokens: 8000,
   })

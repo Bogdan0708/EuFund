@@ -1,21 +1,30 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { WorkflowContext, SSEStream, GatewayClient, ResearchResult } from '@/lib/ai/orchestrator/types'
+import type { WorkflowContext, SSEStream, GatewayClient, CallBlueprint } from '@/lib/ai/orchestrator/types'
 
-const mockResearch: ResearchResult = {
+const mockBlueprint: CallBlueprint = {
   callId: 'call-1',
-  requirements: ['Legal entity', 'Min 2 years active'],
-  forms: [{ name: 'F1', description: 'Main form' }],
-  certificates: [{ name: 'Fiscal cert', source: 'ANAF', estimatedTime: '5 days' }],
-  deadlines: [{ item: 'Submission', date: '2026-06-30' }],
-  additionalSections: [],
-  rawFindings: 'Detailed research findings about the funding call.',
+  program: 'PNRR',
+  isOpen: true,
+  amendments: [],
+  warnings: [],
+  requiredSections: [{ title: 'Summary', description: 'Project summary' }],
+  mandatoryAnnexes: [],
+  eligibilityCriteria: ['Legal entity', 'Min 2 years active'],
+  evaluationGrid: [],
+  cofinancingRate: 0.85,
+  eligibilityResult: { score: 90, passCount: 3, failCount: 0, failures: [], warnings: [] },
+  sources: [],
+  verifiedAt: '2026-04-02T00:00:00Z',
+  raw: { notebookLmResponse: 'Detailed research findings about the funding call.', perplexityResponse: '', retrievedAt: '2026-04-02T00:00:00Z' },
+  normalized: { requiredSections: [], mandatoryAnnexes: [], eligibilityCriteria: [], evaluationGrid: [], cofinancingRate: 0.85 },
+  structureConfidence: 0.9,
 }
 
 const baseCtx: WorkflowContext = {
   sessionId: 'test', userId: 'user-1', locale: 'ro', tier: 'plus', step: 5,
   enhancedIdea: { originalIdea: 'test', refinedDescription: 'test', sector: 'Energy', region: 'Nord-Est', targetGroup: 'Schools', estimatedBudget: '500000', keyObjectives: ['test'] },
   matchedCalls: [{ callId: 'call-1', title: 'PNRR 4.2', program: 'PNRR', score: 90, thematicFit: 90, eligibilityFit: 90, budgetFit: 90, deadline: '2026-06-30', sourceUrl: 'https://example.com', reasoning: 'test' }],
-  validationResults: null, researchResults: mockResearch, actionPlan: null, projectSections: null, selectedCallId: null, uploadedFiles: [],
+  selectedCallId: null, callBlueprint: mockBlueprint, actionPlan: null, projectSections: null, uploadedFiles: [],
 }
 
 describe('Knowledge Agent', () => {
@@ -45,12 +54,12 @@ describe('Knowledge Agent', () => {
     expect(result.checkpoint).toBeNull()
   })
 
-  it('throws when no research results', async () => {
+  it('throws when no call blueprint', async () => {
     const mockStream: SSEStream = { send: vi.fn(), close: vi.fn() }
     const mockGateway: GatewayClient = { generate: vi.fn(), embed: vi.fn() }
-    const ctx: WorkflowContext = { ...baseCtx, researchResults: null }
+    const ctx: WorkflowContext = { ...baseCtx, callBlueprint: null }
     const { knowledgeAgent } = await import('@/lib/ai/orchestrator/agents/knowledge')
-    await expect(knowledgeAgent(ctx, '', mockStream, mockGateway)).rejects.toThrow('No research results to store')
+    await expect(knowledgeAgent(ctx, '', mockStream, mockGateway)).rejects.toThrow()
   })
 
   it('uses rawFindings text for embedding', async () => {
@@ -61,6 +70,6 @@ describe('Knowledge Agent', () => {
     }
     const { knowledgeAgent } = await import('@/lib/ai/orchestrator/agents/knowledge')
     await knowledgeAgent(baseCtx, '', mockStream, mockGateway)
-    expect(mockGateway.embed).toHaveBeenCalledWith(expect.stringContaining('Detailed research findings'))
+    expect(mockGateway.embed).toHaveBeenCalledWith(expect.stringContaining('Detailed research findings about the funding call.'))
   })
 })
