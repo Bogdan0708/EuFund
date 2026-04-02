@@ -18,7 +18,7 @@ export const buildAgent: AgentFn = async (ctx, _input, stream, gateway) => {
     system: getBuildPrompt(ctx),
     messages: [{ role: 'user', content: `Build the complete project proposal for:\n\nProject: ${JSON.stringify(ctx.enhancedIdea)}\n\nAction Plan: ${JSON.stringify(ctx.actionPlan)}\n\nResearch: ${JSON.stringify(ctx.researchResults)}` }],
     temperature: 0.4,
-    maxTokens: 8000,
+    maxTokens: 32000,
   })
 
   let projectSections: ProjectSection[]

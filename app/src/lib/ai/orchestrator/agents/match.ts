@@ -77,7 +77,7 @@ If you cannot find any matching open calls, return an empty array [].`,
       content: `PROJECT:\n${JSON.stringify(ctx.enhancedIdea, null, 2)}\n\nAVAILABLE CALLS:\n${ragContext || 'No calls found. Search your knowledge of Romanian EU funding programs (PNRR, PEO, POCIDIF, POTJ, PR-*, POIM, etc.) and suggest the most likely matching open calls. Generate realistic entries with callId, title, program, scores, and reasoning.'}`,
     }],
     temperature: 0.2,
-    maxTokens: 4096,
+    maxTokens: 16384,
   })
 
   let matchedCalls: MatchedCall[] = []

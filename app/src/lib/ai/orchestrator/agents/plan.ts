@@ -16,7 +16,7 @@ export const planAgent: AgentFn = async (ctx, _input, stream, gateway) => {
     system: getPlanPrompt(ctx),
     messages: [{ role: 'user', content: `Create an action plan for:\n\nProject: ${JSON.stringify(ctx.enhancedIdea)}\n\nCall: ${JSON.stringify(selectedCall)}\n\nResearch: ${JSON.stringify(ctx.researchResults)}` }],
     temperature: 0.3,
-    maxTokens: 4000,
+    maxTokens: 8000,
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
