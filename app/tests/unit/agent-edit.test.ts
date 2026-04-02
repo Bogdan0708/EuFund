@@ -18,7 +18,7 @@ describe('Edit Agent', () => {
         { title: 'Summary', content: 'Original summary', order: 1, source: 'generated' },
         { title: 'Context', content: 'Original context', order: 2, source: 'generated' },
       ],
-      uploadedFiles: [],
+      selectedCallId: null, uploadedFiles: [],
     }
     const { editAgent } = await import('@/lib/ai/orchestrator/agents/edit')
     const result = await editAgent(ctx, 'Make the summary more detailed', mockStream, mockGateway)

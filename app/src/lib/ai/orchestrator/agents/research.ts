@@ -7,7 +7,7 @@ export const researchAgent: AgentFn = async (ctx, _input, stream, gateway) => {
     throw new Error('No matched calls for research')
   }
 
-  const selectedCall = ctx.matchedCalls[0]
+  const selectedCall = (ctx.selectedCallId && ctx.matchedCalls.find(c => c.callId === ctx.selectedCallId)) || ctx.matchedCalls[0]
   stream.send({ type: 'step_progress', step: 4, message: `Researching requirements for ${selectedCall.title}...` })
 
   const result = await gateway.generate({

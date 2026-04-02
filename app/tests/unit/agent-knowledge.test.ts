@@ -15,7 +15,7 @@ const baseCtx: WorkflowContext = {
   sessionId: 'test', userId: 'user-1', locale: 'ro', tier: 'plus', step: 5,
   enhancedIdea: { originalIdea: 'test', refinedDescription: 'test', sector: 'Energy', region: 'Nord-Est', targetGroup: 'Schools', estimatedBudget: '500000', keyObjectives: ['test'] },
   matchedCalls: [{ callId: 'call-1', title: 'PNRR 4.2', program: 'PNRR', score: 90, thematicFit: 90, eligibilityFit: 90, budgetFit: 90, deadline: '2026-06-30', sourceUrl: 'https://example.com', reasoning: 'test' }],
-  validationResults: null, researchResults: mockResearch, actionPlan: null, projectSections: null, uploadedFiles: [],
+  validationResults: null, researchResults: mockResearch, actionPlan: null, projectSections: null, selectedCallId: null, uploadedFiles: [],
 }
 
 describe('Knowledge Agent', () => {

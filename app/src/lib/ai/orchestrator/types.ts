@@ -10,6 +10,7 @@ export interface WorkflowContext {
   researchResults: ResearchResult | null
   actionPlan: ActionPlan | null
   projectSections: ProjectSection[] | null
+  selectedCallId: string | null
   uploadedFiles: UploadedFile[]
 }
 

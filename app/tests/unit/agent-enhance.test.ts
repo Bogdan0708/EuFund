@@ -31,7 +31,7 @@ describe('Enhance Agent', () => {
       researchResults: null,
       actionPlan: null,
       projectSections: null,
-      uploadedFiles: [],
+      selectedCallId: null, uploadedFiles: [],
     }
 
     const { enhanceAgent } = await import('@/lib/ai/orchestrator/agents/enhance')

@@ -15,7 +15,7 @@ describe('Orchestrator types', () => {
       researchResults: null,
       actionPlan: null,
       projectSections: null,
-      uploadedFiles: [],
+      selectedCallId: null, uploadedFiles: [],
     }
     expect(ctx.sessionId).toBe('123')
   })

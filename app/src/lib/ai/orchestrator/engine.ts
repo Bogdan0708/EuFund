@@ -50,6 +50,7 @@ export async function createSession(
     researchResults: null,
     actionPlan: null,
     projectSections: null,
+    selectedCallId: null,
     uploadedFiles: [],
   }
 
@@ -86,7 +87,8 @@ export async function processMessage(
   sessionId: string,
   input: string,
   stream: SSEStream,
-  gateway: GatewayClient
+  gateway: GatewayClient,
+  isAutoAdvance = false,
 ): Promise<void> {
   log.info({ sessionId }, 'processMessage start')
 
@@ -126,20 +128,27 @@ export async function processMessage(
     .limit(1)
 
   if (!isCompleted && lastAssistantMsg?.eventType === 'checkpoint' && lastAssistantMsg.step === ctx.step) {
+    // Persist user's checkpoint selection into context
+    if (ctx.step === 2 && input) {
+      ctx.selectedCallId = input
+    }
     ctx.step = ctx.step + 1
     await db.update(workflowSessions).set({
       currentStep: ctx.step,
+      context: ctx as unknown as Record<string, unknown>,
       updatedAt: new Date(),
     }).where(eq(workflowSessions.id, sessionId))
   }
 
-  // Store user message
-  await db.insert(workflowMessages).values({
-    sessionId,
-    role: 'user',
-    content: input,
-    step: ctx.step,
-  })
+  // Store user message (skip on auto-advance to avoid duplicates)
+  if (!isAutoAdvance) {
+    await db.insert(workflowMessages).values({
+      sessionId,
+      role: 'user',
+      content: input,
+      step: ctx.step,
+    })
+  }
 
   const agent = isCompleted ? editAgent : getAgentForStep(ctx.step)
   const label = isCompleted ? 'Editing your project...' : (STEP_LABELS[ctx.step] || `Step ${ctx.step}...`)
@@ -219,7 +228,7 @@ export async function processMessage(
 
       // Auto-advance to next step if no checkpoint and not complete
       if (!isComplete) {
-        return processMessage(sessionId, input, stream, gateway)
+        return processMessage(sessionId, input, stream, gateway, true)
       }
 
       if (isComplete) {

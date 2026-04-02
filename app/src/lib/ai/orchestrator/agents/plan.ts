@@ -7,7 +7,7 @@ export const planAgent: AgentFn = async (ctx, _input, stream, gateway) => {
     throw new Error('Matched calls and research results required for planning')
   }
 
-  const selectedCall = ctx.matchedCalls[0]
+  const selectedCall = (ctx.selectedCallId && ctx.matchedCalls.find(c => c.callId === ctx.selectedCallId)) || ctx.matchedCalls[0]
   stream.send({ type: 'step_progress', step: 6, message: 'Creating your action plan...' })
 
   const result = await gateway.generate({
