@@ -1,5 +1,5 @@
 import PizZip from 'pizzip'
-import type { ProjectSection } from '@/lib/ai/orchestrator/types'
+import type { SectionResult } from '@/lib/ai/orchestrator/types'
 
 interface ExportOptions {
   projectTitle: string
@@ -9,7 +9,7 @@ interface ExportOptions {
 }
 
 export async function generateDocx(
-  sections: ProjectSection[],
+  sections: SectionResult[],
   options: ExportOptions
 ): Promise<Buffer> {
   // Build a simple DOCX from scratch using PizZip with XML content
@@ -52,7 +52,7 @@ function escapeXml(text: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function buildDocxContent(sections: ProjectSection[], options: ExportOptions): string {
+function buildDocxContent(sections: SectionResult[], options: ExportOptions): string {
   const title = escapeXml(options.projectTitle)
   const program = options.program ? escapeXml(options.program) : ''
   const date = options.date || new Date().toISOString().split('T')[0]
@@ -82,7 +82,7 @@ function buildDocxContent(sections: ProjectSection[], options: ExportOptions): s
       <w:r><w:rPr><w:b/><w:sz w:val="28"/></w:rPr><w:t>${section.order}. ${escapeXml(section.title)}</w:t></w:r></w:p>`
 
     // Section content — split by newlines into paragraphs
-    const paragraphs = section.content.split('\n').filter(p => p.trim())
+    const paragraphs = section.content.split('\n').filter((p: string) => p.trim())
     for (const para of paragraphs) {
       body += `<w:p><w:r><w:t xml:space="preserve">${escapeXml(para)}</w:t></w:r></w:p>`
     }

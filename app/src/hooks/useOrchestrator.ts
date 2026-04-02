@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
-import type { MatchedCall, ActionPlan, ProjectSection, WorkflowContext } from '@/lib/ai/orchestrator/types';
+import type { MatchedCall, ActionPlan, SectionResult, WorkflowContext } from '@/lib/ai/orchestrator/types';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -25,7 +25,7 @@ export interface ChatMessage {
 export interface CanvasState {
   matchedCalls: MatchedCall[] | null;
   actionPlan: ActionPlan | null;
-  proposalSections: ProjectSection[] | null;
+  proposalSections: SectionResult[] | null;
   activeTab: 'calls' | 'plan' | 'proposal';
 }
 

@@ -1,4 +1,4 @@
-import type { AgentFn, ProjectSection } from '../types'
+import type { AgentFn, SectionResult } from '../types'
 import { getBuildPrompt } from '../prompts/build'
 import { parseAIJson } from '../utils'
 
@@ -16,12 +16,12 @@ export const buildAgent: AgentFn = async (ctx, _input, stream, gateway) => {
     provider,
     model,
     system: getBuildPrompt(ctx),
-    messages: [{ role: 'user', content: `Build the complete project proposal for:\n\nProject: ${JSON.stringify(ctx.enhancedIdea)}\n\nAction Plan: ${JSON.stringify(ctx.actionPlan)}\n\nResearch: ${JSON.stringify(ctx.researchResults)}` }],
+    messages: [{ role: 'user', content: `Build the complete project proposal for:\n\nProject: ${JSON.stringify(ctx.enhancedIdea)}\n\nAction Plan: ${JSON.stringify(ctx.actionPlan)}\n\nBlueprint: ${JSON.stringify(ctx.callBlueprint)}` }],
     temperature: 0.4,
     maxTokens: 32000,
   })
 
-  let projectSections: ProjectSection[]
+  let projectSections: SectionResult[]
   try {
     const parsed = parseAIJson<unknown>(result.content)
     // Normalize: might be array or { sections: [...] }
@@ -29,17 +29,20 @@ export const buildAgent: AgentFn = async (ctx, _input, stream, gateway) => {
       projectSections = parsed
     } else if (parsed && typeof parsed === 'object') {
       const arr = Object.values(parsed as Record<string, unknown>).find(v => Array.isArray(v))
-      projectSections = Array.isArray(arr) ? arr as ProjectSection[] : []
+      projectSections = Array.isArray(arr) ? arr as SectionResult[] : []
     } else {
       projectSections = []
     }
   } catch {
     // Last resort: wrap raw content as a single section
+    const now = new Date().toISOString()
     projectSections = [{
+      id: 'fallback-1',
       title: 'Generated Proposal',
       content: result.content,
       order: 1,
       source: 'generated',
+      metadata: { model, provider, tokensIn: 0, tokensOut: result.tokensUsed, latencyMs: 0, retryCount: 0, fallbackUsed: true, generatedAt: now, checksum: '' },
     }]
   }
 

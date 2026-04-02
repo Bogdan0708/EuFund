@@ -1,3 +1,5 @@
+// ─── Orchestrator V2 Types ──────────────────────────────────────
+
 export interface WorkflowContext {
   sessionId: string
   userId: string
@@ -6,11 +8,10 @@ export interface WorkflowContext {
   step: number
   enhancedIdea: EnhancedIdea | null
   matchedCalls: MatchedCall[] | null
-  validationResults: ValidationResult[] | null
-  researchResults: ResearchResult | null
-  actionPlan: ActionPlan | null
-  projectSections: ProjectSection[] | null
   selectedCallId: string | null
+  callBlueprint: CallBlueprint | null
+  actionPlan: ActionPlan | null
+  projectSections: SectionResult[] | null
   uploadedFiles: UploadedFile[]
 }
 
@@ -37,22 +38,73 @@ export interface MatchedCall {
   reasoning: string
 }
 
-export interface ValidationResult {
+export interface CallBlueprint {
   callId: string
+  program: string
   isOpen: boolean
-  lastVerified: string
-  updates: string[]
+  amendments: string[]
   warnings: string[]
+  requiredSections: { title: string; description: string; evaluationWeight?: number }[]
+  mandatoryAnnexes: string[]
+  eligibilityCriteria: string[]
+  evaluationGrid: { criterion: string; maxPoints: number }[]
+  cofinancingRate: number
+  eligibilityResult: {
+    score: number
+    passCount: number
+    failCount: number
+    failures: string[]
+    warnings: string[]
+  }
+  sources: string[]
+  verifiedAt: string
+  raw: {
+    notebookLmResponse: string
+    perplexityResponse: string
+    retrievedAt: string
+  }
+  normalized: {
+    requiredSections: SectionSpec[]
+    mandatoryAnnexes: string[]
+    eligibilityCriteria: string[]
+    evaluationGrid: { criterion: string; maxPoints: number }[]
+    cofinancingRate: number
+  }
+  structureConfidence: number
 }
 
-export interface ResearchResult {
-  callId: string
-  requirements: string[]
-  forms: { name: string; url?: string; description: string }[]
-  certificates: { name: string; source: string; estimatedTime: string }[]
-  deadlines: { item: string; date: string }[]
-  additionalSections: string[]
-  rawFindings: string
+export interface SectionSpec {
+  id: string
+  title: string
+  description: string
+  order: number
+  generationOrder: number
+  importance: 'critical' | 'standard' | 'supplementary'
+  expectedLength: 'short' | 'medium' | 'long'
+  dependsOn: string[]
+  modelHint: 'heavy' | 'light'
+  evaluationWeight?: number
+  mandatory: boolean
+  confidence: number
+}
+
+export interface SectionResult {
+  id: string
+  title: string
+  content: string
+  order: number
+  source: 'generated' | 'edited' | 'failed'
+  metadata: {
+    model: string
+    provider: string
+    tokensIn: number
+    tokensOut: number
+    latencyMs: number
+    retryCount: number
+    fallbackUsed: boolean
+    generatedAt: string
+    checksum: string
+  }
 }
 
 export interface ActionPlan {
@@ -81,19 +133,25 @@ export interface ActionPlan {
   estimatedTimeline: string
 }
 
-export interface ProjectSection {
-  title: string
-  content: string
-  order: number
-  source: 'generated' | 'edited'
-}
-
 export interface UploadedFile {
   fileId: string
   filename: string
   mimeType: string
   extractedText?: string
 }
+
+export interface QAResult {
+  passed: boolean
+  missingSections: string[]
+  failedSections: string[]
+  placeholderSections: string[]
+  truncatedSections: string[]
+  duplicateSections: string[]
+  budgetConsistent: boolean | null
+  warnings: string[]
+}
+
+export type ProjectCompletionStatus = 'complete' | 'complete_with_gaps' | 'needs_review' | 'blocked'
 
 export interface AgentResult {
   data: Record<string, unknown>
@@ -117,12 +175,10 @@ export type SSEEvent = {
   | { type: 'step_complete'; step: number; summary: string; context?: Partial<WorkflowContext> }
   | { type: 'discovery'; items: unknown[] }
   | { type: 'error'; step: number; message: string; retryable: boolean }
-  | { type: 'done'; projectId?: string }
+  | { type: 'done'; projectId?: string; completionStatus?: ProjectCompletionStatus }
 )
 
-// Distributive Omit that preserves union discrimination
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never
-
 export type SSEEventPayload = DistributiveOmit<SSEEvent, 'eventId'>
 
 export interface SSEStream {
@@ -153,9 +209,7 @@ export type AgentFn = (
 export const STEP_LABELS: Record<number, string> = {
   1: 'Enhancing your idea...',
   2: 'Matching with funding calls...',
-  3: 'Validating funding call status...',
-  4: 'Researching requirements...',
-  5: 'Updating knowledge base...',
-  6: 'Creating action plan...',
-  7: 'Building your project...',
+  3: 'Researching call requirements...',
+  4: 'Creating action plan...',
+  5: 'Building your project...',
 }
