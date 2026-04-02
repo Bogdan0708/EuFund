@@ -1,6 +1,19 @@
 import type { AgentFn, ProjectSection } from '../types'
 import { getBuildPrompt } from '../prompts/build'
-import { parseAIJson } from '../utils'
+
+/** Strip markdown fences and parse JSON — inline to avoid stale cache issues */
+function parseResponse<T>(raw: string): T {
+  let cleaned = raw.trim()
+  const fenceStart = cleaned.indexOf('```')
+  if (fenceStart !== -1) {
+    const contentStart = cleaned.indexOf('\n', fenceStart)
+    const fenceEnd = cleaned.lastIndexOf('```')
+    if (contentStart !== -1 && fenceEnd > contentStart) {
+      cleaned = cleaned.slice(contentStart + 1, fenceEnd).trim()
+    }
+  }
+  return JSON.parse(cleaned)
+}
 
 export const buildAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   if (!ctx.actionPlan || !ctx.enhancedIdea) {
@@ -23,9 +36,24 @@ export const buildAgent: AgentFn = async (ctx, _input, stream, gateway) => {
 
   let projectSections: ProjectSection[]
   try {
-    projectSections = parseAIJson<ProjectSection[]>(result.content)
+    const parsed = parseResponse<unknown>(result.content)
+    // Normalize: might be array or { sections: [...] }
+    if (Array.isArray(parsed)) {
+      projectSections = parsed
+    } else if (parsed && typeof parsed === 'object') {
+      const arr = Object.values(parsed as Record<string, unknown>).find(v => Array.isArray(v))
+      projectSections = Array.isArray(arr) ? arr as ProjectSection[] : []
+    } else {
+      projectSections = []
+    }
   } catch {
-    throw new Error('Failed to parse project sections from AI response')
+    // Last resort: wrap raw content as a single section
+    projectSections = [{
+      title: 'Generated Proposal',
+      content: result.content,
+      order: 1,
+      source: 'generated',
+    }]
   }
 
   // Stream each section to the user
