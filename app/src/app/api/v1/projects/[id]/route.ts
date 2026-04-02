@@ -14,6 +14,7 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 type Params = { params: { id: string } };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DIRECT_MUTABLE_PROJECT_STATUSES = ['ciorna', 'in_lucru', 'verificare', 'depus'] as const;
 const TERMINAL_PROJECT_STATUSES = ['aprobat', 'respins', 'finalizat', 'arhivat'] as const;
 
@@ -21,6 +22,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
     const { id } = params;
+    if (!UUID_RE.test(id)) {
+      return NextResponse.json(Errors.validation('id', 'ID de proiect invalid', 'Invalid project ID').toResponse('ro'), { status: 400 });
+    }
 
     const project = await withUserRLS(user.id, async (tx) => {
       return tx.query.projects.findFirst({
@@ -56,6 +60,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
     const { id } = params;
+    if (!UUID_RE.test(id)) {
+      return NextResponse.json(Errors.validation('id', 'ID de proiect invalid', 'Invalid project ID').toResponse('ro'), { status: 400 });
+    }
 
     const project = await withUserRLS(user.id, async (tx) => {
       return tx.query.projects.findFirst({
@@ -198,6 +205,9 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
     const { id } = params;
+    if (!UUID_RE.test(id)) {
+      return NextResponse.json(Errors.validation('id', 'ID de proiect invalid', 'Invalid project ID').toResponse('ro'), { status: 400 });
+    }
 
     const project = await withUserRLS(user.id, async (tx) => {
       return tx.query.projects.findFirst({
