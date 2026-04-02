@@ -1,19 +1,6 @@
 import type { AgentFn, ProjectSection } from '../types'
 import { getBuildPrompt } from '../prompts/build'
-
-/** Strip markdown fences and parse JSON — inline to avoid stale cache issues */
-function parseResponse<T>(raw: string): T {
-  let cleaned = raw.trim()
-  const fenceStart = cleaned.indexOf('```')
-  if (fenceStart !== -1) {
-    const contentStart = cleaned.indexOf('\n', fenceStart)
-    const fenceEnd = cleaned.lastIndexOf('```')
-    if (contentStart !== -1 && fenceEnd > contentStart) {
-      cleaned = cleaned.slice(contentStart + 1, fenceEnd).trim()
-    }
-  }
-  return JSON.parse(cleaned)
-}
+import { parseAIJson } from '../utils'
 
 export const buildAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   if (!ctx.actionPlan || !ctx.enhancedIdea) {
@@ -36,7 +23,7 @@ export const buildAgent: AgentFn = async (ctx, _input, stream, gateway) => {
 
   let projectSections: ProjectSection[]
   try {
-    const parsed = parseResponse<unknown>(result.content)
+    const parsed = parseAIJson<unknown>(result.content)
     // Normalize: might be array or { sections: [...] }
     if (Array.isArray(parsed)) {
       projectSections = parsed
