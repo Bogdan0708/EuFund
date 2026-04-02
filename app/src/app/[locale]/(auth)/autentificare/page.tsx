@@ -131,7 +131,7 @@ export default function LoginPage() {
           {/* Divider */}
           <div className="relative flex items-center py-6">
             <div className="flex-grow border-t border-outline-variant/20" />
-            <span className="flex-shrink mx-4 text-xs font-semibold uppercase tracking-widest text-outline">{t('orDivider')}</span>
+            <span className="flex-shrink mx-4 text-xs font-semibold uppercase tracking-widest text-on-surface">{t('orDivider')}</span>
             <div className="flex-grow border-t border-outline-variant/20" />
           </div>
 
@@ -220,11 +220,11 @@ export default function LoginPage() {
 
       {/* Footer */}
       <footer className="mt-16 text-center z-10">
-        <div className="text-[13px] font-medium text-outline flex items-center justify-center gap-4">
+        <div className="text-[13px] font-medium text-on-surface flex items-center justify-center gap-4">
           <span>&copy; 2026 FondEU.</span>
           <div className="flex gap-4">
             <a className="hover:text-primary transition-colors" href={`/${locale}/confidentialitate`}>Privacy Policy</a>
-            <span className="text-outline/30">&bull;</span>
+            <span className="text-on-surface/30">&bull;</span>
             <a className="hover:text-primary transition-colors" href={`/${locale}/termeni`}>Terms of Service</a>
           </div>
         </div>

@@ -188,7 +188,7 @@ export function CookieConsentBanner() {
       <div className="space-y-3">
         <div>
           <h2 className="text-sm font-semibold">{t.title}</h2>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-on-surface">
             {t.description}
             {' '}
             <a
@@ -203,13 +203,13 @@ export function CookieConsentBanner() {
         <div className="grid gap-2 text-sm sm:grid-cols-3">
           <div className="rounded-md border p-2">
             <p className="font-medium">{t.essential}</p>
-            <p className="text-xs text-muted-foreground">{t.essentialDesc}</p>
+            <p className="text-xs text-on-surface">{t.essentialDesc}</p>
           </div>
           <label className="rounded-md border p-2">
             <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="font-medium">Analytics</p>
-                <p className="text-xs text-muted-foreground">{t.analyticsDesc}</p>
+                <p className="text-xs text-on-surface">{t.analyticsDesc}</p>
               </div>
               <input
                 type="checkbox"
@@ -223,7 +223,7 @@ export function CookieConsentBanner() {
             <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="font-medium">Marketing</p>
-                <p className="text-xs text-muted-foreground">{t.marketingDesc}</p>
+                <p className="text-xs text-on-surface">{t.marketingDesc}</p>
               </div>
               <input
                 type="checkbox"
@@ -245,7 +245,7 @@ export function CookieConsentBanner() {
           <Button size="sm" onClick={() => persistConsent(true, true)} disabled={saving}>
             {t.acceptAll}
           </Button>
-          <span className="self-center text-xs text-muted-foreground">
+          <span className="self-center text-xs text-on-surface">
             {hasOptionalConsent ? t.hasConsent : t.noConsent}
           </span>
         </div>
