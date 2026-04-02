@@ -251,7 +251,7 @@ Each call returns a simple object:
 { title: string, content: string, order: number }
 ```
 
-No array. No complex JSON. 2-4KB per section. No truncation possible.
+No array. No complex JSON. 2-4KB per section. Truncation risk massively reduced (not eliminated — a single section could still overflow if context grows too large, see Context Compaction below).
 
 #### Model routing
 
@@ -270,7 +270,7 @@ No array. No complex JSON. 2-4KB per section. No truncation possible.
 - Capacitate institutionala
 - Parteneriat
 
-Detection: match section title against a known list of "heavy" keywords. If `requiredSections` uses different titles (program-specific), fall back to position-based: first 3 sections + methodology + budget = heavy.
+Detection: data-driven from the SectionSpec (see below). Each SectionSpec carries a `modelHint` field set during Step 3 based on the section's evaluation weight and description. Sections with high evaluation weight or analytical requirements get `modelHint: 'heavy'`. Template/procedural sections get `modelHint: 'light'`. No keyword matching or position guessing.
 
 #### Failure handling
 
@@ -563,3 +563,194 @@ Work is sequential (each step depends on the previous):
 Compare to V1: ~$1.50 but frequently produces unusable output (wasted). V2 costs ~40% more but every token produces usable content. Net cost per *usable* project is lower.
 
 Second run for the same call: skip NotebookLM (~$0 savings, but faster).
+
+## Hardening: SectionSpec Contract
+
+Instead of implicit section metadata scattered across prompts and heuristics, each section is defined by a formal `SectionSpec`:
+
+```typescript
+interface SectionSpec {
+  id: string                    // Stable identifier (e.g., 'rezumat', 'metodologie')
+  title: string                 // Display title from Ghidul Solicitantului
+  description: string           // What this section should contain
+  order: number                 // Position in final document
+  generationOrder: number       // Position in build sequence (Rezumat = last)
+  importance: 'critical' | 'standard' | 'supplementary'
+  expectedLength: 'short' | 'medium' | 'long'  // Guides maxTokens per call
+  dependsOn: string[]           // Section IDs that must be generated first
+  modelHint: 'heavy' | 'light'  // Opus vs GPT-5.4
+  evaluationWeight?: number     // From call's evaluation grid
+}
+```
+
+The research agent (Step 3) builds the `SectionSpec[]` from the CallBlueprint. If NotebookLM returns exact headings with evaluation weights, those drive the spec directly. If not, the fallback 11-section list provides defaults.
+
+This makes model routing, generation order, and context inclusion all data-driven from one source of truth — no heuristics.
+
+## Hardening: Context Compaction (Step 5)
+
+The build loop must not become a "fat context" problem. As sections accumulate, passing all previous sections verbatim to every subsequent call would balloon the prompt.
+
+**Strategy:**
+
+For each section call, the context includes:
+- **Full text** of the last 2 generated sections (most relevant for coherence)
+- **Compressed summary** of all earlier sections (title + first 2 sentences each)
+- **Full text** of any section listed in `dependsOn` for the current SectionSpec
+
+This caps context growth at roughly: fixed project context (~3K tokens) + 2 full sections (~4K) + summaries (~2K) + dependencies (~2K) = ~11K input tokens per call, regardless of how many sections have been generated.
+
+The compaction function:
+
+```typescript
+function compactPreviousSections(
+  allSections: ProjectSection[],
+  currentSpec: SectionSpec
+): string {
+  const dependencies = allSections.filter(s =>
+    currentSpec.dependsOn.includes(s.id)
+  )
+  const recent = allSections.slice(-2)
+  const older = allSections.slice(0, -2).filter(s =>
+    !dependencies.some(d => d.id === s.id)
+  )
+
+  let context = ''
+  if (dependencies.length > 0) {
+    context += '### Key dependencies (full text):\n'
+    for (const s of dependencies) context += `#### ${s.title}\n${s.content}\n\n`
+  }
+  if (recent.length > 0) {
+    context += '### Recent sections (full text):\n'
+    for (const s of recent) context += `#### ${s.title}\n${s.content}\n\n`
+  }
+  if (older.length > 0) {
+    context += '### Earlier sections (summary):\n'
+    for (const s of older) {
+      const summary = s.content.split('. ').slice(0, 2).join('. ') + '.'
+      context += `- **${s.title}**: ${summary}\n`
+    }
+  }
+  return context
+}
+```
+
+## Hardening: Section Metadata
+
+Each generated section stores metadata alongside content for debugging, cost control, and regeneration:
+
+```typescript
+interface SectionResult {
+  id: string              // From SectionSpec
+  title: string
+  content: string
+  order: number
+  source: 'generated' | 'edited' | 'failed'
+  metadata: {
+    model: string         // e.g., 'claude-opus-4-6'
+    provider: string      // e.g., 'anthropic'
+    tokensIn: number
+    tokensOut: number
+    latencyMs: number
+    retryCount: number
+    fallbackUsed: boolean
+    generatedAt: string   // ISO timestamp
+    checksum: string      // SHA-256 of content for change detection
+  }
+}
+```
+
+Stored in `project_documents.sections` JSONB. This enables:
+- Per-section cost tracking (which sections are expensive?)
+- Debugging failed sections (what model, how many retries?)
+- Change detection on edit (did the content actually change?)
+- Performance monitoring (which models are slow?)
+
+## Hardening: CallBlueprint Raw/Normalized Layers
+
+NotebookLM returns messy but valuable data. Instead of normalizing and losing the original, store both:
+
+```typescript
+interface CallBlueprint {
+  // ... existing fields ...
+
+  raw: {
+    notebookLmResponse: string    // Exact text returned by NotebookLM
+    perplexityResponse: string    // Exact text returned by Perplexity
+    retrievedAt: string           // ISO timestamp
+  }
+  normalized: {
+    requiredSections: SectionSpec[]
+    mandatoryAnnexes: string[]
+    eligibilityCriteria: string[]
+    evaluationGrid: { criterion: string; maxPoints: number }[]
+    cofinancingRate: number
+  }
+  structureConfidence: number     // 0.0 - 1.0, see below
+}
+```
+
+The `raw` layer preserves exactly what came back. The `normalized` layer is the structured data the pipeline consumes. If normalization fails or is partial, the raw data is available for manual review or re-processing.
+
+## Hardening: Template Confidence Gating
+
+Not all NotebookLM responses are equally reliable. A `structureConfidence` score gates the pipeline:
+
+**Scoring rules:**
+- `requiredSections` has 5+ items with titles: +0.3
+- `evaluationGrid` has 3+ criteria with point values: +0.25
+- `mandatoryAnnexes` has 2+ items: +0.15
+- `cofinancingRate` is a valid number > 0: +0.15
+- `eligibilityCriteria` has 3+ items: +0.15
+
+**Gating behavior:**
+- **confidence >= 0.7**: Auto-advance to Step 4 (Plan). High confidence in call structure.
+- **confidence 0.4-0.69**: Emit a checkpoint warning: "The call structure was partially retrieved. Some sections may use generic headings. Continue or review?" User can continue or edit the blueprint.
+- **confidence < 0.4**: Fall back to the standard 11 sections AND emit a warning: "Could not retrieve the specific application structure for this call. Using standard EU proposal format." No blocking — the user already selected this call and should still get output.
+
+This prevents the pipeline from confidently generating a misaligned application when the source data is weak.
+
+## Hardening: Project Completion Status
+
+Instead of treating every completed project equally, the final status reflects what actually happened:
+
+```typescript
+type ProjectCompletionStatus =
+  | 'complete'              // All sections generated successfully
+  | 'complete_with_gaps'    // Some sections failed, placeholders present
+  | 'needs_review'          // Low structure confidence, generic sections used
+  | 'blocked'               // Critical failure (e.g., plan generation failed)
+```
+
+Set at the end of Step 5:
+- If all sections have `source: 'generated'` → `complete`
+- If any sections have `source: 'failed'` → `complete_with_gaps`
+- If `callBlueprint.structureConfidence < 0.4` → `needs_review`
+- If plan or build loop failed entirely → `blocked`
+
+Stored in `projects.completion_status` (new column) alongside the existing `status` field (`ciorna`, `in_lucru`, etc.).
+
+The frontend can use this to show appropriate messaging:
+- `complete`: "Your project proposal is ready for review."
+- `complete_with_gaps`: "Your proposal is mostly complete. 2 sections need manual editing."
+- `needs_review`: "Generated with standard format. Review section headings against the applicant guide."
+- `blocked`: "Generation encountered errors. Please try again or contact support."
+
+## Hardening: Cache Invalidation
+
+The 7-day time-only cache policy is too coarse. Improve with change-aware validation:
+
+**On cache hit (call_knowledge exists for this call_id):**
+1. Run Perplexity freshness check (always — this is cheap)
+2. If Perplexity reports amendments or corrigenda since `verified_at`:
+   - Re-query NotebookLM for updated structure
+   - Update `call_knowledge` record
+   - Set `callBlueprint.amendments` with the changes found
+3. If Perplexity reports no changes:
+   - Update `verified_at` only
+   - Use cached data
+
+This means:
+- Stable calls (no changes in months): one cheap Perplexity call, cached data reused
+- Changed calls (corrigenda published): automatic re-research, user warned of amendments
+- No arbitrary 7-day expiry — freshness is verified against reality, not a timer
