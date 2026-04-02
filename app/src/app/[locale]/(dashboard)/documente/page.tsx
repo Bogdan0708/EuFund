@@ -24,26 +24,6 @@ interface AggregatedFile {
 /* ---------- constants ---------- */
 const FILTER_OPTIONS: FileFilter[] = ['all', 'recent', 'shared', 'archived'];
 
-const SMART_TEMPLATES = [
-  { iconName: 'article', labelKey: 'templateExecutiveSummary' },
-  { iconName: 'pie_chart', labelKey: 'templateBudgetPlanner' },
-  { iconName: 'timeline', labelKey: 'templateProjectRoadmap' },
-];
-
-const COMPLIANCE_FILES = [
-  {
-    icon: 'verified_user',
-    name: 'GDPR_Audit_Q3.pdf',
-    meta: 'Regulatory • 4.5 MB',
-    status: 'verified' as const,
-  },
-  {
-    icon: 'policy',
-    name: 'Ethics_Framework_2024.pdf',
-    meta: 'Internal • 1.2 MB',
-    status: 'pending' as const,
-  },
-];
 
 /* ---------- helpers ---------- */
 function getFileIcon(mimeType: string): { name: string; bg: string; color: string } {
@@ -350,77 +330,6 @@ export default function DocumentePage() {
         </section>
       )}
 
-      {/* ── Section: Compliance & Smart Templates (12-col bento) ── */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-20">
-        {/* Compliance — Left 8 cols */}
-        <div className="lg:col-span-8">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-xl font-bold tracking-tight">{t('compliance')}</h3>
-          </div>
-          <div className="space-y-4">
-            {COMPLIANCE_FILES.map((cf) => (
-              <div
-                key={cf.name}
-                className="glass-card p-4 rounded-lg flex items-center justify-between hover:bg-white transition-colors"
-              >
-                <div className="flex items-center gap-4">
-                  <Icon name={cf.icon} className="text-tertiary-container" />
-                  <div>
-                    <p className="font-semibold text-sm">{cf.name}</p>
-                    <p className="text-xs text-on-surface-variant">{cf.meta}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-6">
-                  {cf.status === 'verified' ? (
-                    <span className="px-3 py-1 bg-green-100 text-green-700 text-[10px] font-bold rounded-full">
-                      {t('status.verified')}
-                    </span>
-                  ) : (
-                    <span className="px-3 py-1 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full">
-                      {t('status.pending')}
-                    </span>
-                  )}
-                  <button className="text-on-surface-variant hover:text-on-surface transition-colors">
-                    <Icon name="download" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Smart Templates — Right 4 cols */}
-        <div className="lg:col-span-4 mt-12 lg:mt-0">
-          <div className="bg-primary-container p-8 rounded-lg text-white h-full relative overflow-hidden group">
-            {/* Subtle mesh background */}
-            <div className="absolute inset-0 opacity-20 pointer-events-none bg-gradient-to-br from-white to-transparent" />
-            <div className="relative z-10">
-              <Icon name="auto_awesome" size="lg" className="mb-4" />
-              <h3 className="text-2xl font-bold mb-2">{t('smartTemplatesTitle')}</h3>
-              <p className="text-white/80 text-sm mb-8 leading-relaxed">
-                {t('smartTemplatesDescription')}
-              </p>
-              <ul className="space-y-3 mb-8">
-                {SMART_TEMPLATES.map((tmpl) => (
-                  <li
-                    key={tmpl.labelKey}
-                    className="flex items-center gap-2 text-xs font-medium bg-white/10 p-2 rounded-lg"
-                  >
-                    <Icon name={tmpl.iconName} size="sm" /> {t(tmpl.labelKey)}
-                  </li>
-                ))}
-              </ul>
-              <button
-                disabled
-                title={t('comingSoon')}
-                className="w-full bg-white text-primary py-3 rounded-full font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-              >
-                {t('browseTemplates')}
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }
