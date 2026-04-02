@@ -9,11 +9,8 @@ export const buildAgent: AgentFn = async (ctx, _input, stream, gateway) => {
 
   stream.send({ type: 'step_progress', step: 7, message: 'Building your project proposal...' })
 
-  // Select model based on tier
-  const model = (ctx.tier === 'pro' || ctx.tier === 'ultra')
-    ? 'claude-sonnet-4-6'
-    : 'gemini-2.5-flash-preview'
-  const provider = (ctx.tier === 'pro' || ctx.tier === 'ultra') ? 'claude' : 'gemini'
+  const provider = 'claude'
+  const model = 'claude-sonnet-4-6'
 
   const result = await gateway.generate({
     provider,
