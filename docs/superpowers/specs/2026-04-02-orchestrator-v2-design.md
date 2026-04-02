@@ -754,3 +754,168 @@ This means:
 - Stable calls (no changes in months): one cheap Perplexity call, cached data reused
 - Changed calls (corrigenda published): automatic re-research, user warned of amendments
 - No arbitrary 7-day expiry — freshness is verified against reality, not a timer
+
+## Hardening: Post-Build QA Pass
+
+After Step 5 generates all sections, a lightweight validation pass runs before persisting the project. This is not a separate step — it's an internal check inside the engine after the build loop completes.
+
+**Checks (deterministic, no AI call):**
+
+1. **Mandatory section coverage**: Compare generated section titles against `callBlueprint.requiredSections`. Flag any required sections that are missing or marked `failed`.
+
+2. **Section count**: If generated sections < expected sections, mark `complete_with_gaps`.
+
+3. **Placeholder detection**: Scan all section content for unresolved markers: `[TODO]`, `[TBD]`, `[PLACEHOLDER]`, `[INSERT]`, `[Generation failed]`. Flag sections containing these.
+
+4. **Numeric consistency**: Extract budget figures from the Buget section and objective targets from Indicatori. If the budget total doesn't appear in the Rezumat, flag as warning (not blocker).
+
+5. **Minimum content length**: Any section with content < 200 characters (excluding failed placeholders) gets flagged — likely a truncated or degenerate response.
+
+6. **Duplicate content detection**: Compare each section's first 100 characters against all other sections. If >80% similarity, flag — the model may have repeated itself.
+
+**Output:**
+
+```typescript
+interface QAResult {
+  passed: boolean
+  missingSections: string[]        // Required titles not generated
+  failedSections: string[]         // Sections with source: 'failed'
+  placeholderSections: string[]    // Sections containing [TODO] etc.
+  truncatedSections: string[]      // Sections < 200 chars
+  duplicateSections: string[]      // Near-duplicate content
+  budgetConsistent: boolean | null // null if budget section missing
+  warnings: string[]
+}
+```
+
+**Effect on completion status:**
+- `qaResult.passed` = true AND no failed sections → `complete`
+- `qaResult.passed` = true BUT has failed sections → `complete_with_gaps`
+- `qaResult.passed` = false (missing mandatory sections or duplicates) → `needs_review`
+- Build loop itself failed → `blocked`
+
+The QA result is stored in `project_documents.metadata` JSONB alongside sections for debugging.
+
+## Hardening: Provider Fallback Semantics
+
+The fallback chain needs explicit rules for when and how fallback triggers.
+
+### What triggers fallback
+
+| Error Type | Action |
+|---|---|
+| HTTP 429 (rate limited) | Wait 2s, retry same provider once, then fallback |
+| HTTP 500/502/503 (server error) | Retry same provider once after 1s, then fallback |
+| HTTP 401/403 (auth error) | Fallback immediately — retrying won't help |
+| Timeout exceeded | Fallback immediately |
+| Empty response (content = '') | Retry same provider once, then fallback |
+| JSON parse failure on response | NOT a provider error — handle in agent logic, no fallback |
+
+### What does NOT trigger fallback
+
+- Slow but successful responses (high latency is not an error)
+- Valid but low-quality content (quality is the agent's problem, not the gateway's)
+- JSON parse failures (the response was received — the issue is format, not provider)
+
+### Fallback behavior
+
+- The **same prompt** is sent to the fallback provider unchanged
+- **Temperature is preserved** — no adjustment on retry/fallback
+- **maxTokens is preserved** — fallback provider gets the same budget
+- A failed primary provider is **not blacklisted** for subsequent calls in the same run — each call is independent (transient errors shouldn't poison the whole session)
+
+### Fallback chain
+
+```
+Primary          → Fallback
+─────────────────────────────
+perplexity       → gemini-2.5-flash
+claude-opus-4-6  → gpt-5.4
+gpt-5.4          → claude-sonnet-4.6
+gemini-2.5-flash → gpt-5.4
+```
+
+If both primary and fallback fail, the error propagates to the agent. The agent decides whether to retry, skip, or fail the step.
+
+### Retry budget per call
+
+Each `callWithRetry` invocation gets at most 3 attempts total:
+1. Primary provider (immediate)
+2. Primary provider (after delay: 1s for server errors, 2s for rate limits)
+3. Fallback provider (immediate)
+
+No further retries beyond these 3. Total worst-case latency per call: original timeout + delay + fallback timeout.
+
+## Hardening: Timeout Budgets
+
+Each provider/model gets an explicit timeout. The gateway enforces these via AbortController.
+
+| Provider | Model | Timeout | Rationale |
+|---|---|---|---|
+| OpenAI | gpt-5.4 | 60s | Fast model, should respond within 30s normally |
+| Anthropic | claude-opus-4-6 | 180s | Large model, can take 2-3 min for complex sections |
+| Anthropic | claude-sonnet-4.6 | 90s | Faster than Opus |
+| Google | gemini-2.5-flash | 45s | Flash model, should be fast |
+| Perplexity | sonar / sonar-pro | 30s | Web search should be quick |
+| OpenAI | text-embedding-3-small | 15s | Embedding is fast |
+
+### Implementation
+
+```typescript
+const PROVIDER_TIMEOUTS: Record<string, number> = {
+  'claude-opus-4-6': 180_000,
+  'claude-sonnet-4.6': 90_000,
+  'gpt-5.4': 60_000,
+  'gemini-2.5-flash': 45_000,
+  'sonar': 30_000,
+  'sonar-pro': 30_000,
+  'text-embedding-3-small': 15_000,
+}
+
+function getTimeout(model: string): number {
+  return PROVIDER_TIMEOUTS[model] ?? 60_000  // Default 60s
+}
+```
+
+Used in `singleCall`:
+
+```typescript
+async function singleCall(provider, model, messages, maxTokens, temperature) {
+  const client = getClient(provider)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), getTimeout(model))
+
+  try {
+    const response = await client.chat.completions.create(
+      { model, messages, max_tokens: maxTokens, temperature },
+      { signal: controller.signal }
+    )
+    return { content: response.choices?.[0]?.message?.content ?? '', tokensUsed: response.usage?.total_tokens ?? 0 }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+```
+
+### Step 5 total budget
+
+With ~11 sections, worst case (all Opus, all retry + fallback):
+- 11 sections x 3 attempts x 180s = 5,940s (99 minutes) — absurd
+
+Realistic case (mix of Opus + GPT-5.4, no retries):
+- 5 Opus sections x 120s + 6 GPT sections x 30s = 780s (13 minutes)
+
+Acceptable for a proposal generation workflow. The user sees progress streaming throughout.
+
+**Hard session timeout**: If the entire Step 5 build loop exceeds 20 minutes, abort remaining sections, persist what we have, mark project as `complete_with_gaps`. This prevents zombie sessions.
+
+## Future Enhancements (Out of Scope)
+
+The following were identified during review but are deferred to a future iteration:
+
+- **Prompt versioning** — track which prompt version produced each section for A/B testing
+- **Section regen invalidation** — when editing a section, flag downstream sections that may be inconsistent
+- **Edit draft vs canonical state** — edits could be staged before replacing the canonical version
+- **Engine idempotency** — deduplicate processMessage calls on retry (message-level idempotency keys)
+- **NotebookLM normalization hardening** — defensive parser with field validation between raw MCP response and CallBlueprint
+- **Full stream event schema** — formalize all SSE event types with JSON Schema for frontend contract
