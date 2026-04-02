@@ -14,8 +14,8 @@ export const validateAgent: AgentFn = async (ctx, input, stream, gateway) => {
   stream.send({ type: 'step_progress', step: 3, message: `Verifying status of ${selectedCall.title}...` })
 
   const result = await gateway.generate({
-    provider: 'perplexity',
-    model: 'sonar',
+    provider: 'gemini',
+    model: 'gemini-2.5-flash',
     system: getValidatePrompt(ctx),
     messages: [{ role: 'user', content: `Verify the current status of: "${selectedCall.title}" from program ${selectedCall.program}. Source URL: ${selectedCall.sourceUrl}` }],
     temperature: 0.1,
