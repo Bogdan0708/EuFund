@@ -108,12 +108,13 @@ export const researchAgent: AgentFn = async (ctx, input, stream, gateway) => {
   // 4. Parse
   let rawParsed: Record<string, unknown> = {}
   if (cachedData) {
+    const norm = (cachedData.normalized ?? {}) as Record<string, unknown>
     rawParsed = {
-      requiredSections: cachedData.sections,
-      mandatoryAnnexes: (cachedData.requirements as Record<string, unknown>)?.mandatoryAnnexes || [],
-      eligibilityCriteria: (cachedData.requirements as Record<string, unknown>)?.eligibilityCriteria || [],
-      evaluationGrid: (cachedData.evaluation as Record<string, unknown>)?.grid || [],
-      cofinancingRate: (cachedData.requirements as Record<string, unknown>)?.cofinancingRate || 0,
+      requiredSections: norm.requiredSections || [],
+      mandatoryAnnexes: norm.mandatoryAnnexes || [],
+      eligibilityCriteria: norm.eligibilityCriteria || [],
+      evaluationGrid: norm.evaluationGrid || [],
+      cofinancingRate: norm.cofinancingRate || 0,
     }
   } else if (notebookLmResponse) {
     try { rawParsed = parseAIJson<Record<string, unknown>>(notebookLmResponse) } catch { rawParsed = {} }
@@ -156,21 +157,20 @@ export const researchAgent: AgentFn = async (ctx, input, stream, gateway) => {
   // 6. Cache (upsert)
   if (!cachedData && notebookLmResponse) {
     try {
+      const normalizedData = { requiredSections, mandatoryAnnexes, eligibilityCriteria, evaluationGrid, cofinancingRate }
       await db.insert(callKnowledge).values({
         callId: selectedCall.callId,
         program: selectedCall.program,
         callTitle: selectedCall.title,
-        sections: requiredSections as unknown as Record<string, unknown>[],
-        requirements: { mandatoryAnnexes, eligibilityCriteria, cofinancingRate } as unknown as Record<string, unknown>,
-        evaluation: { grid: evaluationGrid } as unknown as Record<string, unknown>,
-        source: 'perplexity',
+        normalized: normalizedData,
+        extractedFrom: 'perplexity',
+        structureConfidence,
       }).onConflictDoUpdate({
         target: callKnowledge.callId,
         set: {
-          sections: requiredSections as unknown as Record<string, unknown>[],
-          requirements: { mandatoryAnnexes, eligibilityCriteria, cofinancingRate } as unknown as Record<string, unknown>,
-          evaluation: { grid: evaluationGrid } as unknown as Record<string, unknown>,
-          verifiedAt: new Date(),
+          normalized: normalizedData,
+          structureConfidence,
+          contentExtractedAt: new Date(),
           updatedAt: new Date(),
         },
       })
@@ -179,7 +179,7 @@ export const researchAgent: AgentFn = async (ctx, input, stream, gateway) => {
     }
   } else if (cachedData) {
     try {
-      await db.update(callKnowledge).set({ verifiedAt: new Date(), updatedAt: new Date() }).where(eq(callKnowledge.callId, selectedCall.callId))
+      await db.update(callKnowledge).set({ freshnessCheckedAt: new Date(), updatedAt: new Date() }).where(eq(callKnowledge.callId, selectedCall.callId))
     } catch { /* best effort */ }
   }
 
