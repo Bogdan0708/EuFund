@@ -74,10 +74,10 @@ describe('get_call_blueprint tool', () => {
 
     expect(result.success).toBe(true)
     expect(result.data).toBeTruthy()
-    expect(result.data!.callId).toBe('PNRR-C11')
-    expect(result.data!.program).toBe('PNRR')
-    expect(result.data!.structureConfidence).toBe(0.8)
-    expect(result.data!.cofinancingRate).toBe(0.85)
+    expect((result.data as any).callId).toBe('PNRR-C11')
+    expect((result.data as any).program).toBe('PNRR')
+    expect((result.data as any).structureConfidence).toBe(0.8)
+    expect((result.data as any).cofinancingRate).toBe(0.85)
   })
 
   it('returns error result on DB failure', async () => {
@@ -137,7 +137,7 @@ describe('get_call_blueprint tool', () => {
     const result = await tool.execute({ callId: 'PEO-001' }, mockCtx)
 
     expect(result.success).toBe(true)
-    const bp = result.data!
+    const bp = result.data as any
     expect(bp.requiredSections).toHaveLength(2)
     expect(bp.mandatoryAnnexes).toEqual(['Annexa 1', 'Annexa 2'])
     expect(bp.eligibilityCriteria).toEqual(['NGO only', 'Romania-based'])
