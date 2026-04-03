@@ -1,7 +1,7 @@
 // app/src/lib/ai/agent/runtime.ts
 import type {
   AgentSession, AgentSection, AgentEvent, AgentRequest,
-  StateTransition, ToolContext, ToolResult, Phase,
+  StateTransition, ToolContext, ToolResult,
 } from './types'
 import { applyTransition } from './transitions'
 import { buildSystemPrompt } from './prompt'
@@ -293,11 +293,11 @@ async function persistSessionState(session: AgentSession, _sections: AgentSectio
     status: session.status,
     selectedCallId: session.selectedCallId,
     currentPhase: session.currentPhase,
-    blueprint: session.blueprint as Record<string, unknown>,
-    eligibility: session.eligibility as Record<string, unknown>,
-    outline: session.outline as Record<string, unknown>[],
-    warnings: session.warnings as Record<string, unknown>[],
-    planningArtifact: session.planningArtifact as Record<string, unknown>,
+    blueprint: session.blueprint as unknown as Record<string, unknown>,
+    eligibility: session.eligibility as unknown as Record<string, unknown>,
+    outline: session.outline as unknown as Record<string, unknown>[],
+    warnings: session.warnings as unknown as Record<string, unknown>[],
+    planningArtifact: session.planningArtifact as unknown as Record<string, unknown>,
     messageSummary: session.messageSummary,
     stateVersion: session.stateVersion,
     updatedAt: new Date(),
