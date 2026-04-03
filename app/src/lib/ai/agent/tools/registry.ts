@@ -58,11 +58,3 @@ registerTool({
   timeout: 30_000,
 })
 
-registerTool({
-  name: 'resolve_call',
-  category: 'decision',
-  description: 'Resolve a call by ID, building or retrieving its blueprint',
-  inputSchema: z.object({ callId: z.string() }),
-  execute: async () => ({ success: true, data: null, telemetry: { latencyMs: 0 } }),
-  timeout: 60_000,
-})
