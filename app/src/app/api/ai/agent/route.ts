@@ -46,7 +46,17 @@ async function handler(req: NextRequest) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     }
 
-    // Optimistic concurrency — not enforced strictly for now
+    // Optimistic concurrency: reject stale writes
+    if (typeof (body as AgentRequest & { stateVersion?: number }).stateVersion === 'number') {
+      const clientVersion = (body as AgentRequest & { stateVersion?: number }).stateVersion as number
+      if (clientVersion !== (row.stateVersion as number)) {
+        return NextResponse.json(
+          { error: 'Stale state — reload and retry', currentVersion: row.stateVersion },
+          { status: 409 },
+        )
+      }
+    }
+
     session = mapSessionRow(row)
 
     const sectionRows = await db
