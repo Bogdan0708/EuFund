@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { Icon } from '@/components/ui/ds-icon';
 import { staggerContainer, staggerItem, staggerTransition } from '@/lib/motion';
@@ -38,7 +37,7 @@ const STATUS_STYLES: Record<ProjectStatus, { bg: string; text: string; ring: str
   in_progress: { bg: 'bg-blue-100', text: 'text-blue-700', ring: 'stroke-primary' },
   submitted: { bg: 'bg-amber-100', text: 'text-amber-700', ring: 'stroke-amber-500' },
   approved: { bg: 'bg-emerald-100', text: 'text-emerald-700', ring: 'stroke-emerald-500' },
-  draft: { bg: 'bg-slate-200', text: 'text-slate-600', ring: 'stroke-slate-400' },
+  draft: { bg: 'bg-slate-200', text: 'text-slate-900', ring: 'stroke-slate-400' },
 };
 
 /* ---------- relative time helper ---------- */
@@ -126,7 +125,7 @@ function TeamAvatars({ count }: { count: number }) {
           key={i}
           className={`w-6 h-6 rounded-full border-2 border-white ${colors[i]} flex items-center justify-center`}
         >
-          <Icon name="person" size="sm" className="text-slate-500 text-[10px]" />
+          <Icon name="person" size="sm" className="text-black text-[10px]" />
         </div>
       ))}
       {overflow > 0 && (
@@ -169,8 +168,6 @@ export default function ProiectePage({
   params: { locale: string };
 }) {
   const t = useTranslations('projects');
-  const router = useRouter();
-
   const [projects, setProjects] = useState<ApiProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -224,13 +221,13 @@ export default function ProiectePage({
               {t('pageSubtitle')}
             </p>
           </div>
-          <button
-            onClick={() => router.push(`/${locale}/asistent-ai`)}
+          <Link
+            href={`/${locale}/proiecte/nou`}
             className="bg-primary-container text-white px-8 py-4 rounded-full font-semibold hover:-translate-y-px transition-all flex items-center space-x-2"
           >
             <Icon name="add" />
             <span>{t('createProject')}</span>
-          </button>
+          </Link>
         </div>
 
         {/* Search & Filters */}
@@ -238,10 +235,10 @@ export default function ProiectePage({
           <div className="relative flex-1 w-full">
             <Icon
               name="search"
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant"
             />
             <input
-              className="w-full pl-12 pr-4 py-4 bg-surface-container-high border-none rounded-full focus:ring-2 focus:ring-primary/20 transition-all text-on-surface placeholder:text-on-surface-variant/50"
+              className="w-full pl-12 pr-4 py-4 bg-surface-container-high border-none rounded-full focus:ring-2 focus:ring-primary/20 transition-all text-on-surface placeholder:text-on-surface-variant/70"
               placeholder={t('searchPlaceholder')}
               type="text"
               onChange={(e) => handleSearchChange(e.target.value)}
@@ -289,12 +286,12 @@ export default function ProiectePage({
             <Icon name="folder_open" size="lg" className="text-on-surface-variant mb-4" />
             <h3 className="text-lg font-semibold text-on-surface">{t('emptyTitle')}</h3>
             <p className="text-on-surface-variant mt-2">{t('emptyDescription')}</p>
-            <button
-              className="mt-6 bg-primary-container text-white px-8 py-4 rounded-full font-semibold hover:-translate-y-px transition-all"
-              onClick={() => router.push(`/${locale}/asistent-ai`)}
+            <Link
+              href={`/${locale}/proiecte/nou`}
+              className="mt-6 inline-flex bg-primary-container text-white px-8 py-4 rounded-full font-semibold hover:-translate-y-px transition-all"
             >
               {t('startFirstProject')}
-            </button>
+            </Link>
           </div>
         )}
 
@@ -335,7 +332,7 @@ export default function ProiectePage({
                   {/* Footer */}
                   <div className="mt-auto flex items-center justify-between">
                     <TeamAvatars count={1} />
-                    <p className="text-[10px] text-on-surface-variant/60 font-medium uppercase">
+                    <p className="text-[10px] text-on-surface-variant font-medium uppercase">
                       {t('modified')} {relativeTime(project.updatedAt)}
                     </p>
                   </div>
@@ -348,7 +345,7 @@ export default function ProiectePage({
         {!loading && (
           <motion.div variants={staggerItem} transition={staggerTransition}>
             <Link
-              href={`/${locale}/asistent-ai`}
+              href={`/${locale}/proiecte/nou`}
               className="flex items-center justify-center border-2 border-dashed border-outline-variant/30 rounded-[1.5rem] min-h-[200px] hover:border-primary/30 transition-colors"
             >
               <Icon name="add" size="lg" className="text-on-surface-variant" />
@@ -362,8 +359,8 @@ export default function ProiectePage({
         <div className="relative inline-block mb-10">
           <div className="absolute inset-0 bg-secondary/10 blur-[80px] rounded-full scale-150" />
           <div className="relative glass-card w-64 h-64 flex flex-col items-center justify-center mx-auto">
-            <Icon name="inventory_2" size="lg" className="text-on-surface-variant/40 mb-4" />
-            <p className="text-on-surface-variant/60 font-medium text-sm">
+            <Icon name="inventory_2" size="lg" className="text-on-surface-variant mb-4" />
+            <p className="text-on-surface-variant font-medium text-sm">
               {t('archiveEmpty')}
             </p>
           </div>
