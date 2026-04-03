@@ -253,14 +253,14 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
               if (result.sectionUpsert) {
                 const existing = sections.find(sec => sec.sectionKey === result.sectionUpsert!.sectionKey)
                 if (!existing) {
-                  const spec = (session.outline || []).find((o: Record<string, unknown>) => o.id === result.sectionUpsert!.sectionKey)
+                  const spec = (session.outline || []).find(o => o.id === result.sectionUpsert!.sectionKey)
                   sections.push({
                     id: crypto.randomUUID(),
                     sessionId: session.id,
                     sectionKey: result.sectionUpsert.sectionKey,
-                    title: (spec?.title as string) || result.sectionUpsert.sectionKey,
-                    documentOrder: (spec?.order as number) || sections.length,
-                    generationOrder: (spec?.generationOrder as number) || sections.length,
+                    title: spec?.title || result.sectionUpsert.sectionKey,
+                    documentOrder: spec?.order ?? sections.length,
+                    generationOrder: spec?.generationOrder ?? sections.length,
                     status: 'draft',
                     content: result.sectionUpsert.content,
                     acceptedContent: null,
@@ -357,7 +357,8 @@ function handleStructuredAction(
   }
 }
 
-async function persistSessionState(session: AgentSession, _sections: AgentSection[]): Promise<void> {
+async function persistSessionState(session: AgentSession, sections: AgentSection[]): Promise<void> {
+  // Persist session
   await db.update(agentSessions).set({
     status: session.status,
     selectedCallId: session.selectedCallId,
@@ -371,6 +372,43 @@ async function persistSessionState(session: AgentSession, _sections: AgentSectio
     stateVersion: session.stateVersion,
     updatedAt: new Date(),
   }).where(eq(agentSessions.id, session.id))
+
+  // Persist sections — upsert each section by (sessionId, sectionKey)
+  for (const section of sections) {
+    await db.insert(agentSections).values({
+      id: section.id,
+      sessionId: section.sessionId,
+      sectionKey: section.sectionKey,
+      title: section.title,
+      documentOrder: section.documentOrder,
+      generationOrder: section.generationOrder,
+      status: section.status,
+      content: section.content,
+      acceptedContent: section.acceptedContent,
+      modelUsed: section.modelUsed,
+      retryCount: section.retryCount,
+      sourcesUsed: section.sourcesUsed as unknown as Record<string, unknown>,
+      promptVersion: section.promptVersion,
+      latencyMs: section.latencyMs,
+      tokenUsage: section.tokenUsage as unknown as Record<string, unknown>,
+      errorClass: section.errorClass,
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: [agentSections.sessionId, agentSections.sectionKey],
+      set: {
+        status: section.status,
+        content: section.content,
+        acceptedContent: section.acceptedContent,
+        modelUsed: section.modelUsed,
+        retryCount: section.retryCount,
+        sourcesUsed: section.sourcesUsed as unknown as Record<string, unknown>,
+        latencyMs: section.latencyMs,
+        tokenUsage: section.tokenUsage as unknown as Record<string, unknown>,
+        errorClass: section.errorClass,
+        updatedAt: new Date(),
+      },
+    })
+  }
 }
 
 function buildStatePatch(session: AgentSession, sections: AgentSection[]): Partial<import('./types').UIStateSnapshot> {

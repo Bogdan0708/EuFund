@@ -26,7 +26,10 @@ vi.mock('@/lib/db', () => ({
       }),
     }),
     insert: vi.fn().mockReturnValue({
-      values: vi.fn().mockResolvedValue(undefined),
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+        then: (resolve: (v: unknown) => void) => resolve(undefined),
+      }),
     }),
   },
 }))
