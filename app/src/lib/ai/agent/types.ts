@@ -1,4 +1,4 @@
-import type { ZodSchema } from 'zod'
+import type { ZodType } from 'zod'
 
 // ── Constants ───────────────────────────────────────────────────
 
@@ -165,7 +165,7 @@ export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
   name: string
   category: 'read' | 'decision' | 'generation'
   description: string
-  inputSchema: ZodSchema<TInput>
+  inputSchema: ZodType<TInput>
   execute: (input: TInput, ctx: ToolContext) => Promise<ToolResult<TOutput>>
   timeout: number
 }
