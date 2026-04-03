@@ -7,6 +7,7 @@ import { applyTransition } from './transitions'
 import { buildSystemPrompt } from './prompt'
 import { checkPolicyGate } from './policies'
 import { getToolsForPhase } from './tools/registry'
+import './tools/index' // Side-effect: registers all tools
 import { loadContext, appendMessage, compactIfNeeded } from './history'
 import { db } from '@/lib/db'
 import { agentSessions, agentCheckpoints } from '@/lib/db/schema'
