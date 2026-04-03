@@ -1,5 +1,4 @@
 import OpenAI from 'openai'
-import type { ChatCompletionMessageFunctionToolCall } from 'openai/resources/chat/completions/completions'
 import type { ProviderClient, GenerateRequest, GenerateResult } from './types'
 
 let client: OpenAI | null = null
@@ -35,11 +34,8 @@ export const googleProvider: ProviderClient = {
       model: req.model,
       provider: 'google',
       toolCalls: choice.message.tool_calls
-        ?.filter(tc => tc.type === 'function')
-        .map(tc => {
-          const ftc = tc as ChatCompletionMessageFunctionToolCall
-          return { id: ftc.id, name: ftc.function.name, arguments: ftc.function.arguments }
-        }),
+        ?.filter((tc): tc is Extract<typeof tc, { type: 'function' }> => tc.type === 'function')
+        .map(tc => ({ id: tc.id, name: tc.function.name, arguments: tc.function.arguments })),
     }
   },
 }
