@@ -4,7 +4,13 @@ import { z } from 'zod'
 const tools: ToolDefinition[] = []
 
 export function registerTool(tool: ToolDefinition): void {
-  tools.push(tool)
+  // Deduplicate: real implementations replace placeholders
+  const idx = tools.findIndex(t => t.name === tool.name)
+  if (idx >= 0) {
+    tools[idx] = tool
+  } else {
+    tools.push(tool)
+  }
 }
 
 export function getToolRegistry(): ToolDefinition[] {
