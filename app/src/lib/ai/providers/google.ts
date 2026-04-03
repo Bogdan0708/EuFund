@@ -26,7 +26,7 @@ export const googleProvider: ProviderClient = {
     const response = await c.chat.completions.create({
       model: req.model,
       messages,
-      max_tokens: req.maxTokens ?? 4096,
+      max_completion_tokens: req.maxTokens ?? 4096,
       temperature: req.temperature ?? 0.7,
       ...(req.tools ? { tools: req.tools } : {}),
     })
