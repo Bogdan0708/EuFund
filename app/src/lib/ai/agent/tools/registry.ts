@@ -38,14 +38,7 @@ export function getToolsForPhase(phase: Phase): ToolDefinition[] {
 
 // Register placeholder tools so the registry is testable.
 // These will be replaced by real implementations in later tasks.
-registerTool({
-  name: 'search_calls',
-  category: 'read',
-  description: 'Search for matching EU funding calls',
-  inputSchema: z.object({ query: z.string() }),
-  execute: async () => ({ success: true, data: [], telemetry: { latencyMs: 0 } }),
-  timeout: 15_000,
-})
+// NOTE: search_calls is implemented in search-calls.ts (self-registers on import).
 
 registerTool({
   name: 'generate_section',

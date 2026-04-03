@@ -1,4 +1,16 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// Mock dependencies of real tool implementations before importing them
+vi.mock('@/lib/vectors/store', () => ({
+  getVectorStore: vi.fn(() => ({ search: vi.fn().mockResolvedValue([]) })),
+}))
+vi.mock('@/lib/logger', () => ({
+  logger: { child: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }) },
+}))
+
+// Import real tool implementations so they self-register
+import '@/lib/ai/agent/tools/search-calls'
+
 import { getToolRegistry, getToolsForPhase } from '@/lib/ai/agent/tools/registry'
 
 describe('Tool Registry', () => {
