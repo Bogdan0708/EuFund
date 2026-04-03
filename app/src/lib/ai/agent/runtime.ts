@@ -10,7 +10,7 @@ import { getToolsForPhase } from './tools/registry'
 import './tools/index' // Side-effect: registers all tools
 import { loadContext, appendMessage, compactIfNeeded } from './history'
 import { db } from '@/lib/db'
-import { agentSessions, agentCheckpoints } from '@/lib/db/schema'
+import { agentSessions, agentCheckpoints, agentSections } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 
@@ -76,6 +76,9 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
         }
         await persistSessionState(session, sections)
       }
+      if (actionResult.policyViolation) {
+        emit({ type: 'policy_violation', gate: request.action.type, reason: actionResult.policyViolation })
+      }
       if (actionResult.skipLLM) {
         emit({ type: 'state_update', patch: buildStatePatch(session, sections) })
         emit({ type: 'done', finalState: buildUISnapshot(session, sections) })
@@ -100,7 +103,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       llmMessages.push({ role: 'user', content: request.message })
     }
 
-    // 5. Call LLM (tool execution inline)
+    // 5. Call LLM with tool loop (max iterations to prevent runaway)
     const { generate } = await import('@/lib/ai/providers/router')
 
     const toolSchemas = phaseTools.map(tool => ({
@@ -112,133 +115,189 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       },
     }))
 
-    const response = await generate({
-      provider: 'anthropic',
-      model: 'claude-opus-4-6',
-      system: systemPrompt,
-      messages: llmMessages,
-      tools: toolSchemas.length > 0 ? toolSchemas : undefined,
-    })
+    const MAX_TOOL_ITERATIONS = 5
+    let iteration = 0
 
-    // 6. Emit text response
-    if (response.content) {
-      emit({ type: 'text_delta', content: response.content })
-      await appendMessage(session.id, {
-        role: 'assistant',
-        messageType: 'text',
-        content: response.content,
+    while (iteration < MAX_TOOL_ITERATIONS) {
+      iteration++
+
+      const response = await generate({
+        provider: 'anthropic',
+        model: 'claude-opus-4-6',
+        system: systemPrompt,
+        messages: llmMessages,
+        tools: toolSchemas.length > 0 ? toolSchemas : undefined,
       })
-    }
 
-    // 7. Handle tool calls
-    if (response.toolCalls && response.toolCalls.length > 0) {
-      for (const toolCall of response.toolCalls) {
-        const tool = phaseTools.find(t => t.name === toolCall.name)
-        if (!tool) {
-          log.warn({ tool: toolCall.name }, 'Unknown tool called by LLM')
-          continue
-        }
-
-        // Policy gate
-        const gate = checkPolicyGate(tool.name, session, sections)
-        if (!gate.allowed) {
-          emit({ type: 'policy_violation', gate: tool.name, reason: gate.reason || 'Policy gate blocked' })
-          continue
-        }
-
-        // Execute tool
-        emit({ type: 'tool_start', tool: tool.name, input: {} })
-
-        let toolInput: unknown
-        try {
-          toolInput = JSON.parse(toolCall.arguments)
-        } catch {
-          toolInput = {}
-        }
-
-        const ctx: ToolContext = {
-          sessionId: session.id,
-          userId: session.userId,
-          session,
-          sections,
-          stateVersion: session.stateVersion,
-          requestId: request.requestId,
-          locale: session.locale,
-        }
-
-        let toolResult: ToolResult
-        try {
-          toolResult = await Promise.race([
-            tool.execute(toolInput, ctx),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('Tool timeout')), tool.timeout),
-            ),
-          ])
-        } catch (error) {
-          toolResult = {
-            success: false,
-            error: error instanceof Error ? error.message : 'Tool execution failed',
-            retryable: true,
-            telemetry: { latencyMs: 0 },
-          }
-        }
-
-        emit({
-          type: 'tool_result',
-          tool: tool.name,
-          summary: toolResult.success ? 'completed' : (toolResult.error || 'failed'),
-          success: toolResult.success,
-        })
-
-        // Record tool call and result
+      // If text response with no tool calls — we're done
+      if (response.content && (!response.toolCalls || response.toolCalls.length === 0)) {
+        emit({ type: 'text_delta', content: response.content })
         await appendMessage(session.id, {
           role: 'assistant',
-          messageType: 'tool_call',
-          content: { name: toolCall.name, arguments: toolCall.arguments },
-          toolName: toolCall.name,
-          toolCallId: toolCall.id,
+          messageType: 'text',
+          content: response.content,
         })
-        await appendMessage(session.id, {
-          role: 'tool',
-          messageType: 'tool_result',
-          content: { success: toolResult.success, data: toolResult.data, error: toolResult.error },
-          toolName: toolCall.name,
-          toolCallId: toolCall.id,
-        })
+        llmMessages.push({ role: 'assistant', content: response.content })
+        break
+      }
 
-        // Apply state transitions
-        if (toolResult.stateTransitions) {
-          for (const transition of toolResult.stateTransitions) {
-            const prevPhase = session.currentPhase
-            const result = applyTransition(session, sections, transition)
-            session = result.session
-            sections = result.sections
+      // If text + tool calls, emit text first
+      if (response.content) {
+        emit({ type: 'text_delta', content: response.content })
+        llmMessages.push({ role: 'assistant', content: response.content })
+      }
 
-            // Emit phase change
-            if (transition.type === 'SET_PHASE' && transition.phase !== prevPhase) {
-              emit({ type: 'phase_changed', from: prevPhase, to: transition.phase })
+      // Handle tool calls
+      if (response.toolCalls && response.toolCalls.length > 0) {
+        let hasToolCalls = false
+
+        for (const toolCall of response.toolCalls) {
+          const tool = phaseTools.find(t => t.name === toolCall.name)
+          if (!tool) {
+            log.warn({ tool: toolCall.name }, 'Unknown tool called by LLM')
+            continue
+          }
+
+          // Policy gate
+          const gate = checkPolicyGate(tool.name, session, sections)
+          if (!gate.allowed) {
+            emit({ type: 'policy_violation', gate: tool.name, reason: gate.reason || 'Policy gate blocked' })
+            continue
+          }
+
+          // Execute tool
+          emit({ type: 'tool_start', tool: tool.name, input: {} })
+
+          let toolInput: unknown
+          try {
+            toolInput = JSON.parse(toolCall.arguments)
+          } catch {
+            toolInput = {}
+          }
+
+          const ctx: ToolContext = {
+            sessionId: session.id,
+            userId: session.userId,
+            session,
+            sections,
+            stateVersion: session.stateVersion,
+            requestId: request.requestId,
+            locale: session.locale,
+          }
+
+          let toolResult: ToolResult
+          try {
+            toolResult = await Promise.race([
+              tool.execute(toolInput, ctx),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('Tool timeout')), tool.timeout),
+              ),
+            ])
+          } catch (error) {
+            toolResult = {
+              success: false,
+              error: error instanceof Error ? error.message : 'Tool execution failed',
+              retryable: true,
+              telemetry: { latencyMs: 0 },
             }
+          }
 
-            // Handle section upserts
-            if (result.sectionUpsert) {
-              emit({ type: 'section_status', sectionKey: result.sectionUpsert.sectionKey, status: 'draft' })
+          hasToolCalls = true
+
+          emit({
+            type: 'tool_result',
+            tool: tool.name,
+            summary: toolResult.success ? 'completed' : (toolResult.error || 'failed'),
+            success: toolResult.success,
+          })
+
+          // Record tool call and result in history
+          await appendMessage(session.id, {
+            role: 'assistant',
+            messageType: 'tool_call',
+            content: { name: toolCall.name, arguments: toolCall.arguments },
+            toolName: toolCall.name,
+            toolCallId: toolCall.id,
+          })
+          await appendMessage(session.id, {
+            role: 'tool',
+            messageType: 'tool_result',
+            content: { success: toolResult.success, data: toolResult.data, error: toolResult.error },
+            toolName: toolCall.name,
+            toolCallId: toolCall.id,
+          })
+
+          // Feed tool result back into conversation for next LLM iteration
+          const toolResultContent = JSON.stringify({
+            success: toolResult.success,
+            data: toolResult.data,
+            error: toolResult.error,
+            warnings: toolResult.warnings,
+          })
+          llmMessages.push({ role: 'tool' as 'user' | 'assistant' | 'system', content: toolResultContent })
+
+          // Apply state transitions
+          if (toolResult.stateTransitions) {
+            for (const transition of toolResult.stateTransitions) {
+              const prevPhase = session.currentPhase
+              const result = applyTransition(session, sections, transition)
+              session = result.session
+              sections = result.sections
+
+              // Emit phase change
+              if (transition.type === 'SET_PHASE' && transition.phase !== prevPhase) {
+                emit({ type: 'phase_changed', from: prevPhase, to: transition.phase })
+              }
+
+              // Handle section upserts — create in-memory section if it doesn't exist
+              if (result.sectionUpsert) {
+                const existing = sections.find(sec => sec.sectionKey === result.sectionUpsert!.sectionKey)
+                if (!existing) {
+                  const spec = (session.outline || []).find((o: Record<string, unknown>) => o.id === result.sectionUpsert!.sectionKey)
+                  sections.push({
+                    id: crypto.randomUUID(),
+                    sessionId: session.id,
+                    sectionKey: result.sectionUpsert.sectionKey,
+                    title: (spec?.title as string) || result.sectionUpsert.sectionKey,
+                    documentOrder: (spec?.order as number) || sections.length,
+                    generationOrder: (spec?.generationOrder as number) || sections.length,
+                    status: 'draft',
+                    content: result.sectionUpsert.content,
+                    acceptedContent: null,
+                    modelUsed: result.sectionUpsert.model,
+                    retryCount: 0,
+                    sourcesUsed: result.sectionUpsert.sources,
+                    promptVersion: null,
+                    latencyMs: null,
+                    tokenUsage: null,
+                    errorClass: null,
+                    updatedAt: new Date(),
+                  })
+                }
+                emit({ type: 'section_status', sectionKey: result.sectionUpsert.sectionKey, status: 'draft' })
+              }
             }
+          }
+
+          // Save checkpoint
+          if (toolResult.checkpoint) {
+            await db.insert(agentCheckpoints).values({
+              sessionId: session.id,
+              checkpointType: toolResult.checkpoint.type,
+              payload: toolResult.checkpoint.payload,
+            })
+            emit({
+              type: 'checkpoint',
+              checkpointType: toolResult.checkpoint.type,
+              summary: `${toolResult.checkpoint.type} recorded`,
+            })
           }
         }
 
-        // Save checkpoint
-        if (toolResult.checkpoint) {
-          await db.insert(agentCheckpoints).values({
-            sessionId: session.id,
-            checkpointType: toolResult.checkpoint.type,
-            payload: toolResult.checkpoint.payload,
-          })
-          emit({
-            type: 'checkpoint',
-            checkpointType: toolResult.checkpoint.type,
-            summary: `${toolResult.checkpoint.type} recorded`,
-          })
-        }
+        if (!hasToolCalls) break
+        // Continue loop — next iteration calls LLM with tool results
+      } else {
+        break
       }
     }
 
@@ -267,8 +326,8 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
 function handleStructuredAction(
   action: NonNullable<AgentRequest['action']>,
   session: AgentSession,
-  _sections: AgentSection[],
-): { transitions: StateTransition[]; skipLLM: boolean } {
+  sections: AgentSection[],
+): { transitions: StateTransition[]; skipLLM: boolean; policyViolation?: string } {
   switch (action.type) {
     case 'select_call':
       return { transitions: [{ type: 'SET_SELECTED_CALL', callId: action.callId }], skipLLM: false }
@@ -282,8 +341,17 @@ function handleStructuredAction(
       return { transitions: [{ type: 'REJECT_SECTION', sectionKey: action.sectionKey, reason: action.reason }], skipLLM: true }
     case 'request_refresh':
       return { transitions: [], skipLLM: false }
-    case 'mark_complete':
+    case 'mark_complete': {
+      const gate = checkPolicyGate('validate_application', session, sections)
+      if (!gate.allowed) {
+        return {
+          transitions: [{ type: 'ADD_WARNING', warning: { code: 'COMPLETION_BLOCKED', message: gate.reason || 'Cannot complete', severity: 'blocker' } }],
+          skipLLM: true,
+          policyViolation: gate.reason,
+        }
+      }
       return { transitions: [{ type: 'SET_STATUS', status: 'completed' }], skipLLM: true }
+    }
     default:
       return { transitions: [], skipLLM: false }
   }
