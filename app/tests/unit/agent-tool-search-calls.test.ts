@@ -72,8 +72,8 @@ describe('search_calls tool', () => {
 
     expect(result.success).toBe(true)
     expect(result.data).toHaveLength(2) // 3 chunks but 2 unique callIds
-    expect(result.data![0].callId).toBe('PNRR-C11-001')
-    expect(result.data![1].callId).toBe('PEO-DIG-002')
+    expect((result.data as any[])[0].callId).toBe('PNRR-C11-001')
+    expect((result.data as any[])[1].callId).toBe('PEO-DIG-002')
   })
 
   it('emits SET_PHASE transition when results found', async () => {

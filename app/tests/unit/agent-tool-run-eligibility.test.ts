@@ -44,10 +44,10 @@ describe('run_eligibility tool', () => {
     }, mockCtx)
 
     expect(result.success).toBe(true)
-    expect(result.data!.score).toBe(75)
-    expect(result.data!.passCount).toBe(1)
-    expect(result.data!.warningCount).toBe(1)
-    expect(result.data!.failCount).toBe(0)
+    expect((result.data as any).score).toBe(75)
+    expect((result.data as any).passCount).toBe(1)
+    expect((result.data as any).warningCount).toBe(1)
+    expect((result.data as any).failCount).toBe(0)
   })
 
   it('emits SET_ELIGIBILITY state transition', async () => {
