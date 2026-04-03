@@ -91,7 +91,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     const phaseTools = getToolsForPhase(session.currentPhase)
 
     // Build messages array for LLM
-    const llmMessages: { role: 'user' | 'assistant' | 'system'; content: string }[] = []
+    const llmMessages: { role: 'user' | 'assistant' | 'system' | 'tool'; content: string; tool_call_id?: string }[] = []
     if (history.summary) {
       llmMessages.push({ role: 'system', content: `Previous conversation summary:\n${history.summary}` })
     }
@@ -234,7 +234,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
             error: toolResult.error,
             warnings: toolResult.warnings,
           })
-          llmMessages.push({ role: 'tool' as 'user' | 'assistant' | 'system', content: toolResultContent })
+          llmMessages.push({ role: 'tool', content: toolResultContent, tool_call_id: toolCall.id })
 
           // Apply state transitions
           if (toolResult.stateTransitions) {
@@ -333,8 +333,16 @@ function handleStructuredAction(
       return { transitions: [{ type: 'SET_SELECTED_CALL', callId: action.callId }], skipLLM: false }
     case 'approve_outline':
       return { transitions: [{ type: 'FREEZE_OUTLINE' }, { type: 'SET_PHASE', phase: 'drafting' }], skipLLM: false }
-    case 'accept_section':
+    case 'accept_section': {
+      if (!session.outlineFrozen) {
+        return { transitions: [], skipLLM: true, policyViolation: 'Cannot accept sections before outline is approved' }
+      }
+      const section = sections.find(s => s.sectionKey === action.sectionKey)
+      if (section && section.status !== 'draft' && section.status !== 'needs_review') {
+        return { transitions: [], skipLLM: true, policyViolation: `Section "${action.sectionKey}" is not in a reviewable state (status: ${section.status})` }
+      }
       return { transitions: [{ type: 'ACCEPT_SECTION', sectionKey: action.sectionKey }], skipLLM: true }
+    }
     case 'regenerate_section':
       return { transitions: [{ type: 'MARK_SECTION_STALE', sectionKey: action.sectionKey }], skipLLM: false }
     case 'reject_section':

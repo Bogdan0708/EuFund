@@ -15,6 +15,7 @@ function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
     outline: null,
     warnings: [],
     planningArtifact: null,
+    outlineFrozen: false,
     messageSummary: null,
     stateVersion: 0,
     createdAt: new Date(),

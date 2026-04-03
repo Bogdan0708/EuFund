@@ -128,6 +128,7 @@ function mapSessionRow(row: Record<string, unknown>): AgentSession {
     outline: row.outline as AgentSession['outline'],
     warnings: (row.warnings as AgentSession['warnings']) || [],
     planningArtifact: row.planningArtifact as AgentSession['planningArtifact'],
+    outlineFrozen: (row.outlineFrozen as boolean) || false,
     messageSummary: row.messageSummary as string | null,
     stateVersion: row.stateVersion as number,
     createdAt: row.createdAt as Date,

@@ -22,6 +22,7 @@ export async function generate(req: GenerateRequest): Promise<GenerateResult> {
     () => provider.generate({ ...req, provider: config.provider }),
     config,
     PROVIDERS,
+    req,
   )
 }
 

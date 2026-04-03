@@ -116,17 +116,30 @@ OUTPUT: Write the section content directly. No JSON wrapping needed.`
       }
     }
 
-    // Save version to DB
+    // Save version to DB — create section row if needed, then insert version
     try {
-      // Find or count existing versions for this section
-      const [existingSection] = await db.select()
+      let [existingSection] = await db.select()
         .from(agentSections)
         .where(and(eq(agentSections.sessionId, ctx.sessionId), eq(agentSections.sectionKey, input.sectionKey)))
         .limit(1)
 
-      const versionNumber = existingSection ? (existingSection.retryCount + 1) : 1
+      if (!existingSection) {
+        // Create section row so we have an ID for the version
+        const [created] = await db.insert(agentSections).values({
+          sessionId: ctx.sessionId,
+          sectionKey: input.sectionKey,
+          title: spec.title,
+          documentOrder: spec.order,
+          generationOrder: spec.generationOrder,
+          status: 'draft',
+          content,
+          modelUsed: model,
+        }).returning()
+        existingSection = created
+      }
 
       if (existingSection) {
+        const versionNumber = (existingSection.retryCount || 0) + 1
         await db.insert(agentSectionVersions).values({
           sectionId: existingSection.id,
           versionNumber,
