@@ -253,7 +253,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
               if (result.sectionUpsert) {
                 const existing = sections.find(sec => sec.sectionKey === result.sectionUpsert!.sectionKey)
                 if (!existing) {
-                  const spec = (session.outline || []).find(o => o.id === result.sectionUpsert!.sectionKey)
+                  const spec = (session.outline || []).find((o: { id: string; title?: string; order?: number; generationOrder?: number }) => o.id === result.sectionUpsert!.sectionKey)
                   sections.push({
                     id: crypto.randomUUID(),
                     sessionId: session.id,
