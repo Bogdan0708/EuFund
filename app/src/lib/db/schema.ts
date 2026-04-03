@@ -1,6 +1,6 @@
 import {
   pgTable, pgEnum, uuid, varchar, text, boolean, integer, decimal,
-  timestamp, jsonb, inet, bigint, date, index, uniqueIndex, unique,
+  timestamp, jsonb, inet, bigint, date, index, uniqueIndex, unique, real,
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 
@@ -810,23 +810,132 @@ export const workflowMessages = pgTable('workflow_messages', {
   createdAtIdx: index('idx_workflow_messages_created').on(table.createdAt),
 }))
 
+export const callKnowledgeStatusEnum = pgEnum('call_knowledge_status', [
+  'provisional', 'primed', 'verified',
+])
+
 export const callKnowledge = pgTable('call_knowledge', {
   id: uuid('id').primaryKey().defaultRandom(),
   callId: text('call_id').notNull(),
   program: text('program').notNull(),
   callTitle: text('call_title').notNull(),
-  sections: jsonb('sections').notNull().default(sql`'[]'`),
-  requirements: jsonb('requirements').notNull().default(sql`'{}'`),
-  evaluation: jsonb('evaluation').notNull().default(sql`'{}'`),
-  eligibility: jsonb('eligibility').notNull().default(sql`'{}'`),
-  source: text('source').notNull().default('notebooklm'),
-  verifiedAt: timestamp('verified_at').defaultNow().notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  normalized: jsonb('normalized').notNull().default({}),
+  status: callKnowledgeStatusEnum('status').notNull().default('provisional'),
+  extractedFrom: varchar('extracted_from', { length: 20 }).notNull().default('qdrant_obsidian'),
+  structureConfidence: real('structure_confidence').notNull().default(0),
+  freshnessConfidence: real('freshness_confidence').notNull().default(0),
+  sourceDocs: jsonb('source_docs').notNull().default([]),
+  fieldProvenance: jsonb('field_provenance').default({}),
+  contentExtractedAt: timestamp('content_extracted_at', { withTimezone: true }).notNull().defaultNow(),
+  freshnessCheckedAt: timestamp('freshness_checked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  callIdUnique: uniqueIndex('idx_call_knowledge_call_id').on(table.callId),
-  programIdx: index('idx_call_knowledge_program').on(table.program),
-  verifiedIdx: index('idx_call_knowledge_verified').on(table.verifiedAt),
+  uniqCallId: uniqueIndex('idx_call_knowledge_call_id').on(table.callId),
+  idxProgram: index('idx_call_knowledge_program').on(table.program),
+  idxContentExtracted: index('idx_call_knowledge_content_extracted').on(table.contentExtractedAt),
+  idxFreshnessChecked: index('idx_call_knowledge_freshness_checked').on(table.freshnessCheckedAt),
+  idxStatus: index('idx_call_knowledge_status').on(table.status),
+}))
+
+// ── Agent V3 Tables ─────────────────────────────────────────────
+
+export const agentSessionStatusEnum = pgEnum('agent_session_status', [
+  'active', 'paused', 'completed', 'abandoned', 'error',
+])
+
+export const agentPhaseEnum = pgEnum('agent_phase', [
+  'discovery', 'research', 'structuring', 'drafting', 'review',
+])
+
+export const agentSessions = pgTable('agent_sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  status: agentSessionStatusEnum('status').notNull().default('active'),
+  locale: varchar('locale', { length: 5 }).notNull().default('ro'),
+  selectedCallId: varchar('selected_call_id', { length: 255 }),
+  currentPhase: agentPhaseEnum('current_phase').notNull().default('discovery'),
+  blueprint: jsonb('blueprint'),
+  eligibility: jsonb('eligibility'),
+  outline: jsonb('outline'),
+  warnings: jsonb('warnings').default([]),
+  planningArtifact: jsonb('planning_artifact'),
+  messageSummary: text('message_summary'),
+  stateVersion: integer('state_version').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  idxUserStatus: index('idx_agent_sessions_user_status').on(table.userId, table.status, table.updatedAt),
+  idxCallId: index('idx_agent_sessions_call').on(table.selectedCallId),
+}))
+
+export const agentSectionStatusEnum = pgEnum('agent_section_status', [
+  'pending', 'generating', 'draft', 'accepted', 'stale', 'invalidated', 'needs_review', 'failed',
+])
+
+export const agentSections = pgTable('agent_sections', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').notNull().references(() => agentSessions.id, { onDelete: 'cascade' }),
+  sectionKey: varchar('section_key', { length: 100 }).notNull(),
+  title: varchar('title', { length: 500 }).notNull(),
+  documentOrder: integer('document_order').notNull(),
+  generationOrder: integer('generation_order').notNull(),
+  status: agentSectionStatusEnum('status').notNull().default('pending'),
+  content: text('content'),
+  acceptedContent: text('accepted_content'),
+  modelUsed: varchar('model_used', { length: 100 }),
+  retryCount: integer('retry_count').notNull().default(0),
+  sourcesUsed: jsonb('sources_used'),
+  promptVersion: varchar('prompt_version', { length: 50 }),
+  latencyMs: integer('latency_ms'),
+  tokenUsage: jsonb('token_usage'),
+  errorClass: varchar('error_class', { length: 100 }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  uniqSessionSection: uniqueIndex('uniq_agent_section_session_key').on(table.sessionId, table.sectionKey),
+  idxSessionOrder: index('idx_agent_sections_order').on(table.sessionId, table.documentOrder),
+  idxSessionStatus: index('idx_agent_sections_status').on(table.sessionId, table.status),
+}))
+
+export const agentSectionVersionKindEnum = pgEnum('agent_section_version_kind', [
+  'draft', 'accepted', 'regenerated', 'system_rewrite',
+])
+
+export const agentSectionVersions = pgTable('agent_section_versions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sectionId: uuid('section_id').notNull().references(() => agentSections.id, { onDelete: 'cascade' }),
+  versionNumber: integer('version_number').notNull(),
+  kind: agentSectionVersionKindEnum('kind').notNull(),
+  content: text('content').notNull(),
+  modelUsed: varchar('model_used', { length: 100 }),
+  sourcesUsed: jsonb('sources_used'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const agentMessages = pgTable('agent_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').notNull().references(() => agentSessions.id, { onDelete: 'cascade' }),
+  role: varchar('role', { length: 15 }).notNull(),
+  messageType: varchar('message_type', { length: 20 }).notNull(),
+  content: jsonb('content').notNull(),
+  toolName: varchar('tool_name', { length: 100 }),
+  toolCallId: varchar('tool_call_id', { length: 100 }),
+  sequenceNumber: integer('sequence_number').notNull(),
+  compactedAt: timestamp('compacted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  idxSessionSeq: index('idx_agent_messages_seq').on(table.sessionId, table.sequenceNumber),
+  idxSessionCompacted: index('idx_agent_messages_compacted').on(table.sessionId, table.compactedAt),
+}))
+
+export const agentCheckpoints = pgTable('agent_checkpoints', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').notNull().references(() => agentSessions.id, { onDelete: 'cascade' }),
+  checkpointType: varchar('checkpoint_type', { length: 30 }).notNull(),
+  payload: jsonb('payload').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  idxSessionCreated: index('idx_agent_checkpoints_created').on(table.sessionId, table.createdAt),
 }))
 
 export const discoveredCalls = pgTable('discovered_calls', {
