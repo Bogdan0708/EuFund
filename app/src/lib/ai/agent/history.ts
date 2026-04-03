@@ -1,7 +1,7 @@
 // app/src/lib/ai/agent/history.ts
 import type { Phase } from './types'
 import { db } from '@/lib/db'
-import { agentMessages } from '@/lib/db/schema'
+import { agentMessages, agentSessions } from '@/lib/db/schema'
 import { eq, and, isNull, asc, desc } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 
@@ -108,8 +108,36 @@ export async function compactIfNeeded(
     return { compacted: false }
   }
 
-  // Keep the last PRESERVE_RECENT messages
-  const toCompact = allRows.slice(0, allRows.length - PRESERVE_RECENT)
+  // Start with preserving the last PRESERVE_RECENT messages
+  const candidateToKeep = new Set(
+    allRows.slice(-PRESERVE_RECENT).map(r => r.id)
+  )
+
+  // Protect tool pairs: if one half is kept, keep the other
+  const toolCallIds = new Map<string, string>() // toolCallId -> message.id for tool_calls
+  const toolResultIds = new Map<string, string>() // toolCallId -> message.id for tool_results
+
+  for (const row of allRows) {
+    if (row.messageType === 'tool_call' && row.toolCallId) {
+      toolCallIds.set(row.toolCallId, row.id)
+    }
+    if (row.messageType === 'tool_result' && row.toolCallId) {
+      toolResultIds.set(row.toolCallId, row.id)
+    }
+  }
+
+  // If a tool_call is kept, keep its result too (and vice versa)
+  for (const [tcId, callMsgId] of toolCallIds) {
+    const resultMsgId = toolResultIds.get(tcId)
+    if (resultMsgId) {
+      if (candidateToKeep.has(callMsgId) || candidateToKeep.has(resultMsgId)) {
+        candidateToKeep.add(callMsgId)
+        candidateToKeep.add(resultMsgId)
+      }
+    }
+  }
+
+  const toCompact = allRows.filter(r => !candidateToKeep.has(r.id))
 
   if (toCompact.length === 0) {
     return { compacted: false }
@@ -144,6 +172,11 @@ export async function compactIfNeeded(
     messageType: 'system_summary',
     content: summary,
   })
+
+  // Persist summary to the durable messageSummary field on the session
+  await db.update(agentSessions)
+    .set({ messageSummary: summary })
+    .where(eq(agentSessions.id, sessionId))
 
   log.info({ sessionId, compacted: toCompact.length, remaining: PRESERVE_RECENT }, 'History compacted')
 
