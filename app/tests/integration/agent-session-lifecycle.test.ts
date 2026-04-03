@@ -84,6 +84,7 @@ function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
     status: 'active', locale: 'ro', selectedCallId: null,
     currentPhase: 'discovery', blueprint: null, eligibility: null,
     outline: null, warnings: [], planningArtifact: null,
+    outlineFrozen: false,
     messageSummary: null, stateVersion: 0,
     createdAt: new Date(), updatedAt: new Date(),
     ...overrides,
@@ -131,7 +132,7 @@ describe('Agent Session Lifecycle', () => {
   })
 
   it('handles accept_section action without calling LLM', async () => {
-    const session = makeSession({ currentPhase: 'drafting' })
+    const session = makeSession({ currentPhase: 'drafting', outlineFrozen: true })
     const sections: AgentSection[] = [{
       id: '33333333-3333-4333-8333-333333333333',
       sessionId: session.id,

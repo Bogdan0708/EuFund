@@ -1,6 +1,6 @@
 export interface GenerateRequest {
   system?: string
-  messages: { role: 'user' | 'assistant' | 'system'; content: string }[]
+  messages: { role: 'user' | 'assistant' | 'system' | 'tool'; content: string; tool_call_id?: string }[]
   provider: ProviderName
   model: string
   maxTokens?: number

@@ -66,6 +66,7 @@ export interface AgentSession {
   outline: import('@/lib/ai/orchestrator/types').SectionSpec[] | null
   warnings: Warning[]
   planningArtifact: PlanningArtifact | null
+  outlineFrozen: boolean
   messageSummary: string | null
   stateVersion: number
   createdAt: Date

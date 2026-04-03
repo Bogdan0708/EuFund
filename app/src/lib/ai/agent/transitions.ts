@@ -39,7 +39,7 @@ export function applyTransition(
       break
 
     case 'FREEZE_OUTLINE':
-      // Outline is already set; freeze is a no-op on state but triggers a checkpoint
+      s.outlineFrozen = true
       break
 
     case 'SET_PHASE':
@@ -65,10 +65,10 @@ export function applyTransition(
         model: transition.model,
         sources: transition.sources,
       }
-      // Update in-memory section if it exists
+      // Update in-memory section if it exists — increment retryCount on regeneration
       secs = secs.map(sec =>
         sec.sectionKey === transition.sectionKey
-          ? { ...sec, status: 'draft' as const, content: transition.content, modelUsed: transition.model }
+          ? { ...sec, status: 'draft' as const, content: transition.content, modelUsed: transition.model, retryCount: sec.retryCount + 1 }
           : sec,
       )
       break
