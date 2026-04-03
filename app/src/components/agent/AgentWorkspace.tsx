@@ -60,13 +60,13 @@ export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnin
 
       {/* Phase-specific content */}
       <div className="flex-1 p-4 space-y-4">
-        {!!blueprint && (phase === 'research' || phase === 'structuring' || phase === 'drafting' || phase === 'review') && (
+        {blueprint != null && (phase === 'research' || phase === 'structuring' || phase === 'drafting' || phase === 'review') ? (
           <BlueprintCard blueprint={blueprint} />
-        )}
+        ) : null}
 
-        {!!eligibility && (phase === 'research' || phase === 'structuring') && (
+        {eligibility != null && (phase === 'research' || phase === 'structuring') ? (
           <EligibilityCard eligibility={eligibility} />
-        )}
+        ) : null}
 
         {sections.length > 0 && phase === 'structuring' && (
           <OutlineView sections={sections} onApprove={() => onAction({ type: 'approve_outline' })} />
