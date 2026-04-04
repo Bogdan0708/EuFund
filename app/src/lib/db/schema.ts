@@ -860,6 +860,7 @@ export const agentSessions = pgTable('agent_sessions', {
   outline: jsonb('outline'),
   warnings: jsonb('warnings').default([]),
   planningArtifact: jsonb('planning_artifact'),
+  outlineFrozen: boolean('outline_frozen').notNull().default(false),
   messageSummary: text('message_summary'),
   stateVersion: integer('state_version').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -233,4 +233,5 @@ export interface AgentRequest {
   action?: StructuredAction
   requestId: string
   locale: 'ro' | 'en'
+  stateVersion?: number
 }

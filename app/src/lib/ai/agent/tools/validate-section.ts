@@ -108,12 +108,12 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<Valid
   const warningCount = issues.filter(i => i.severity === 'warning').length
   const score = Math.max(0, 100 - (errorCount * 30) - (warningCount * 10))
 
-  // 6. Recommend status
+  // 6. Recommend status and emit transition
   let recommendedStatus: SectionStatus = 'draft'
   if (errorCount > 0) {
-    recommendedStatus = 'needs_review'
-  } else if (warningCount === 0 && content.length >= minLen) {
-    recommendedStatus = 'draft' // Ready for user review
+    recommendedStatus = 'failed'
+  } else {
+    recommendedStatus = 'needs_review' // Validated, ready for user acceptance
   }
 
   const result: ValidationResult = { issues, recommendedStatus, score }
@@ -124,6 +124,11 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<Valid
     success: true,
     data: result,
     warnings: issues.filter(i => i.severity !== 'info').map(i => `[${i.code}] ${i.message}`),
+    // When validation passes, mark section as needs_review (ready for user acceptance)
+    // When validation fails, no transition — section stays as draft
+    stateTransitions: errorCount === 0
+      ? [{ type: 'REJECT_SECTION' as const, sectionKey: input.sectionKey, reason: 'Validation passed — ready for review' }]
+      : undefined,
     telemetry: { latencyMs: Date.now() - start },
   }
 }
