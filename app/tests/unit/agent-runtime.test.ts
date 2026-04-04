@@ -81,7 +81,7 @@ describe('Agent Runtime', () => {
       id: '33333333-3333-4333-8333-333333333333',
       sessionId: '11111111-1111-4111-8111-111111111111',
       sectionKey: 'rezumat', title: 'Rezumat', documentOrder: 0, generationOrder: 11,
-      status: 'draft', content: 'Draft content', acceptedContent: null,
+      status: 'needs_review', content: 'Draft content', acceptedContent: null,
       modelUsed: null, retryCount: 0, sourcesUsed: null, promptVersion: null,
       latencyMs: null, tokenUsage: null, errorClass: null, updatedAt: new Date(),
     }]

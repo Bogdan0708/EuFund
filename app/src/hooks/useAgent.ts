@@ -169,6 +169,7 @@ export function useAgent(locale: 'ro' | 'en') {
       action: request.action,
       requestId: `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       locale,
+      stateVersion: stateVersionRef.current,
     }
 
     // Add user message to UI immediately

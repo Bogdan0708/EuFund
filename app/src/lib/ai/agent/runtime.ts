@@ -9,6 +9,7 @@ import { checkPolicyGate } from './policies'
 import { getToolsForPhase } from './tools/registry'
 import './tools/index' // Side-effect: registers all tools
 import { loadContext, appendMessage, compactIfNeeded } from './history'
+import { zodToJsonSchema } from './utils'
 import { db } from '@/lib/db'
 import { agentSessions, agentCheckpoints, agentSections } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
@@ -111,7 +112,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       function: {
         name: tool.name,
         description: tool.description,
-        parameters: {}, // Simplified — real implementation would convert Zod to JSON Schema
+        parameters: zodToJsonSchema(tool.inputSchema),
       },
     }))
 
@@ -338,8 +339,9 @@ function handleStructuredAction(
         return { transitions: [], skipLLM: true, policyViolation: 'Cannot accept sections before outline is approved' }
       }
       const section = sections.find(s => s.sectionKey === action.sectionKey)
-      if (section && section.status !== 'draft' && section.status !== 'needs_review') {
-        return { transitions: [], skipLLM: true, policyViolation: `Section "${action.sectionKey}" is not in a reviewable state (status: ${section.status})` }
+      if (!section || section.status !== 'needs_review') {
+        const hint = section?.status === 'draft' ? ' — run validate_section first' : ''
+        return { transitions: [], skipLLM: true, policyViolation: `Section "${action.sectionKey}" must pass validation before acceptance (status: ${section?.status || 'not found'})${hint}` }
       }
       return { transitions: [{ type: 'ACCEPT_SECTION', sectionKey: action.sectionKey }], skipLLM: true }
     }
@@ -376,6 +378,7 @@ async function persistSessionState(session: AgentSession, sections: AgentSection
     outline: session.outline as unknown as Record<string, unknown>[],
     warnings: session.warnings as unknown as Record<string, unknown>[],
     planningArtifact: session.planningArtifact as unknown as Record<string, unknown>,
+    outlineFrozen: session.outlineFrozen,
     messageSummary: session.messageSummary,
     stateVersion: session.stateVersion,
     updatedAt: new Date(),

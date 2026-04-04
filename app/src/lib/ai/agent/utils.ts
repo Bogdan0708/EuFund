@@ -91,3 +91,47 @@ export function parseAIJson<T = unknown>(raw: string): T {
   log.error({ rawLength: raw.length, rawPreview: raw.slice(0, 500) }, 'All JSON parsing strategies failed')
   throw new Error(`Failed to extract JSON from AI response (${raw.length} chars). Preview: ${raw.slice(0, 100)}...`)
 }
+
+/**
+ * Convert a Zod schema to a JSON Schema object for OpenAI tool definitions.
+ * Handles common Zod types: object, string, number, boolean, array, optional, enum.
+ */
+export function zodToJsonSchema(schema: unknown): Record<string, unknown> {
+  const s = schema as { _def?: { typeName?: string; shape?: () => Record<string, unknown>; innerType?: unknown; values?: string[]; type?: unknown; minLength?: unknown; maxLength?: unknown; minimum?: unknown; maximum?: unknown; description?: string; defaultValue?: () => unknown } }
+  if (!s?._def) return { type: 'object', properties: {} }
+
+  const def = s._def
+  const base: Record<string, unknown> = {}
+  if (def.description) base.description = def.description
+
+  switch (def.typeName) {
+    case 'ZodObject': {
+      const shape = def.shape?.() || {}
+      const properties: Record<string, unknown> = {}
+      const required: string[] = []
+      for (const [key, val] of Object.entries(shape)) {
+        properties[key] = zodToJsonSchema(val)
+        const valDef = (val as { _def?: { typeName?: string } })?._def
+        if (valDef?.typeName !== 'ZodOptional' && valDef?.typeName !== 'ZodDefault') {
+          required.push(key)
+        }
+      }
+      return { ...base, type: 'object', properties, ...(required.length > 0 ? { required } : {}) }
+    }
+    case 'ZodString':
+      return { ...base, type: 'string' }
+    case 'ZodNumber':
+      return { ...base, type: 'number' }
+    case 'ZodBoolean':
+      return { ...base, type: 'boolean' }
+    case 'ZodArray':
+      return { ...base, type: 'array', items: zodToJsonSchema(def.type) }
+    case 'ZodOptional':
+    case 'ZodDefault':
+      return zodToJsonSchema(def.innerType)
+    case 'ZodEnum':
+      return { ...base, type: 'string', enum: def.values }
+    default:
+      return { ...base, type: 'string' }
+  }
+}

@@ -140,7 +140,7 @@ describe('Agent Session Lifecycle', () => {
       title: 'Context',
       documentOrder: 1,
       generationOrder: 1,
-      status: 'draft',
+      status: 'needs_review',
       content: 'Full context section content...',
       acceptedContent: null,
       modelUsed: 'claude-opus-4-6',

@@ -47,9 +47,8 @@ async function handler(req: NextRequest) {
     }
 
     // Optimistic concurrency: reject stale writes
-    if (typeof (body as AgentRequest & { stateVersion?: number }).stateVersion === 'number') {
-      const clientVersion = (body as AgentRequest & { stateVersion?: number }).stateVersion as number
-      if (clientVersion !== (row.stateVersion as number)) {
+    if (typeof body.stateVersion === 'number') {
+      if (body.stateVersion !== (row.stateVersion as number)) {
         return NextResponse.json(
           { error: 'Stale state — reload and retry', currentVersion: row.stateVersion },
           { status: 409 },
