@@ -502,7 +502,7 @@ function SectionHistoryPanel({
   if (loading) {
     return (
       <div className="mt-3 p-4 bg-surface-container-lowest border border-outline-variant/10 rounded-lg text-xs text-on-surface-variant">
-        Loading...
+        {t('proposalTab.historyLoading')}
       </div>
     );
   }
@@ -695,7 +695,8 @@ function SectionActionButtons({
 
       <button
         onClick={() => onToggleHistory(section.id)}
-        className="inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest"
+        disabled={disabled}
+        className="inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-50"
       >
         {isHistoryOpen ? t('proposalTab.actionCloseHistory') : t('proposalTab.actionHistory')}
       </button>
