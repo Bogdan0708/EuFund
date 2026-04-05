@@ -34,7 +34,8 @@ export function getAgentForStep(step: number): AgentFn {
 export async function createSession(
   userId: string,
   locale: 'ro' | 'en',
-  tier: string
+  tier: string,
+  responseStyle?: 'concise' | 'detailed' | 'technical',
 ): Promise<{ id: string; context: WorkflowContext }> {
   const context: WorkflowContext = {
     sessionId: '',
@@ -49,6 +50,7 @@ export async function createSession(
     actionPlan: null,
     projectSections: null,
     uploadedFiles: [],
+    responseStyle,
   }
 
   const [session] = await db
@@ -80,12 +82,29 @@ export async function loadSession(sessionId: string): Promise<WorkflowContext | 
   return ctx
 }
 
+/**
+ * Live preferences that can override persisted session context on each
+ * message. This is how settings changes take effect mid-session without
+ * requiring a new session.
+ */
+export interface LiveAIPrefs {
+  responseStyle?: 'concise' | 'detailed' | 'technical'
+  /**
+   * When true, confirm-type checkpoints are advertised to the client with
+   * `autoApprove: true` so the client auto-sends 'continue' after a brief
+   * delay. Read per-message so settings changes take effect on the next
+   * message, consistent with responseStyle behavior.
+   */
+  autoApprove?: boolean
+}
+
 export async function processMessage(
   sessionId: string,
   input: string,
   stream: SSEStream,
   gateway: GatewayClient,
   isAutoAdvance = false,
+  livePrefs?: LiveAIPrefs,
 ): Promise<void> {
   log.info({ sessionId }, 'processMessage start')
 
@@ -101,6 +120,12 @@ export async function processMessage(
   if (!ctx) {
     stream.send({ type: 'error', step: 0, message: 'Session not found', retryable: false })
     return
+  }
+
+  // Apply live preference overrides — settings changes take effect immediately
+  // on the next message, not just at session creation time.
+  if (livePrefs?.responseStyle) {
+    ctx.responseStyle = livePrefs.responseStyle
   }
 
   // Check session status to route to edit agent for completed sessions
@@ -156,7 +181,20 @@ export async function processMessage(
   try {
     const result = await agent(ctx, input, stream, gateway)
 
-    const updatedContext = { ...ctx, ...result.data }
+    let updatedContext = { ...ctx, ...result.data } as typeof ctx
+
+    // Phase 1: persist version changes if the agent produced sections
+    if (result.data.projectSections) {
+      const { persistSectionChanges } = await import('./section-versions')
+      const enrichedSections = await persistSectionChanges({
+        sessionId,
+        userId: ctx.userId,
+        previousSections: ctx.projectSections,
+        newSections: result.data.projectSections as SectionResult[],
+        reason: isCompleted ? input : 'initial_generation',
+      })
+      updatedContext = { ...updatedContext, projectSections: enrichedSections }
+    }
 
     // Store assistant message
     await db.insert(workflowMessages).values({
@@ -189,7 +227,21 @@ export async function processMessage(
         },
       })
     } else if (result.checkpoint) {
-      stream.send({ type: 'checkpoint', step: ctx.step, data: result.checkpoint })
+      stream.send({
+        type: 'checkpoint',
+        step: ctx.step,
+        data: result.checkpoint,
+        context: {
+          matchedCalls: updatedContext.matchedCalls,
+          actionPlan: updatedContext.actionPlan,
+          projectSections: updatedContext.projectSections,
+        },
+        // Advertise the user's current auto-approve preference to the client
+        // only for confirm-type checkpoints. Select/freetext checkpoints always
+        // require explicit input. Read from livePrefs so settings changes take
+        // effect on the next message (consistent with responseStyle).
+        autoApprove: result.checkpoint.type === 'confirm' && livePrefs?.autoApprove === true,
+      })
 
       await db
         .update(workflowSessions)
@@ -225,7 +277,7 @@ export async function processMessage(
 
       // Auto-advance to next step if no checkpoint and not complete
       if (!isComplete) {
-        return processMessage(sessionId, input, stream, gateway, true)
+        return processMessage(sessionId, input, stream, gateway, true, livePrefs)
       }
 
       if (isComplete) {
