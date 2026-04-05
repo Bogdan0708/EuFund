@@ -422,6 +422,65 @@ describe('rollbackSection', () => {
     expect(result.state).toBe('draft');
     expect(insertedVersions).toHaveLength(1);
   });
+
+  it('returns section unchanged when rolling back to current version (idempotent no-op)', async () => {
+    const SECTION = {
+      id: 'context', title: 'Context', content: 'v3 content', order: 1,
+      source: 'generated' as const,
+      state: 'approved' as const, currentVersion: 3, versionCount: 3,
+      contentHash: hash('v3 content'),
+      lastStateChangeAt: '2026-04-05T00:00:00Z', lastStateChangeBy: USER_ID,
+      metadata: { model: 'gpt-5.4', provider: 'openai', tokensIn: 100, tokensOut: 50, latencyMs: 200, retryCount: 0, fallbackUsed: false, generatedAt: '2026-04-05T00:00:00Z', checksum: 'abc' },
+    };
+    const session = { id: SESSION_ID, userId: USER_ID, context: { projectSections: [SECTION] } };
+    const insertedVersions: unknown[] = [];
+    const auditLogSpy = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+          select: vi.fn().mockImplementation(() => ({
+            from: vi.fn().mockImplementation(() => ({
+              where: vi.fn().mockImplementation(() => ({
+                limit: vi.fn().mockResolvedValue([session]),
+                for: vi.fn().mockResolvedValue([session]),
+              })),
+            })),
+          })),
+          insert: vi.fn().mockImplementation(() => ({
+            values: vi.fn().mockImplementation((row: unknown) => {
+              insertedVersions.push(row);
+              return { returning: vi.fn().mockResolvedValue([row]) };
+            }),
+          })),
+          update: vi.fn().mockImplementation(() => ({
+            set: vi.fn().mockImplementation(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
+          })),
+        })),
+      },
+    }));
+    vi.doMock('@/lib/legal/audit', () => ({ logAudit: auditLogSpy }));
+    vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
+
+    const { rollbackSection } = await import('@/lib/ai/orchestrator/section-versions');
+
+    const result = await rollbackSection({
+      sessionId: SESSION_ID,
+      sectionId: 'context',
+      targetVersion: 3, // same as current
+      expectedCurrentVersion: 3,
+      userId: USER_ID,
+      reason: 'misclick',
+    });
+
+    // State preserved — approved remains approved
+    expect(result.state).toBe('approved');
+    expect(result.currentVersion).toBe(3);
+    expect(result.versionCount).toBe(3);
+    // No DB writes: no version inserted, no audit entry
+    expect(insertedVersions).toHaveLength(0);
+    expect(auditLogSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe('getVersionHistory', () => {

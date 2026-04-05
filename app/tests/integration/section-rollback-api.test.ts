@@ -175,6 +175,28 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
     expect(responseNeg.status).toBe(400);
   });
 
+  it('returns 400 when expectedCurrentVersion is NaN, zero, or negative', async () => {
+    mockOwnership();
+    mockLogger();
+    vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
+      rollbackSection: vi.fn(),
+      SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
+    }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+
+    const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/rollback/route');
+
+    for (const bad of [Number.NaN, 0, -1]) {
+      const request = new Request('http://localhost/', {
+        method: 'POST',
+        body: JSON.stringify({ targetVersion: 1, expectedCurrentVersion: bad }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const response = await POST(request as any, { params: { sessionId: SESSION_ID, sectionId: 'context' } } as any);
+      expect(response.status).toBe(400);
+    }
+  });
+
   it('returns 401 when unauthenticated even with malformed body', async () => {
     vi.doMock('@/lib/ai/orchestrator/require-owned-session', async () => {
       const { Errors } = await import('@/lib/errors');

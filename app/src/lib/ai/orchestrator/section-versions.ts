@@ -377,6 +377,14 @@ export async function rollbackSection(opts: {
       );
     }
 
+    // Idempotent no-op: rolling back to the current version is a UX misclick.
+    // Returning the section unchanged preserves state (e.g., avoids demoting
+    // an already-approved section to draft). Matches the same-state no-op
+    // pattern in transitionSectionState.
+    if (targetVersion === section.currentVersion) {
+      return section;
+    }
+
     // Fetch target version row
     const [target] = await tx
       .select()

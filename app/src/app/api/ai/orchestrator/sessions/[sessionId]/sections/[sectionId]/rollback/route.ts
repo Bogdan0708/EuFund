@@ -48,7 +48,9 @@ export async function POST(
       targetVersion: body.targetVersion,
       expectedCurrentVersion: body.expectedCurrentVersion,
       userId: user.id,
-      reason: typeof body.reason === 'string' ? body.reason : `Rolled back to v${body.targetVersion}`,
+      reason: typeof body.reason === 'string' && body.reason.trim().length > 0
+        ? body.reason
+        : `Rollback to v${body.targetVersion} (no reason provided)`,
     });
 
     // TODO(task-16): when the client handler lands, it must skip
