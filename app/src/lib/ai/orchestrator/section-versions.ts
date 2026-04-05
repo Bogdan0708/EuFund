@@ -555,3 +555,56 @@ export async function getVersionHistory(
 
   return { versions, stateTransitions };
 }
+
+/**
+ * Verifies that the JSONB read cache (`SectionResult.contentHash`) matches
+ * the `content_hash` of the latest `section_versions` row for this section.
+ *
+ * Called by the state-change and rollback REST endpoints before delegating
+ * to `transitionSectionState` / `rollbackSection`. If drift is detected,
+ * throws `VersionIntegrityMismatch` — the endpoint then returns 500 and
+ * refuses to mutate, per the spec §7.2 recovery procedure ("fail loud,
+ * admin reconciliation required").
+ *
+ * Legacy sessions with no version rows yet are NOT treated as a mismatch.
+ * The `persistSectionChanges` lazy backfill path handles those on the next
+ * content change (Task 10).
+ */
+export async function verifySectionIntegrity(
+  sessionId: string,
+  section: SectionResult,
+): Promise<void> {
+  const [latest] = await db
+    .select()
+    .from(sectionVersions)
+    .where(and(
+      eq(sectionVersions.sessionId, sessionId),
+      eq(sectionVersions.sectionId, section.id),
+      eq(sectionVersions.version, section.currentVersion),
+    ))
+    .limit(1);
+
+  if (!latest) {
+    // Legacy section, no row yet — not a mismatch, backfill will handle it
+    return;
+  }
+
+  if (latest.contentHash !== section.contentHash) {
+    log.error({
+      sessionId,
+      sectionId: section.id,
+      jsonbHash: section.contentHash,
+      versionRowHash: latest.contentHash,
+      currentVersion: section.currentVersion,
+    }, 'SECTION_VERSION_INTEGRITY_MISMATCH');
+
+    throw new SectionVersionError(
+      'VersionIntegrityMismatch',
+      `Section ${section.id} contentHash mismatch between JSONB and version row`,
+      {
+        jsonbHash: section.contentHash,
+        versionRowHash: latest.contentHash,
+      },
+    );
+  }
+}
