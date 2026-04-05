@@ -196,11 +196,138 @@ describe('processMessage persistSectionChanges integration', () => {
     expect(callArgs.newSections).toEqual([newSection])
     expect(Array.isArray(callArgs.newSections)).toBe(true)
 
+    // reason should be the user's input on the edit path (isCompleted=true)
+    expect(callArgs.reason).toBeDefined()
+    expect(typeof callArgs.reason).toBe('string')
+    expect(callArgs.reason).toBe('refine this section')
+
     // 3. db.update(workflowSessions).set(...) was called with a context that
     //    contains the enriched sections (pass-through spy returns newSections).
     expect(updateSetCapture).toHaveBeenCalled()
     const setArg = updateSetCapture.mock.calls[0][0] as { context: { projectSections: unknown } }
     expect(setArg.context).toBeDefined()
     expect(setArg.context.projectSections).toEqual([newSection])
+  })
+
+  it('uses reason=initial_generation when session is active (initial build)', async () => {
+    const SESSION_ID = '55555555-5555-4555-8555-555555555555'
+    const USER_ID = '66666666-6666-4666-8666-666666666666'
+
+    // Agent-produced new section (initial build — no previous sections)
+    const newSection = {
+      id: 'context',
+      title: 'Context',
+      content: 'Initial content',
+      order: 1,
+      source: 'generated' as const,
+      state: 'draft' as const,
+      currentVersion: 1,
+      versionCount: 1,
+      contentHash: '',
+      lastStateChangeAt: '',
+      lastStateChangeBy: null,
+      metadata: {
+        model: 'gpt-5.4',
+        provider: 'openai',
+        tokensIn: 100,
+        tokensOut: 50,
+        latencyMs: 200,
+        retryCount: 0,
+        fallbackUsed: false,
+        generatedAt: '2026-04-05T00:00:00.000Z',
+        checksum: 'abc',
+      },
+    }
+
+    const persistSpy = vi.fn().mockImplementation(
+      async (opts: { newSections: unknown[] }) => opts.newSections,
+    )
+
+    vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
+      persistSectionChanges: persistSpy,
+    }))
+
+    // Mock the build agent (step 5) for the active-session path.
+    // isCompleted=false (status='active') routes via getAgentForStep(ctx.step=5)
+    // which returns buildAgent.
+    const mockBuildAgent = vi.fn().mockResolvedValue({
+      data: { projectSections: [newSection] },
+      checkpoint: null,
+    })
+    vi.doMock('@/lib/ai/orchestrator/agents/build', () => ({
+      buildAgent: mockBuildAgent,
+    }))
+
+    // Session row: status 'active' so isCompleted=false, currentStep=5 so
+    // getAgentForStep(5) selects buildAgent. projectSections=null (initial build).
+    const sessionRow = {
+      id: SESSION_ID,
+      userId: USER_ID,
+      currentStep: 5,
+      status: 'active',
+      context: {
+        sessionId: SESSION_ID,
+        userId: USER_ID,
+        locale: 'ro',
+        tier: 'plus',
+        step: 5,
+        enhancedIdea: null,
+        matchedCalls: null,
+        selectedCallId: null,
+        callBlueprint: null,
+        actionPlan: null,
+        projectSections: null,
+        uploadedFiles: [],
+      },
+    }
+
+    let selectCallCount = 0
+    const updateSetCapture = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) })
+
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        select: vi.fn().mockImplementation(() => {
+          selectCallCount += 1
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockImplementation(async () => {
+                  if (selectCallCount === 1) return [sessionRow]
+                  if (selectCallCount === 2) return [{ status: 'active' }]
+                  return []
+                }),
+                orderBy: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockResolvedValue([]),
+                }),
+              }),
+            }),
+          }
+        }),
+        insert: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: SESSION_ID }]),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({
+          set: updateSetCapture,
+        }),
+      },
+    }))
+
+    const streamSend = vi.fn()
+    const stream = { send: streamSend, close: vi.fn() }
+    const gateway = { chat: vi.fn() }
+
+    const { processMessage } = await import('@/lib/ai/orchestrator/engine')
+    await processMessage(
+      SESSION_ID,
+      'build the proposal',
+      stream as unknown as Parameters<typeof processMessage>[2],
+      gateway as unknown as Parameters<typeof processMessage>[3],
+    )
+
+    expect(persistSpy).toHaveBeenCalledTimes(1)
+    const callArgs = persistSpy.mock.calls[0][0]
+    expect(callArgs.reason).toBe('initial_generation')
   })
 })
