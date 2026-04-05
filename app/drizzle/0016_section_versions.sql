@@ -11,7 +11,7 @@ CREATE TABLE "section_versions" (
 	"title" text NOT NULL,
 	"metadata" jsonb DEFAULT '{}' NOT NULL,
 	"reason" text DEFAULT '' NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"created_by" uuid NOT NULL,
 	CONSTRAINT "uq_section_versions_session_section_version" UNIQUE("session_id","section_id","version")
 );
