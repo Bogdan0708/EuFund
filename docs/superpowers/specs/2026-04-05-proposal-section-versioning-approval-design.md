@@ -54,7 +54,6 @@ section_versions
 ├── title             TEXT NOT NULL                          -- snapshotted (blueprints can rename sections)
 ├── metadata          JSONB NOT NULL DEFAULT '{}'            -- model, provider, tokens, latency, fallbackUsed, etc.
 ├── reason            TEXT NOT NULL DEFAULT ''               -- user prompt, 'initial_generation', rollback reason, etc.
-├── state_at_capture  TEXT NOT NULL                          -- 'draft' for any new version (always starts there)
 ├── created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 ├── created_by        UUID NOT NULL, FK → users.id
 └── UNIQUE (session_id, section_id, version)
@@ -68,8 +67,8 @@ Indexes:
 - `section_id` is text (the SectionSpec id), not UUID. Sections are not first-class DB entities in this design; they live inside the JSONB context keyed by spec id. A UUID would force either a new `sections` table (rejected as Approach A) or redundant dual keys.
 - Append-only, no `deleted_at`. Matches the existing audit log philosophy. Rollback never destroys history — it creates a new version whose content is copied forward.
 - `content_hash` enables integrity checks between the JSONB read cache and the latest version row, and gives Phase 3 submission manifests an immutable reference.
-- `state_at_capture` is always `'draft'` on insert — the column exists for readability and for future compatibility if we ever want to start a version directly in a different state.
 - `metadata` is JSONB for the same reason `SectionResult.metadata` is today: model-provider-tokens shape may evolve.
+- **No `state_at_capture` column.** New versions always start in `draft` state, so the column would be a constant and tell the user nothing meaningful in the history panel. State transition history is derived from the audit log instead — see §6.3 for how the history panel merges version rows with `section.state_change` audit entries to show the true timeline.
 
 ### 3.2 Extensions to `SectionResult` (JSONB inside `workflow_sessions.context.projectSections`)
 
@@ -99,6 +98,34 @@ interface SectionResult {
 4. `SectionResult.state === 'approved'` only if the current version's `source` is `'generated'` or `'edited'` (never `'failed'`)
 
 Invariants 1–3 are maintained by always writing JSONB and the version row inside the same DB transaction.
+
+### 3.3 `SectionVersion` (API read model)
+
+The `GET .../versions` endpoint returns rows in this shape (a subset of the DB columns plus resolved user info):
+
+```typescript
+interface SectionVersion {
+  id: string;                // row UUID
+  version: number;           // monotonic per section
+  content: string;
+  contentHash: string;       // SHA-256 hex
+  title: string;
+  metadata: {
+    model: string;
+    provider: string;
+    tokensIn: number;
+    tokensOut: number;
+    latencyMs: number;
+    fallbackUsed: boolean;
+    generatedAt: string;
+  };
+  reason: string;
+  createdAt: string;         // ISO timestamp
+  createdBy: string;         // userId (display name resolution happens client-side via the users cache)
+}
+```
+
+Never exposed via this endpoint: `session_id` (implicit from the path), `section_id` (implicit from the path).
 
 ## 4. State machine
 
@@ -132,13 +159,15 @@ Rollback to target version K creates a new version N+1 whose content is copied f
 All side effects occur inside a single DB transaction.
 
 **Transitions that create a new version** (regenerate, rollback):
-1. Insert into `section_versions` (version = max + 1, content, content_hash, reason, state_at_capture = 'draft').
+1. Insert into `section_versions` (version = max + 1, content, content_hash, reason).
 2. Update `workflow_sessions.context.projectSections[i]` — content, contentHash, currentVersion++, versionCount++, state = 'draft', lastStateChangeAt, lastStateChangeBy.
 3. `logAudit({ action: 'section.regenerated' | 'section.rollback', metadata: { ... } })`.
 
 **State-only transitions:**
 1. Update JSONB — state, lastStateChangeAt, lastStateChangeBy.
-2. `logAudit({ action: 'section.state_change', metadata: { sectionId, fromState, toState, currentVersion, reason? } })`.
+2. `logAudit({ action: 'section.state_change', metadata: { sectionId, fromState, toState, currentVersion, reason?, reviewSkipped?: boolean } })`.
+
+**`reviewSkipped` flag.** When a user transitions directly from `draft` to `approved` (skipping `reviewed`), the audit entry sets `metadata.reviewSkipped = true`. This preserves the "signed off on this exact text" trust story by making the distinction queryable later: compliance review can distinguish "user read carefully then approved" from "user approved without a review checkpoint". The flag does not block the shortcut — it only records it.
 
 ### 4.5 Derived "ready to export" signal
 
@@ -232,11 +261,15 @@ All under `/api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/...` con
 
 | Method | Path | Body | Response |
 |---|---|---|---|
-| `GET` | `.../versions` | — | `{ versions: SectionVersion[] }` |
-| `POST` | `.../rollback` | `{ targetVersion: number, reason?: string }` | `{ section: SectionResult }` |
-| `POST` | `.../state` | `{ state: 'draft'\|'reviewed'\|'approved', reason?: string }` | `{ section: SectionResult }` |
+| `GET` | `.../versions` | — | `{ versions: SectionVersion[], stateTransitions: AuditEntry[] }` |
+| `POST` | `.../rollback` | `{ targetVersion: number, expectedCurrentVersion: number, reason?: string }` | `{ section: SectionResult }` |
+| `POST` | `.../state` | `{ state: 'draft'\|'reviewed'\|'approved', expectedCurrentVersion: number, reason?: string }` | `{ section: SectionResult }` |
 
-**Regeneration does not get a new endpoint.** It continues to flow through `POST /api/ai/orchestrator/message` → edit agent → `persistSectionChanges`.
+**Explicit optimistic lock via `expectedCurrentVersion`.** Mutating endpoints require the client to pass the version number they observed when the user clicked the button. The server compares against the stored `currentVersion` at the start of the transaction; if they don't match (another tab regenerated or rolled back in the meantime), the endpoint returns `409 ConcurrentModification` with the current server-side version in the response body so the client can refresh and re-prompt. This makes concurrency handling explicit, testable, and kind to two-tab scenarios or SSE streaming races.
+
+**Regeneration does not get a new endpoint.** It continues to flow through `POST /api/ai/orchestrator/message` → edit agent → `persistSectionChanges`. Regeneration via chat does not require `expectedCurrentVersion` because it always creates a fresh `currentVersion + 1` row regardless of stale reads — the edit agent operates on the live session state and the version number it assigns is authoritative.
+
+**`GET .../versions` response** returns both the list of version rows AND the audit log entries filtered to `section.state_change` for this section. The client merges the two streams by timestamp to render a unified timeline in the history panel (§6.3).
 
 ### 5.6 New SSE event
 
@@ -258,8 +291,8 @@ Errors flow through the existing `FondEUError` / `Errors.*` factory (`@/lib/erro
 | `VersionNotFound` | 404 | Rollback target version doesn't exist |
 | `InvalidStateTransition` | 400 | Transition not in the allowed table |
 | `FailedSectionCannotBeApproved` | 400 | Current version has `source === 'failed'` and target state is `reviewed` or `approved` |
-| `ConcurrentModification` | 409 | Optimistic-lock: `currentVersion` read at tx start doesn't match current |
-| `VersionIntegrityMismatch` | 500 | JSONB `contentHash` ≠ latest version row; logged to Sentry |
+| `ConcurrentModification` | 409 | `expectedCurrentVersion` from request body does not match server-side `currentVersion`. Response body includes `{ currentVersion: number, message: string }` so the client can refresh and re-prompt |
+| `VersionIntegrityMismatch` | 500 | JSONB `contentHash` ≠ latest version row's `content_hash`; logged to Sentry. See §7.2 for recovery procedure |
 
 ## 6. UI changes
 
@@ -295,11 +328,21 @@ Card footer gets state-aware button set:
 
 ### 6.3 Inline history expansion
 
-Clicking `History` expands a panel in place below the card (not a drawer, not a modal). Panel shows:
-- Header with version count
-- One row per version, newest first, current version highlighted with a blue border
-- Each row: version number + state-at-capture badge + timestamp + reason text
+Clicking `History` expands a panel in place below the card (not a drawer, not a modal). The panel renders a **unified timeline** built by merging the `versions` array and the `stateTransitions` array from the `GET .../versions` response, sorted by timestamp newest-first.
+
+Two row types interleave in the timeline:
+
+**Version row** (from `section_versions`):
+- Version number + "created" badge + timestamp + reason text
 - Per-row actions (on non-current versions): `View` · `Compare with current` · `↶ Rollback`
+
+**State transition row** (from `audit_log` entries with `action: 'section.state_change'`):
+- From-state → to-state arrow (e.g. `draft → reviewed`)
+- Timestamp + user ID
+- Optional reason text from audit metadata
+- `reviewSkipped: true` entries render with a small "skipped review" annotation so compliance reviewers can see at a glance whether the user went through the full `draft → reviewed → approved` path or took the shortcut
+
+This is strictly richer than the earlier `state_at_capture` approach: the user sees *exactly* what happened and when, and they can correlate state changes with the version that was current at the time.
 
 `View` expands the row to show the full content of that version. `Compare with current` renders a two-column text diff using the `diff` npm package. `↶ Rollback` opens a confirm dialog with a reason field prefilled with "Rolled back to v{K}".
 
@@ -320,6 +363,8 @@ All new strings added to `notifications.*`-style namespaces in `app/src/messages
 
 ## 7. Audit trail
 
+### 7.1 Action types and transaction boundary
+
 All state changes and version creations flow through the existing `logAudit` from `@/lib/legal/audit`, inheriting the SHA-256 tamper-evident hash chain without any new audit code.
 
 New audit action types:
@@ -335,6 +380,18 @@ New audit action types:
 
 **Transaction boundary:** audit entries sit inside the same DB transaction as the JSONB and version row writes. A DB-level audit write failure rolls back the whole change. The DLQ fallback in the existing audit module handles truly pathological cases where the `audit_log` table is unavailable; `verifyAuditChainIntegrity` later detects any gaps.
 
+### 7.2 `VersionIntegrityMismatch` recovery procedure
+
+If the helper detects that `SectionResult.contentHash` in JSONB ≠ `section_versions.content_hash` at version `currentVersion`, something has drifted between the two stores — either a botched transaction, direct SQL surgery, or a replication anomaly. The recovery path:
+
+1. **Fail the current request immediately** with `500 VersionIntegrityMismatch`. Do not silently heal. Users should not receive a "successful" response on top of corrupted state.
+2. **Log to Sentry** with high severity (`fatal` level) including: sessionId, sectionId, JSONB hash, version table hash, both content snippets (first 200 chars each), timestamp of last transaction affecting the row.
+3. **Lock the affected section from further writes** at the API layer until manually cleared. All subsequent state transitions, rollbacks, and regenerations for that specific `(sessionId, sectionId)` return `423 Locked` with a pointer to the admin reconciliation procedure. Other sections in the same session remain usable.
+4. **Surface in the UI** as a red banner on the affected section card: "This section's integrity check failed. Contact support before taking further action." The "Improve", "History", state transition buttons become disabled.
+5. **Admin reconciliation** (post-Phase 1 runbook item, not code): an admin decides the source of truth (usually the latest `section_versions` row since it's append-only) and issues an explicit UPDATE to the JSONB to match, along with an audit entry documenting the manual reconciliation. A follow-up tool can automate this but is not in Phase 1 scope.
+
+The lock is intentionally conservative because corruption of the trust surface is strictly worse than temporary unavailability. This also means the recovery procedure needs to be documented and testable, not improvised during an incident.
+
 ## 8. Testing strategy
 
 ### 8.1 Unit tests (Vitest, `app/tests/unit/`)
@@ -348,9 +405,11 @@ New audit action types:
 
 | File | Covers |
 |---|---|
-| `section-state-api.test.ts` (new) | `POST .../state` happy paths per transition; invalid transitions return 400; auth + CSRF; failed sections blocked |
+| `section-state-api.test.ts` (new) | `POST .../state` happy paths per transition; invalid transitions return 400; auth + CSRF; failed sections blocked; `reviewSkipped: true` flag set on `draft → approved` shortcut |
 | `section-rollback-api.test.ts` (new) | `POST .../rollback` success; target not found; audit entry created; content hash integrity |
-| `section-versions-api.test.ts` (new) | `GET .../versions` returns list; respects session ownership |
+| `section-versions-api.test.ts` (new) | `GET .../versions` returns list + stateTransitions merged; respects session ownership |
+| `section-concurrency.test.ts` (new) | `expectedCurrentVersion` mismatch returns 409 with server current version; approve-in-tab-A while regenerate-in-tab-B races; two competing state transitions serialize correctly; SSE `section_updated` idempotency (duplicate events don't re-apply state); SSE ordering (out-of-order events resolve to the freshest version by `currentVersion` comparison) |
+| `section-integrity-mismatch.test.ts` (new) | Deliberately corrupt JSONB `contentHash` to mismatch latest version row; verify `GET .../versions` returns 500 `VersionIntegrityMismatch`; verify follow-up mutations return 423 `Locked`; verify other sections in the same session remain usable |
 
 ### 8.3 E2E (Playwright, `app/e2e/`)
 
