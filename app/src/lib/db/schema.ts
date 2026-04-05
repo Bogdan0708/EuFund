@@ -810,6 +810,25 @@ export const workflowMessages = pgTable('workflow_messages', {
   createdAtIdx: index('idx_workflow_messages_created').on(table.createdAt),
 }))
 
+// ─── Section Versions (Phase 1: trust infrastructure) ───────────
+export const sectionVersions = pgTable('section_versions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').notNull().references(() => workflowSessions.id, { onDelete: 'cascade' }),
+  sectionId: text('section_id').notNull(),
+  version: integer('version').notNull(),
+  content: text('content').notNull(),
+  contentHash: varchar('content_hash', { length: 64 }).notNull(),
+  title: text('title').notNull(),
+  metadata: jsonb('metadata').notNull().default(sql`'{}'`),
+  reason: text('reason').notNull().default(''),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+}, (table) => ({
+  sessionSectionIdx: index('idx_section_versions_session_section').on(table.sessionId, table.sectionId),
+  createdAtIdx: index('idx_section_versions_created_at').on(table.createdAt),
+  sessionSectionVersionUnique: unique('uq_section_versions_session_section_version').on(table.sessionId, table.sectionId, table.version),
+}))
+
 export const callKnowledgeStatusEnum = pgEnum('call_knowledge_status', [
   'provisional', 'primed', 'verified',
 ])
