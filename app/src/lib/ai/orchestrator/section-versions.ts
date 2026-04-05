@@ -440,17 +440,28 @@ export async function getVersionHistory(
     ))
     .orderBy(asc(sectionVersions.version));
 
-  const versions: SectionVersion[] = versionRows.map((row) => ({
-    id: row.id,
-    version: row.version,
-    content: row.content,
-    contentHash: row.contentHash,
-    title: row.title,
-    metadata: row.metadata as SectionVersion['metadata'],
-    reason: row.reason,
-    createdAt: row.createdAt.toISOString(),
-    createdBy: row.createdBy,
-  }));
+  const versions: SectionVersion[] = versionRows.map((row) => {
+    const dbMeta = row.metadata as SectionResult['metadata'];
+    return {
+      id: row.id,
+      version: row.version,
+      content: row.content,
+      contentHash: row.contentHash,
+      title: row.title,
+      metadata: {
+        model: dbMeta.model,
+        provider: dbMeta.provider,
+        tokensIn: dbMeta.tokensIn,
+        tokensOut: dbMeta.tokensOut,
+        latencyMs: dbMeta.latencyMs,
+        fallbackUsed: dbMeta.fallbackUsed,
+        generatedAt: dbMeta.generatedAt,
+      },
+      reason: row.reason,
+      createdAt: row.createdAt.toISOString(),
+      createdBy: row.createdBy,
+    };
+  });
 
   // Fetch audit entries for this section's state changes
   const auditRows = await db
