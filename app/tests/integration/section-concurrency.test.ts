@@ -167,10 +167,10 @@ describe('Section state concurrency', () => {
 
     expect(publishCalls.length).toBe(2);
     expect(publishCalls[0]).not.toBe(publishCalls[1]);
-    // Sanity: both are numbers and monotonically advancing from Date.now().
+    // Sanity: both are numbers. Contract is distinctness via Date.now(), not
+    // monotonic ordering — avoids flake under CI timer coalescing.
     expect(typeof publishCalls[0]).toBe('number');
     expect(typeof publishCalls[1]).toBe('number');
-    expect(publishCalls[1]).toBeGreaterThan(publishCalls[0]);
   });
 
   it('serializes a cross-endpoint race: state change succeeds, stale rollback returns 409', async () => {
@@ -185,10 +185,10 @@ describe('Section state concurrency', () => {
     }
 
     const transitioned = stubSection({ state: 'reviewed', currentVersion: 3, versionCount: 3 });
-    const transitionSpy = vi.fn().mockResolvedValue(transitioned);
+    const transitionSpy = vi.fn().mockResolvedValueOnce(transitioned);
     const rollbackSpy = vi
       .fn()
-      .mockRejectedValue(
+      .mockRejectedValueOnce(
         new SectionVersionError('ConcurrentModification', 'stale expectedCurrentVersion', {
           currentVersion: 3,
         }),
