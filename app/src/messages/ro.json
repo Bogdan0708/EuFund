@@ -1126,6 +1126,7 @@
       "historyCurrent": "curent",
       "historyInitial": "generat inițial",
       "historyReasonInitialGeneration": "Generare inițială",
+      "historyLoading": "Se încarcă...",
       "historyActionView": "Vezi",
       "historyActionCompare": "Compară cu versiunea curentă",
       "historyActionRollback": "Anulează",

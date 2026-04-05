@@ -1126,6 +1126,7 @@
       "historyCurrent": "current",
       "historyInitial": "initial generation",
       "historyReasonInitialGeneration": "Initial generation",
+      "historyLoading": "Loading...",
       "historyActionView": "View",
       "historyActionCompare": "Compare with current",
       "historyActionRollback": "Rollback",
