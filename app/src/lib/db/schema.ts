@@ -821,7 +821,7 @@ export const sectionVersions = pgTable('section_versions', {
   title: text('title').notNull(),
   metadata: jsonb('metadata').notNull().default(sql`'{}'`),
   reason: text('reason').notNull().default(''),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   createdBy: uuid('created_by').notNull().references(() => users.id),
 }, (table) => ({
   sessionSectionIdx: index('idx_section_versions_session_section').on(table.sessionId, table.sectionId),
