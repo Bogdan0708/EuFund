@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { motion } from 'motion/react';
+import { diffWordsWithSpace } from 'diff';
 import { useOrchestrator } from '@/hooks/useOrchestrator';
 import { Icon } from '@/components/ui/ds-icon';
 import { canvasSlideIn } from '@/lib/motion';
@@ -420,6 +421,188 @@ const STATE_BORDER_STYLES: Record<SectionState | 'failed', string> = {
   approved: 'border-l-4 border-l-emerald-500 border-outline-variant/10',
   failed: 'border-l-4 border-l-red-500 border-outline-variant/10',
 };
+
+interface VersionRow {
+  id: string;
+  version: number;
+  content: string;
+  contentHash: string;
+  title: string;
+  metadata: Record<string, unknown>;
+  reason: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+interface StateTransitionRow {
+  timestamp: string;
+  userId: string;
+  currentVersion: number;
+  fromState: 'draft' | 'reviewed' | 'approved';
+  toState: 'draft' | 'reviewed' | 'approved';
+  reason: string | null;
+  reviewSkipped: boolean;
+}
+
+interface TimelineEntry {
+  kind: 'version' | 'transition';
+  timestamp: string;
+  payload: VersionRow | StateTransitionRow;
+}
+
+function SectionHistoryPanel({
+  sessionId,
+  sectionId,
+  currentVersion,
+  onRollback,
+  onClose,
+  t,
+}: {
+  sessionId: string;
+  sectionId: string;
+  currentVersion: number;
+  onRollback: (targetVersion: number) => void;
+  onClose: () => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [versions, setVersions] = useState<VersionRow[]>([]);
+  const [transitions, setTransitions] = useState<StateTransitionRow[]>([]);
+  const [viewingVersion, setViewingVersion] = useState<number | null>(null);
+  const [comparingVersion, setComparingVersion] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/ai/orchestrator/sessions/${sessionId}/sections/${sectionId}/versions`);
+        if (!res.ok) {
+          setLoading(false);
+          return;
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        setVersions(data.versions ?? []);
+        setTransitions(data.stateTransitions ?? []);
+        setLoading(false);
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [sessionId, sectionId]);
+
+  const currentContent = versions.find((v) => v.version === currentVersion)?.content ?? '';
+
+  const timeline: TimelineEntry[] = [
+    ...versions.map<TimelineEntry>((v) => ({ kind: 'version', timestamp: v.createdAt, payload: v })),
+    ...transitions.map<TimelineEntry>((tr) => ({ kind: 'transition', timestamp: tr.timestamp, payload: tr })),
+  ].sort((a, b) => b.timestamp.localeCompare(a.timestamp)); // newest first
+
+  if (loading) {
+    return (
+      <div className="mt-3 p-4 bg-surface-container-lowest border border-outline-variant/10 rounded-lg text-xs text-on-surface-variant">
+        Loading...
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 p-4 bg-surface-container-lowest border border-outline-variant/15 rounded-lg">
+      <div className="flex items-center justify-between mb-3">
+        <h6 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+          {t('proposalTab.historyTitle', { count: versions.length })}
+        </h6>
+        <button
+          onClick={onClose}
+          className="text-xs text-on-surface-variant hover:text-on-surface"
+        >
+          ×
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {timeline.map((entry, idx) => {
+          if (entry.kind === 'version') {
+            const v = entry.payload as VersionRow;
+            const isCurrent = v.version === currentVersion;
+            return (
+              <div key={`v-${v.id}`} className={`p-3 rounded-lg border ${isCurrent ? 'border-primary border-2 bg-primary/5' : 'border-outline-variant/10 bg-white'}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-on-surface">{t('proposalTab.historyVersionLabel', { version: v.version })}</span>
+                    {isCurrent && <span className="text-[9px] px-2 py-0.5 rounded-full bg-primary text-white font-bold uppercase">{t('proposalTab.historyCurrent')}</span>}
+                  </div>
+                  <span className="text-[10px] text-on-surface-variant">{new Date(v.createdAt).toLocaleString()}</span>
+                </div>
+                {v.reason && (
+                  <div className="mt-1 text-[11px] text-on-surface-variant italic">
+                    {v.reason === 'initial_generation' ? t('proposalTab.historyReasonInitialGeneration') : v.reason}
+                  </div>
+                )}
+                {!isCurrent && (
+                  <div className="mt-2 flex gap-1.5">
+                    <button
+                      onClick={() => setViewingVersion(viewingVersion === v.version ? null : v.version)}
+                      className="text-[10px] px-2 py-1 rounded border border-primary/20 text-primary hover:bg-primary/5"
+                    >
+                      {t('proposalTab.historyActionView')}
+                    </button>
+                    <button
+                      onClick={() => setComparingVersion(comparingVersion === v.version ? null : v.version)}
+                      className="text-[10px] px-2 py-1 rounded border border-primary/20 text-primary hover:bg-primary/5"
+                    >
+                      {t('proposalTab.historyActionCompare')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        const confirmed = window.confirm(t('proposalTab.rollbackConfirm', { version: v.version }));
+                        if (confirmed) onRollback(v.version);
+                      }}
+                      className="text-[10px] px-2 py-1 rounded border border-amber-200 text-amber-700 hover:bg-amber-50"
+                    >
+                      {t('proposalTab.historyActionRollback')}
+                    </button>
+                  </div>
+                )}
+                {viewingVersion === v.version && !isCurrent && (
+                  <div className="mt-3 p-3 bg-surface-container-low rounded text-xs text-on-surface whitespace-pre-wrap border border-outline-variant/10 max-h-60 overflow-y-auto">
+                    {v.content}
+                  </div>
+                )}
+                {comparingVersion === v.version && !isCurrent && (
+                  <div className="mt-3 p-3 bg-surface-container-low rounded text-xs border border-outline-variant/10 max-h-60 overflow-y-auto">
+                    {diffWordsWithSpace(v.content, currentContent).map((part, i) => (
+                      <span
+                        key={i}
+                        className={part.added ? 'bg-emerald-100 text-emerald-900' : part.removed ? 'bg-red-100 text-red-900 line-through' : 'text-on-surface-variant'}
+                      >
+                        {part.value}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          } else {
+            const tr = entry.payload as StateTransitionRow;
+            return (
+              <div key={`tr-${idx}`} className="p-2 rounded bg-surface-container-low border border-dashed border-outline-variant/20">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-on-surface-variant">
+                    {t('proposalTab.stateTransitionArrow', { from: tr.fromState, to: tr.toState })}
+                    {tr.reviewSkipped && <span className="ml-2 text-amber-700 italic">({t('proposalTab.stateTransitionReviewSkipped')})</span>}
+                  </span>
+                  <span className="text-[10px] text-outline">{new Date(tr.timestamp).toLocaleString()}</span>
+                </div>
+              </div>
+            );
+          }
+        })}
+      </div>
+    </div>
+  );
+}
 
 function SectionActionButtons({
   section,
