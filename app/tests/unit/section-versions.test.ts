@@ -79,6 +79,9 @@ describe('persistSectionChanges', () => {
     expect(enriched[0].lastStateChangeBy).toBe(USER_ID);
     expect(enriched[1].currentVersion).toBe(1);
     expect(enriched[1].contentHash).toBe(hash('Text B'));
+    expect(enriched[1].versionCount).toBe(1);
+    expect(enriched[1].state).toBe('draft');
+    expect(enriched[1].lastStateChangeBy).toBe(USER_ID);
   });
 
   it('writes a new version only for sections whose content hash changed', async () => {
@@ -93,8 +96,9 @@ describe('persistSectionChanges', () => {
       },
     }));
 
+    const logAuditSpy = vi.fn().mockResolvedValue(undefined);
     vi.doMock('@/lib/legal/audit', () => ({
-      logAudit: vi.fn().mockResolvedValue(undefined),
+      logAudit: logAuditSpy,
     }));
     vi.doMock('@/lib/logger', () => ({
       logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
@@ -146,5 +150,14 @@ describe('persistSectionChanges', () => {
     expect(enriched[1].currentVersion).toBe(3);
     expect(enriched[1].versionCount).toBe(3);
     expect(enriched[1].contentHash).toBe(hash('Text B modified'));
+
+    // Only the changed section should trigger an audit entry
+    expect(logAuditSpy).toHaveBeenCalledTimes(1);
+    const auditCall = logAuditSpy.mock.calls[0][0];
+    expect(auditCall.action).toBe('section.regenerated');
+    expect(auditCall.metadata).toMatchObject({
+      sectionId: 'obiective',
+      toVersion: 3,
+    });
   });
 });
