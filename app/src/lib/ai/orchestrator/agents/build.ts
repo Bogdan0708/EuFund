@@ -109,16 +109,19 @@ async function generateSection(
     parsed = { title: spec.title, content: result.content, order: spec.order }
   }
 
+  const finalContent = parsed.content || result.content
+  const fullHash = createHash('sha256').update(finalContent).digest('hex')
+
   return {
     id: spec.id,
     title: parsed.title || spec.title,
-    content: parsed.content || result.content,
+    content: finalContent,
     order: parsed.order || spec.order,
     source: 'generated',
     state: 'draft',
     currentVersion: 1,
     versionCount: 1,
-    contentHash: '',
+    contentHash: fullHash,
     lastStateChangeAt: new Date().toISOString(),
     lastStateChangeBy: null,
     metadata: {
@@ -130,22 +133,24 @@ async function generateSection(
       retryCount: 0,
       fallbackUsed: false,
       generatedAt: new Date().toISOString(),
-      checksum: createHash('sha256').update(parsed.content || result.content).digest('hex').slice(0, 16),
+      checksum: fullHash.slice(0, 16),
     },
   }
 }
 
 function makeFailedSection(spec: SectionSpec): SectionResult {
+  const content = '[Generarea acestei sectiuni a esuat. Editati manual sau regenerati din meniul de editare.]'
+  const fullHash = createHash('sha256').update(content).digest('hex')
   return {
     id: spec.id,
     title: spec.title,
-    content: '[Generarea acestei sectiuni a esuat. Editati manual sau regenerati din meniul de editare.]',
+    content,
     order: spec.order,
     source: 'failed',
     state: 'draft',
     currentVersion: 1,
     versionCount: 1,
-    contentHash: '',
+    contentHash: fullHash,
     lastStateChangeAt: new Date().toISOString(),
     lastStateChangeBy: null,
     metadata: {
