@@ -1,0 +1,150 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createHash } from 'crypto';
+
+const SESSION_ID = '11111111-1111-4111-8111-111111111111';
+const USER_ID = '22222222-2222-4222-8222-222222222222';
+
+function hash(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
+}
+
+function mockInsertChain(inserted: unknown[]) {
+  return {
+    insert: vi.fn().mockReturnValue({
+      values: vi.fn().mockImplementation((row: unknown) => {
+        inserted.push(row);
+        return { returning: vi.fn().mockResolvedValue([row]) };
+      }),
+    }),
+  };
+}
+
+describe('persistSectionChanges', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('writes v1 for every section on initial generation', async () => {
+    const insertedVersions: unknown[] = [];
+
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+          const tx = mockInsertChain(insertedVersions);
+          return fn(tx);
+        }),
+      },
+    }));
+
+    vi.doMock('@/lib/legal/audit', () => ({
+      logAudit: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    vi.doMock('@/lib/logger', () => ({
+      logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+    }));
+
+    const { persistSectionChanges } = await import('@/lib/ai/orchestrator/section-versions');
+
+    const newSections = [
+      {
+        id: 'context', title: 'Context', content: 'Text A', order: 1,
+        source: 'generated' as const,
+        state: 'draft' as const, currentVersion: 0, versionCount: 0,
+        contentHash: '', lastStateChangeAt: '', lastStateChangeBy: null,
+        metadata: { model: 'gpt-5.4', provider: 'openai', tokensIn: 100, tokensOut: 50, latencyMs: 200, retryCount: 0, fallbackUsed: false, generatedAt: '2026-04-05T00:00:00Z', checksum: 'abc' },
+      },
+      {
+        id: 'obiective', title: 'Obiective', content: 'Text B', order: 2,
+        source: 'generated' as const,
+        state: 'draft' as const, currentVersion: 0, versionCount: 0,
+        contentHash: '', lastStateChangeAt: '', lastStateChangeBy: null,
+        metadata: { model: 'gpt-5.4', provider: 'openai', tokensIn: 80, tokensOut: 40, latencyMs: 180, retryCount: 0, fallbackUsed: false, generatedAt: '2026-04-05T00:00:00Z', checksum: 'def' },
+      },
+    ];
+
+    const enriched = await persistSectionChanges({
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      previousSections: null,
+      newSections,
+      reason: 'initial_generation',
+    });
+
+    expect(insertedVersions).toHaveLength(2);
+    expect(enriched[0].currentVersion).toBe(1);
+    expect(enriched[0].versionCount).toBe(1);
+    expect(enriched[0].state).toBe('draft');
+    expect(enriched[0].contentHash).toBe(hash('Text A'));
+    expect(enriched[0].lastStateChangeBy).toBe(USER_ID);
+    expect(enriched[1].currentVersion).toBe(1);
+    expect(enriched[1].contentHash).toBe(hash('Text B'));
+  });
+
+  it('writes a new version only for sections whose content hash changed', async () => {
+    const insertedVersions: unknown[] = [];
+
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+          const tx = mockInsertChain(insertedVersions);
+          return fn(tx);
+        }),
+      },
+    }));
+
+    vi.doMock('@/lib/legal/audit', () => ({
+      logAudit: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('@/lib/logger', () => ({
+      logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+    }));
+
+    const { persistSectionChanges } = await import('@/lib/ai/orchestrator/section-versions');
+
+    const previous = [
+      {
+        id: 'context', title: 'Context', content: 'Text A', order: 1,
+        source: 'generated' as const,
+        state: 'approved' as const, currentVersion: 3, versionCount: 3,
+        contentHash: hash('Text A'),
+        lastStateChangeAt: '2026-04-05T00:00:00Z', lastStateChangeBy: USER_ID,
+        metadata: { model: 'gpt-5.4', provider: 'openai', tokensIn: 100, tokensOut: 50, latencyMs: 200, retryCount: 0, fallbackUsed: false, generatedAt: '2026-04-05T00:00:00Z', checksum: 'abc' },
+      },
+      {
+        id: 'obiective', title: 'Obiective', content: 'Text B', order: 2,
+        source: 'generated' as const,
+        state: 'reviewed' as const, currentVersion: 2, versionCount: 2,
+        contentHash: hash('Text B'),
+        lastStateChangeAt: '2026-04-05T00:00:00Z', lastStateChangeBy: USER_ID,
+        metadata: { model: 'gpt-5.4', provider: 'openai', tokensIn: 80, tokensOut: 40, latencyMs: 180, retryCount: 0, fallbackUsed: false, generatedAt: '2026-04-05T00:00:00Z', checksum: 'def' },
+      },
+    ];
+
+    // New: obiective content changes, context unchanged
+    const newSections = [
+      { ...previous[0] }, // unchanged
+      { ...previous[1], content: 'Text B modified' },
+    ];
+
+    const enriched = await persistSectionChanges({
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      previousSections: previous,
+      newSections,
+      reason: 'user refined objectives',
+    });
+
+    // Only one insert (for obiective)
+    expect(insertedVersions).toHaveLength(1);
+    // Context unchanged — all fields preserved
+    expect(enriched[0].state).toBe('approved');
+    expect(enriched[0].currentVersion).toBe(3);
+    expect(enriched[0].versionCount).toBe(3);
+    // Obiective changed — state reset, version bumped
+    expect(enriched[1].state).toBe('draft');
+    expect(enriched[1].currentVersion).toBe(3);
+    expect(enriched[1].versionCount).toBe(3);
+    expect(enriched[1].contentHash).toBe(hash('Text B modified'));
+  });
+});
