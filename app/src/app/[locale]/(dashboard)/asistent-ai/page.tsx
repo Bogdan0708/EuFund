@@ -405,6 +405,51 @@ function PlanTabContent({
   );
 }
 
+function SectionProgressHeader({
+  sections,
+  t,
+}: {
+  sections: import('@/lib/ai/orchestrator/types').SectionResult[] | null;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  if (!sections || sections.length === 0) return null;
+
+  const total = sections.length;
+  const approved = sections.filter((s) => s.state === 'approved').length;
+  const reviewed = sections.filter((s) => s.state === 'reviewed').length;
+  const draft = sections.filter((s) => s.state === 'draft').length;
+
+  const approvedPct = (approved / total) * 100;
+  const reviewedPct = (reviewed / total) * 100;
+  const draftPct = (draft / total) * 100;
+
+  return (
+    <div className="sticky top-0 z-10 bg-surface-container-lowest border border-outline-variant/15 rounded-xl p-4 mb-4 shadow-[0_8px_20px_rgba(0,0,0,0.03)]">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <div className="text-sm font-bold text-on-surface">{t('proposalTab.title')}</div>
+          <div className="text-xs text-on-surface-variant mt-0.5">
+            {t('proposalTab.progressHeader', { approved, reviewed, draft, total })}
+          </div>
+        </div>
+        <div className="flex gap-1.5">
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary-fixed text-primary font-bold">{draft} {t('proposalTab.stateBadgeDraft')}</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-tertiary-container/20 text-tertiary font-bold">{reviewed} {t('proposalTab.stateBadgeReviewed')}</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary-container/20 text-emerald-700 font-bold">{approved} {t('proposalTab.stateBadgeApproved')}</span>
+        </div>
+      </div>
+      <div className="h-2 rounded-full bg-surface-container-low overflow-hidden flex">
+        <div className="bg-emerald-600" style={{ width: `${approvedPct}%` }} />
+        <div className="bg-amber-500" style={{ width: `${reviewedPct}%` }} />
+        <div className="bg-primary" style={{ width: `${draftPct}%` }} />
+      </div>
+      <div className="mt-2 text-[10px] text-on-surface-variant italic">
+        {t('proposalTab.progressCaption', { total })}
+      </div>
+    </div>
+  );
+}
+
 function ProposalTabContent({
   proposalSections,
   sendMessage,
@@ -427,9 +472,7 @@ function ProposalTabContent({
 
   return (
     <div className="space-y-4">
-      <h4 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-        {t('proposalTab.title')}
-      </h4>
+      <SectionProgressHeader sections={proposalSections} t={t} />
       {proposalSections
         .sort((a, b) => a.order - b.order)
         .map((section) => (
