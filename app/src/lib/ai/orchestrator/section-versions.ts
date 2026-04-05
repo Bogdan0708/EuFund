@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { sectionVersions, workflowSessions } from '@/lib/db/schema';
 import { logAudit } from '@/lib/legal/audit';
@@ -277,6 +277,127 @@ export async function transitionSectionState(opts: {
         toState,
         reason: reason ?? null,
         ...(reviewSkipped ? { reviewSkipped: true } : {}),
+      },
+    };
+
+    return updated;
+  });
+
+  // Post-commit audit emission
+  if (pendingAudit) {
+    await logAudit(pendingAudit);
+  }
+
+  return updatedSection;
+}
+
+export async function rollbackSection(opts: {
+  sessionId: string;
+  sectionId: string;
+  targetVersion: number;
+  expectedCurrentVersion: number;
+  userId: string;
+  reason: string;
+}): Promise<SectionResult> {
+  const { sessionId, sectionId, targetVersion, expectedCurrentVersion, userId, reason } = opts;
+  const now = new Date().toISOString();
+
+  // Collected inside the transaction, emitted post-commit (same pattern as persistSectionChanges + transitionSectionState)
+  let pendingAudit: Parameters<typeof logAudit>[0] | null = null;
+
+  const updatedSection = await db.transaction(async (tx) => {
+    const [session] = await tx
+      .select()
+      .from(workflowSessions)
+      .where(eq(workflowSessions.id, sessionId))
+      .for('update');
+
+    if (!session) {
+      throw new SectionVersionError('SectionNotFound', `Session ${sessionId} not found`);
+    }
+
+    const ctx = session.context as { projectSections?: SectionResult[] };
+    const sections = ctx.projectSections ?? [];
+    const idx = sections.findIndex((s) => s.id === sectionId);
+    if (idx < 0) {
+      throw new SectionVersionError('SectionNotFound', `Section ${sectionId} not found in session ${sessionId}`);
+    }
+
+    const section = sections[idx];
+
+    if (section.currentVersion !== expectedCurrentVersion) {
+      throw new SectionVersionError(
+        'ConcurrentModification',
+        `Section ${sectionId} has been modified since the client read`,
+        { currentVersion: section.currentVersion },
+      );
+    }
+
+    // Fetch target version row
+    const [target] = await tx
+      .select()
+      .from(sectionVersions)
+      .where(and(
+        eq(sectionVersions.sessionId, sessionId),
+        eq(sectionVersions.sectionId, sectionId),
+        eq(sectionVersions.version, targetVersion),
+      ))
+      .limit(1);
+
+    if (!target) {
+      throw new SectionVersionError('VersionNotFound', `Section ${sectionId} has no version ${targetVersion}`);
+    }
+
+    // Insert new version with target's content
+    const newVersion = section.currentVersion + 1;
+    const newContentHash = hashContent(target.content);
+
+    await tx.insert(sectionVersions).values({
+      sessionId,
+      sectionId,
+      version: newVersion,
+      content: target.content,
+      contentHash: newContentHash,
+      title: target.title,
+      metadata: target.metadata,
+      reason,
+      createdBy: userId,
+    });
+
+    const updated: SectionResult = {
+      ...section,
+      content: target.content,
+      contentHash: newContentHash,
+      currentVersion: newVersion,
+      versionCount: section.versionCount + 1,
+      state: 'draft',
+      lastStateChangeAt: now,
+      lastStateChangeBy: userId,
+      title: target.title,
+    };
+
+    const updatedSections = [...sections];
+    updatedSections[idx] = updated;
+
+    await tx
+      .update(workflowSessions)
+      .set({
+        context: { ...ctx, projectSections: updatedSections },
+        updatedAt: new Date(),
+      })
+      .where(eq(workflowSessions.id, sessionId));
+
+    pendingAudit = {
+      userId,
+      action: 'section.rollback',
+      resourceType: 'workflow_session',
+      resourceId: sessionId,
+      metadata: {
+        sectionId,
+        rolledBackFromVersion: section.currentVersion,
+        rolledBackToVersion: targetVersion,
+        newVersion,
+        reason,
       },
     };
 
