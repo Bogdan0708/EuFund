@@ -421,6 +421,105 @@ const STATE_BORDER_STYLES: Record<SectionState | 'failed', string> = {
   failed: 'border-l-4 border-l-red-500 border-outline-variant/10',
 };
 
+function SectionActionButtons({
+  section,
+  displayState,
+  sessionId,
+  onStateChange,
+  onRollback: _onRollback,
+  onToggleHistory,
+  onRegenerate,
+  isHistoryOpen,
+  t,
+}: {
+  section: import('@/lib/ai/orchestrator/types').SectionResult;
+  displayState: 'draft' | 'reviewed' | 'approved' | 'failed';
+  sessionId: string | null;
+  onStateChange: (sectionId: string, toState: 'draft' | 'reviewed' | 'approved', expectedCurrentVersion: number) => Promise<void>;
+  onRollback: (sectionId: string, targetVersion: number, expectedCurrentVersion: number) => Promise<void>;
+  onToggleHistory: (sectionId: string) => void;
+  onRegenerate: (section: import('@/lib/ai/orchestrator/types').SectionResult) => void;
+  isHistoryOpen: boolean;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const disabled = !sessionId;
+
+  return (
+    <div className="pt-2 border-t border-outline-variant/10 flex flex-wrap items-center gap-2">
+      {displayState === 'draft' && (
+        <>
+          <button
+            onClick={() => onStateChange(section.id, 'reviewed', section.currentVersion)}
+            disabled={disabled}
+            className="inline-flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-full bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
+          >
+            {t('proposalTab.actionMarkReviewed')}
+          </button>
+          <button
+            onClick={() => onStateChange(section.id, 'approved', section.currentVersion)}
+            disabled={disabled}
+            className="inline-flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-full bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+          >
+            {t('proposalTab.actionApprove')}
+          </button>
+        </>
+      )}
+      {displayState === 'reviewed' && (
+        <>
+          <button
+            onClick={() => onStateChange(section.id, 'approved', section.currentVersion)}
+            disabled={disabled}
+            className="inline-flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-full bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {t('proposalTab.actionApprove')}
+          </button>
+          <button
+            onClick={() => onStateChange(section.id, 'draft', section.currentVersion)}
+            disabled={disabled}
+            className="inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-50"
+          >
+            {t('proposalTab.actionBackToDraft')}
+          </button>
+        </>
+      )}
+      {displayState === 'approved' && (
+        <button
+          onClick={() => onStateChange(section.id, 'draft', section.currentVersion)}
+          disabled={disabled}
+          className="inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-50"
+        >
+          {t('proposalTab.actionUnapprove')}
+        </button>
+      )}
+      {displayState === 'failed' && (
+        <button
+          disabled
+          title={t('proposalTab.approveFailedDisabledTooltip')}
+          className="inline-flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-full bg-surface-container-high text-outline cursor-not-allowed"
+        >
+          {t('proposalTab.actionApprove')}
+        </button>
+      )}
+
+      <button
+        onClick={() => onRegenerate(section)}
+        disabled={disabled}
+        className="inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-50"
+      >
+        <Icon name={section.source === 'failed' ? 'refresh' : 'auto_awesome'} size="sm" />
+        {section.source === 'failed' ? t('proposalTab.actionRegenerate') : t('proposalTab.improveSection')}
+      </button>
+
+      <button
+        onClick={() => onToggleHistory(section.id)}
+        className="inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest"
+      >
+        {isHistoryOpen ? t('proposalTab.actionCloseHistory') : t('proposalTab.actionHistory')}
+      </button>
+    </div>
+  );
+}
+
 function SectionProgressHeader({
   sections,
   t,
