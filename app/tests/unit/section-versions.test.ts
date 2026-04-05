@@ -419,9 +419,14 @@ describe('getVersionHistory', () => {
   });
 
   it('returns version rows with createdBy and reason', async () => {
+    const fullMetadata = {
+      model: 'gpt-5.4', provider: 'openai', tokensIn: 100, tokensOut: 50,
+      latencyMs: 200, retryCount: 2, fallbackUsed: false,
+      generatedAt: '2026-04-05T00:00:00Z', checksum: 'deadbeef',
+    };
     const versionRows = [
-      { id: 'v1-id', version: 1, content: 'v1', contentHash: hash('v1'), title: 'T', metadata: {}, reason: 'initial_generation', createdAt: new Date('2026-04-05T00:00:00Z'), createdBy: USER_ID },
-      { id: 'v2-id', version: 2, content: 'v2', contentHash: hash('v2'), title: 'T', metadata: {}, reason: 'user refined', createdAt: new Date('2026-04-05T01:00:00Z'), createdBy: USER_ID },
+      { id: 'v1-id', version: 1, content: 'v1', contentHash: hash('v1'), title: 'T', metadata: fullMetadata, reason: 'initial_generation', createdAt: new Date('2026-04-05T00:00:00Z'), createdBy: USER_ID },
+      { id: 'v2-id', version: 2, content: 'v2', contentHash: hash('v2'), title: 'T', metadata: fullMetadata, reason: 'user refined', createdAt: new Date('2026-04-05T01:00:00Z'), createdBy: USER_ID },
     ];
     const auditRows = [
       { id: 'a1', action: 'section.state_change', resourceId: SESSION_ID, userId: USER_ID, createdAt: new Date('2026-04-05T00:30:00Z'), newValue: null, oldValue: null, metadata: { sectionId: 'context', fromState: 'draft', toState: 'reviewed', currentVersion: 1 } },
@@ -457,5 +462,12 @@ describe('getVersionHistory', () => {
     expect(result.stateTransitions).toHaveLength(1);
     expect(result.stateTransitions[0].fromState).toBe('draft');
     expect(result.stateTransitions[0].toState).toBe('reviewed');
+
+    // Verify the projection strips internal metadata fields
+    expect(result.versions[0].metadata).not.toHaveProperty('retryCount');
+    expect(result.versions[0].metadata).not.toHaveProperty('checksum');
+    expect(result.versions[0].metadata.model).toBe('gpt-5.4');
+    expect(result.versions[0].metadata.provider).toBe('openai');
+    expect(result.versions[0].metadata.fallbackUsed).toBe(false);
   });
 });
