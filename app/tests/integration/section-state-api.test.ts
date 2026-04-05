@@ -43,6 +43,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
     mockLogger();
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       transitionSectionState: vi.fn().mockResolvedValue(transitioned),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error {
         constructor(public code: string, msg: string, public details?: Record<string, unknown>) {
           super(msg);
@@ -79,6 +80,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
     mockLogger();
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       transitionSectionState: vi.fn(),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
@@ -100,6 +102,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
     mockLogger();
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       transitionSectionState: vi.fn(),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
@@ -130,6 +133,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
       transitionSectionState: vi.fn().mockRejectedValue(
         new SectionVersionError('ConcurrentModification', 'stale', { currentVersion: 5 }),
       ),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError,
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
@@ -164,6 +168,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
       transitionSectionState: vi.fn().mockRejectedValue(
         new SectionVersionError('FailedSectionCannotBeApproved', 'failed section'),
       ),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError,
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
@@ -190,6 +195,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
     mockLogger();
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       transitionSectionState: vi.fn(),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
@@ -211,6 +217,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
     mockLogger();
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       transitionSectionState: vi.fn(),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
@@ -232,6 +239,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
     mockLogger();
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       transitionSectionState: vi.fn(),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
@@ -265,6 +273,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
     mockLogger();
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       transitionSectionState: vi.fn(),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));

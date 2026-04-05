@@ -38,6 +38,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
     mockLogger();
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       rollbackSection: vi.fn().mockResolvedValue(rolled),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error {
         constructor(public code: string, msg: string, public details?: Record<string, unknown>) {
           super(msg);
@@ -76,6 +77,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
     mockLogger();
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       rollbackSection: vi.fn().mockRejectedValue(new SectionVersionError('VersionNotFound', 'no such version')),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError,
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
@@ -106,6 +108,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
       rollbackSection: vi.fn().mockRejectedValue(
         new SectionVersionError('ConcurrentModification', 'stale', { currentVersion: 7 }),
       ),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError,
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
@@ -131,6 +134,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
     mockLogger();
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       rollbackSection: vi.fn(),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
@@ -152,6 +156,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
     mockLogger();
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       rollbackSection: vi.fn(),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
@@ -180,6 +185,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
     mockLogger();
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       rollbackSection: vi.fn(),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
@@ -207,6 +213,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
     mockLogger();
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       rollbackSection: vi.fn(),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FondEUError } from '@/lib/errors';
 import { requireOwnedSession } from '@/lib/ai/orchestrator/require-owned-session';
-import { transitionSectionState, SectionVersionError } from '@/lib/ai/orchestrator/section-versions';
+import { transitionSectionState, verifySectionIntegrity, SectionVersionError } from '@/lib/ai/orchestrator/section-versions';
 import { publishEvent } from '@/lib/ai/orchestrator/pubsub';
+import type { SectionResult } from '@/lib/ai/orchestrator/types';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ route: 'section-state' });
@@ -28,7 +29,7 @@ export async function POST(
     // Auth + UUID validation + ownership BEFORE body parsing.
     // Unauthenticated or wrong-owner requests should return 401/404 even
     // if the body is malformed, matching the codebase convention.
-    const { user } = await requireOwnedSession(sessionId);
+    const { user, session } = await requireOwnedSession(sessionId);
 
     const body = await req.json().catch(() => null);
     if (
@@ -40,6 +41,14 @@ export async function POST(
       body.expectedCurrentVersion < 1
     ) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+
+    // Integrity check: verify JSONB contentHash matches the latest version
+    // row's contentHash. Catches DB drift before we mutate.
+    const sessionCtx = session.context as { projectSections?: SectionResult[] } | null;
+    const targetSection = sessionCtx?.projectSections?.find((s) => s.id === sectionId);
+    if (targetSection) {
+      await verifySectionIntegrity(sessionId, targetSection);
     }
 
     const section = await transitionSectionState({
