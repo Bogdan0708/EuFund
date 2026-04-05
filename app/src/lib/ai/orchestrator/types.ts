@@ -13,6 +13,8 @@ export interface WorkflowContext {
   actionPlan: ActionPlan | null
   projectSections: SectionResult[] | null
   uploadedFiles: UploadedFile[]
+  /** User preference for generation length/tone. Loaded from user_preferences at session creation. */
+  responseStyle?: 'concise' | 'detailed' | 'technical'
 }
 
 export interface EnhancedIdea {
@@ -94,6 +96,15 @@ export interface SectionResult {
   content: string
   order: number
   source: 'generated' | 'edited' | 'failed'
+
+  // Phase 1: versioning + approval
+  state: 'draft' | 'reviewed' | 'approved'
+  currentVersion: number
+  versionCount: number
+  contentHash: string
+  lastStateChangeAt: string
+  lastStateChangeBy: string | null
+
   metadata: {
     model: string
     provider: string
@@ -105,6 +116,26 @@ export interface SectionResult {
     generatedAt: string
     checksum: string
   }
+}
+
+export interface SectionVersion {
+  id: string
+  version: number
+  content: string
+  contentHash: string
+  title: string
+  metadata: {
+    model: string
+    provider: string
+    tokensIn: number
+    tokensOut: number
+    latencyMs: number
+    fallbackUsed: boolean
+    generatedAt: string
+  }
+  reason: string
+  createdAt: string
+  createdBy: string
 }
 
 export interface ActionPlan {
@@ -171,11 +202,12 @@ export type SSEEvent = {
   | { type: 'step_start'; step: number; label: string }
   | { type: 'step_progress'; step: number; message: string }
   | { type: 'ai_chunk'; step: number; content: string }
-  | { type: 'checkpoint'; step: number; data: CheckpointData }
+  | { type: 'checkpoint'; step: number; data: CheckpointData; context?: Partial<WorkflowContext>; autoApprove?: boolean }
   | { type: 'step_complete'; step: number; summary: string; context?: Partial<WorkflowContext> }
   | { type: 'discovery'; items: unknown[] }
   | { type: 'error'; step: number; message: string; retryable: boolean }
   | { type: 'done'; projectId?: string; completionStatus?: ProjectCompletionStatus }
+  | { type: 'section_updated'; sectionId: string; section: SectionResult }
 )
 
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never
