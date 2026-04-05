@@ -57,6 +57,12 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<{ con
         content: s.acceptedContent || s.content || '',
         order: s.documentOrder,
         source: 'generated' as const,
+        state: 'draft' as const,
+        currentVersion: 1,
+        versionCount: 1,
+        contentHash: '',
+        lastStateChangeAt: new Date().toISOString(),
+        lastStateChangeBy: null,
         metadata: { model: s.modelUsed || '', provider: '', tokensIn: 0, tokensOut: 0, latencyMs: 0, retryCount: 0, fallbackUsed: false, generatedAt: '', checksum: '' },
       }))
 

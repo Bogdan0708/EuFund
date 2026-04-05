@@ -7,6 +7,12 @@ const makeSection = (id: string, title: string, content: string, order: number):
   content,
   order,
   source: 'generated',
+  state: 'draft',
+  currentVersion: 1,
+  versionCount: 1,
+  contentHash: '',
+  lastStateChangeAt: '2026-04-05T00:00:00Z',
+  lastStateChangeBy: null,
   metadata: { model: 'gpt-4o', provider: 'openai', tokensIn: 100, tokensOut: 200, latencyMs: 500, retryCount: 0, fallbackUsed: false, generatedAt: '2026-04-02T00:00:00Z', checksum: 'abc' },
 })
 
