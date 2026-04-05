@@ -105,7 +105,46 @@ export async function persistSectionChanges(opts: PersistOptions): Promise<Secti
         continue;
       }
 
-      // Content changed — new version, reset state to draft
+      // Content changed — check if this is a legacy section without any version rows yet
+      const [existingRow] = await tx
+        .select()
+        .from(sectionVersions)
+        .where(and(
+          eq(sectionVersions.sessionId, sessionId),
+          eq(sectionVersions.sectionId, next.id),
+          eq(sectionVersions.version, prev.currentVersion),
+        ))
+        .limit(1);
+
+      if (!existingRow) {
+        // Legacy backfill: insert baseline v{prev.currentVersion} with the OLD content
+        await tx.insert(sectionVersions).values({
+          sessionId,
+          sectionId: next.id,
+          version: prev.currentVersion,
+          content: prev.content,
+          contentHash: prev.contentHash,
+          title: prev.title,
+          metadata: prev.metadata,
+          reason: 'legacy_backfill',
+          createdBy: userId,
+        });
+
+        pendingAudits.push({
+          userId,
+          action: 'section.generated',
+          resourceType: 'workflow_session',
+          resourceId: sessionId,
+          metadata: {
+            sectionId: next.id,
+            version: prev.currentVersion,
+            contentHash: prev.contentHash,
+            legacyBackfill: true,
+          },
+        });
+      }
+
+      // New version, reset state to draft
       const newVersion = prev.currentVersion + 1;
       await tx.insert(sectionVersions).values({
         sessionId,

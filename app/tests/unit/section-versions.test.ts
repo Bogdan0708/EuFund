@@ -90,7 +90,18 @@ describe('persistSectionChanges', () => {
     vi.doMock('@/lib/db', () => ({
       db: {
         transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
-          const tx = mockInsertChain(insertedVersions);
+          const tx = {
+            ...mockInsertChain(insertedVersions),
+            // Existing (non-legacy) sessions already have baseline version rows,
+            // so the legacy-backfill check returns a row and skips the baseline insert.
+            select: vi.fn().mockReturnValue({
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockResolvedValue([{ version: 2, content: 'Text B' }]),
+                }),
+              }),
+            }),
+          };
           return fn(tx);
         }),
       },
@@ -469,5 +480,73 @@ describe('getVersionHistory', () => {
     expect(result.versions[0].metadata.model).toBe('gpt-5.4');
     expect(result.versions[0].metadata.provider).toBe('openai');
     expect(result.versions[0].metadata.fallbackUsed).toBe(false);
+  });
+});
+
+describe('persistSectionChanges legacy backfill', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('writes baseline v1 + new vN+1 when previous section has currentVersion=1 but no section_versions row exists', async () => {
+    const insertedVersions: unknown[] = [];
+
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+          const tx = {
+            insert: vi.fn().mockReturnValue({
+              values: vi.fn().mockImplementation((row: unknown) => {
+                insertedVersions.push(row);
+                return { returning: vi.fn().mockResolvedValue([row]) };
+              }),
+            }),
+            select: vi.fn().mockReturnValue({
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockResolvedValue([]), // no existing version rows
+                }),
+              }),
+            }),
+          };
+          return fn(tx);
+        }),
+      },
+    }));
+    vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
+    vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
+
+    const { persistSectionChanges } = await import('@/lib/ai/orchestrator/section-versions');
+
+    // Legacy section: has defaults from in-memory backfill but no version row in DB
+    const legacySection = {
+      id: 'context', title: 'Context', content: 'legacy content', order: 1,
+      source: 'generated' as const,
+      state: 'draft' as const, currentVersion: 1, versionCount: 1,
+      contentHash: hash('legacy content'),
+      lastStateChangeAt: '2026-04-05T00:00:00Z', lastStateChangeBy: USER_ID,
+      metadata: { model: 'gpt-5.4', provider: 'openai', tokensIn: 100, tokensOut: 50, latencyMs: 200, retryCount: 0, fallbackUsed: false, generatedAt: '2026-04-05T00:00:00Z', checksum: 'abc' },
+    };
+
+    // Regenerate with new content
+    const newSection = { ...legacySection, content: 'new content' };
+
+    const enriched = await persistSectionChanges({
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      previousSections: [legacySection],
+      newSections: [newSection],
+      reason: 'user regenerated',
+    });
+
+    // Two inserts: baseline v1 (legacy content) + v2 (new content)
+    expect(insertedVersions).toHaveLength(2);
+    expect((insertedVersions[0] as { version: number }).version).toBe(1);
+    expect((insertedVersions[0] as { content: string }).content).toBe('legacy content');
+    expect((insertedVersions[1] as { version: number }).version).toBe(2);
+    expect((insertedVersions[1] as { content: string }).content).toBe('new content');
+
+    expect(enriched[0].currentVersion).toBe(2);
+    expect(enriched[0].versionCount).toBe(2);
   });
 });
