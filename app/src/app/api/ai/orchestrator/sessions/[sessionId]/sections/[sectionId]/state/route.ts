@@ -60,12 +60,11 @@ export async function POST(
       reason: typeof body.reason === 'string' ? body.reason : undefined,
     });
 
-    // TODO(task-16): when the client handler lands, it must skip
-    // lastEventIdRef updates for section_updated events. Using Date.now()
-    // here is a placeholder — it's out-of-band relative to the orchestrator's
-    // monotonic per-session counter and would poison the replay cursor
-    // (workflow_messages.eventId is int4) if the client tracked it.
-    // See plan task 16.
+    // eventId uses Date.now() because section mutations are triggered by
+    // REST endpoints, out-of-band from the orchestrator's monotonic per-session
+    // counter. The client skips lastEventIdRef updates for section_updated
+    // events (see useOrchestrator.ts es.onmessage) so this doesn't poison
+    // the replay cursor (workflow_messages.eventId is int4).
     await publishEvent(sessionId, {
       eventId: Date.now(),
       type: 'section_updated',
