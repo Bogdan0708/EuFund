@@ -12,7 +12,15 @@ export async function GET(
 ) {
   try {
     const { sessionId, sectionId } = ctx.params;
-    await requireOwnedSession(sessionId);
+    const { user } = await requireOwnedSession(sessionId);
+
+    // Phase 1 feature flag: return 404 if disabled so the endpoint behaves
+    // as if it doesn't exist from the client's perspective.
+    const { isFeatureEnabled } = await import('@/lib/feature-flags');
+    const enabled = await isFeatureEnabled('section_versioning', { userId: user.id });
+    if (!enabled) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
     const history = await getVersionHistory(sessionId, sectionId);
     return NextResponse.json(history);
