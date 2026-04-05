@@ -30,6 +30,12 @@ function makeSection(overrides: Partial<SectionResult>): SectionResult {
     content: `Content for section ${uid}: ` + uid.repeat(30), // > 200 chars, unique per id
     order: 1,
     source: 'generated',
+    state: 'draft',
+    currentVersion: 1,
+    versionCount: 1,
+    contentHash: '',
+    lastStateChangeAt: '2026-04-05T00:00:00Z',
+    lastStateChangeBy: null,
     metadata: {
       model: 'gpt-4',
       provider: 'openai',
