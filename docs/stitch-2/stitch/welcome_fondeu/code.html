@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>FondEU | Complete Profile</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-secondary-fixed": "#0c006b",
+                        "on-error-container": "#93000a",
+                        "surface": "#faf8fe",
+                        "on-secondary-fixed-variant": "#332dbc",
+                        "tertiary": "#00637f",
+                        "surface-container-highest": "#e3e2e7",
+                        "on-tertiary-container": "#f7fbff",
+                        "on-surface-variant": "#414753",
+                        "on-primary": "#ffffff",
+                        "primary": "#0059b5",
+                        "surface-container-high": "#e9e7ed",
+                        "surface-tint": "#005cbb",
+                        "on-background": "#1a1b1f",
+                        "tertiary-container": "#007da1",
+                        "outline-variant": "#c1c6d6",
+                        "primary-fixed-dim": "#abc7ff",
+                        "on-error": "#ffffff",
+                        "surface-container-low": "#f4f3f8",
+                        "on-primary-fixed-variant": "#00458f",
+                        "surface-dim": "#dad9df",
+                        "secondary-fixed-dim": "#c2c1ff",
+                        "primary-fixed": "#d7e2ff",
+                        "surface-variant": "#e3e2e7",
+                        "background": "#faf8fe",
+                        "secondary-fixed": "#e2dfff",
+                        "secondary": "#4a47d2",
+                        "inverse-primary": "#abc7ff",
+                        "on-surface": "#1a1b1f",
+                        "outline": "#717785",
+                        "on-secondary-container": "#fffbff",
+                        "on-secondary": "#ffffff",
+                        "tertiary-fixed-dim": "#68d3ff",
+                        "tertiary-fixed": "#bee9ff",
+                        "surface-bright": "#faf8fe",
+                        "inverse-surface": "#2f3034",
+                        "surface-container-lowest": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "on-primary-fixed": "#001b3f",
+                        "primary-container": "#0071e3",
+                        "on-tertiary": "#ffffff",
+                        "error": "#ba1a1a",
+                        "surface-container": "#eeedf3",
+                        "secondary-container": "#6462ec",
+                        "inverse-on-surface": "#f1f0f5",
+                        "on-primary-container": "#fcfbff",
+                        "on-tertiary-fixed-variant": "#004d64",
+                        "on-tertiary-fixed": "#001f2a"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F5F5F7;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .ai-halo {
+            background: radial-gradient(circle, rgba(74, 71, 210, 0.08) 0%, rgba(255, 255, 255, 0) 70%);
+        }
+    </style>
+</head>
+<body class="antialiased text-on-surface min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
+<!-- Decorative Background AI Halo -->
+<div class="ai-halo absolute -top-40 -right-40 w-[600px] h-[600px] rounded-full blur-3xl pointer-events-none"></div>
+<div class="ai-halo absolute -bottom-40 -left-40 w-[600px] h-[600px] rounded-full blur-3xl pointer-events-none"></div>
+<!-- Navigation Shell Suppressed as per Task Logic (Onboarding) -->
+<main class="w-full max-w-2xl z-10">
+<!-- Progress Indicator -->
+<div class="flex flex-col items-center mb-12">
+<div class="text-on-surface-variant font-medium text-sm tracking-widest uppercase mb-4">Step 1 of 2</div>
+<div class="flex gap-2 w-32 h-1.5">
+<div class="flex-1 bg-primary-container rounded-full"></div>
+<div class="flex-1 bg-surface-container-highest rounded-full"></div>
+</div>
+</div>
+<!-- Onboarding Card -->
+<div class="glass-card rounded-lg p-12 lg:p-20 shadow-[0_20px_40px_rgba(0,0,0,0.04)] border border-white/20">
+<!-- Header Section -->
+<header class="mb-16 text-center">
+<h1 class="text-4xl lg:text-5xl font-extrabold tracking-tighter text-on-surface mb-6">Welcome to FondEU</h1>
+<p class="text-on-surface-variant text-lg lg:text-xl font-normal leading-relaxed">Complete your profile to get started.</p>
+</header>
+<!-- Form Content -->
+<form class="space-y-10">
+<!-- Full Name Field (Pre-filled) -->
+<div class="space-y-3">
+<label class="block text-sm font-semibold text-on-surface ml-1">Full name</label>
+<div class="relative">
+<input class="w-full bg-surface-container-high border-none rounded-md px-5 py-4 text-on-surface focus:ring-2 focus:ring-primary/20 transition-all outline-none" placeholder="Your name" type="text" value="Alexandru Ionescu"/>
+<div class="absolute right-4 top-1/2 -translate-y-1/2 text-primary">
+<span class="material-symbols-outlined text-[20px]" data-weight="fill" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+</div>
+</div>
+<!-- Organization Name Field -->
+<div class="space-y-3">
+<label class="block text-sm font-semibold text-on-surface ml-1">Organization name</label>
+<input class="w-full bg-surface-container-high border-none rounded-md px-5 py-4 text-on-surface focus:ring-2 focus:ring-primary/20 transition-all outline-none" placeholder="e.g. European Tech Solutions" type="text"/>
+</div>
+<!-- Two Column Row -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<!-- Organization Type -->
+<div class="space-y-3">
+<label class="block text-sm font-semibold text-on-surface ml-1">Organization type</label>
+<select class="w-full bg-surface-container-high border-none rounded-md px-5 py-4 text-on-surface focus:ring-2 focus:ring-primary/20 transition-all outline-none appearance-none">
+<option disabled="" selected="">Select type</option>
+<option>Company</option>
+<option>NGO</option>
+<option>Public Institution</option>
+<option>University</option>
+<option>Startup</option>
+</select>
+</div>
+<!-- Role Dropdown -->
+<div class="space-y-3">
+<label class="block text-sm font-semibold text-on-surface ml-1">Role</label>
+<select class="w-full bg-surface-container-high border-none rounded-md px-5 py-4 text-on-surface focus:ring-2 focus:ring-primary/20 transition-all outline-none appearance-none">
+<option disabled="" selected="">Select role</option>
+<option>Director</option>
+<option>Project Manager</option>
+<option>Researcher</option>
+<option>Consultant</option>
+<option>Other</option>
+</select>
+</div>
+</div>
+<!-- Preferred Language Toggle -->
+<div class="space-y-4 pt-4">
+<label class="block text-sm font-semibold text-on-surface ml-1 text-center">Preferred language</label>
+<div class="flex justify-center">
+<div class="inline-flex p-1.5 bg-surface-container-high rounded-full w-fit">
+<button class="px-8 py-2.5 rounded-full text-sm font-medium transition-all hover:translate-y-[-1px] bg-white text-primary shadow-sm" type="button">Română</button>
+<button class="px-8 py-2.5 rounded-full text-sm font-medium transition-all hover:translate-y-[-1px] text-on-surface-variant hover:text-on-surface" type="button">English</button>
+</div>
+</div>
+</div>
+<!-- Action Section -->
+<div class="pt-8 text-center">
+<button class="w-full md:w-auto md:px-24 py-5 bg-primary-container text-on-primary font-bold rounded-lg text-lg transition-all duration-250 hover:translate-y-[-2px] active:scale-[0.98] shadow-lg shadow-primary/10" type="submit">
+                        Continue
+                    </button>
+<p class="mt-8 text-on-surface-variant text-sm">You can update these settings later in your profile.</p>
+</div>
+</form>
+</div>
+<!-- Footer Meta -->
+<div class="mt-12 text-center text-on-surface-variant/40 text-xs flex items-center justify-center gap-4">
+<span class="font-bold tracking-tighter">FondEU</span>
+<span class="w-1 h-1 rounded-full bg-current"></span>
+<span>GDPR Compliant</span>
+<span class="w-1 h-1 rounded-full bg-current"></span>
+<span>Secured Session</span>
+</div>
+</main>
+<!-- Visual Polish: Ghost images for atmosphere -->
+<div class="fixed top-20 left-20 opacity-10 pointer-events-none hidden lg:block">
+<div class="w-32 h-32 rounded-lg rotate-12 bg-primary-container"></div>
+</div>
+<div class="fixed bottom-20 right-20 opacity-10 pointer-events-none hidden lg:block">
+<div class="w-48 h-48 rounded-lg -rotate-6 bg-secondary-container"></div>
+</div>
+</body></html>

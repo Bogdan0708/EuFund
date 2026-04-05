@@ -49,7 +49,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
         }
       },
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: publishSpy }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: publishSpy }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/rollback/route');
 
@@ -66,9 +66,9 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
     expect(body.section.currentVersion).toBe(4);
     expect(body.section.content).toBe('v1 content');
     expect(publishSpy).toHaveBeenCalledTimes(1);
-    const event = publishSpy.mock.calls[0][1];
-    expect(event.type).toBe('section_updated');
-    expect(event.sectionId).toBe('context');
+    expect(publishSpy.mock.calls[0][0]).toBe(SESSION_ID);
+    expect(publishSpy.mock.calls[0][1]).toBe('context');
+    expect(publishSpy.mock.calls[0][2].currentVersion).toBe(4);
   });
 
   it('returns 404 VersionNotFound when target version does not exist', async () => {
@@ -83,7 +83,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError,
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/rollback/route');
 
@@ -114,7 +114,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError,
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/rollback/route');
 
@@ -140,7 +140,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/rollback/route');
 
@@ -162,7 +162,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/rollback/route');
 
@@ -191,7 +191,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/rollback/route');
 
@@ -219,7 +219,8 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    const publishSpy = vi.fn();
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: publishSpy }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/rollback/route');
 
@@ -231,5 +232,49 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/roll
 
     const response = await POST(request as any, { params: { sessionId: SESSION_ID, sectionId: 'context' } } as any);
     expect(response.status).toBe(401);
+    expect(publishSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not publish section_updated for rollback-to-current no-op', async () => {
+    const unchanged = {
+      id: 'context', title: 'Context', content: 'v3 content', order: 1,
+      source: 'generated',
+      state: 'approved', currentVersion: 3, versionCount: 3,
+      contentHash: 'abcd',
+      lastStateChangeAt: '2026-04-05T00:00:00Z', lastStateChangeBy: USER_ID,
+      metadata: {},
+    };
+    const publishSpy = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock('@/lib/ai/orchestrator/require-owned-session', () => ({
+      requireOwnedSession: vi.fn().mockResolvedValue({
+        user: { id: USER_ID },
+        session: { id: SESSION_ID, userId: USER_ID, context: { projectSections: [unchanged] } },
+      }),
+    }));
+    mockLogger();
+    vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
+      rollbackSection: vi.fn().mockResolvedValue(unchanged),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
+      SectionVersionError: class extends Error {
+        constructor(public code: string, msg: string, public details?: Record<string, unknown>) {
+          super(msg);
+          this.name = 'SectionVersionError';
+        }
+      },
+    }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: publishSpy }));
+
+    const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/rollback/route');
+
+    const request = new Request('http://localhost/', {
+      method: 'POST',
+      body: JSON.stringify({ targetVersion: 3, expectedCurrentVersion: 3 }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const response = await POST(request as any, { params: { sessionId: SESSION_ID, sectionId: 'context' } } as any);
+    expect(response.status).toBe(200);
+    expect(publishSpy).not.toHaveBeenCalled();
   });
 });

@@ -69,7 +69,7 @@ describe('Section state concurrency', () => {
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError,
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: publishSpy }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: publishSpy }));
 
     const { POST } = await import(
       '@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route'
@@ -111,7 +111,7 @@ describe('Section state concurrency', () => {
     expect(publishSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('publishes SSE events with distinct eventIds across successive mutations', async () => {
+  it('publishes section updates for each successful mutation', async () => {
     const reviewed = stubSection({ state: 'reviewed', currentVersion: 3, versionCount: 3 });
     const approved = stubSection({ state: 'approved', currentVersion: 4, versionCount: 4 });
 
@@ -120,10 +120,7 @@ describe('Section state concurrency', () => {
       .mockResolvedValueOnce(reviewed)
       .mockResolvedValueOnce(approved);
 
-    const publishCalls: number[] = [];
-    const publishSpy = vi.fn().mockImplementation(async (_sessionId: string, event: { eventId: number }) => {
-      publishCalls.push(event.eventId);
-    });
+    const publishSpy = vi.fn().mockResolvedValue(undefined);
 
     mockOwnership();
     mockLogger();
@@ -137,7 +134,7 @@ describe('Section state concurrency', () => {
         }
       },
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: publishSpy }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: publishSpy }));
 
     const { POST } = await import(
       '@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route'
@@ -154,9 +151,6 @@ describe('Section state concurrency', () => {
     );
     expect(firstResponse.status).toBe(200);
 
-    // Ensure Date.now() advances before the second mutation.
-    await new Promise((r) => setTimeout(r, 5));
-
     const secondRequest = new Request('http://localhost/', {
       method: 'POST',
       body: JSON.stringify({ state: 'approved', expectedCurrentVersion: 3 }),
@@ -168,12 +162,10 @@ describe('Section state concurrency', () => {
     );
     expect(secondResponse.status).toBe(200);
 
-    expect(publishCalls.length).toBe(2);
-    expect(publishCalls[0]).not.toBe(publishCalls[1]);
-    // Sanity: both are numbers. Contract is distinctness via Date.now(), not
-    // monotonic ordering — avoids flake under CI timer coalescing.
-    expect(typeof publishCalls[0]).toBe('number');
-    expect(typeof publishCalls[1]).toBe('number');
+    expect(publishSpy).toHaveBeenCalledTimes(2);
+    expect(publishSpy.mock.calls[0][1]).toBe('context');
+    expect(publishSpy.mock.calls[0][2].state).toBe('reviewed');
+    expect(publishSpy.mock.calls[1][2].state).toBe('approved');
   });
 
   it('serializes a cross-endpoint race: state change succeeds, stale rollback returns 409', async () => {
@@ -206,7 +198,7 @@ describe('Section state concurrency', () => {
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError,
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: publishSpy }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: publishSpy }));
 
     const stateModule = await import(
       '@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route'
@@ -248,10 +240,8 @@ describe('Section state concurrency', () => {
     expect(rollbackBody.currentVersion).toBe(3);
 
     // Only the successful state change published an event — the failed
-    // rollback must NOT publish (it throws before the publishEvent call).
+    // rollback must NOT publish (it throws before the event helper call).
     expect(publishSpy).toHaveBeenCalledTimes(1);
-    const publishedEvent = publishSpy.mock.calls[0][1];
-    expect(publishedEvent.type).toBe('section_updated');
-    expect(publishedEvent.sectionId).toBe('context');
+    expect(publishSpy.mock.calls[0][1]).toBe('context');
   });
 });

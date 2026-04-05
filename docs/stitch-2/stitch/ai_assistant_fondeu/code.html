@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>FondEU | AI Assistant</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F5F5F7;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .ai-halo {
+            background: radial-gradient(circle at center, rgba(74, 71, 210, 0.08) 0%, rgba(255, 255, 255, 0) 70%);
+        }
+        .fade-in-up {
+            animation: fadeInUp 0.6s ease-out forwards;
+        }
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-dim": "#dad9df",
+              "on-primary": "#ffffff",
+              "tertiary-fixed-dim": "#68d3ff",
+              "on-tertiary-fixed-variant": "#004d64",
+              "primary-fixed-dim": "#abc7ff",
+              "surface": "#faf8fe",
+              "outline-variant": "#c1c6d6",
+              "tertiary-container": "#007da1",
+              "tertiary-fixed": "#bee9ff",
+              "surface-container-lowest": "#ffffff",
+              "inverse-on-surface": "#f1f0f5",
+              "inverse-surface": "#2f3034",
+              "on-surface-variant": "#414753",
+              "on-surface": "#1a1b1f",
+              "surface-bright": "#faf8fe",
+              "secondary-fixed": "#e2dfff",
+              "surface-container-highest": "#e3e2e7",
+              "error": "#ba1a1a",
+              "on-tertiary-fixed": "#001f2a",
+              "tertiary": "#00637f",
+              "surface-tint": "#005cbb",
+              "primary": "#0059b5",
+              "secondary-container": "#6462ec",
+              "secondary": "#4a47d2",
+              "primary-fixed": "#d7e2ff",
+              "on-primary-fixed": "#001b3f",
+              "on-secondary": "#ffffff",
+              "on-tertiary-container": "#f7fbff",
+              "on-primary-container": "#fcfbff",
+              "secondary-fixed-dim": "#c2c1ff",
+              "on-tertiary": "#ffffff",
+              "on-background": "#1a1b1f",
+              "outline": "#717785",
+              "surface-container-low": "#f4f3f8",
+              "surface-container": "#eeedf3",
+              "on-error": "#ffffff",
+              "on-secondary-fixed-variant": "#332dbc",
+              "background": "#faf8fe",
+              "on-primary-fixed-variant": "#00458f",
+              "error-container": "#ffdad6",
+              "inverse-primary": "#abc7ff",
+              "surface-container-high": "#e9e7ed",
+              "surface-variant": "#e3e2e7",
+              "on-secondary-container": "#fffbff",
+              "on-error-container": "#93000a",
+              "primary-container": "#0071e3",
+              "on-secondary-fixed": "#0c006b"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+</head>
+<body class="bg-[#F5F5F7] text-on-surface overflow-hidden">
+<div class="flex h-screen overflow-hidden">
+<!-- SideNavBar Component -->
+<aside class="h-screen border-r-0 w-[240px] transition-all duration-300 ease-out bg-[#F5F5F7] flex flex-col py-8 px-4 shrink-0">
+<div class="flex items-center gap-3 px-4 mb-10">
+<div class="w-10 h-10 bg-primary-container rounded-xl flex items-center justify-center text-white">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">account_balance</span>
+</div>
+<div>
+<h1 class="text-xl font-bold tracking-tighter text-slate-900">FondEU</h1>
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold opacity-60">The Digital Curator</p>
+</div>
+</div>
+<nav class="flex-1 space-y-2">
+<a class="flex items-center gap-3 text-[#414753] hover:bg-[#E3E2E7] transition-colors px-4 py-2 group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary">home</span>
+<span class="font-['Inter'] font-medium text-sm tracking-tight">Home</span>
+</a>
+<a class="flex items-center gap-3 text-[#414753] hover:bg-[#E3E2E7] transition-colors px-4 py-2 group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary">folder_open</span>
+<span class="font-['Inter'] font-medium text-sm tracking-tight">Projects</span>
+</a>
+<a class="flex items-center gap-3 text-[#414753] hover:bg-[#E3E2E7] transition-colors px-4 py-2 group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary">euro_symbol</span>
+<span class="font-['Inter'] font-medium text-sm tracking-tight">Funding Calls</span>
+</a>
+<a class="flex items-center gap-3 text-[#414753] hover:bg-[#E3E2E7] transition-colors px-4 py-2 group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary">description</span>
+<span class="font-['Inter'] font-medium text-sm tracking-tight">Files</span>
+</a>
+<!-- Active Tab: AI Assistant -->
+<a class="flex items-center gap-3 bg-[#E3E2E7] text-[#0071E3] rounded-full px-4 py-2" href="#">
+<span class="material-symbols-outlined text-xl" style="font-variation-settings: 'FILL' 1;">smart_toy</span>
+<span class="font-['Inter'] font-medium text-sm tracking-tight">AI Assistant</span>
+</a>
+<a class="flex items-center gap-3 text-[#414753] hover:bg-[#E3E2E7] transition-colors px-4 py-2 group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary">settings</span>
+<span class="font-['Inter'] font-medium text-sm tracking-tight">Settings</span>
+</a>
+</nav>
+<div class="mt-auto px-4">
+<div class="p-4 rounded-2xl bg-surface-container-high/50 flex flex-col gap-3">
+<p class="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Storage</p>
+<div class="h-1.5 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[65%] rounded-full"></div>
+</div>
+<p class="text-[11px] text-on-surface-variant">6.5 GB of 10 GB used</p>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 flex flex-row overflow-hidden p-6 gap-6 fade-in-up">
+<!-- Left Panel: Chat Interface (55%) -->
+<section class="w-[55%] flex flex-col bg-surface-container-low rounded-lg relative overflow-hidden ai-halo">
+<!-- Chat Header -->
+<div class="px-8 py-6 flex items-center justify-between z-10">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-secondary-container/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+</div>
+<div>
+<h2 class="text-lg font-bold tracking-tight">Grant Strategy Curator</h2>
+<p class="text-xs text-on-surface-variant">Optimizing for Horizon Europe Call #2024-B3</p>
+</div>
+</div>
+<button class="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:bg-surface-container-highest rounded-full transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+<!-- Chat Bubbles Area -->
+<div class="flex-1 overflow-y-auto px-8 py-4 space-y-8 scrollbar-hide">
+<!-- AI Message -->
+<div class="flex flex-col items-start max-w-[85%]">
+<div class="glass-card p-6 rounded-lg rounded-tl-none shadow-[0_20px_40px_rgba(0,0,0,0.04)] text-on-surface border border-white/20">
+<p class="leading-relaxed text-[15px]">Hello! I've analyzed the <span class="text-primary font-semibold">GreenTech Infrastructure</span> call requirements. Based on your current project profile, we have an 84% match. Would you like me to start drafting the Technical Methodology section or focus on the Budget Allocation strategy first?</p>
+</div>
+<span class="mt-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant opacity-40 ml-1">AI Curator • 10:24 AM</span>
+</div>
+<!-- User Message -->
+<div class="flex flex-col items-end w-full">
+<div class="bg-primary-container text-white px-6 py-4 rounded-full max-w-[70%] shadow-lg shadow-primary/10">
+<p class="text-[15px]">Let's start with the Technical Methodology. Focus on our proprietary carbon capture sensors.</p>
+</div>
+<span class="mt-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant opacity-40 mr-1">You • 10:25 AM</span>
+</div>
+<!-- AI Message (Drafting) -->
+<div class="flex flex-col items-start max-w-[85%]">
+<div class="glass-card p-6 rounded-lg rounded-tl-none shadow-[0_20px_40px_rgba(0,0,0,0.04)] text-on-surface border border-white/20">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-secondary animate-pulse" style="font-variation-settings: 'FILL' 1;">sync</span>
+<span class="text-xs font-bold text-secondary uppercase tracking-widest">Generating Strategy Draft...</span>
+</div>
+<p class="leading-relaxed text-[15px]">Understood. I'm aligning the sensor specifications with the EU directive for Real-time Emissions Monitoring. I've populated a provisional draft in the Canvas to your right.</p>
+<div class="mt-4 p-4 bg-surface-container-highest/30 rounded-xl border border-outline-variant/10">
+<div class="flex items-center justify-between">
+<span class="text-sm font-medium">Methodology_Draft_V1.pdf</span>
+<span class="material-symbols-outlined text-primary">download</span>
+</div>
+</div>
+</div>
+<span class="mt-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant opacity-40 ml-1">AI Curator • 10:26 AM</span>
+</div>
+</div>
+<!-- Chat Input Bar -->
+<div class="p-8 z-10">
+<div class="relative flex items-center">
+<input class="w-full bg-white dark:bg-slate-800 rounded-full py-5 pl-8 pr-32 border-none focus:ring-2 focus:ring-primary/20 text-[15px] shadow-sm" placeholder="Ask anything about the grant requirements..." type="text"/>
+<div class="absolute right-4 flex items-center gap-2">
+<button class="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">attach_file</span>
+</button>
+<button class="bg-primary-container text-white p-3 rounded-full flex items-center justify-center hover:translate-y-[-1px] transition-transform">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">send</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Right Panel: Document Canvas (45%) -->
+<section class="w-[45%] flex flex-col bg-surface-container-lowest rounded-lg shadow-[0_20px_40px_rgba(0,0,0,0.02)] border border-outline-variant/10 overflow-hidden">
+<!-- Progress Header -->
+<div class="p-8 border-b border-surface-container-low">
+<div class="flex items-center justify-between mb-8">
+<h3 class="font-bold text-xl tracking-tight">Grant Proposal Canvas</h3>
+<div class="flex gap-2">
+<button class="px-4 py-2 text-xs font-bold uppercase tracking-widest text-primary-container hover:bg-primary-fixed transition-colors rounded-full">Save Draft</button>
+<button class="px-6 py-2 text-xs font-bold uppercase tracking-widest bg-primary text-white rounded-full">Review Final</button>
+</div>
+</div>
+<!-- Workflow Progress -->
+<div class="flex items-center justify-between relative">
+<div class="absolute top-1/2 left-0 w-full h-[2px] bg-surface-container-high -translate-y-1/2 -z-0"></div>
+<div class="relative z-10 flex flex-col items-center gap-2">
+<div class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold">
+<span class="material-symbols-outlined text-[18px]">check</span>
+</div>
+<span class="text-[10px] font-bold uppercase tracking-widest text-on-surface">Analysis</span>
+</div>
+<div class="relative z-10 flex flex-col items-center gap-2">
+<div class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold">
+<span class="material-symbols-outlined text-[18px]">check</span>
+</div>
+<span class="text-[10px] font-bold uppercase tracking-widest text-on-surface">Strategy</span>
+</div>
+<div class="relative z-10 flex flex-col items-center gap-2">
+<div class="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold ring-4 ring-primary-fixed">
+<span class="material-symbols-outlined text-[20px]">edit</span>
+</div>
+<span class="text-[10px] font-bold uppercase tracking-widest text-primary">Drafting</span>
+</div>
+<div class="relative z-10 flex flex-col items-center gap-2 opacity-30">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest text-on-surface-variant flex items-center justify-center text-sm font-bold">
+                                4
+                            </div>
+<span class="text-[10px] font-bold uppercase tracking-widest">Review</span>
+</div>
+</div>
+</div>
+<!-- Proposal Content -->
+<div class="flex-1 overflow-y-auto p-10 space-y-12">
+<!-- Section 1 -->
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<h4 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Section 1.1: Project Summary</h4>
+<span class="px-3 py-1 text-[10px] font-bold border-2 border-yellow-400 text-yellow-700 bg-yellow-50 rounded-full">PROVISIONAL</span>
+</div>
+<div class="space-y-3">
+<div class="h-4 w-full bg-surface-container-low rounded-full"></div>
+<div class="h-4 w-[90%] bg-surface-container-low rounded-full"></div>
+<div class="h-4 w-[95%] bg-surface-container-low rounded-full"></div>
+</div>
+</div>
+<!-- Section 2 (Active Focus) -->
+<div class="space-y-6">
+<div class="flex items-center justify-between">
+<h4 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Section 2.4: Technical Methodology</h4>
+<span class="px-3 py-1 text-[10px] font-bold border-2 border-yellow-400 text-yellow-700 bg-yellow-50 rounded-full uppercase">Provisional</span>
+</div>
+<div class="p-6 rounded-2xl bg-surface-container-low/50 border border-primary/10 relative">
+<div class="absolute -left-2 top-8 w-1 h-12 bg-primary rounded-full"></div>
+<h5 class="font-bold text-on-surface mb-3">Adaptive Sensor Network Topology</h5>
+<p class="text-[14px] text-on-surface-variant leading-relaxed">
+                                The proposed infrastructure utilizes a decentralized mesh network of carbon capture sensors. Each node operates on a low-latency protocol specifically designed for high-resolution atmospheric data ingestion...
+                            </p>
+<div class="mt-6 grid grid-cols-2 gap-4">
+<div class="h-32 bg-surface-container-high rounded-xl flex items-center justify-center">
+<span class="material-symbols-outlined text-outline text-3xl">bar_chart</span>
+</div>
+<div class="h-32 bg-surface-container-high rounded-xl flex items-center justify-center">
+<span class="material-symbols-outlined text-outline text-3xl">hub</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Section 3 -->
+<div class="space-y-4 opacity-40">
+<div class="flex items-center justify-between">
+<h4 class="text-xs font-bold uppercase tracking-widest">Section 3.0: Impact Assessment</h4>
+</div>
+<div class="space-y-3">
+<div class="h-4 w-full bg-surface-container-low rounded-full"></div>
+<div class="h-4 w-1/2 bg-surface-container-low rounded-full"></div>
+</div>
+</div>
+</div>
+</section>
+</main>
+</div>
+<!-- Floating AI Sparkle Accent (Decorative) -->
+<div class="fixed top-[-10%] right-[-10%] w-[400px] h-[400px] bg-secondary opacity-[0.03] blur-[120px] rounded-full pointer-events-none"></div>
+<div class="fixed bottom-[-10%] left-[-10%] w-[300px] h-[300px] bg-primary opacity-[0.03] blur-[100px] rounded-full pointer-events-none"></div>
+</body></html>

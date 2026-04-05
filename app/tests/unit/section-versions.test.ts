@@ -171,6 +171,108 @@ describe('persistSectionChanges', () => {
       toVersion: 3,
     });
   });
+
+  it('writes a new version when title changes even if content is unchanged', async () => {
+    const insertedVersions: unknown[] = [];
+
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+          const tx = {
+            ...mockInsertChain(insertedVersions),
+            select: vi.fn().mockReturnValue({
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockResolvedValue([{ version: 1, content: 'Same text' }]),
+                }),
+              }),
+            }),
+          };
+          return fn(tx);
+        }),
+      },
+    }));
+
+    vi.doMock('@/lib/legal/audit', () => ({
+      logAudit: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('@/lib/logger', () => ({
+      logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+    }));
+
+    const { persistSectionChanges } = await import('@/lib/ai/orchestrator/section-versions');
+
+    const previous = [{
+      id: 'context', title: 'Old title', content: 'Same text', order: 1,
+      source: 'generated' as const,
+      state: 'approved' as const, currentVersion: 1, versionCount: 1,
+      contentHash: hash('Same text'),
+      lastStateChangeAt: '2026-04-05T00:00:00Z', lastStateChangeBy: USER_ID,
+      metadata: { model: 'gpt-5.4', provider: 'openai', tokensIn: 100, tokensOut: 50, latencyMs: 200, retryCount: 0, fallbackUsed: false, generatedAt: '2026-04-05T00:00:00Z', checksum: 'abc' },
+    }];
+
+    const newSections = [{ ...previous[0], title: 'New title' }];
+
+    const enriched = await persistSectionChanges({
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      previousSections: previous,
+      newSections,
+      reason: 'rename section',
+    });
+
+    expect(insertedVersions).toHaveLength(1);
+    expect((insertedVersions[0] as { title: string }).title).toBe('New title');
+    expect(enriched[0].currentVersion).toBe(2);
+    expect(enriched[0].versionCount).toBe(2);
+    expect(enriched[0].state).toBe('draft');
+  });
+
+  it('preserves prior metadata when only metadata changes', async () => {
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+          const tx = mockInsertChain([]);
+          return fn(tx);
+        }),
+      },
+    }));
+
+    vi.doMock('@/lib/legal/audit', () => ({
+      logAudit: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('@/lib/logger', () => ({
+      logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+    }));
+
+    const { persistSectionChanges } = await import('@/lib/ai/orchestrator/section-versions');
+
+    const previous = [{
+      id: 'context', title: 'Context', content: 'Same text', order: 1,
+      source: 'generated' as const,
+      state: 'approved' as const, currentVersion: 2, versionCount: 2,
+      contentHash: hash('Same text'),
+      lastStateChangeAt: '2026-04-05T00:00:00Z', lastStateChangeBy: USER_ID,
+      metadata: { model: 'old-model', provider: 'openai', tokensIn: 100, tokensOut: 50, latencyMs: 200, retryCount: 0, fallbackUsed: false, generatedAt: '2026-04-05T00:00:00Z', checksum: 'abc' },
+    }];
+
+    const newSections = [{
+      ...previous[0],
+      metadata: { ...previous[0].metadata, generatedAt: '2026-04-06T00:00:00Z', latencyMs: 999 },
+    }];
+
+    const enriched = await persistSectionChanges({
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      previousSections: previous,
+      newSections,
+      reason: 'metadata drift only',
+    });
+
+    expect(enriched[0].currentVersion).toBe(2);
+    expect(enriched[0].versionCount).toBe(2);
+    expect(enriched[0].metadata).toEqual(previous[0].metadata);
+  });
 });
 
 describe('transitionSectionState', () => {

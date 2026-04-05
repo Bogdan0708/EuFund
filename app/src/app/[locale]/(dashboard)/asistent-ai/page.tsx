@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { motion } from 'motion/react';
 import { diffWordsWithSpace } from 'diff';
+import { bootstrapCSRFToken, csrfFetch } from '@/lib/csrf/client';
 import { useOrchestrator } from '@/hooks/useOrchestrator';
 import { Icon } from '@/components/ui/ds-icon';
 import { canvasSlideIn } from '@/lib/motion';
@@ -490,7 +491,7 @@ function SectionHistoryPanel({
       }
     })();
     return () => { cancelled = true; };
-  }, [sessionId, sectionId]);
+  }, [sessionId, sectionId, currentVersion]);
 
   const currentContent = versions.find((v) => v.version === currentVersion)?.content ?? '';
 
@@ -762,7 +763,38 @@ function ProposalTabContent({
 }) {
   const [expandedHistorySection, setExpandedHistorySection] = useState<string | null>(null);
   const [mutating, setMutating] = useState<string | null>(null);
-  const [sectionVersioningEnabled, setSectionVersioningEnabled] = useState(true);
+  const [sectionVersioningEnabled, setSectionVersioningEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!activeSessionId || !proposalSections || proposalSections.length === 0) {
+      setSectionVersioningEnabled(false);
+      return;
+    }
+
+    const firstSectionId = proposalSections[0]?.id;
+    if (!firstSectionId) {
+      setSectionVersioningEnabled(false);
+      return;
+    }
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/ai/orchestrator/sessions/${activeSessionId}/sections/${firstSectionId}/versions`,
+        );
+        if (cancelled) return;
+        setSectionVersioningEnabled(res.ok);
+      } catch {
+        if (!cancelled) setSectionVersioningEnabled(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSessionId, proposalSections]);
 
   const handleStateChange = async (
     sectionId: string,
@@ -772,7 +804,8 @@ function ProposalTabContent({
     if (!activeSessionId || mutating) return;
     setMutating(sectionId);
     try {
-      const res = await fetch(
+      await bootstrapCSRFToken();
+      const res = await csrfFetch(
         `/api/ai/orchestrator/sessions/${activeSessionId}/sections/${sectionId}/state`,
         {
           method: 'POST',
@@ -797,7 +830,8 @@ function ProposalTabContent({
     if (!activeSessionId || mutating) return;
     setMutating(sectionId);
     try {
-      const res = await fetch(
+      await bootstrapCSRFToken();
+      const res = await csrfFetch(
         `/api/ai/orchestrator/sessions/${activeSessionId}/sections/${sectionId}/rollback`,
         {
           method: 'POST',
@@ -846,13 +880,15 @@ function ProposalTabContent({
     );
   }
 
+  const sortedSections = [...proposalSections].sort((a, b) => a.order - b.order);
+  const versioningUiEnabled = sectionVersioningEnabled === true;
+
   return (
     <div className="space-y-4">
-      {sectionVersioningEnabled && (
+      {versioningUiEnabled && (
         <SectionProgressHeader sections={proposalSections} t={t} />
       )}
-        {proposalSections
-          .sort((a, b) => a.order - b.order)
+        {sortedSections
           .map((section) => {
             const displayState: SectionState | 'failed' = section.source === 'failed' ? 'failed' : section.state;
             const badgeClass = STATE_BADGE_STYLES[displayState];
@@ -897,7 +933,7 @@ function ProposalTabContent({
                   </div>
                 )}
 
-                {sectionVersioningEnabled ? (
+                {versioningUiEnabled ? (
                   <SectionActionButtons
                     section={section}
                     displayState={displayState}
@@ -922,7 +958,7 @@ function ProposalTabContent({
                   </div>
                 )}
 
-                {sectionVersioningEnabled && expandedHistorySection === section.id && (
+                {versioningUiEnabled && expandedHistorySection === section.id && (
                   <SectionHistoryPanel
                     sessionId={activeSessionId!}
                     sectionId={section.id}

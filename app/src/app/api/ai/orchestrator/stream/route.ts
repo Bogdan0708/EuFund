@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     return new Response('Session not found', { status: 404 })
   }
 
-  const lastEventId = req.headers.get('Last-Event-ID')
+  const lastEventId = req.headers.get('Last-Event-ID') ?? req.nextUrl.searchParams.get('lastEventId')
 
   const stream = new ReadableStream({
     start(controller) {
@@ -50,14 +50,25 @@ export async function GET(req: NextRequest) {
               .orderBy(asc(workflowMessages.createdAt))
 
             for (const msg of replayMessages) {
+              if (msg.eventId !== null) {
+                try {
+                  const replayEvent = JSON.parse(msg.content)
+                  controller.enqueue(encoder.encode(`id: ${msg.eventId}\ndata: ${JSON.stringify(replayEvent)}\n\n`))
+                  continue
+                } catch {
+                  // Fall through to best-effort legacy replay payload below.
+                }
+              }
+
               const replayEvent = {
                 type: msg.role === 'user' ? 'replay_user' : 'replay_assistant',
+                eventId: msg.eventId,
                 content: msg.content,
                 step: msg.step,
                 eventType: msg.eventType,
                 metadata: msg.metadata,
               }
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(replayEvent)}\n\n`))
+              controller.enqueue(encoder.encode(`id: ${msg.eventId ?? ''}\ndata: ${JSON.stringify(replayEvent)}\n\n`))
             }
           } catch { /* replay is best-effort */ }
         })()
@@ -87,7 +98,7 @@ export async function GET(req: NextRequest) {
               const event = JSON.parse(message)
               controller.enqueue(encoder.encode(`id: ${event.eventId}\ndata: ${message}\n\n`))
 
-              if (event.type === 'done' || event.type === 'error') {
+              if (event.type === 'error') {
                 subscribed = false
                 sub.unsubscribe(channel)
                 sub.disconnect()

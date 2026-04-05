@@ -106,6 +106,9 @@ describe('processMessage persistSectionChanges integration', () => {
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       persistSectionChanges: persistSpy,
     }))
+    vi.doMock('@/lib/feature-flags', () => ({
+      isFeatureEnabled: vi.fn().mockResolvedValue(true),
+    }))
 
     // Mock the agent that will run for step 5 (buildAgent) to return the
     // new sections and no checkpoint — simulating post-completion edit flow
@@ -245,6 +248,9 @@ describe('processMessage persistSectionChanges integration', () => {
 
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       persistSectionChanges: persistSpy,
+    }))
+    vi.doMock('@/lib/feature-flags', () => ({
+      isFeatureEnabled: vi.fn().mockResolvedValue(true),
     }))
 
     // Mock the build agent (step 5) for the active-session path.

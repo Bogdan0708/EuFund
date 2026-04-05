@@ -2,7 +2,13 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
-import type { MatchedCall, ActionPlan, SectionResult, WorkflowContext } from '@/lib/ai/orchestrator/types';
+import type {
+  ActionPlan,
+  MatchedCall,
+  SectionResult,
+  SSEEvent,
+  WorkflowContext,
+} from '@/lib/ai/orchestrator/types';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -34,24 +40,6 @@ function deriveActiveTab(step: number): 'calls' | 'plan' | 'proposal' {
   if (step >= 4) return 'plan';
   return 'calls';
 }
-
-type SSEEvent = { eventId: number } & (
-  | { type: 'step_start'; step: number; label: string }
-  | { type: 'step_progress'; step: number; message: string }
-  | { type: 'ai_chunk'; step: number; content: string }
-  | {
-      type: 'checkpoint';
-      step: number;
-      data: CheckpointData;
-      context?: Partial<WorkflowContext>;
-      autoApprove?: boolean;
-    }
-  | { type: 'step_complete'; step: number; summary: string; context?: Partial<WorkflowContext> }
-  | { type: 'discovery'; items: unknown[] }
-  | { type: 'error'; step: number; message: string; retryable: boolean }
-  | { type: 'done'; projectId?: string; completionStatus?: string }
-  | { type: 'section_updated'; sectionId: string; section: SectionResult }
-);
 
 type Status = 'idle' | 'connecting' | 'streaming' | 'error';
 
@@ -130,9 +118,7 @@ export function useOrchestrator(locale: string) {
       es.onmessage = (event) => {
         try {
           const data: SSEEvent = JSON.parse(event.data);
-          if (data.type !== 'section_updated') {
-            lastEventIdRef.current = data.eventId;
-          }
+          lastEventIdRef.current = data.eventId;
           handleSSEEvent(data);
         } catch {
           // Ignore malformed events
@@ -324,11 +310,6 @@ export function useOrchestrator(locale: string) {
         flushChunkBuffer();
         setIsStreaming(false);
         setStatus('idle');
-        // Close the SSE connection — session is complete
-        if (eventSourceRef.current) {
-          eventSourceRef.current.close();
-          eventSourceRef.current = null;
-        }
         // Add completion message so UI can render a summary card
         const cStatus = 'completionStatus' in event ? (event.completionStatus ?? 'complete') : 'complete';
         setMessages((prev) => [
@@ -349,10 +330,6 @@ export function useOrchestrator(locale: string) {
       }
 
       case 'section_updated': {
-        // Update the matching section in place inside canvasState.
-        // Note: the lastEventIdRef skip is handled in es.onmessage above,
-        // not here — section_updated events use Date.now()-based eventIds
-        // that would poison the orchestrator's int4 replay counter if tracked.
         setCanvasState((prev) => {
           if (!prev.proposalSections) return prev;
           const idx = prev.proposalSections.findIndex((s) => s.id === event.sectionId);
