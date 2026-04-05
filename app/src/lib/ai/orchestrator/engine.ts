@@ -6,6 +6,7 @@ import { STEP_LABELS } from './types'
 import { logger } from '@/lib/logger'
 import { runPostBuildQA } from './qa'
 import { buildSectionSpecs } from './section-specs'
+import { persistSectionChanges } from './section-versions'
 
 const log = logger.child({ component: 'orchestrator-engine' })
 
@@ -185,7 +186,6 @@ export async function processMessage(
 
     // Phase 1: persist version changes if the agent produced sections
     if (result.data.projectSections) {
-      const { persistSectionChanges } = await import('./section-versions')
       const enrichedSections = await persistSectionChanges({
         sessionId,
         userId: ctx.userId,
