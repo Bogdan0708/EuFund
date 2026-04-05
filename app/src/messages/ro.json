@@ -962,6 +962,7 @@
     "editProfile": "Editează Profil",
     "curatorIntelligence": "Inteligență Curator",
     "llmModel": "Model LLM",
+    "llmModelHint": "Setarea determină modelul folosit de asistentul AI pentru generare. „Auto\" alege automat cel mai potrivit model pentru fiecare pas — recomandat pentru calitate maximă.",
     "autoApproveLabel": "Auto-Aprobare Propuneri",
     "autoApproveDescription": "AI trimite automat ciornele",
     "subscriptionStatus": "Stare Abonament",
@@ -977,6 +978,8 @@
     "privacyPolicy": "Politica de Confidențialitate",
     "termsOfService": "Termeni și Condiții",
     "complianceHub": "Hub Conformitate",
+    "manageCookies": "Gestionează cookies",
+    "languageInTopBar": "Limba se schimbă din bara de sus",
     "footerBuild": "FondEU - 2024 - Build v4.2.0-Alpha",
     "priceFree": "Gratuit",
     "priceMonthly": "€{price}/lună"
@@ -1061,11 +1064,9 @@
     "steps": {
       "1": "Îmbunătățire idee",
       "2": "Potrivire apeluri",
-      "3": "Validare status",
-      "4": "Cercetare cerințe",
-      "5": "Actualizare cunoștințe",
-      "6": "Plan de acțiune",
-      "7": "Construire proiect"
+      "3": "Cercetare cerințe",
+      "4": "Plan de acțiune",
+      "5": "Construire proiect"
     },
     "tabs": {
       "calls": "Apeluri",
@@ -1103,7 +1104,10 @@
       "waiting": "Se așteaptă propunerea...",
       "generated": "Generat AI",
       "edited": "Editat",
+      "failed": "Eșuat",
       "improveSection": "Îmbunătățește cu AI",
+      "regenerateSection": "Regenerează secțiunea",
+      "failedHint": "Această secțiune nu a putut fi generată. Apasă butonul de mai jos pentru a încerca din nou.",
       "sectionOrder": "Secțiunea {order}",
       "stateBadgeDraft": "Ciornă",
       "stateBadgeReviewed": "Verificat",
@@ -1135,6 +1139,16 @@
       "approveFailedDisabledTooltip": "Nu poți aproba o secțiune eșuată. Regenerează mai întâi.",
       "integrityMismatchBanner": "Verificarea integrității acestei secțiuni a eșuat. Contactează suportul înainte de a continua."
     },
+    "completion": {
+      "title": "Proiect finalizat",
+      "titleReview": "Proiect necesită revizuire",
+      "success": "Toate cele {total} secțiuni au fost generate cu succes.",
+      "needsReview": "Cele {total} secțiuni au fost generate, dar unele necesită revizuire manuală.",
+      "withErrors": "{generated} din {total} secțiuni generate. {failed} secțiuni au eșuat.",
+      "failedHint": "Poți regenera secțiunile eșuate din tab-ul Propunere din dreapta.",
+      "reviewHint": "Verifică secțiunile în tab-ul Propunere — unele pot necesita completări sau ajustări.",
+      "editHint": "Poți edita sau îmbunătăți orice secțiune — scrie un mesaj mai jos."
+    },
     "checkpoint": {
       "continue": "Continuă",
       "modify": "Modifică",
@@ -1154,22 +1168,27 @@
   "notifications": {
     "title": "Notificări",
     "markAllRead": "Marchează toate ca citite",
-    "viewAll": "Vezi toate notificările",
-    "matchTitle": "Nou apel de finanțare potrivit profilului tău",
-    "matchDescription": "Un nou grant pentru Energie Verde a fost publicat, compatibil cu proiectele tale active.",
-    "statusTitle": "Proiectul 'Digitalizăm Smart' actualizat la În Lucru",
-    "statusDescription": "Evaluarea administrativă este completă. Aplicația ta este acum în evaluare tehnică.",
-    "aiTitle": "Analiza AI completă pentru Horizon-2024",
-    "aiDescription": "Curatorul nostru AI a terminat scanarea documentației de licitație de 200 de pagini pentru riscuri.",
-    "warningTitle": "Reamintire: Apelul PNRR se închide în 5 zile",
-    "warningDescription": "Depunerea finală pentru grantul de modernizare a infrastructurii este scadentă vineri.",
-    "twoHoursAgo": "acum 2h",
-    "yesterday": "ieri",
-    "twoDaysAgo": "acum 2 zile",
-    "threeDaysAgo": "acum 3 zile",
-    "aiCuratorTitle": "Consilier AI Curator",
-    "aiCuratorMessage": "Am identificat un risc de conformitate în proiectul tău Horizon-2024 privind secțiunea 'Impact'. Formularea actuală nu respectă pe deplin noile criterii de sustenabilitate.",
-    "aiCuratorAction": "Repară cu sugestia AI"
+    "emptyTitle": "Nicio notificare nouă",
+    "emptyDescription": "Te vom anunța aici când apar apeluri noi de finanțare sau actualizări pentru proiectele tale."
+  },
+  "topNav": {
+    "notifications": "Notificări",
+    "help": "Ajutor",
+    "language": "Limbă"
+  },
+  "help": {
+    "title": "Cum te pot ajuta?",
+    "subtitle": "Scurtături către cele mai importante funcții",
+    "aiAssistantTitle": "Asistent AI Curator",
+    "aiAssistantDescription": "Începe o conversație ghidată pentru a genera o propunere de finanțare completă",
+    "projectsTitle": "Proiectele mele",
+    "projectsDescription": "Vezi, editează și gestionează proiectele tale de finanțare",
+    "fundingTitle": "Oportunități de finanțare",
+    "fundingDescription": "Explorează apelurile de finanțare deschise potrivite profilului tău",
+    "legislationTitle": "Bază de cunoștințe",
+    "legislationDescription": "Ghiduri, reglementări și documentație oficială",
+    "commandPalette": "Paletă de comenzi",
+    "contactSupport": "Contactează suportul"
   },
   "notFound": {
     "title": "Pagina nu a fost găsită",

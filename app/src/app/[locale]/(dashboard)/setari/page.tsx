@@ -26,12 +26,14 @@ interface SessionUser {
   tier?: string;
 }
 
+// Value strings must match the ai_model_preference enum in db/schema.ts.
+// Labels reflect the actual models invoked by the gateway (see gateway.ts).
 const AI_MODEL_OPTIONS = [
-  { value: 'auto', label: 'Auto (Recommended)' },
-  { value: 'claude-sonnet', label: 'Claude Sonnet' },
-  { value: 'gemini-pro', label: 'Gemini Pro' },
-  { value: 'gpt-4o', label: 'GPT-4o' },
-  { value: 'perplexity', label: 'Perplexity' },
+  { value: 'auto', label: 'Auto — Best model per step (recommended)', provider: 'Mixed' },
+  { value: 'claude-sonnet', label: 'Claude Sonnet 4.6', provider: 'Anthropic' },
+  { value: 'gpt-4o', label: 'GPT-5.4', provider: 'OpenAI' },
+  { value: 'gemini-pro', label: 'Gemini 2.5 Flash', provider: 'Google' },
+  { value: 'perplexity', label: 'Perplexity Sonar Pro', provider: 'Perplexity' },
 ];
 
 const RESPONSE_STYLE_OPTIONS = [
@@ -47,10 +49,44 @@ function getInitials(name?: string | null): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+// GDPR toggle preferences are persisted locally via localStorage.
+// Real consent records live in the audit trail via /api/auth/consent —
+// these toggles are workstation-level conveniences, not legal consent
+// bookkeeping (which is handled by the cookie banner + consent API).
+const GDPR_STORAGE_KEY = 'fondeu:gdpr-prefs:v1';
+
+interface GdprPrefs {
+  dataRetention: boolean;
+  crossBorder: boolean;
+}
+
+function loadGdprPrefs(): GdprPrefs {
+  if (typeof window === 'undefined') return { dataRetention: true, crossBorder: false };
+  try {
+    const raw = window.localStorage.getItem(GDPR_STORAGE_KEY);
+    if (!raw) return { dataRetention: true, crossBorder: false };
+    const parsed = JSON.parse(raw) as Partial<GdprPrefs>;
+    return {
+      dataRetention: parsed.dataRetention ?? true,
+      crossBorder: parsed.crossBorder ?? false,
+    };
+  } catch {
+    return { dataRetention: true, crossBorder: false };
+  }
+}
+
+function saveGdprPrefs(prefs: GdprPrefs): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(GDPR_STORAGE_KEY, JSON.stringify(prefs));
+  } catch {
+    // Best-effort — storage quota/disabled cookies shouldn't crash the page
+  }
+}
+
 /* ---------- page component ---------- */
-export default function SetariPage({ params }: { params: { locale: string } }) {
+export default function SetariPage({ params: _params }: { params: { locale: string } }) {
   const t = useTranslations('settings');
-  const { locale } = params;
 
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [preferences, setPreferences] = useState<Preferences | null>(null);
@@ -61,9 +97,19 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState(false);
 
-  // GDPR toggles — local state only (matching existing behaviour)
-  const [dataRetentionEnabled, setDataRetentionEnabled] = useState(true);
-  const [crossBorderEnabled, setCrossBorderEnabled] = useState(false);
+  // GDPR toggles persisted to localStorage (legal consent lives in audit DB)
+  const [gdprPrefs, setGdprPrefs] = useState<GdprPrefs>({ dataRetention: true, crossBorder: false });
+  useEffect(() => {
+    setGdprPrefs(loadGdprPrefs());
+  }, []);
+
+  const updateGdpr = (key: keyof GdprPrefs) => {
+    setGdprPrefs((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      saveGdprPrefs(next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     Promise.all([
@@ -95,11 +141,15 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
     setSaveError(false);
     try {
       await bootstrapCSRFToken();
-      await csrfFetch('/api/v1/user/preferences', {
+      const res = await csrfFetch('/api/v1/user/preferences', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(preferences),
       });
+      // csrfFetch returns the Response without throwing on non-2xx — check explicitly
+      if (!res.ok) {
+        throw new Error(`Save failed: HTTP ${res.status}`);
+      }
       setSavedPreferences({ ...preferences });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
@@ -110,8 +160,6 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
       setSaving(false);
     }
   };
-
-  const otherLocale = locale === 'ro' ? 'en' : 'ro';
 
   if (loading) {
     return (
@@ -161,21 +209,9 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
                 {t('personalIdentity')}
               </span>
             </div>
-            {/* Language switcher */}
-            <div className="flex items-center space-x-1">
-              <button
-                onClick={() => { window.location.href = `/${locale}/setari`; }}
-                className={`px-3 py-1 text-xs font-semibold rounded-full transition-colors ${locale === 'ro' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-primary'}`}
-              >
-                RO
-              </button>
-              <button
-                onClick={() => { window.location.href = `/${otherLocale}/setari`; }}
-                className={`px-3 py-1 text-xs font-semibold rounded-full transition-colors ${locale === 'en' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-primary'}`}
-              >
-                EN
-              </button>
-            </div>
+            <span className="text-[10px] font-medium text-on-surface-variant opacity-60 uppercase tracking-widest">
+              {t('languageInTopBar')}
+            </span>
           </div>
           <div className="flex items-center space-x-6">
             <div className="relative group">
@@ -242,12 +278,14 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
               </label>
               <div className="relative">
                 <select
-                  className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 appearance-none focus:ring-2 focus:ring-primary/20 text-on-surface font-medium"
+                  className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 pr-10 appearance-none focus:ring-2 focus:ring-primary/20 text-on-surface font-medium"
                   value={preferences?.defaultModel || 'auto'}
                   onChange={e => setPreferences(p => p ? { ...p, defaultModel: e.target.value } : p)}
                 >
                   {AI_MODEL_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
                   ))}
                 </select>
                 <Icon
@@ -255,6 +293,9 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
                   className="absolute right-4 top-3 pointer-events-none opacity-40"
                 />
               </div>
+              <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                {t('llmModelHint')}
+              </p>
             </div>
             {/* Response style */}
             <div className="flex flex-col space-y-2">
@@ -330,8 +371,8 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
                 <input
                   type="checkbox"
                   className="sr-only peer"
-                  checked={dataRetentionEnabled}
-                  onChange={() => setDataRetentionEnabled(!dataRetentionEnabled)}
+                  checked={gdprPrefs.dataRetention}
+                  onChange={() => updateGdpr('dataRetention')}
                 />
                 <div className="w-11 h-6 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-on-surface" />
               </label>
@@ -350,8 +391,8 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
                 <input
                   type="checkbox"
                   className="sr-only peer"
-                  checked={crossBorderEnabled}
-                  onChange={() => setCrossBorderEnabled(!crossBorderEnabled)}
+                  checked={gdprPrefs.crossBorder}
+                  onChange={() => updateGdpr('crossBorder')}
                 />
                 <div className="w-11 h-6 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-on-surface" />
               </label>
@@ -363,15 +404,35 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
       {/* ── Footer Section ── */}
       <div className="mt-32 flex flex-col md:flex-row justify-between items-center opacity-40 text-[12px] font-medium text-on-surface-variant uppercase tracking-widest gap-6">
         <div className="flex space-x-8">
-          <a className="hover:text-primary transition-colors" href="#">
+          <a
+            className="hover:text-primary hover:opacity-100 transition-all"
+            href="mailto:support@platformafinantare.eu?subject=Privacy%20Policy%20Request"
+          >
             {t('privacyPolicy')}
           </a>
-          <a className="hover:text-primary transition-colors" href="#">
+          <a
+            className="hover:text-primary hover:opacity-100 transition-all"
+            href="mailto:support@platformafinantare.eu?subject=Terms%20of%20Service%20Request"
+          >
             {t('termsOfService')}
           </a>
-          <a className="hover:text-primary transition-colors" href="#">
-            {t('complianceHub')}
-          </a>
+          <button
+            type="button"
+            className="hover:text-primary hover:opacity-100 transition-all uppercase tracking-widest cursor-pointer"
+            onClick={() => {
+              // Force-show the banner even when backend consent records exist
+              // or the user previously dismissed it. cookie-consent.tsx reads
+              // this flag on mount and bypasses both the stored-dismissal
+              // check and the "has records → hide" logic. The banner clears
+              // this flag when the user makes a fresh choice.
+              if (typeof window !== 'undefined') {
+                window.localStorage.setItem('eufund:cookie-consent-force-show', '1');
+                window.location.reload();
+              }
+            }}
+          >
+            {t('manageCookies')}
+          </button>
         </div>
         <div>{t('footerBuild')}</div>
       </div>

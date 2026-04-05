@@ -93,7 +93,7 @@ export default function LocaleNotFound() {
 
       {/* Branding footer */}
       <footer className="fixed bottom-8 w-full text-center">
-        <div className="flex items-center justify-center gap-2 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-500">
+        <div className="flex items-center justify-center gap-2 opacity-70 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-500">
           <span className="text-xl font-black tracking-tighter text-on-surface">FondEU</span>
           <div className="w-1 h-1 bg-primary rounded-full" />
           <span className="text-sm font-medium text-on-surface-variant tracking-tight">

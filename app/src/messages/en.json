@@ -962,6 +962,7 @@
     "editProfile": "Edit Profile",
     "curatorIntelligence": "Curator Intelligence",
     "llmModel": "LLM Model",
+    "llmModelHint": "Determines which model the AI assistant uses for generation. \"Auto\" picks the best model per step — recommended for maximum quality.",
     "autoApproveLabel": "Auto-Approve Proposals",
     "autoApproveDescription": "AI submits drafts automatically",
     "subscriptionStatus": "Subscription Status",
@@ -977,6 +978,8 @@
     "privacyPolicy": "Privacy Policy",
     "termsOfService": "Terms of Service",
     "complianceHub": "Compliance Hub",
+    "manageCookies": "Manage cookies",
+    "languageInTopBar": "Language switches from the top bar",
     "footerBuild": "FondEU - 2024 - Build v4.2.0-Alpha",
     "priceFree": "Free",
     "priceMonthly": "€{price}/month"
@@ -1061,11 +1064,9 @@
     "steps": {
       "1": "Enhance idea",
       "2": "Match calls",
-      "3": "Validate status",
-      "4": "Research requirements",
-      "5": "Update knowledge",
-      "6": "Action plan",
-      "7": "Build project"
+      "3": "Research requirements",
+      "4": "Action plan",
+      "5": "Build project"
     },
     "tabs": {
       "calls": "Calls",
@@ -1103,7 +1104,10 @@
       "waiting": "Waiting for proposal...",
       "generated": "AI Generated",
       "edited": "Edited",
+      "failed": "Failed",
       "improveSection": "Improve with AI",
+      "regenerateSection": "Regenerate section",
+      "failedHint": "This section could not be generated. Click the button below to try again.",
       "sectionOrder": "Section {order}",
       "stateBadgeDraft": "Draft",
       "stateBadgeReviewed": "Reviewed",
@@ -1135,6 +1139,16 @@
       "approveFailedDisabledTooltip": "Can't approve a failed section. Regenerate it first.",
       "integrityMismatchBanner": "This section's integrity check failed. Contact support before taking further action."
     },
+    "completion": {
+      "title": "Project complete",
+      "titleReview": "Project needs review",
+      "success": "All {total} sections were generated successfully.",
+      "needsReview": "All {total} sections were generated, but some need manual review.",
+      "withErrors": "{generated} of {total} sections generated. {failed} sections failed.",
+      "failedHint": "You can regenerate failed sections from the Proposal tab on the right.",
+      "reviewHint": "Check the sections in the Proposal tab — some may need additions or adjustments.",
+      "editHint": "You can edit or improve any section — type a message below."
+    },
     "checkpoint": {
       "continue": "Continue",
       "modify": "Modify",
@@ -1154,22 +1168,27 @@
   "notifications": {
     "title": "Notifications",
     "markAllRead": "Mark all read",
-    "viewAll": "View all notifications",
-    "matchTitle": "New funding call matches your profile",
-    "matchDescription": "A new Green Energy grant has been published that aligns with your active projects.",
-    "statusTitle": "Project 'Digitalizăm Smart' updated to In Progress",
-    "statusDescription": "The administrative review is complete. Your application is now under technical evaluation.",
-    "aiTitle": "AI analysis complete for Horizon-2024",
-    "aiDescription": "Our curator AI has finished scanning the 200-page tender documentation for risks.",
-    "warningTitle": "Deadline reminder: PNRR call closes in 5 days",
-    "warningDescription": "Final submission for the infrastructure modernization grant is due by Friday EOD.",
-    "twoHoursAgo": "2h ago",
-    "yesterday": "yesterday",
-    "twoDaysAgo": "2 days ago",
-    "threeDaysAgo": "3 days ago",
-    "aiCuratorTitle": "AI Curator Advisory",
-    "aiCuratorMessage": "I've identified a compliance risk in your Horizon-2024 draft regarding the 'Impact' section. The current wording doesn't fully meet the new sustainability criteria.",
-    "aiCuratorAction": "Fix with AI Suggestion"
+    "emptyTitle": "No new notifications",
+    "emptyDescription": "We'll let you know here when new funding calls or project updates arrive."
+  },
+  "topNav": {
+    "notifications": "Notifications",
+    "help": "Help",
+    "language": "Language"
+  },
+  "help": {
+    "title": "How can I help?",
+    "subtitle": "Shortcuts to the most important features",
+    "aiAssistantTitle": "AI Curator Assistant",
+    "aiAssistantDescription": "Start a guided conversation to generate a full funding proposal",
+    "projectsTitle": "My projects",
+    "projectsDescription": "View, edit and manage your funding projects",
+    "fundingTitle": "Funding opportunities",
+    "fundingDescription": "Browse open funding calls matched to your profile",
+    "legislationTitle": "Knowledge base",
+    "legislationDescription": "Guides, regulations and official documentation",
+    "commandPalette": "Command palette",
+    "contactSupport": "Contact support"
   },
   "notFound": {
     "title": "Page not found",

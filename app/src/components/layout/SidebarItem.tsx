@@ -21,7 +21,7 @@ export function SidebarItem({ href, icon, label, active = false, collapsed = fal
         rounded-full transition-all duration-300 hover:translate-y-[-1px]
         ${active
           ? 'text-[#0071E3]'
-          : 'text-[#414753] hover:text-slate-900 hover:bg-[#E3E2E7]'
+          : 'text-black hover:text-black hover:bg-[#E3E2E7]'
         }
       `}
     >

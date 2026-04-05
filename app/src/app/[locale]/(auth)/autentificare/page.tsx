@@ -224,7 +224,7 @@ export default function LoginPage() {
           <span>&copy; 2026 FondEU.</span>
           <div className="flex gap-4">
             <a className="hover:text-primary transition-colors" href={`/${locale}/confidentialitate`}>Privacy Policy</a>
-            <span className="text-on-surface/30">&bull;</span>
+            <span className="text-on-surface">&bull;</span>
             <a className="hover:text-primary transition-colors" href={`/${locale}/termeni`}>Terms of Service</a>
           </div>
         </div>

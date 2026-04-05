@@ -1,13 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/helpers'
 import { db } from '@/lib/db'
-import { workflowSessions } from '@/lib/db/schema'
+import { workflowSessions, userPreferences } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { processMessage, createSession } from '@/lib/ai/orchestrator/engine'
 import { createGatewayClient } from '@/lib/ai/orchestrator/gateway'
 import { createPubSubStream } from '@/lib/ai/orchestrator/pubsub'
 import { logger } from '@/lib/logger'
 import { getRedis } from '@/lib/redis/client'
+
+interface UserAIPrefs {
+  modelPreference?: string
+  responseStyle?: 'concise' | 'detailed' | 'technical'
+  autoApprove?: boolean
+}
+
+async function getUserAIPreferences(userId: string): Promise<UserAIPrefs> {
+  try {
+    const [prefs] = await db
+      .select({
+        defaultModel: userPreferences.defaultModel,
+        responseStyle: userPreferences.responseStyle,
+        autoApprove: userPreferences.autoApprove,
+      })
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, userId))
+      .limit(1)
+    if (!prefs) return {}
+    return {
+      modelPreference: prefs.defaultModel,
+      responseStyle: prefs.responseStyle as 'concise' | 'detailed' | 'technical' | undefined,
+      autoApprove: prefs.autoApprove,
+    }
+  } catch {
+    return {}
+  }
+}
 
 const log = logger.child({ component: 'orchestrator-message' })
 
@@ -44,16 +72,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'message or sessionId required' }, { status: 400 })
     }
 
+    // Load user's AI preferences once per request (used for both code paths)
+    const aiPrefs = await getUserAIPreferences(user.id)
+    const { modelPreference, responseStyle, autoApprove } = aiPrefs
+
     if (!sessionId) {
       // Create new session (no billing gates — single-user dev mode)
-      const session = await createSession(user.id, locale || 'ro', 'free')
+      const session = await createSession(user.id, locale || 'ro', 'free', responseStyle)
 
       // Process first message asynchronously
       const stream = createPubSubStream(session.id)
-      const gateway = createGatewayClient('fondeu')
-      log.info({ sessionId: session.id, userId: user.id }, 'New session created, processing message')
+      const gateway = createGatewayClient('fondeu', { modelPreference })
+      log.info({ sessionId: session.id, userId: user.id, modelPreference, responseStyle, autoApprove }, 'New session created, processing message')
       await acquireLock(session.id)
-      processMessage(session.id, message, stream, gateway).then(() => {
+      processMessage(session.id, message, stream, gateway, false, { responseStyle, autoApprove }).then(() => {
         releaseLock(session.id)
       }).catch((err) => {
         releaseLock(session.id)
@@ -85,9 +117,9 @@ export async function POST(req: NextRequest) {
 
     // Process message asynchronously
     const sseStream = createPubSubStream(sessionId)
-    const gateway = createGatewayClient('fondeu')
-    log.info({ sessionId, userId: user.id }, 'Resuming session, processing message')
-    processMessage(sessionId, message, sseStream, gateway).then(() => {
+    const gateway = createGatewayClient('fondeu', { modelPreference })
+    log.info({ sessionId, userId: user.id, modelPreference, responseStyle, autoApprove }, 'Resuming session, processing message')
+    processMessage(sessionId, message, sseStream, gateway, false, { responseStyle, autoApprove }).then(() => {
       releaseLock(sessionId)
     }).catch((err) => {
       releaseLock(sessionId)
