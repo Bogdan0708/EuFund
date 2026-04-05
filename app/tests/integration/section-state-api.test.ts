@@ -205,4 +205,79 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
     const response = await POST(request as any, { params: { sessionId: SESSION_ID, sectionId: 'context' } } as any);
     expect(response.status).toBe(401);
   });
+
+  it('returns 400 when expectedCurrentVersion is NaN', async () => {
+    mockOwnership();
+    mockLogger();
+    vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
+      transitionSectionState: vi.fn(),
+      SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
+    }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+
+    const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route');
+
+    const request = new Request('http://localhost/', {
+      method: 'POST',
+      body: JSON.stringify({ state: 'reviewed', expectedCurrentVersion: Number.NaN }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const response = await POST(request as any, { params: { sessionId: SESSION_ID, sectionId: 'context' } } as any);
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 400 when expectedCurrentVersion is negative or zero', async () => {
+    mockOwnership();
+    mockLogger();
+    vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
+      transitionSectionState: vi.fn(),
+      SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
+    }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+
+    const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route');
+
+    const requestZero = new Request('http://localhost/', {
+      method: 'POST',
+      body: JSON.stringify({ state: 'reviewed', expectedCurrentVersion: 0 }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const responseZero = await POST(requestZero as any, { params: { sessionId: SESSION_ID, sectionId: 'context' } } as any);
+    expect(responseZero.status).toBe(400);
+
+    const requestNegative = new Request('http://localhost/', {
+      method: 'POST',
+      body: JSON.stringify({ state: 'reviewed', expectedCurrentVersion: -1 }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const responseNegative = await POST(requestNegative as any, { params: { sessionId: SESSION_ID, sectionId: 'context' } } as any);
+    expect(responseNegative.status).toBe(400);
+  });
+
+  it('returns 401 when unauthenticated even with malformed body', async () => {
+    vi.doMock('@/lib/ai/orchestrator/require-owned-session', async () => {
+      const { Errors } = await import('@/lib/errors');
+      return {
+        requireOwnedSession: vi.fn().mockRejectedValue(Errors.unauthorized()),
+      };
+    });
+    mockLogger();
+    vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
+      transitionSectionState: vi.fn(),
+      SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
+    }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+
+    const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route');
+
+    const request = new Request('http://localhost/', {
+      method: 'POST',
+      body: 'not valid json',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const response = await POST(request as any, { params: { sessionId: SESSION_ID, sectionId: 'context' } } as any);
+    expect(response.status).toBe(401);
+  });
 });

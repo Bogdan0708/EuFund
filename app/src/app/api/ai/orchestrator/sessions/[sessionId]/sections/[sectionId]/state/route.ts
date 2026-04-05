@@ -24,18 +24,23 @@ export async function POST(
 ) {
   try {
     const { sessionId, sectionId } = ctx.params;
-    const body = await req.json().catch(() => null);
 
+    // Auth + UUID validation + ownership BEFORE body parsing.
+    // Unauthenticated or wrong-owner requests should return 401/404 even
+    // if the body is malformed, matching the codebase convention.
+    const { user } = await requireOwnedSession(sessionId);
+
+    const body = await req.json().catch(() => null);
     if (
       !body ||
       typeof body !== 'object' ||
       !ALLOWED_STATES.has(body.state) ||
-      typeof body.expectedCurrentVersion !== 'number'
+      typeof body.expectedCurrentVersion !== 'number' ||
+      !Number.isInteger(body.expectedCurrentVersion) ||
+      body.expectedCurrentVersion < 1
     ) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
-
-    const { user } = await requireOwnedSession(sessionId);
 
     const section = await transitionSectionState({
       sessionId,
@@ -43,10 +48,15 @@ export async function POST(
       toState: body.state,
       expectedCurrentVersion: body.expectedCurrentVersion,
       userId: user.id,
-      reason: body.reason,
+      reason: typeof body.reason === 'string' ? body.reason : undefined,
     });
 
-    // Broadcast to SSE subscribers so open client canvases refresh
+    // TODO(task-16): when the client handler lands, it must skip
+    // lastEventIdRef updates for section_updated events. Using Date.now()
+    // here is a placeholder — it's out-of-band relative to the orchestrator's
+    // monotonic per-session counter and would poison the replay cursor
+    // (workflow_messages.eventId is int4) if the client tracked it.
+    // See plan task 16.
     await publishEvent(sessionId, {
       eventId: Date.now(),
       type: 'section_updated',
