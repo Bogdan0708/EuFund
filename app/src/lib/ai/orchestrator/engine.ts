@@ -184,16 +184,24 @@ export async function processMessage(
 
     let updatedContext = { ...ctx, ...result.data } as typeof ctx
 
-    // Phase 1: persist version changes if the agent produced sections
+    // Phase 1: persist version changes if the agent produced sections (flag-gated)
     if (result.data.projectSections) {
-      const enrichedSections = await persistSectionChanges({
-        sessionId,
+      const { isFeatureEnabled } = await import('@/lib/feature-flags')
+      const versioningEnabled = await isFeatureEnabled('section_versioning', {
         userId: ctx.userId,
-        previousSections: ctx.projectSections,
-        newSections: result.data.projectSections as SectionResult[],
-        reason: isCompleted ? input : 'initial_generation',
+        tier: ctx.tier,
       })
-      updatedContext = { ...updatedContext, projectSections: enrichedSections }
+
+      if (versioningEnabled) {
+        const enrichedSections = await persistSectionChanges({
+          sessionId,
+          userId: ctx.userId,
+          previousSections: ctx.projectSections,
+          newSections: result.data.projectSections as SectionResult[],
+          reason: isCompleted ? input : 'initial_generation',
+        })
+        updatedContext = { ...updatedContext, projectSections: enrichedSections }
+      }
     }
 
     // Store assistant message

@@ -31,6 +31,14 @@ export async function POST(
     // if the body is malformed, matching the codebase convention.
     const { user, session } = await requireOwnedSession(sessionId);
 
+    // Phase 1 feature flag: return 404 if disabled so the endpoint behaves
+    // as if it doesn't exist from the client's perspective.
+    const { isFeatureEnabled } = await import('@/lib/feature-flags');
+    const enabled = await isFeatureEnabled('section_versioning', { userId: user.id });
+    if (!enabled) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
     const body = await req.json().catch(() => null);
     if (
       !body ||

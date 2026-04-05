@@ -18,6 +18,9 @@ function stubSection(overrides: Partial<Record<string, unknown>> = {}) {
 describe('Section state concurrency', () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.doMock('@/lib/feature-flags', () => ({
+      isFeatureEnabled: vi.fn().mockResolvedValue(true),
+    }));
   });
 
   function mockOwnership() {

@@ -762,6 +762,7 @@ function ProposalTabContent({
 }) {
   const [expandedHistorySection, setExpandedHistorySection] = useState<string | null>(null);
   const [mutating, setMutating] = useState<string | null>(null);
+  const [sectionVersioningEnabled, setSectionVersioningEnabled] = useState(true);
 
   const handleStateChange = async (
     sectionId: string,
@@ -780,6 +781,10 @@ function ProposalTabContent({
         },
       );
       if (!res.ok) {
+        if (res.status === 404) {
+          // Feature flag is off — degrade gracefully to pre-Phase-1 UI
+          setSectionVersioningEnabled(false);
+        }
         const err = await res.json().catch(() => null);
         console.error('state transition failed', err);
       }
@@ -801,6 +806,10 @@ function ProposalTabContent({
         },
       );
       if (!res.ok) {
+        if (res.status === 404) {
+          // Feature flag is off — degrade gracefully to pre-Phase-1 UI
+          setSectionVersioningEnabled(false);
+        }
         const err = await res.json().catch(() => null);
         console.error('rollback failed', err);
       }
@@ -839,7 +848,9 @@ function ProposalTabContent({
 
   return (
     <div className="space-y-4">
-      <SectionProgressHeader sections={proposalSections} t={t} />
+      {sectionVersioningEnabled && (
+        <SectionProgressHeader sections={proposalSections} t={t} />
+      )}
         {proposalSections
           .sort((a, b) => a.order - b.order)
           .map((section) => {
@@ -886,19 +897,32 @@ function ProposalTabContent({
                   </div>
                 )}
 
-                <SectionActionButtons
-                  section={section}
-                  displayState={displayState}
-                  sessionId={activeSessionId}
-                  onStateChange={handleStateChange}
-                  onRollback={handleRollback}
-                  onToggleHistory={handleToggleHistory}
-                  onRegenerate={handleRegenerate}
-                  isHistoryOpen={expandedHistorySection === section.id}
-                  t={t}
-                />
+                {sectionVersioningEnabled ? (
+                  <SectionActionButtons
+                    section={section}
+                    displayState={displayState}
+                    sessionId={activeSessionId}
+                    onStateChange={handleStateChange}
+                    onRollback={handleRollback}
+                    onToggleHistory={handleToggleHistory}
+                    onRegenerate={handleRegenerate}
+                    isHistoryOpen={expandedHistorySection === section.id}
+                    t={t}
+                  />
+                ) : (
+                  <div className="pt-2 border-t border-outline-variant/10">
+                    <button
+                      onClick={() => sendMessage(`Improve section: ${section.title}`)}
+                      disabled={!activeSessionId}
+                      className="inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-50"
+                    >
+                      <Icon name="auto_awesome" size="sm" />
+                      {t('proposalTab.improveSection')}
+                    </button>
+                  </div>
+                )}
 
-                {expandedHistorySection === section.id && (
+                {sectionVersioningEnabled && expandedHistorySection === section.id && (
                   <SectionHistoryPanel
                     sessionId={activeSessionId!}
                     sectionId={section.id}

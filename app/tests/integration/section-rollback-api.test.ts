@@ -6,6 +6,9 @@ const USER_ID = '22222222-2222-4222-8222-222222222222';
 describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/rollback', () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.doMock('@/lib/feature-flags', () => ({
+      isFeatureEnabled: vi.fn().mockResolvedValue(true),
+    }));
   });
 
   function mockOwnership() {

@@ -18,6 +18,9 @@ function stubSection(overrides: Partial<Record<string, unknown>> = {}) {
 describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/state', () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.doMock('@/lib/feature-flags', () => ({
+      isFeatureEnabled: vi.fn().mockResolvedValue(true),
+    }));
   });
 
   function mockOwnership() {
