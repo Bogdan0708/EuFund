@@ -405,6 +405,22 @@ function PlanTabContent({
   );
 }
 
+type SectionState = 'draft' | 'reviewed' | 'approved';
+
+const STATE_BADGE_STYLES: Record<SectionState | 'failed', string> = {
+  draft: 'bg-primary-fixed text-primary',
+  reviewed: 'bg-amber-100 text-amber-800',
+  approved: 'bg-emerald-100 text-emerald-800',
+  failed: 'bg-red-100 text-red-800',
+};
+
+const STATE_BORDER_STYLES: Record<SectionState | 'failed', string> = {
+  draft: 'border-outline-variant/10',
+  reviewed: 'border-l-4 border-l-amber-500 border-outline-variant/10',
+  approved: 'border-l-4 border-l-emerald-500 border-outline-variant/10',
+  failed: 'border-l-4 border-l-red-500 border-outline-variant/10',
+};
+
 function SectionProgressHeader({
   sections,
   t,
@@ -453,12 +469,80 @@ function SectionProgressHeader({
 function ProposalTabContent({
   proposalSections,
   sendMessage,
+  activeSessionId,
   t,
 }: {
   proposalSections: import('@/lib/ai/orchestrator/types').SectionResult[] | null;
   sendMessage: (msg: string) => void;
+  activeSessionId: string | null;
   t: ReturnType<typeof useTranslations>;
 }) {
+  const [expandedHistorySection, setExpandedHistorySection] = useState<string | null>(null);
+  const [mutating, setMutating] = useState<string | null>(null);
+
+  const handleStateChange = async (
+    sectionId: string,
+    toState: 'draft' | 'reviewed' | 'approved',
+    expectedCurrentVersion: number,
+  ) => {
+    if (!activeSessionId || mutating) return;
+    setMutating(sectionId);
+    try {
+      const res = await fetch(
+        `/api/ai/orchestrator/sessions/${activeSessionId}/sections/${sectionId}/state`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: toState, expectedCurrentVersion }),
+        },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        console.error('state transition failed', err);
+      }
+    } finally {
+      setMutating(null);
+    }
+  };
+
+  const handleRollback = async (sectionId: string, targetVersion: number, expectedCurrentVersion: number) => {
+    if (!activeSessionId || mutating) return;
+    setMutating(sectionId);
+    try {
+      const res = await fetch(
+        `/api/ai/orchestrator/sessions/${activeSessionId}/sections/${sectionId}/rollback`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetVersion, expectedCurrentVersion }),
+        },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        console.error('rollback failed', err);
+      }
+      setExpandedHistorySection(null);
+    } finally {
+      setMutating(null);
+    }
+  };
+
+  const handleToggleHistory = (sectionId: string) => {
+    setExpandedHistorySection((prev) => (prev === sectionId ? null : sectionId));
+  };
+
+  const handleRegenerate = (section: import('@/lib/ai/orchestrator/types').SectionResult) => {
+    const confirmed = section.state === 'approved'
+      ? window.confirm(t('proposalTab.regenerateApprovedConfirm'))
+      : true;
+    if (!confirmed) return;
+    sendMessage(
+      section.source === 'failed'
+        ? `Regenerate section: ${section.title}`
+        : `Improve section: ${section.title}`,
+    );
+  };
+
   if (!proposalSections) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -473,73 +557,77 @@ function ProposalTabContent({
   return (
     <div className="space-y-4">
       <SectionProgressHeader sections={proposalSections} t={t} />
-      {proposalSections
-        .sort((a, b) => a.order - b.order)
-        .map((section) => (
-          <div
-            key={section.order}
-            className="p-5 bg-surface-container-lowest rounded-xl border border-outline-variant/10 space-y-3"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                  {t('proposalTab.sectionOrder', { order: section.order })}
-                </span>
-                <h5 className="font-bold text-on-surface">{section.title}</h5>
-              </div>
-              <span
-                className={`
-                  px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest rounded-full
-                  ${
-                    section.source === 'failed'
-                      ? 'bg-error-container text-on-error-container'
-                      : section.source === 'generated'
-                        ? 'bg-secondary-container/20 text-secondary'
-                        : 'bg-primary-fixed text-primary'
-                  }
-                `}
+        {proposalSections
+          .sort((a, b) => a.order - b.order)
+          .map((section) => {
+            const displayState: SectionState | 'failed' = section.source === 'failed' ? 'failed' : section.state;
+            const badgeClass = STATE_BADGE_STYLES[displayState];
+            const borderClass = STATE_BORDER_STYLES[displayState];
+            const badgeLabel = displayState === 'failed'
+              ? t('proposalTab.stateBadgeFailed')
+              : displayState === 'approved'
+                ? t('proposalTab.stateBadgeApproved')
+                : displayState === 'reviewed'
+                  ? t('proposalTab.stateBadgeReviewed')
+                  : t('proposalTab.stateBadgeDraft');
+
+            return (
+              <div
+                key={section.order}
+                className={`p-5 bg-surface-container-lowest rounded-xl border ${borderClass} space-y-3`}
               >
-                {section.source === 'failed'
-                  ? t('proposalTab.failed')
-                  : section.source === 'generated'
-                    ? t('proposalTab.generated')
-                    : t('proposalTab.edited')}
-              </span>
-            </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant flex-shrink-0">
+                      {t('proposalTab.sectionOrder', { order: section.order })}
+                    </span>
+                    <h5 className="font-bold text-on-surface truncate">{section.title}</h5>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest rounded-full ${badgeClass}`}>
+                      {badgeLabel}
+                    </span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-surface-container-high text-on-surface-variant">
+                      {t('proposalTab.versionPill', { version: section.currentVersion })}
+                    </span>
+                  </div>
+                </div>
 
-            {section.source === 'failed' ? (
-              <div className="p-3 bg-error-container/5 border border-error/10 rounded-lg">
-                <p className="text-sm text-error/80 italic">
-                  {t('proposalTab.failedHint')}
-                </p>
-              </div>
-            ) : (
-              <div className="text-sm text-on-surface-variant leading-relaxed max-h-48 overflow-y-auto">
-                {section.content}
-              </div>
-            )}
-
-            <div className="pt-2 border-t border-outline-variant/10">
-              <button
-                onClick={() => sendMessage(
-                  section.source === 'failed'
-                    ? `Regenerate section: ${section.title}`
-                    : `Improve section: ${section.title}`
+                {section.source === 'failed' ? (
+                  <div className="p-3 bg-error-container/5 border border-error/10 rounded-lg">
+                    <p className="text-sm text-error/80 italic">{t('proposalTab.failedHint')}</p>
+                  </div>
+                ) : (
+                  <div className="text-sm text-on-surface-variant leading-relaxed max-h-48 overflow-y-auto">
+                    {section.content}
+                  </div>
                 )}
-                className={`inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-bold rounded-full transition-colors ${
-                  section.source === 'failed'
-                    ? 'text-error hover:text-on-error-container hover:bg-error-container/20'
-                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                }`}
-              >
-                <Icon name={section.source === 'failed' ? 'refresh' : 'auto_awesome'} size="sm" />
-                {section.source === 'failed'
-                  ? t('proposalTab.regenerateSection')
-                  : t('proposalTab.improveSection')}
-              </button>
-            </div>
-          </div>
-        ))}
+
+                <SectionActionButtons
+                  section={section}
+                  displayState={displayState}
+                  sessionId={activeSessionId}
+                  onStateChange={handleStateChange}
+                  onRollback={handleRollback}
+                  onToggleHistory={handleToggleHistory}
+                  onRegenerate={handleRegenerate}
+                  isHistoryOpen={expandedHistorySection === section.id}
+                  t={t}
+                />
+
+                {expandedHistorySection === section.id && (
+                  <SectionHistoryPanel
+                    sessionId={activeSessionId!}
+                    sectionId={section.id}
+                    currentVersion={section.currentVersion}
+                    onRollback={(targetVersion: number) => handleRollback(section.id, targetVersion, section.currentVersion)}
+                    onClose={() => setExpandedHistorySection(null)}
+                    t={t}
+                  />
+                )}
+              </div>
+            );
+          })}
     </div>
   );
 }
@@ -579,6 +667,7 @@ function AsistentAIInner({ locale }: { locale: string }) {
     currentStep,
     status,
     sendMessage,
+    activeSessionId,
     isStreaming,
     startNewSession,
     resumeSession,
@@ -931,6 +1020,7 @@ function AsistentAIInner({ locale }: { locale: string }) {
               <ProposalTabContent
                 proposalSections={canvasState.proposalSections}
                 sendMessage={sendMessage}
+                activeSessionId={activeSessionId}
                 t={t}
               />
             )}
