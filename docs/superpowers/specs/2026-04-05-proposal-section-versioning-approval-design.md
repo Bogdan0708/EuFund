@@ -378,7 +378,13 @@ New audit action types:
 
 `userId`, `timestamp`, `previousHash`, `entryHash` are set by `logAudit` itself.
 
-**Transaction boundary:** audit entries sit inside the same DB transaction as the JSONB and version row writes. A DB-level audit write failure rolls back the whole change. The DLQ fallback in the existing audit module handles truly pathological cases where the `audit_log` table is unavailable; `verifyAuditChainIntegrity` later detects any gaps.
+**Transaction boundary:** the version row insert and the JSONB update sit inside a single DB transaction. Audit entries are collected inside that transaction but emitted post-commit via a subsequent loop. This matches the existing codebase idiom (see `consent/bulk/route.ts`, `organizations/route.ts`) and avoids three concrete bugs that occur when `logAudit` is called from inside `db.transaction`:
+
+1. **Orphan audit entries.** `logAudit` internally opens its own `db.transaction` on a fresh pool connection, so its writes commit independently of the outer transaction. An outer-transaction rollback leaves the audit entry behind.
+2. **Pool exhaustion.** Each nested `logAudit` call checks out a second connection. A batch of N changed sections uses 1 + N connections, which can deadlock under pool limits.
+3. **Hash chain forks.** Two concurrent `persistSectionChanges` calls can both read the same "latest" audit entry hash before either commits, then both link to it — forking the chain.
+
+Residual risk: an audit write failure after a successful version row insert no longer rolls back the version row. This is mitigated by (a) the audit module's DLQ fallback which captures audit writes that fail at the DB level, and (b) `verifyAuditChainIntegrity` which detects gaps post-hoc. In practice both writes succeed together on the happy path, and all three concrete bugs above are eliminated by the post-commit emission order.
 
 ### 7.2 `VersionIntegrityMismatch` recovery procedure
 
