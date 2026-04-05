@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FondEUError } from '@/lib/errors';
 import { requireOwnedSession } from '@/lib/ai/orchestrator/require-owned-session';
-import { getVersionHistory } from '@/lib/ai/orchestrator/section-versions';
+import { getVersionHistory, sectionExistsInSession } from '@/lib/ai/orchestrator/section-versions';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ route: 'section-versions-list' });
@@ -12,7 +12,7 @@ export async function GET(
 ) {
   try {
     const { sessionId, sectionId } = ctx.params;
-    const { user } = await requireOwnedSession(sessionId);
+    const { user, session } = await requireOwnedSession(sessionId);
 
     // Phase 1 feature flag: return 404 if disabled so the endpoint behaves
     // as if it doesn't exist from the client's perspective.
@@ -20,6 +20,11 @@ export async function GET(
     const enabled = await isFeatureEnabled('section_versioning', { userId: user.id });
     if (!enabled) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    const sessionCtx = session.context as { projectSections?: import('@/lib/ai/orchestrator/types').SectionResult[] } | null;
+    if (!sectionExistsInSession(sessionCtx?.projectSections, sectionId)) {
+      return NextResponse.json({ error: 'Section not found' }, { status: 404 });
     }
 
     const history = await getVersionHistory(sessionId, sectionId);

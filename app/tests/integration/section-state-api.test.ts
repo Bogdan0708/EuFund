@@ -55,7 +55,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
       },
     }));
     vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({
-      publishEvent: publishSpy,
+      persistAndPublishSectionUpdatedEvent: publishSpy,
     }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route');
@@ -72,10 +72,9 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
     expect(response.status).toBe(200);
     expect(body.section.state).toBe('reviewed');
     expect(publishSpy).toHaveBeenCalledTimes(1);
-    const event = publishSpy.mock.calls[0][1];
-    expect(event.type).toBe('section_updated');
-    expect(event.sectionId).toBe('context');
-    expect(event.section.state).toBe('reviewed');
+    expect(publishSpy.mock.calls[0][0]).toBe(SESSION_ID);
+    expect(publishSpy.mock.calls[0][1]).toBe('context');
+    expect(publishSpy.mock.calls[0][2].state).toBe('reviewed');
   });
 
   it('returns 400 when body is missing state', async () => {
@@ -86,7 +85,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route');
 
@@ -108,7 +107,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route');
 
@@ -139,7 +138,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError,
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route');
 
@@ -174,7 +173,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError,
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route');
 
@@ -201,7 +200,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route');
 
@@ -223,7 +222,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route');
 
@@ -245,7 +244,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route');
 
@@ -279,7 +278,7 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
       verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
       SectionVersionError: class extends Error { constructor(public code: string, msg: string) { super(msg); } },
     }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ publishEvent: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
 
     const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route');
 
@@ -291,5 +290,43 @@ describe('POST /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/stat
 
     const response = await POST(request as any, { params: { sessionId: SESSION_ID, sectionId: 'context' } } as any);
     expect(response.status).toBe(401);
+  });
+
+  it('does not publish section_updated for same-state no-op transitions', async () => {
+    const unchanged = stubSection({ state: 'reviewed' });
+    const publishSpy = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock('@/lib/ai/orchestrator/require-owned-session', () => ({
+      requireOwnedSession: vi.fn().mockResolvedValue({
+        user: { id: USER_ID },
+        session: { id: SESSION_ID, userId: USER_ID, context: { projectSections: [unchanged] } },
+      }),
+    }));
+    mockLogger();
+    vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
+      transitionSectionState: vi.fn().mockResolvedValue(unchanged),
+      verifySectionIntegrity: vi.fn().mockResolvedValue(undefined),
+      SectionVersionError: class extends Error {
+        constructor(public code: string, msg: string, public details?: Record<string, unknown>) {
+          super(msg);
+          this.name = 'SectionVersionError';
+        }
+      },
+    }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({
+      persistAndPublishSectionUpdatedEvent: publishSpy,
+    }));
+
+    const { POST } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/state/route');
+
+    const request = new Request('http://localhost/', {
+      method: 'POST',
+      body: JSON.stringify({ state: 'reviewed', expectedCurrentVersion: 2 }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const response = await POST(request as any, { params: { sessionId: SESSION_ID, sectionId: 'context' } } as any);
+    expect(response.status).toBe(200);
+    expect(publishSpy).not.toHaveBeenCalled();
   });
 });

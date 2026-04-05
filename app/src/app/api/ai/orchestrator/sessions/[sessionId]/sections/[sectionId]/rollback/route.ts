@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FondEUError } from '@/lib/errors';
 import { requireOwnedSession } from '@/lib/ai/orchestrator/require-owned-session';
 import { rollbackSection, verifySectionIntegrity, SectionVersionError } from '@/lib/ai/orchestrator/section-versions';
-import { publishEvent } from '@/lib/ai/orchestrator/pubsub';
+import { persistAndPublishSectionUpdatedEvent } from '@/lib/ai/orchestrator/pubsub';
 import type { SectionResult } from '@/lib/ai/orchestrator/types';
 import { logger } from '@/lib/logger';
 
@@ -16,6 +16,21 @@ const ERROR_STATUS: Record<string, number> = {
   ConcurrentModification: 409,
   VersionIntegrityMismatch: 500,
 };
+
+function isNoopMutation(previous: SectionResult | undefined, next: SectionResult): boolean {
+  if (!previous) return false;
+
+  return (
+    previous.state === next.state &&
+    previous.currentVersion === next.currentVersion &&
+    previous.versionCount === next.versionCount &&
+    previous.contentHash === next.contentHash &&
+    previous.lastStateChangeAt === next.lastStateChangeAt &&
+    previous.lastStateChangeBy === next.lastStateChangeBy &&
+    previous.title === next.title &&
+    previous.content === next.content
+  );
+}
 
 export async function POST(
   req: NextRequest,
@@ -70,17 +85,9 @@ export async function POST(
         : `Rollback to v${body.targetVersion} (no reason provided)`,
     });
 
-    // eventId uses Date.now() because section mutations are triggered by
-    // REST endpoints, out-of-band from the orchestrator's monotonic per-session
-    // counter. The client skips lastEventIdRef updates for section_updated
-    // events (see useOrchestrator.ts es.onmessage) so this doesn't poison
-    // the replay cursor (workflow_messages.eventId is int4).
-    await publishEvent(sessionId, {
-      eventId: Date.now(),
-      type: 'section_updated',
-      sectionId,
-      section,
-    });
+    if (!isNoopMutation(targetSection, section)) {
+      await persistAndPublishSectionUpdatedEvent(sessionId, sectionId, section);
+    }
 
     return NextResponse.json({ section });
   } catch (err) {

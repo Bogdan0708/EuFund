@@ -204,11 +204,15 @@ export async function processMessage(
       }
     }
 
+    const persistedResultData = result.data.projectSections
+      ? { ...result.data, projectSections: updatedContext.projectSections }
+      : result.data
+
     // Store assistant message
     await db.insert(workflowMessages).values({
       sessionId,
       role: 'assistant',
-      content: JSON.stringify(result.data),
+      content: JSON.stringify(persistedResultData),
       step: ctx.step,
       eventType: result.checkpoint ? 'checkpoint' : 'step_complete',
       metadata: result.checkpoint ? result.checkpoint as unknown as Record<string, unknown> : null,

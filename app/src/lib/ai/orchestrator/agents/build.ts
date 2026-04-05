@@ -28,7 +28,7 @@ export const buildAgent: AgentFn = async (ctx, _input, stream, gateway) => {
     if (Date.now() - loopStart > BUILD_LOOP_TIMEOUT_MS) {
       log.warn({ elapsed: Date.now() - loopStart, completed: i, total: totalSections }, 'Build loop timeout')
       for (let j = i; j < specs.length; j++) {
-        sections.push(makeFailedSection(specs[j]))
+        sections.push(makeFailedSection(specs[j], ctx.userId))
       }
       break
     }
@@ -71,7 +71,7 @@ export const buildAgent: AgentFn = async (ctx, _input, stream, gateway) => {
       sections.push(section)
       stream.send({ type: 'ai_chunk', step: 5, content: `## ${section.title}\n\n${section.content.slice(0, 200)}...\n\n---\n` })
     } else {
-      sections.push(makeFailedSection(spec))
+      sections.push(makeFailedSection(spec, ctx.userId))
       stream.send({ type: 'step_progress', step: 5, message: `Section "${spec.title}" failed — marked for manual editing.` })
     }
   }
@@ -123,7 +123,7 @@ async function generateSection(
     versionCount: 1,
     contentHash: fullHash,
     lastStateChangeAt: new Date().toISOString(),
-    lastStateChangeBy: null,
+    lastStateChangeBy: ctx.userId,
     metadata: {
       model,
       provider,
@@ -138,7 +138,7 @@ async function generateSection(
   }
 }
 
-function makeFailedSection(spec: SectionSpec): SectionResult {
+function makeFailedSection(spec: SectionSpec, userId: string): SectionResult {
   const content = '[Generarea acestei sectiuni a esuat. Editati manual sau regenerati din meniul de editare.]'
   const fullHash = createHash('sha256').update(content).digest('hex')
   return {
@@ -152,7 +152,7 @@ function makeFailedSection(spec: SectionSpec): SectionResult {
     versionCount: 1,
     contentHash: fullHash,
     lastStateChangeAt: new Date().toISOString(),
-    lastStateChangeBy: null,
+    lastStateChangeBy: userId,
     metadata: {
       model: 'none', provider: 'none',
       tokensIn: 0, tokensOut: 0, latencyMs: 0,

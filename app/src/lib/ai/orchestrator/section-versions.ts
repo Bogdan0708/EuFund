@@ -20,6 +20,13 @@ export function hashContent(content: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
+function hasSectionChanged(prev: SectionResult, next: SectionResult, nextHash: string): boolean {
+  return (
+    prev.contentHash !== nextHash ||
+    prev.title !== next.title
+  );
+}
+
 /**
  * Detects content changes by comparing SHA-256 hashes, inserts version rows
  * only for changed sections, and returns the new sections enriched with
@@ -91,10 +98,11 @@ export async function persistSectionChanges(opts: PersistOptions): Promise<Secti
         continue;
       }
 
-      if (prev.contentHash === newHash) {
+      if (!hasSectionChanged(prev, next, newHash)) {
         // No change — preserve everything
         result.push({
           ...next,
+          metadata: prev.metadata,
           state: prev.state,
           currentVersion: prev.currentVersion,
           versionCount: prev.versionCount,
@@ -477,6 +485,13 @@ export interface StateTransitionEntry {
 export interface VersionHistoryResult {
   versions: SectionVersion[];
   stateTransitions: StateTransitionEntry[];
+}
+
+export function sectionExistsInSession(
+  sections: SectionResult[] | null | undefined,
+  sectionId: string,
+): boolean {
+  return Boolean(sections?.some((section) => section.id === sectionId));
 }
 
 export async function getVersionHistory(
