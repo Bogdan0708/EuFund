@@ -523,7 +523,7 @@ describe('persistSectionChanges legacy backfill', () => {
       id: 'context', title: 'Context', content: 'legacy content', order: 1,
       source: 'generated' as const,
       state: 'draft' as const, currentVersion: 1, versionCount: 1,
-      contentHash: hash('legacy content'),
+      contentHash: '',  // simulate pre-T2-I1 corrupt hash
       lastStateChangeAt: '2026-04-05T00:00:00Z', lastStateChangeBy: USER_ID,
       metadata: { model: 'gpt-5.4', provider: 'openai', tokensIn: 100, tokensOut: 50, latencyMs: 200, retryCount: 0, fallbackUsed: false, generatedAt: '2026-04-05T00:00:00Z', checksum: 'abc' },
     };
@@ -545,6 +545,11 @@ describe('persistSectionChanges legacy backfill', () => {
     expect((insertedVersions[0] as { content: string }).content).toBe('legacy content');
     expect((insertedVersions[1] as { version: number }).version).toBe(2);
     expect((insertedVersions[1] as { content: string }).content).toBe('new content');
+
+    // Baseline row must have a real hash, not the empty placeholder from
+    // the legacy session's corrupt contentHash
+    expect((insertedVersions[0] as { contentHash: string }).contentHash).toBe(hash('legacy content'));
+    expect((insertedVersions[0] as { contentHash: string }).contentHash).not.toBe('');
 
     expect(enriched[0].currentVersion).toBe(2);
     expect(enriched[0].versionCount).toBe(2);

@@ -117,13 +117,18 @@ export async function persistSectionChanges(opts: PersistOptions): Promise<Secti
         .limit(1);
 
       if (!existingRow) {
+        // Recompute from content — pre-T2-I1 sessions may have contentHash=''
+        // and Task 14's integrity check compares hashes without recomputing,
+        // so a corrupt baseline with empty hash would never be caught.
+        const baselineHash = hashContent(prev.content);
+
         // Legacy backfill: insert baseline v{prev.currentVersion} with the OLD content
         await tx.insert(sectionVersions).values({
           sessionId,
           sectionId: next.id,
           version: prev.currentVersion,
           content: prev.content,
-          contentHash: prev.contentHash,
+          contentHash: baselineHash,
           title: prev.title,
           metadata: prev.metadata,
           reason: 'legacy_backfill',
@@ -138,7 +143,7 @@ export async function persistSectionChanges(opts: PersistOptions): Promise<Secti
           metadata: {
             sectionId: next.id,
             version: prev.currentVersion,
-            contentHash: prev.contentHash,
+            contentHash: baselineHash,
             legacyBackfill: true,
           },
         });
