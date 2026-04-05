@@ -48,6 +48,7 @@ type SSEEvent = { eventId: number } & (
   | { type: 'discovery'; items: unknown[] }
   | { type: 'error'; step: number; message: string; retryable: boolean }
   | { type: 'done'; projectId?: string }
+  | { type: 'section_updated'; sectionId: string; section: SectionResult }
 );
 
 type Status = 'idle' | 'connecting' | 'streaming' | 'error';
@@ -109,7 +110,9 @@ export function useOrchestrator(locale: string) {
       es.onmessage = (event) => {
         try {
           const data: SSEEvent = JSON.parse(event.data);
-          lastEventIdRef.current = data.eventId;
+          if (data.type !== 'section_updated') {
+            lastEventIdRef.current = data.eventId;
+          }
           handleSSEEvent(data);
         } catch {
           // Ignore malformed events
@@ -277,6 +280,22 @@ export function useOrchestrator(locale: string) {
           eventSourceRef.current = null;
         }
         break;
+
+      case 'section_updated': {
+        // Update the matching section in place inside canvasState.
+        // Note: the lastEventIdRef skip is handled in es.onmessage above,
+        // not here — section_updated events use Date.now()-based eventIds
+        // that would poison the orchestrator's int4 replay counter if tracked.
+        setCanvasState((prev) => {
+          if (!prev.proposalSections) return prev;
+          const idx = prev.proposalSections.findIndex((s) => s.id === event.sectionId);
+          if (idx < 0) return prev;
+          const next = [...prev.proposalSections];
+          next[idx] = event.section;
+          return { ...prev, proposalSections: next };
+        });
+        break;
+      }
     }
   }, []);
 
