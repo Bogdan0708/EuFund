@@ -117,7 +117,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder={t('searchPlaceholder')}
-            className="flex-1 bg-transparent border-none outline-none focus:ring-0 text-lg font-medium text-on-surface placeholder:text-on-surface-variant/50"
+            className="flex-1 bg-transparent border-none outline-none focus:ring-0 text-lg font-medium text-on-surface placeholder:text-on-surface-variant/70"
             autoFocus
           />
           <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container-high border border-outline-variant/20 text-xs font-semibold text-on-surface-variant tracking-widest shadow-sm">
@@ -135,7 +135,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             return (
               <div key={group}>
                 <div className="px-3 pt-4 pb-2">
-                  <span className="text-[10px] font-bold tracking-[0.1em] text-on-surface-variant/60 uppercase px-2">
+                  <span className="text-[10px] font-bold tracking-[0.1em] text-on-surface-variant uppercase px-2">
                     {group}
                   </span>
                 </div>
@@ -182,7 +182,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                           className={`text-xs transition-colors ${
                             isSelected
                               ? 'text-on-surface-variant'
-                              : 'text-on-surface-variant/50 group-hover:text-on-surface-variant'
+                              : 'text-on-surface-variant group-hover:text-on-surface-variant'
                           }`}
                         >
                           {item.description}
@@ -203,7 +203,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
         {/* Footer Hints */}
         <div className="px-5 py-3 bg-surface-container-low/50 border-t border-surface-container-highest/30 flex items-center justify-between">
-          <div className="flex items-center gap-4 text-[11px] font-medium text-on-surface-variant/70">
+          <div className="flex items-center gap-4 text-[11px] font-medium text-on-surface-variant">
             <div className="flex items-center gap-1.5">
               <span className="px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant shadow-sm ring-1 ring-inset ring-outline-variant/30">
                 &#8593;&#8595;

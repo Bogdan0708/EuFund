@@ -19,7 +19,7 @@ function StepProgressBar({
   currentStep: number;
   t: ReturnType<typeof useTranslations>;
 }) {
-  const totalSteps = 7;
+  const totalSteps = 5;
 
   return (
     <div className="flex items-center w-full px-2">
@@ -72,17 +72,20 @@ function StepProgressBar({
 function CheckpointSelect({
   options,
   onSelect,
+  disabled,
 }: {
   options: { id: string; label: string; description?: string }[];
-  onSelect: (id: string) => void | Promise<void>;
+  onSelect: (id: string, label: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="grid gap-3 mt-3">
       {options.map((opt) => (
         <button
           key={opt.id}
-          onClick={() => onSelect(opt.id)}
-          className="text-left p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/10 hover:border-primary/30 hover:bg-primary-fixed/5 transition-all duration-200 group"
+          onClick={() => onSelect(opt.id, opt.label)}
+          disabled={disabled}
+          className="text-left p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/10 hover:border-primary/30 hover:bg-primary-fixed/5 transition-all duration-200 group disabled:opacity-50 disabled:pointer-events-none"
         >
           <span className="font-medium text-on-surface group-hover:text-primary transition-colors">
             {opt.label}
@@ -101,23 +104,27 @@ function CheckpointSelect({
 function CheckpointConfirm({
   onContinue,
   onModify,
+  disabled,
   t,
 }: {
   onContinue: () => void;
   onModify: () => void;
+  disabled?: boolean;
   t: ReturnType<typeof useTranslations>;
 }) {
   return (
     <div className="flex gap-3 mt-3">
       <button
         onClick={onContinue}
-        className="px-5 py-2 bg-primary-container text-white text-sm font-bold rounded-full hover:opacity-90 transition-opacity"
+        disabled={disabled}
+        className="px-5 py-2 bg-primary-container text-white text-sm font-bold rounded-full hover:opacity-90 transition-opacity disabled:opacity-50"
       >
         {t('checkpoint.continue')}
       </button>
       <button
         onClick={onModify}
-        className="px-5 py-2 text-sm font-bold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
+        disabled={disabled}
+        className="px-5 py-2 text-sm font-bold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors disabled:opacity-50"
       >
         {t('checkpoint.modify')}
       </button>
@@ -127,12 +134,20 @@ function CheckpointConfirm({
 
 function CheckpointFreetext({
   onSend,
+  disabled,
   t,
 }: {
-  onSend: (text: string) => void;
+  onSend: (text: string) => Promise<boolean>;
+  disabled?: boolean;
   t: ReturnType<typeof useTranslations>;
 }) {
   const [text, setText] = useState('');
+
+  const handleSend = async () => {
+    if (!text.trim() || disabled) return;
+    const ok = await onSend(text.trim());
+    if (ok) setText('');
+  };
 
   return (
     <div className="flex gap-2 mt-3">
@@ -142,20 +157,13 @@ function CheckpointFreetext({
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && text.trim()) {
-            onSend(text.trim());
-            setText('');
-          }
+          if (e.key === 'Enter') handleSend();
         }}
+        disabled={disabled}
       />
       <button
-        disabled={!text.trim()}
-        onClick={() => {
-          if (text.trim()) {
-            onSend(text.trim());
-            setText('');
-          }
-        }}
+        disabled={!text.trim() || disabled}
+        onClick={handleSend}
         className="px-5 py-2 bg-primary-container text-white text-sm font-bold rounded-full hover:opacity-90 transition-opacity disabled:opacity-40"
       >
         {t('checkpoint.sendResponse')}
@@ -440,29 +448,51 @@ function ProposalTabContent({
                 className={`
                   px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest rounded-full
                   ${
-                    section.source === 'generated'
-                      ? 'bg-secondary-container/20 text-secondary'
-                      : 'bg-primary-fixed text-primary'
+                    section.source === 'failed'
+                      ? 'bg-error-container text-on-error-container'
+                      : section.source === 'generated'
+                        ? 'bg-secondary-container/20 text-secondary'
+                        : 'bg-primary-fixed text-primary'
                   }
                 `}
               >
-                {section.source === 'generated'
-                  ? t('proposalTab.generated')
-                  : t('proposalTab.edited')}
+                {section.source === 'failed'
+                  ? t('proposalTab.failed')
+                  : section.source === 'generated'
+                    ? t('proposalTab.generated')
+                    : t('proposalTab.edited')}
               </span>
             </div>
 
-            <div className="text-sm text-on-surface-variant leading-relaxed max-h-48 overflow-y-auto scrollbar-hide">
-              {section.content}
-            </div>
+            {section.source === 'failed' ? (
+              <div className="p-3 bg-error-container/5 border border-error/10 rounded-lg">
+                <p className="text-sm text-error/80 italic">
+                  {t('proposalTab.failedHint')}
+                </p>
+              </div>
+            ) : (
+              <div className="text-sm text-on-surface-variant leading-relaxed max-h-48 overflow-y-auto">
+                {section.content}
+              </div>
+            )}
 
             <div className="pt-2 border-t border-outline-variant/10">
               <button
-                onClick={() => sendMessage(`Improve section: ${section.title}`)}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-bold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
+                onClick={() => sendMessage(
+                  section.source === 'failed'
+                    ? `Regenerate section: ${section.title}`
+                    : `Improve section: ${section.title}`
+                )}
+                className={`inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-bold rounded-full transition-colors ${
+                  section.source === 'failed'
+                    ? 'text-error hover:text-on-error-container hover:bg-error-container/20'
+                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                }`}
               >
-                <Icon name="auto_awesome" size="sm" />
-                {t('proposalTab.improveSection')}
+                <Icon name={section.source === 'failed' ? 'refresh' : 'auto_awesome'} size="sm" />
+                {section.source === 'failed'
+                  ? t('proposalTab.regenerateSection')
+                  : t('proposalTab.improveSection')}
               </button>
             </div>
           </div>
@@ -509,6 +539,7 @@ function AsistentAIInner({ locale }: { locale: string }) {
     isStreaming,
     startNewSession,
     resumeSession,
+    cancelPendingAutoApprove,
     error,
     canvasState,
   } = useOrchestrator(locale);
@@ -527,15 +558,17 @@ function AsistentAIInner({ locale }: { locale: string }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isStreaming]);
 
-  // Reset manual tab override when canvas auto-advances
+  // Reset manual tab override only when a new step starts (not on every canvas update)
+  // This prevents pulling users away from a panel they're actively reviewing
   useEffect(() => {
     setManualTab(null);
-  }, [canvasState.activeTab]);
+  }, [currentStep]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!inputValue.trim() || isStreaming) return;
-    sendMessage(inputValue.trim());
-    setInputValue('');
+    const sent = inputValue.trim();
+    const ok = await sendMessage(sent);
+    if (ok) setInputValue('');
   };
 
   const showCanvas = currentStep >= 2;
@@ -602,7 +635,7 @@ function AsistentAIInner({ locale }: { locale: string }) {
         )}
 
         {/* Chat Messages Area */}
-        <div className="flex-1 overflow-y-auto px-8 py-4 space-y-6 scrollbar-hide">
+        <div className="flex-1 overflow-y-auto px-8 py-4 space-y-6">
           {/* Empty state */}
           {messages.length === 0 && !isStreaming && (
             <div className="flex-1 flex items-center justify-center h-full">
@@ -692,7 +725,8 @@ function AsistentAIInner({ locale }: { locale: string }) {
                     {cp.type === 'select' && cp.options && (
                       <CheckpointSelect
                         options={cp.options}
-                        onSelect={(id) => sendMessage(id)}
+                        onSelect={(id, label) => { sendMessage(id, label); }}
+                        disabled={isStreaming}
                       />
                     )}
 
@@ -700,16 +734,25 @@ function AsistentAIInner({ locale }: { locale: string }) {
                       <>
                         {modifyingCheckpointId === msg.id ? (
                           <CheckpointFreetext
-                            onSend={(text) => {
-                              sendMessage(text);
-                              setModifyingCheckpointId(null);
+                            onSend={async (text) => {
+                              const ok = await sendMessage(text);
+                              if (ok) setModifyingCheckpointId(null);
+                              return ok;
                             }}
+                            disabled={isStreaming}
                             t={t}
                           />
                         ) : (
                           <CheckpointConfirm
-                            onContinue={() => sendMessage('continue')}
-                            onModify={() => setModifyingCheckpointId(msg.id)}
+                            onContinue={() => { sendMessage('continue'); }}
+                            onModify={() => {
+                              // Cancel any pending auto-approve so it doesn't
+                              // fire underneath the freetext override the user
+                              // is about to type.
+                              cancelPendingAutoApprove();
+                              setModifyingCheckpointId(msg.id);
+                            }}
+                            disabled={isStreaming}
                             t={t}
                           />
                         )}
@@ -717,8 +760,52 @@ function AsistentAIInner({ locale }: { locale: string }) {
                     )}
 
                     {cp.type === 'freetext' && (
-                      <CheckpointFreetext onSend={(text) => sendMessage(text)} t={t} />
+                      <CheckpointFreetext onSend={(text) => sendMessage(text)} disabled={isStreaming} t={t} />
                     )}
+                  </div>
+                  <span className="mt-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant opacity-40 ml-1">
+                    {t('aiCurator')}
+                  </span>
+                </div>
+              );
+            }
+
+            // Completion summary card
+            if (msg.eventType === 'done') {
+              const sections = canvasState.proposalSections;
+              const total = sections?.length ?? 0;
+              const failed = sections?.filter((s) => s.source === 'failed').length ?? 0;
+              const generated = total - failed;
+              // msg.content carries completionStatus from the backend (e.g. 'complete', 'needs_review', 'complete_with_gaps')
+              const completionStatus = msg.content || 'complete';
+              const hasIssues = failed > 0 || completionStatus === 'needs_review' || completionStatus === 'complete_with_gaps';
+
+              return (
+                <div key={msg.id} className="flex flex-col items-start max-w-[85%]">
+                  <div className={`p-6 rounded-[1rem] rounded-tl-none space-y-3 ${hasIssues ? 'bg-tertiary-container/10 border border-tertiary/20' : 'bg-primary-fixed/10 border border-primary/20'}`}>
+                    <div className="flex items-center gap-2">
+                      <Icon name={hasIssues ? 'info' : 'check_circle'} filled size="sm" className={hasIssues ? 'text-tertiary' : 'text-primary'} />
+                      <span className={`text-xs font-bold uppercase tracking-widest ${hasIssues ? 'text-tertiary' : 'text-primary'}`}>
+                        {hasIssues ? t('completion.titleReview') : t('completion.title')}
+                      </span>
+                    </div>
+                    <p className="text-[15px] text-on-surface leading-relaxed">
+                      {failed > 0
+                        ? t('completion.withErrors', { generated, failed, total })
+                        : hasIssues
+                          ? t('completion.needsReview', { total })
+                          : t('completion.success', { total })}
+                    </p>
+                    {hasIssues && (
+                      <p className="text-xs text-on-surface-variant">
+                        {failed > 0
+                          ? t('completion.failedHint')
+                          : t('completion.reviewHint')}
+                      </p>
+                    )}
+                    <p className="text-xs text-on-surface-variant">
+                      {t('completion.editHint')}
+                    </p>
                   </div>
                   <span className="mt-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant opacity-40 ml-1">
                     {t('aiCurator')}
@@ -790,7 +877,7 @@ function AsistentAIInner({ locale }: { locale: string }) {
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto p-8 scrollbar-hide">
+          <div className="flex-1 overflow-y-auto p-8">
             {activeTab === 'calls' && (
               <CallsTabContent matchedCalls={canvasState.matchedCalls} t={t} />
             )}

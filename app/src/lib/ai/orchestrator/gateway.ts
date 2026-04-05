@@ -156,9 +156,50 @@ function getEmbeddingClient(): OpenAI {
   return clients['_embed']
 }
 
+// ─── Model preference resolver ──────────────────────────────────
+
+/**
+ * Maps a user's `defaultModel` preference (from user_preferences table)
+ * to a concrete provider + model pair. Returns `null` for 'auto' or
+ * unknown values, meaning "don't override — use the agent's default".
+ */
+function resolveModelPreference(
+  preference: string | undefined,
+): { provider: string; model: string } | null {
+  if (!preference || preference === 'auto') return null
+  switch (preference) {
+    case 'claude-sonnet':
+      return { provider: 'claude', model: 'claude-sonnet-4-6' }
+    case 'gpt-4o':
+      return { provider: 'openai', model: 'gpt-5.4' }
+    case 'gemini-pro':
+      return { provider: 'gemini', model: 'gemini-2.5-flash' }
+    case 'perplexity':
+      return { provider: 'perplexity', model: 'sonar-pro' }
+    default:
+      return null
+  }
+}
+
 // ─── Public API ─────────────────────────────────────────────────
 
-export function createGatewayClient(_tenantId: string): GatewayClient {
+export interface GatewayOptions {
+  /**
+   * User's selected AI model from settings. When set (and not 'auto'),
+   * overrides the provider/model on generation calls — EXCEPT for calls
+   * originating from the Perplexity provider (those are preserved because
+   * they depend on Sonar's live web search capability that no other
+   * provider offers through the OpenAI-compatible API).
+   */
+  modelPreference?: string
+}
+
+export function createGatewayClient(
+  _tenantId: string,
+  options: GatewayOptions = {},
+): GatewayClient {
+  const override = resolveModelPreference(options.modelPreference)
+
   return {
     async generate(opts) {
       const messages: OpenAI.ChatCompletionMessageParam[] = []
@@ -166,8 +207,24 @@ export function createGatewayClient(_tenantId: string): GatewayClient {
       for (const m of opts.messages) {
         messages.push({ role: m.role as 'user' | 'assistant', content: m.content })
       }
-      log.info({ provider: opts.provider, model: opts.model }, 'AI request')
-      return callWithRetry(opts.provider, opts.model, messages, opts.maxTokens ?? 4096, opts.temperature ?? 0.7)
+
+      // Apply model preference override. Preserve Perplexity calls because
+      // they rely on Sonar's built-in web search; other providers would
+      // silently lose that capability.
+      let provider = opts.provider
+      let model = opts.model
+      if (override && opts.provider !== 'perplexity') {
+        provider = override.provider
+        model = override.model
+        log.info(
+          { originalProvider: opts.provider, originalModel: opts.model, provider, model },
+          'Applying user model preference override',
+        )
+      } else {
+        log.info({ provider, model }, 'AI request')
+      }
+
+      return callWithRetry(provider, model, messages, opts.maxTokens ?? 4096, opts.temperature ?? 0.7)
     },
     async embed(text: string) {
       const client = getEmbeddingClient()

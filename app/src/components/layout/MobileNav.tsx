@@ -43,7 +43,7 @@ export function MobileNav({ locale }: MobileNavProps) {
               flex flex-col items-center justify-center
               ${active
                 ? 'bg-[#0071E3] text-white rounded-full w-12 h-12 active:scale-95 transition-transform'
-                : 'text-slate-400 active:scale-95 transition-transform'
+                : 'text-black active:scale-95 transition-transform'
               }
             `}
           >

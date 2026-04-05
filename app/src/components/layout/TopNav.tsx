@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { useFormatter } from 'next-intl'
+import { useFormatter, useTranslations } from 'next-intl'
 import { Icon } from '@/components/ui/ds-icon'
-import { NotificationsPanel } from './NotificationsPanel'
+import { NotificationsPanel, type NotificationItem } from './NotificationsPanel'
+import { HelpPanel } from './HelpPanel'
+import { LocaleSwitcher } from './LocaleSwitcher'
 
 interface TopNavProps {
   onMenuClick?: () => void
@@ -12,8 +14,21 @@ interface TopNavProps {
 
 export function TopNav({ onMenuClick, sidebarCollapsed }: TopNavProps) {
   const format = useFormatter()
+  const t = useTranslations('topNav')
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  // No user-facing notifications API exists yet. Start empty; replace with a
+  // real fetch once /api/v1/notifications (or equivalent) is in place.
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const bellRef = useRef<HTMLButtonElement>(null)
+  const helpRef = useRef<HTMLButtonElement>(null)
+
+  const unreadCount = notifications.filter(n => n.unread).length
+  const hasUnread = unreadCount > 0
+
+  const handleMarkAllRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, unread: false })))
+  }
 
   const now = new Date()
   const formattedDate = format.dateTime(now, {
@@ -49,33 +64,56 @@ export function TopNav({ onMenuClick, sidebarCollapsed }: TopNavProps) {
         </span>
 
         {/* Right side — action buttons */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <LocaleSwitcher />
+
           <div className="relative">
             <button
               ref={bellRef}
               type="button"
-              onClick={() => setNotificationsOpen(prev => !prev)}
+              onClick={() => {
+                setNotificationsOpen(prev => !prev)
+                setHelpOpen(false)
+              }}
               className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors relative"
-              aria-label="Notifications"
+              aria-label={hasUnread ? `${t('notifications')} — ${unreadCount}` : t('notifications')}
               aria-expanded={notificationsOpen}
             >
               <Icon name="notifications" size="md" />
-              {/* Unread badge */}
-              <span className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full border-2 border-white" />
+              {/* Unread badge — only shown when there's actual unread state */}
+              {hasUnread && (
+                <span className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full border-2 border-white" />
+              )}
             </button>
             <NotificationsPanel
               open={notificationsOpen}
               onClose={() => setNotificationsOpen(false)}
               anchorRef={bellRef}
+              notifications={notifications}
+              onMarkAllRead={handleMarkAllRead}
             />
           </div>
-          <button
-            type="button"
-            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors"
-            aria-label="Help"
-          >
-            <Icon name="help_outline" size="md" />
-          </button>
+
+          <div className="relative">
+            <button
+              ref={helpRef}
+              type="button"
+              onClick={() => {
+                setHelpOpen(prev => !prev)
+                setNotificationsOpen(false)
+              }}
+              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors"
+              aria-label={t('help')}
+              aria-expanded={helpOpen}
+            >
+              <Icon name="help_outline" size="md" />
+            </button>
+            <HelpPanel
+              open={helpOpen}
+              onClose={() => setHelpOpen(false)}
+              anchorRef={helpRef}
+            />
+          </div>
         </div>
       </div>
     </header>
