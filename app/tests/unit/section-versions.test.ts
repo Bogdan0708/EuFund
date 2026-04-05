@@ -161,3 +161,189 @@ describe('persistSectionChanges', () => {
     });
   });
 });
+
+describe('transitionSectionState', () => {
+  const SECTION = {
+    id: 'context', title: 'Context', content: 'Text', order: 1,
+    source: 'generated' as const,
+    state: 'draft' as const, currentVersion: 2, versionCount: 2,
+    contentHash: hash('Text'),
+    lastStateChangeAt: '2026-04-05T00:00:00Z', lastStateChangeBy: USER_ID,
+    metadata: { model: 'gpt-5.4', provider: 'openai', tokensIn: 100, tokensOut: 50, latencyMs: 200, retryCount: 0, fallbackUsed: false, generatedAt: '2026-04-05T00:00:00Z', checksum: 'abc' },
+  };
+
+  function mockSessionWithSection(section: Omit<typeof SECTION, 'state' | 'source'> & { state: 'draft' | 'reviewed' | 'approved'; source: 'generated' | 'edited' | 'failed' }) {
+    return {
+      id: SESSION_ID,
+      userId: USER_ID,
+      context: { projectSections: [section] },
+    };
+  }
+
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('allows draft → reviewed', async () => {
+    const session = mockSessionWithSection(SECTION);
+    const updates: unknown[] = [];
+
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([session]), for: vi.fn().mockResolvedValue([session]) }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockImplementation((row: unknown) => {
+              updates.push(row);
+              return { where: vi.fn().mockResolvedValue(undefined) };
+            }),
+          }),
+        })),
+      },
+    }));
+    vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
+    vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
+
+    const { transitionSectionState } = await import('@/lib/ai/orchestrator/section-versions');
+
+    const result = await transitionSectionState({
+      sessionId: SESSION_ID,
+      sectionId: 'context',
+      toState: 'reviewed',
+      expectedCurrentVersion: 2,
+      userId: USER_ID,
+    });
+
+    expect(result.state).toBe('reviewed');
+    expect(updates).toHaveLength(1);
+  });
+
+  it('allows draft → approved (shortcut) and tags audit with reviewSkipped', async () => {
+    const session = mockSessionWithSection(SECTION);
+    const auditCalls: unknown[] = [];
+
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([session]), for: vi.fn().mockResolvedValue([session]) }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
+        })),
+      },
+    }));
+    vi.doMock('@/lib/legal/audit', () => ({
+      logAudit: vi.fn().mockImplementation(async (entry: unknown) => { auditCalls.push(entry); }),
+    }));
+    vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
+
+    const { transitionSectionState } = await import('@/lib/ai/orchestrator/section-versions');
+
+    await transitionSectionState({
+      sessionId: SESSION_ID,
+      sectionId: 'context',
+      toState: 'approved',
+      expectedCurrentVersion: 2,
+      userId: USER_ID,
+    });
+
+    expect(auditCalls).toHaveLength(1);
+    const metadata = (auditCalls[0] as { metadata: { reviewSkipped?: boolean } }).metadata;
+    expect(metadata.reviewSkipped).toBe(true);
+  });
+
+  it('rejects approved → reviewed as InvalidStateTransition', async () => {
+    const section = { ...SECTION, state: 'approved' as const };
+    const session = mockSessionWithSection(section);
+
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([session]), for: vi.fn().mockResolvedValue([session]) }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
+        })),
+      },
+    }));
+    vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
+    vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
+
+    const { transitionSectionState, SectionVersionError } = await import('@/lib/ai/orchestrator/section-versions');
+
+    await expect(transitionSectionState({
+      sessionId: SESSION_ID,
+      sectionId: 'context',
+      toState: 'reviewed',
+      expectedCurrentVersion: 2,
+      userId: USER_ID,
+    })).rejects.toSatisfy((err) => err instanceof SectionVersionError && err.code === 'InvalidStateTransition');
+  });
+
+  it('rejects state transition on failed-source sections', async () => {
+    const section = { ...SECTION, source: 'failed' as const };
+    const session = mockSessionWithSection(section);
+
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([session]), for: vi.fn().mockResolvedValue([session]) }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
+        })),
+      },
+    }));
+    vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
+    vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
+
+    const { transitionSectionState, SectionVersionError } = await import('@/lib/ai/orchestrator/section-versions');
+
+    await expect(transitionSectionState({
+      sessionId: SESSION_ID,
+      sectionId: 'context',
+      toState: 'approved',
+      expectedCurrentVersion: 2,
+      userId: USER_ID,
+    })).rejects.toSatisfy((err) => err instanceof SectionVersionError && err.code === 'FailedSectionCannotBeApproved');
+  });
+
+  it('rejects stale expectedCurrentVersion with ConcurrentModification', async () => {
+    const session = mockSessionWithSection(SECTION);
+
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([session]), for: vi.fn().mockResolvedValue([session]) }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
+        })),
+      },
+    }));
+    vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
+    vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
+
+    const { transitionSectionState, SectionVersionError } = await import('@/lib/ai/orchestrator/section-versions');
+
+    await expect(transitionSectionState({
+      sessionId: SESSION_ID,
+      sectionId: 'context',
+      toState: 'reviewed',
+      expectedCurrentVersion: 1, // stale — actual is 2
+      userId: USER_ID,
+    })).rejects.toSatisfy((err) => err instanceof SectionVersionError && err.code === 'ConcurrentModification');
+  });
+});

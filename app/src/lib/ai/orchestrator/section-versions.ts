@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
+import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { sectionVersions } from '@/lib/db/schema';
+import { sectionVersions, workflowSessions } from '@/lib/db/schema';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
 import type { SectionResult } from './types';
@@ -155,4 +156,137 @@ export async function persistSectionChanges(opts: PersistOptions): Promise<Secti
 
   log.info({ sessionId, sectionsProcessed: enriched.length, auditsEmitted: pendingAudits.length }, 'persistSectionChanges done');
   return enriched;
+}
+
+export type SectionVersionErrorCode =
+  | 'SectionNotFound'
+  | 'VersionNotFound'
+  | 'InvalidStateTransition'
+  | 'FailedSectionCannotBeApproved'
+  | 'ConcurrentModification'
+  | 'VersionIntegrityMismatch';
+
+export class SectionVersionError extends Error {
+  constructor(public code: SectionVersionErrorCode, message: string, public details?: Record<string, unknown>) {
+    super(message);
+    this.name = 'SectionVersionError';
+  }
+}
+
+type State = 'draft' | 'reviewed' | 'approved';
+
+const ALLOWED_TRANSITIONS: Record<State, State[]> = {
+  draft: ['reviewed', 'approved'],
+  reviewed: ['approved', 'draft'],
+  approved: ['draft'],
+};
+
+export async function transitionSectionState(opts: {
+  sessionId: string;
+  sectionId: string;
+  toState: State;
+  expectedCurrentVersion: number;
+  userId: string;
+  reason?: string;
+}): Promise<SectionResult> {
+  const { sessionId, sectionId, toState, expectedCurrentVersion, userId, reason } = opts;
+
+  // Collected inside the transaction, emitted post-commit (same pattern as persistSectionChanges)
+  let pendingAudit: Parameters<typeof logAudit>[0] | null = null;
+
+  const updatedSection = await db.transaction(async (tx) => {
+    const [session] = await tx
+      .select()
+      .from(workflowSessions)
+      .where(eq(workflowSessions.id, sessionId))
+      .for('update');
+
+    if (!session) {
+      throw new SectionVersionError('SectionNotFound', `Session ${sessionId} not found`);
+    }
+
+    const ctx = session.context as { projectSections?: SectionResult[] };
+    const sections = ctx.projectSections ?? [];
+    const idx = sections.findIndex((s) => s.id === sectionId);
+    if (idx < 0) {
+      throw new SectionVersionError('SectionNotFound', `Section ${sectionId} not found in session ${sessionId}`);
+    }
+
+    const section = sections[idx];
+
+    // Optimistic lock
+    if (section.currentVersion !== expectedCurrentVersion) {
+      throw new SectionVersionError(
+        'ConcurrentModification',
+        `Section ${sectionId} has been modified since the client read`,
+        { currentVersion: section.currentVersion },
+      );
+    }
+
+    // Failed section guard
+    if (section.source === 'failed' && (toState === 'reviewed' || toState === 'approved')) {
+      throw new SectionVersionError(
+        'FailedSectionCannotBeApproved',
+        `Section ${sectionId} current version is in 'failed' state and cannot be approved`,
+      );
+    }
+
+    // Idempotent no-op
+    if (section.state === toState) {
+      return section;
+    }
+
+    // Validate transition
+    const allowed = ALLOWED_TRANSITIONS[section.state];
+    if (!allowed.includes(toState)) {
+      throw new SectionVersionError(
+        'InvalidStateTransition',
+        `Cannot transition section ${sectionId} from ${section.state} to ${toState}`,
+      );
+    }
+
+    const reviewSkipped = section.state === 'draft' && toState === 'approved';
+    const now = new Date().toISOString();
+    const updated: SectionResult = {
+      ...section,
+      state: toState,
+      lastStateChangeAt: now,
+      lastStateChangeBy: userId,
+    };
+
+    const updatedSections = [...sections];
+    updatedSections[idx] = updated;
+
+    await tx
+      .update(workflowSessions)
+      .set({
+        context: { ...ctx, projectSections: updatedSections },
+        updatedAt: new Date(),
+      })
+      .where(eq(workflowSessions.id, sessionId));
+
+    pendingAudit = {
+      userId,
+      action: 'section.state_change',
+      resourceType: 'workflow_session',
+      resourceId: sessionId,
+      metadata: {
+        sectionId,
+        currentVersion: section.currentVersion,
+        fromState: section.state,
+        toState,
+        reason: reason ?? null,
+        ...(reviewSkipped ? { reviewSkipped: true } : {}),
+      },
+    };
+
+    return updated;
+  });
+
+  // Post-commit audit emission
+  if (pendingAudit) {
+    await logAudit(pendingAudit);
+  }
+
+  return updatedSection;
 }
