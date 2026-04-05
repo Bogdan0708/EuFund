@@ -412,3 +412,50 @@ describe('rollbackSection', () => {
     expect(insertedVersions).toHaveLength(1);
   });
 });
+
+describe('getVersionHistory', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('returns version rows with createdBy and reason', async () => {
+    const versionRows = [
+      { id: 'v1-id', version: 1, content: 'v1', contentHash: hash('v1'), title: 'T', metadata: {}, reason: 'initial_generation', createdAt: new Date('2026-04-05T00:00:00Z'), createdBy: USER_ID },
+      { id: 'v2-id', version: 2, content: 'v2', contentHash: hash('v2'), title: 'T', metadata: {}, reason: 'user refined', createdAt: new Date('2026-04-05T01:00:00Z'), createdBy: USER_ID },
+    ];
+    const auditRows = [
+      { id: 'a1', action: 'section.state_change', resourceId: SESSION_ID, userId: USER_ID, createdAt: new Date('2026-04-05T00:30:00Z'), newValue: null, oldValue: null, metadata: { sectionId: 'context', fromState: 'draft', toState: 'reviewed', currentVersion: 1 } },
+    ];
+
+    // Use reference equality on imported table objects to discriminate (see T7 review m3).
+    // Drizzle table objects are module-level singletons, so `from(sectionVersions)` passes the
+    // same reference that tests can import. This is cleaner than Symbol.for('drizzle:Name').
+    const { sectionVersions: sectionVersionsTable, auditLog: auditLogTable } = await import('@/lib/db/schema');
+
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        select: vi.fn().mockImplementation(() => ({
+          from: vi.fn().mockImplementation((table: unknown) => ({
+            where: vi.fn().mockImplementation(() => ({
+              orderBy: vi.fn().mockResolvedValue(
+                table === sectionVersionsTable ? versionRows : auditRows,
+              ),
+            })),
+          })),
+        })),
+      },
+    }));
+    vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
+
+    const { getVersionHistory } = await import('@/lib/ai/orchestrator/section-versions');
+
+    const result = await getVersionHistory(SESSION_ID, 'context');
+
+    expect(result.versions).toHaveLength(2);
+    expect(result.versions[0].version).toBe(1);
+    expect(result.versions[1].version).toBe(2);
+    expect(result.stateTransitions).toHaveLength(1);
+    expect(result.stateTransitions[0].fromState).toBe('draft');
+    expect(result.stateTransitions[0].toState).toBe('reviewed');
+  });
+});

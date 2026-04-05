@@ -1,10 +1,10 @@
 import { createHash } from 'crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { sectionVersions, workflowSessions } from '@/lib/db/schema';
+import { sectionVersions, workflowSessions, auditLog } from '@/lib/db/schema';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
-import type { SectionResult } from './types';
+import type { SectionResult, SectionVersion } from './types';
 
 const log = logger.child({ component: 'section-versions' });
 
@@ -410,4 +410,85 @@ export async function rollbackSection(opts: {
   }
 
   return updatedSection;
+}
+
+export interface StateTransitionEntry {
+  timestamp: string;
+  userId: string;
+  currentVersion: number;
+  fromState: State;
+  toState: State;
+  reason: string | null;
+  reviewSkipped: boolean;
+}
+
+export interface VersionHistoryResult {
+  versions: SectionVersion[];
+  stateTransitions: StateTransitionEntry[];
+}
+
+export async function getVersionHistory(
+  sessionId: string,
+  sectionId: string,
+): Promise<VersionHistoryResult> {
+  const versionRows = await db
+    .select()
+    .from(sectionVersions)
+    .where(and(
+      eq(sectionVersions.sessionId, sessionId),
+      eq(sectionVersions.sectionId, sectionId),
+    ))
+    .orderBy(asc(sectionVersions.version));
+
+  const versions: SectionVersion[] = versionRows.map((row) => ({
+    id: row.id,
+    version: row.version,
+    content: row.content,
+    contentHash: row.contentHash,
+    title: row.title,
+    metadata: row.metadata as SectionVersion['metadata'],
+    reason: row.reason,
+    createdAt: row.createdAt.toISOString(),
+    createdBy: row.createdBy,
+  }));
+
+  // Fetch audit entries for this section's state changes
+  const auditRows = await db
+    .select()
+    .from(auditLog)
+    .where(and(
+      eq(auditLog.action, 'section.state_change'),
+      eq(auditLog.resourceId, sessionId),
+    ))
+    .orderBy(asc(auditLog.createdAt));
+
+  const stateTransitions: StateTransitionEntry[] = auditRows
+    .filter((row) => {
+      const metadata = row.metadata as { sectionId?: string } | null;
+      return metadata?.sectionId === sectionId;
+    })
+    .map((row) => {
+      const metadata = row.metadata as {
+        sectionId: string;
+        currentVersion: number;
+        fromState: State;
+        toState: State;
+        reason: string | null;
+        reviewSkipped?: boolean;
+      };
+      return {
+        // auditLog.createdAt is nullable in schema (defaultNow only) but in
+        // practice every row has a server-side timestamp — empty string fallback
+        // is defensive and type-safe.
+        timestamp: row.createdAt?.toISOString() ?? '',
+        userId: row.userId ?? '',
+        currentVersion: metadata.currentVersion,
+        fromState: metadata.fromState,
+        toState: metadata.toState,
+        reason: metadata.reason,
+        reviewSkipped: metadata.reviewSkipped === true,
+      };
+    });
+
+  return { versions, stateTransitions };
 }
