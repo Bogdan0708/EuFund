@@ -102,11 +102,15 @@ export interface SubmissionDocument {
   userStatus: 'not_started' | 'completed'
   userStatusAt: string | null                      // When the user last changed status
 
-  // Provenance — how this document was produced
+  // Provenance — how this document was identified and produced
   provenance: {
-    origin: 'template' | 'ai_classified'           // Template = curated form, AI = annex extraction
-    templateId?: string                             // Which template was used (if template origin)
-    classifiedFrom?: string                         // Which annex text triggered this (if AI origin)
+    requirementSource: 'curated_list' | 'ai_classified'  // How we knew this was needed
+    contentSource: 'template' | 'none'                    // Where the form content came from
+    templateId?: string                                    // Which template (if contentSource = 'template')
+    templateVersion?: string                               // e.g. "2024-Q1" — tracks template updates over time
+    classifiedFrom?: string                                // Which annex text triggered this (if ai_classified)
+    confidence?: number                                    // 0-1, only set when requirementSource = 'ai_classified'
+    reviewRequired: boolean                                // true when AI-classified without a matched template
     generatedAt: string
   }
 }
@@ -123,9 +127,19 @@ export interface SubmissionDocument {
 
 These are independent: a `generated` document can be `not_started` (user hasn't printed it yet) or `completed`. An `external_required` document starts `not_started` and the user marks `completed` when they've obtained it.
 
-**Provenance**:
-- `template` — form content came from a curated template in `general-requirements.ts` with variable interpolation. `templateId` identifies which template.
-- `ai_classified` — AI determined this form is required by analyzing the call's mandatory annexes. The form content is still template-based when a matching template exists; `ai_classified` means the *selection* was AI-driven, not the content.
+**Provenance** (two independent axes):
+
+`requirementSource` — how the system knew this document was needed:
+- `curated_list` — from the hardcoded general requirements list. Always known, always required.
+- `ai_classified` — AI analyzed the call's mandatory annexes and determined this form is needed. Carries a `confidence` score (0-1). When confidence is below 0.7 or no matching template exists, `reviewRequired` is set to `true` so the UI can flag it for the user.
+
+`contentSource` — where the form content came from:
+- `template` — content produced from a curated template with variable interpolation. `templateId` and `templateVersion` identify which template at which revision.
+- `none` — no content generated (external documents the user must obtain).
+
+These are independent: an `ai_classified` requirement can still have `contentSource: 'template'` if a matching template was found. An `ai_classified` requirement with no matching template gets `contentSource: 'none'`, `availability: 'external_required'`, and `reviewRequired: true`.
+
+**Template versioning**: Each template in `form-templates.ts` carries a `version` string (e.g., `"2024-Q1"`). This is stamped into `provenance.templateVersion` at generation time. When templates are updated (regulation changes), regeneration produces new content but the `templateVersion` field makes it clear which version was used. This is lightweight internal metadata — not user-facing version history.
 
 **Deterministic IDs**: `id = "doc-{scope}-{slugifiedTitle}"`. Running generation twice for the same project produces the same IDs. Upsert semantics — existing rows are updated, never duplicated.
 
@@ -168,6 +182,7 @@ New files:
 ```ts
 export interface FormTemplate {
   templateId: string                    // e.g. "tpl-declaratie-minimis"
+  version: string                       // e.g. "2024-Q1" — bumped when template text changes
   title: string                         // "Declarație privind ajutoarele de minimis"
   category: SubmissionDocument['category']
   scope: 'general' | 'call_specific'
@@ -285,6 +300,7 @@ The page gets reorganized from a flat file list into three sections:
 - Checking/unchecking a checkbox calls `PATCH /api/v1/projects/:id/submission-documents/:docId` which updates `userStatus` in `project_documents.metadata` (single source of truth)
 - Scope badge distinguishes general EU requirements from call-specific ones
 - Provenance badge shows whether the form came from a curated template or was AI-classified from the annex list
+- Items with `reviewRequired: true` show an orange "Verificați" badge — the user should confirm the AI correctly identified this requirement before acting on it
 
 **Documente încărcate** — existing upload section, unchanged.
 
