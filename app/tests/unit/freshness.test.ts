@@ -9,9 +9,9 @@ describe('checkCallFreshness', () => {
     const gateway = {
       generate: vi.fn().mockResolvedValue({
         content: JSON.stringify([
-          { callId: 'c1', status: 'open', deadline: '2026-12-31', amendments: [], evidence: 'Call confirmed open' },
-          { callId: 'c2', status: 'closed', deadline: '2026-03-01', amendments: ['Closed on 2026-03-01'], evidence: 'Call closed' },
-          { callId: 'c3', status: 'open', deadline: '2026-09-15', amendments: ['Deadline extended'], evidence: 'Deadline changed' },
+          { status: 'open', deadline: '2026-12-31', amendments: [], evidence: 'Call confirmed open' },
+          { status: 'closed', deadline: '2026-03-01', amendments: ['Closed on 2026-03-01'], evidence: 'Call closed' },
+          { status: 'open', deadline: '2026-09-15', amendments: ['Deadline extended'], evidence: 'Deadline changed' },
         ]),
         tokensUsed: 500,
       }),
@@ -41,7 +41,7 @@ describe('checkCallFreshness', () => {
         .mockRejectedValueOnce(new Error('Perplexity down'))
         .mockResolvedValueOnce({
           content: JSON.stringify([
-            { callId: 'c1', status: 'open', deadline: '2026-12-31', amendments: [], evidence: 'OK' },
+            { status: 'open', deadline: '2026-12-31', amendments: [], evidence: 'OK' },
           ]),
           tokensUsed: 300,
         }),

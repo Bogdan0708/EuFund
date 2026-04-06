@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/helpers'
+import { withUserRLS } from '@/lib/db'
 import { db } from '@/lib/db'
 import { projects, projectDocuments } from '@/lib/db/schema'
-import { eq, and, desc } from 'drizzle-orm'
+import { eq, desc, and, isNull } from 'drizzle-orm'
 import { Errors, FondEUError } from '@/lib/errors'
 import type { SubmissionDocument } from '@/lib/ai/orchestrator/types'
 
@@ -13,12 +14,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const user = await requireAuth()
     const { id: projectId, docId } = params
 
-    // Verify project ownership
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.userId, user.id)))
-      .limit(1)
+    // Verify project access via RLS (org-member aware, not just userId check).
+    // withUserRLS sets app.current_user_id — RLS policies enforce org membership.
+    const project = await withUserRLS(user.id, async (tx) => {
+      return tx.query.projects.findFirst({
+        where: and(eq(projects.id, projectId), isNull(projects.deletedAt)),
+      })
+    })
 
     if (!project) {
       return NextResponse.json(Errors.notFound('project', projectId).toResponse('ro'), { status: 404 })

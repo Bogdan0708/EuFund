@@ -5,12 +5,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
-import { organizations, projects } from '@/lib/db/schema';
+import { db } from '@/lib/db';
+import { organizations, projects, projectDocuments } from '@/lib/db/schema';
 import { updateProjectSectionSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, desc } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 type Params = { params: { id: string } };
@@ -43,9 +44,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
       });
     });
 
+    // Load latest project_documents metadata (submission dossier lives here)
+    const [latestDoc] = await db
+      .select({ metadata: projectDocuments.metadata })
+      .from(projectDocuments)
+      .where(eq(projectDocuments.projectId, project.id))
+      .orderBy(desc(projectDocuments.version))
+      .limit(1)
+
     return NextResponse.json({
       success: true,
-      data: { ...project, organizationName: organization?.name || null },
+      data: {
+        ...project,
+        organizationName: organization?.name || null,
+        metadata: latestDoc?.metadata ?? null,
+      },
     });
   } catch (error) {
     if (error instanceof FondEUError) {
