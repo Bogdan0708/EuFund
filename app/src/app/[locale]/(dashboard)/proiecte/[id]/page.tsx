@@ -7,6 +7,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { AnimatePresence, motion } from 'motion/react';
 import { Icon } from '@/components/ui/ds-icon';
 import { pageVariants, pageTransition } from '@/lib/motion';
+import type { SubmissionDocument } from '@/lib/ai/orchestrator/types';
 
 /* ---------- types ---------- */
 interface ProjectDetail {
@@ -32,6 +33,7 @@ interface ProjectFile {
   filename: string;
   mimeType: string;
   sizeBytes: number;
+  storagePath: string;
   category: string;
   description: string | null;
   createdAt: string;
@@ -173,9 +175,269 @@ function PageSkeleton() {
   );
 }
 
+/* ---------- documents tab content ---------- */
+function DocumentsTabContent({
+  files,
+  submissionDocs,
+  setSubmissionDocs,
+  projectId,
+  td,
+  t,
+}: {
+  files: ProjectFile[];
+  submissionDocs: SubmissionDocument[];
+  setSubmissionDocs: React.Dispatch<React.SetStateAction<SubmissionDocument[]>>;
+  projectId: string;
+  td: ReturnType<typeof useTranslations>;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const proposalFiles = files.filter(f => f.storagePath?.includes('/propunere/'));
+  const formFiles = files.filter(f => f.storagePath?.includes('/formulare/'));
+  const uploadedFiles = files.filter(
+    f => !f.storagePath?.includes('/propunere/') && !f.storagePath?.includes('/formulare/')
+  );
+
+  return (
+    <div className="space-y-8">
+      {/* Propunere */}
+      <div>
+        <h3 className="text-lg font-bold mb-4">{td('propunere')}</h3>
+        {proposalFiles.length === 0 ? (
+          <p className="text-sm text-on-surface-variant">{td('noFiles')}</p>
+        ) : (
+          <div className="space-y-2">
+            {proposalFiles
+              .sort((a, b) => a.filename.localeCompare(b.filename))
+              .map(file => (
+                <div
+                  key={file.id}
+                  className="flex items-center justify-between p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/10"
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon name="description" size="sm" className="text-primary" />
+                    <span className="text-sm font-medium text-on-surface">
+                      {file.filename.replace('.docx', '').replace(/^\d+-/, '')}
+                    </span>
+                  </div>
+                  <a
+                    href={`/api/v1/projects/${projectId}/files/${file.id}`}
+                    className="px-3 py-1 text-xs font-bold rounded-full bg-primary-fixed text-primary hover:bg-primary-fixed/80 transition-colors"
+                  >
+                    {td('download')}
+                  </a>
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
+
+      {/* Dosar de depunere */}
+      <div>
+        <h3 className="text-lg font-bold mb-2">{td('dosar')}</h3>
+        {submissionDocs.length > 0 ? (
+          <>
+            {/* Progress bar */}
+            {(() => {
+              const completed = submissionDocs.filter(d => d.userStatus === 'completed').length;
+              const total = submissionDocs.length;
+              const pct = total > 0 ? (completed / total) * 100 : 0;
+              return (
+                <div className="mb-4">
+                  <p className="text-xs text-on-surface-variant mb-1">
+                    {td('progress', { completed, total })}
+                  </p>
+                  <div className="h-2 rounded-full bg-surface-container-high overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-600 rounded-full transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Grouped items */}
+            {(['needs_fill', 'external_required', 'generated'] as const).map(availability => {
+              const group = submissionDocs.filter(
+                d => d.availability === availability && d.userStatus !== 'completed'
+              );
+              if (group.length === 0) return null;
+              const label =
+                availability === 'needs_fill'
+                  ? td('groupNeedsFill')
+                  : availability === 'external_required'
+                    ? td('groupExternal')
+                    : td('groupGenerated');
+              return (
+                <div key={availability} className="mb-4">
+                  <h4 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">
+                    {label}
+                  </h4>
+                  <div className="space-y-2">
+                    {group.map(doc => {
+                      const matchingFile = formFiles.find(
+                        f => f.filename === `${doc.id.replace(/^doc-[^-]+-/, '')}.docx` || f.description === doc.title
+                      );
+                      return (
+                        <div
+                          key={doc.id}
+                          className="flex items-center justify-between p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/10"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium text-on-surface">{doc.title}</span>
+                              <span
+                                className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-widest ${
+                                  doc.scope === 'general'
+                                    ? 'bg-primary-fixed text-primary'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {doc.scope === 'general' ? td('scopeGeneral') : td('scopeCall')}
+                              </span>
+                              {doc.provenance.reviewRequired && (
+                                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-widest bg-amber-100 text-amber-800">
+                                  {td('reviewRequired')}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-on-surface-variant mt-1">{doc.instructions}</p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {matchingFile && (
+                              <a
+                                href={`/api/v1/projects/${projectId}/files/${matchingFile.id}`}
+                                className="px-3 py-1 text-xs font-bold rounded-full bg-primary-fixed text-primary hover:bg-primary-fixed/80 transition-colors"
+                              >
+                                {td('download')}
+                              </a>
+                            )}
+                            <button
+                              onClick={async () => {
+                                const res = await fetch(
+                                  `/api/v1/projects/${projectId}/submission-documents/${doc.id}`,
+                                  {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ userStatus: 'completed' }),
+                                  }
+                                );
+                                if (res.ok) {
+                                  setSubmissionDocs(prev =>
+                                    prev.map(d =>
+                                      d.id === doc.id
+                                        ? { ...d, userStatus: 'completed', userStatusAt: new Date().toISOString() }
+                                        : d
+                                    )
+                                  );
+                                }
+                              }}
+                              className="px-3 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition-colors"
+                            >
+                              {td('markComplete')}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Completed items */}
+            {(() => {
+              const completed = submissionDocs.filter(d => d.userStatus === 'completed');
+              if (completed.length === 0) return null;
+              return (
+                <div className="mb-4">
+                  <h4 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">
+                    {td('groupCompleted')}
+                  </h4>
+                  <div className="space-y-2">
+                    {completed.map(doc => (
+                      <div
+                        key={doc.id}
+                        className="flex items-center justify-between p-3 bg-emerald-50 rounded-xl border border-emerald-200/50"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Icon name="check_circle" size="sm" className="text-emerald-600" />
+                          <span className="text-sm text-on-surface">{doc.title}</span>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            const res = await fetch(
+                              `/api/v1/projects/${projectId}/submission-documents/${doc.id}`,
+                              {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ userStatus: 'not_started' }),
+                              }
+                            );
+                            if (res.ok) {
+                              setSubmissionDocs(prev =>
+                                prev.map(d =>
+                                  d.id === doc.id
+                                    ? { ...d, userStatus: 'not_started', userStatusAt: new Date().toISOString() }
+                                    : d
+                                )
+                              );
+                            }
+                          }}
+                          className="px-3 py-1 text-xs rounded-full text-on-surface-variant hover:bg-surface-container-high transition-colors"
+                        >
+                          {td('markIncomplete')}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </>
+        ) : (
+          <p className="text-sm text-on-surface-variant">{td('noFiles')}</p>
+        )}
+      </div>
+
+      {/* Documente incarcate */}
+      <div>
+        <h3 className="text-lg font-bold mb-4">{td('incarcare')}</h3>
+        {uploadedFiles.length === 0 ? (
+          <p className="text-sm text-on-surface-variant">{td('noFiles')}</p>
+        ) : (
+          <div className="space-y-2">
+            {uploadedFiles.map(file => (
+              <div
+                key={file.id}
+                className="flex items-center justify-between p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/10"
+              >
+                <div className="flex items-center gap-3">
+                  <Icon name={mimeTypeToIcon(file.mimeType)} size="sm" className="text-on-surface-variant" />
+                  <div>
+                    <span className="text-sm font-medium text-on-surface">{file.filename}</span>
+                    <span className="text-xs text-on-surface-variant ml-2">{formatBytes(file.sizeBytes)}</span>
+                  </div>
+                </div>
+                <a
+                  href={`/api/v1/projects/${projectId}/files/${file.id}`}
+                  className="px-3 py-1 text-xs font-bold rounded-full bg-primary-fixed text-primary hover:bg-primary-fixed/80 transition-colors"
+                >
+                  {td('download')}
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- page component ---------- */
 export default function ProiectDetailPage() {
   const t = useTranslations('projectDetail');
+  const td = useTranslations('projectDossier');
   const router = useRouter();
   const params = useParams<{ id: string; locale: string }>();
   const id = params.id;
@@ -184,6 +446,7 @@ export default function ProiectDetailPage() {
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
+  const [submissionDocs, setSubmissionDocs] = useState<SubmissionDocument[]>([]);
   const [aiSessionId, setAiSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -215,6 +478,18 @@ export default function ProiectDetailPage() {
       .then(data => setFiles(data.files ?? []))
       .catch(() => setFiles([]))
       .finally(() => setFilesLoading(false));
+  }, [id, project]);
+
+  // Fetch submission documents from project metadata
+  useEffect(() => {
+    if (!project) return;
+    fetch(`/api/v1/projects/${id}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        const docs = data?.data?.metadata?.submissionDocuments ?? data?.metadata?.submissionDocuments ?? [];
+        setSubmissionDocs(docs);
+      })
+      .catch(() => setSubmissionDocs([]));
   }, [id, project]);
 
   // Find linked AI session
@@ -497,45 +772,20 @@ export default function ProiectDetailPage() {
                 transition={pageTransition}
               >
                 {filesLoading ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-8">
                     {[1, 2, 3].map(i => (
                       <SkeletonBlock key={i} className="h-24" />
                     ))}
                   </div>
-                ) : files.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {files.map(file => (
-                      <div
-                        key={file.id}
-                        className="glass-card rounded-lg p-6 flex items-center gap-5 hover:shadow-[0_20px_40px_rgba(0,0,0,0.04)] transition-all group cursor-pointer"
-                      >
-                        <div className="w-12 h-12 rounded-xl bg-primary-fixed flex items-center justify-center shrink-0">
-                          <Icon name={mimeTypeToIcon(file.mimeType)} className="text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-bold text-on-surface truncate group-hover:text-primary transition-colors">
-                            {file.filename}
-                          </h4>
-                          <p className="text-sm text-on-surface-variant">
-                            {formatBytes(file.sizeBytes)} &bull; {formatDate(file.createdAt)}
-                          </p>
-                          {file.category && file.category !== 'uploaded' && (
-                            <span className="text-xs text-primary font-semibold capitalize">{file.category}</span>
-                          )}
-                        </div>
-                        <Icon
-                          name="download"
-                          className="text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity"
-                        />
-                      </div>
-                    ))}
-                  </div>
                 ) : (
-                  <div className="text-center py-16">
-                    <Icon name="folder_open" size="lg" className="text-on-surface-variant mx-auto mb-4" />
-                    <p className="font-bold text-on-surface mb-2">{t('noDocuments')}</p>
-                    <p className="text-sm text-on-surface-variant">{t('uploadTitle')}</p>
-                  </div>
+                  <DocumentsTabContent
+                    files={files}
+                    submissionDocs={submissionDocs}
+                    setSubmissionDocs={setSubmissionDocs}
+                    projectId={id}
+                    td={td}
+                    t={t}
+                  />
                 )}
 
                 {/* Upload area */}

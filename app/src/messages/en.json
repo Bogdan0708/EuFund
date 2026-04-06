@@ -886,6 +886,30 @@
     "statusBuilt": "Built",
     "statusExported": "Exported"
   },
+  "projectDossier": {
+    "propunere": "Proposal",
+    "dosar": "Submission Dossier",
+    "incarcare": "Uploaded Documents",
+    "progress": "{completed}/{total} documents completed",
+    "groupNeedsFill": "To complete",
+    "groupExternal": "To obtain",
+    "groupGenerated": "Ready to download",
+    "groupCompleted": "Completed",
+    "scopeGeneral": "General",
+    "scopeCall": "Call-specific",
+    "provenanceTemplate": "Template",
+    "provenanceAi": "AI classified",
+    "reviewRequired": "Review needed",
+    "download": "Download",
+    "markComplete": "Complete",
+    "markIncomplete": "Incomplete",
+    "noFiles": "No documents generated yet.",
+    "sectionStatus": {
+      "draft": "Draft",
+      "reviewed": "Reviewed",
+      "approved": "Approved"
+    }
+  },
   "calls": {
     "title": "Funding Calls",
     "searchPlaceholder": "Search calls...",
