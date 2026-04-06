@@ -113,6 +113,19 @@ If you cannot find any matching open calls, return an empty array [].`,
     // Parsing failed — matchedCalls stays empty
   }
 
+  // ─── Step 4: Freshness check (top 3 calls) ───
+  // Skip if calls came from Perplexity web search (data is already live)
+  const cameFromWebSearch = ragResults.length === 0
+  if (!cameFromWebSearch && matchedCalls.length > 0) {
+    stream.send({ type: 'step_progress', step: 2, message: 'Verifying call freshness...' })
+    try {
+      const { checkCallFreshness } = await import('../freshness')
+      matchedCalls = await checkCallFreshness(matchedCalls, gateway)
+    } catch (freshErr) {
+      log.warn({ error: freshErr instanceof Error ? freshErr.message : String(freshErr) }, 'Freshness check failed entirely')
+    }
+  }
+
   // Stream results to user
   const summary = matchedCalls.map((c, i) =>
     `${i + 1}. **${c.title}** (${c.program}) — Score: ${c.score}/100\n   ${c.reasoning}`
