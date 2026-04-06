@@ -6,7 +6,6 @@ const log = logger.child({ component: 'freshness' })
 const MAX_CALLS_TO_CHECK = 3
 
 interface FreshnessApiResult {
-  callId: string
   status: 'open' | 'closed' | 'unknown'
   deadline: string
   amendments: string[]
@@ -22,8 +21,8 @@ function buildPrompt(calls: MatchedCall[]): string {
 
 ${callList}
 
-Return a JSON array with one object per call:
-{ "callId": string, "status": "open"|"closed"|"unknown", "deadline": string, "amendments": string[], "evidence": string }
+Return a JSON array with exactly ${calls.length} objects, one per call IN THE SAME ORDER:
+{ "status": "open"|"closed"|"unknown", "deadline": string, "amendments": string[], "evidence": string }
 
 If you cannot verify a call, set status to "unknown".`
 }
@@ -125,13 +124,14 @@ export async function checkCallFreshness(
     }
   }
 
-  const resultMap = new Map(apiResults.map(r => [r.callId, r]))
-
+  // Match by position — the prompt asks for results in the same order as the input
+  let checkedIdx = 0
   return calls.map((call, i) => {
     if (i >= MAX_CALLS_TO_CHECK || !call.sourceUrl) return call
+    const apiResult = apiResults[checkedIdx++]
     return {
       ...call,
-      freshness: mapToFreshness(call, resultMap.get(call.callId), provider, model),
+      freshness: mapToFreshness(call, apiResult, provider, model),
     }
   })
 }

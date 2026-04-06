@@ -26,6 +26,12 @@ export const matchAgent: AgentFn = async (ctx, _input, stream, gateway) => {
 
   let ragContext = ragResults.map(r => `[${r.metadata?.program || 'Unknown'}] ${r.content} (score: ${r.score.toFixed(2)})`).join('\n\n')
 
+  // Track whether a live Perplexity web search produced the call data.
+  // When true, the calls are already fresh and don't need a freshness check.
+  // Only set when the web search actually succeeds and parses — failed web search
+  // or Gemini-from-knowledge calls are NOT "live" and still need verification.
+  let callsFromLiveWebSearch = false
+
   // Step 2: If no RAG results, search the web for open funding calls via Perplexity
   if (ragResults.length === 0) {
     stream.send({ type: 'step_progress', step: 2, message: 'Searching Romanian funding platforms for open calls...' })
@@ -54,6 +60,7 @@ If you cannot find any matching open calls, return an empty array [].`,
           ragContext = webCalls.map(c =>
             `[${c.program}] ${c.title} - ${c.description || ''} Budget: ${c.budgetRange || 'N/A'}, Deadline: ${c.deadline || 'N/A'}, Source: ${c.sourceUrl || 'N/A'}`
           ).join('\n\n')
+          callsFromLiveWebSearch = true
           stream.send({ type: 'step_progress', step: 2, message: `Found ${webCalls.length} potential calls from web search, scoring...` })
         }
       } catch {
@@ -114,9 +121,9 @@ If you cannot find any matching open calls, return an empty array [].`,
   }
 
   // ─── Step 4: Freshness check (top 3 calls) ───
-  // Skip if calls came from Perplexity web search (data is already live)
-  const cameFromWebSearch = ragResults.length === 0
-  if (!cameFromWebSearch && matchedCalls.length > 0) {
+  // Skip only if calls came from a successful Perplexity web search (data is already live).
+  // Failed web search or Gemini-from-knowledge calls still need verification.
+  if (!callsFromLiveWebSearch && matchedCalls.length > 0) {
     stream.send({ type: 'step_progress', step: 2, message: 'Verifying call freshness...' })
     try {
       const { checkCallFreshness } = await import('../freshness')
