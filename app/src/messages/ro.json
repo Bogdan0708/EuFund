@@ -1082,6 +1082,11 @@
       "eligibilityFit": "Potrivire eligibilitate",
       "budgetFit": "Potrivire buget"
     },
+    "freshness": {
+      "verified": "Verificat",
+      "stale": "Informații schimbate",
+      "unknown": "Nu s-a putut verifica"
+    },
     "planTab": {
       "title": "Plan de acțiune",
       "waiting": "Se așteaptă planul de acțiune...",

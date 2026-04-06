@@ -1082,6 +1082,11 @@
       "eligibilityFit": "Eligibility fit",
       "budgetFit": "Budget fit"
     },
+    "freshness": {
+      "verified": "Verified",
+      "stale": "Information changed",
+      "unknown": "Could not verify"
+    },
     "planTab": {
       "title": "Action Plan",
       "waiting": "Waiting for action plan...",

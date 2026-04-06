@@ -282,6 +282,25 @@ function CallsTabContent({
             </div>
           )}
 
+          {call.freshness && (
+            <div className={`flex items-center gap-1.5 text-xs mt-1 ${
+              call.freshness.status === 'verified' ? 'text-emerald-700' :
+              call.freshness.status === 'stale' ? 'text-amber-700' :
+              'text-on-surface-variant'
+            }`}>
+              <Icon name={
+                call.freshness.status === 'verified' ? 'check_circle' :
+                call.freshness.status === 'stale' ? 'warning' :
+                'help'
+              } size="sm" />
+              <span>
+                {call.freshness.status === 'verified' && t('freshness.verified')}
+                {call.freshness.status === 'stale' && (call.freshness.warnings[0] || t('freshness.stale'))}
+                {call.freshness.status === 'unknown' && t('freshness.unknown')}
+              </span>
+            </div>
+          )}
+
           {call.reasoning && (
             <p className="text-xs text-on-surface-variant leading-relaxed">
               {call.reasoning}
