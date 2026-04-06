@@ -9,6 +9,8 @@ import type {
   SectionResult,
   QAResult,
   ProjectCompletionStatus,
+  SubmissionDocument,
+  MatchedCall,
 } from '@/lib/ai/orchestrator/types'
 
 describe('Orchestrator V2 types', () => {
@@ -222,5 +224,64 @@ describe('Orchestrator V2 types', () => {
     if (event.type === 'done') {
       expect(event.completionStatus).toBe('complete_with_gaps')
     }
+  })
+})
+
+describe('Phase 2 types', () => {
+  it('SubmissionDocument has all required fields', () => {
+    const doc: SubmissionDocument = {
+      id: 'doc-general-declaratie-gdpr',
+      title: 'Declarație GDPR',
+      content: 'Text...',
+      category: 'declaration',
+      scope: 'general',
+      order: 1,
+      availability: 'needs_fill',
+      instructions: 'Semnați și ștampilați',
+      sourceAnnex: '',
+      userStatus: 'not_started',
+      userStatusAt: null,
+      provenance: {
+        requirementSource: 'curated_list',
+        contentSource: 'template',
+        templateId: 'tpl-declaratie-gdpr',
+        templateVersion: '2024-Q1',
+        reviewRequired: false,
+        generatedAt: '2026-04-06T00:00:00Z',
+      },
+    }
+    expect(doc.id).toBe('doc-general-declaratie-gdpr')
+    expect(doc.provenance.reviewRequired).toBe(false)
+  })
+
+  it('MatchedCall freshness is optional', () => {
+    const call: MatchedCall = {
+      callId: 'c1', title: 'Test', program: 'PNRR',
+      score: 80, thematicFit: 0.9, eligibilityFit: 0.8, budgetFit: 0.7,
+      deadline: '2026-12-31', sourceUrl: 'https://example.com', reasoning: 'Good fit',
+    }
+    expect(call.freshness).toBeUndefined()
+  })
+
+  it('MatchedCall freshness with provenance', () => {
+    const call: MatchedCall = {
+      callId: 'c1', title: 'Test', program: 'PNRR',
+      score: 80, thematicFit: 0.9, eligibilityFit: 0.8, budgetFit: 0.7,
+      deadline: '2026-12-31', sourceUrl: 'https://example.com', reasoning: 'Good fit',
+      freshness: {
+        status: 'verified',
+        checkedAt: '2026-04-06T00:00:00Z',
+        currentDeadline: '2026-12-31',
+        warnings: [],
+        provenance: {
+          provider: 'perplexity',
+          model: 'sonar',
+          sourceUrl: 'https://example.com',
+          evidence: 'Call is open, deadline confirmed',
+        },
+      },
+    }
+    expect(call.freshness?.status).toBe('verified')
+    expect(call.freshness?.provenance.provider).toBe('perplexity')
   })
 })
