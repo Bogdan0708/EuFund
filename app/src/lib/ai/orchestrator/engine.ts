@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { workflowSessions, workflowMessages, projects, projectDocuments, orgMembers } from '@/lib/db/schema'
+import { workflowSessions, workflowMessages, projects, projectDocuments, projectFiles, organizations, orgMembers } from '@/lib/db/schema'
 import { eq, and, desc } from 'drizzle-orm'
 import type { WorkflowContext, AgentFn, SSEStream, GatewayClient, ProjectCompletionStatus, SectionResult, CallBlueprint } from './types'
 import { STEP_LABELS } from './types'
@@ -340,6 +340,78 @@ export async function processMessage(
               sections: sections as unknown as Record<string, unknown>[],
               metadata: { qaResult } as unknown as Record<string, unknown>,
             })
+
+            // ─── Phase 2: Save section DOCXs + generate submission dossier ───
+            try {
+              const { generateSectionDocx, buildSectionStoragePath, generateFormDocx, buildFormStoragePath } = await import('@/lib/export/section-docx')
+              const { putObject } = await import('@/lib/storage/gcs')
+              const { generateSubmissionDocuments } = await import('@/lib/ai/orchestrator/agents/documents')
+
+              // Save each proposal section as a separate DOCX
+              for (const section of sections) {
+                const buffer = generateSectionDocx({ title: section.title, content: section.content, order: section.order })
+                const storagePath = buildSectionStoragePath(project.id, section.order, section.title)
+                const savedPath = await putObject(storagePath, buffer, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+                await db.insert(projectFiles).values({
+                  projectId: project.id,
+                  userId: ctx.userId,
+                  filename: storagePath.split('/').pop()!,
+                  mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                  sizeBytes: buffer.length,
+                  storagePath: savedPath,
+                  category: 'generated',
+                  description: `Secțiune propunere: ${section.title}`,
+                })
+              }
+
+              // Build project context for form interpolation
+              const [org] = await db.select({ name: organizations.name, cui: organizations.cui, address: organizations.address })
+                .from(organizations).where(eq(organizations.id, membership.orgId)).limit(1)
+
+              const annexes = (updatedContext.callBlueprint as CallBlueprint | null)?.normalized?.mandatoryAnnexes ?? []
+              const program = (updatedContext.callBlueprint as CallBlueprint | null)?.program ?? ''
+
+              const submissionDocs = await generateSubmissionDocuments({
+                mandatoryAnnexes: annexes,
+                projectContext: {
+                  orgName: org?.name ?? '',
+                  cui: org?.cui ?? '',
+                  orgAddress: typeof org?.address === 'object' && org?.address ? JSON.stringify(org.address) : '',
+                  representativeName: '[___]',
+                  representativeRole: '[___]',
+                  projectTitle: title.slice(0, 200),
+                  programName: program,
+                  date: new Date().toISOString().split('T')[0],
+                },
+                gateway,
+              })
+
+              // Save form DOCXs for documents that have content
+              for (const doc of submissionDocs) {
+                if (doc.availability === 'external_required' || !doc.content) continue
+                const buffer = generateFormDocx({ title: doc.title, content: doc.content })
+                const storagePath = buildFormStoragePath(project.id, doc.scope, doc.title)
+                const savedPath = await putObject(storagePath, buffer, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+                await db.insert(projectFiles).values({
+                  projectId: project.id,
+                  userId: ctx.userId,
+                  filename: storagePath.split('/').pop()!,
+                  mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                  sizeBytes: buffer.length,
+                  storagePath: savedPath,
+                  category: 'generated',
+                  description: doc.title,
+                })
+              }
+
+              // Persist submission docs metadata to project_documents
+              await db.update(projectDocuments)
+                .set({ metadata: { qaResult, submissionDocuments: submissionDocs } as unknown as Record<string, unknown> })
+                .where(eq(projectDocuments.projectId, project.id))
+
+            } catch (docErr) {
+              log.error({ error: docErr instanceof Error ? docErr.message : String(docErr) }, 'Phase 2 document generation failed — project saved without dossier')
+            }
 
             // Link session to project
             await db.update(workflowSessions)
