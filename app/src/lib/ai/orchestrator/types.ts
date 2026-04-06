@@ -13,6 +13,7 @@ export interface WorkflowContext {
   actionPlan: ActionPlan | null
   projectSections: SectionResult[] | null
   uploadedFiles: UploadedFile[]
+  submissionDocuments?: SubmissionDocument[] | null
   /** User preference for generation length/tone. Loaded from user_preferences at session creation. */
   responseStyle?: 'concise' | 'detailed' | 'technical'
 }
@@ -38,6 +39,7 @@ export interface MatchedCall {
   deadline: string
   sourceUrl: string
   reasoning: string
+  freshness?: FreshnessResult
 }
 
 export interface CallBlueprint {
@@ -136,6 +138,49 @@ export interface SectionVersion {
   reason: string
   createdAt: string
   createdBy: string
+}
+
+// ─── Phase 2: Trust Workbench ────────────────────────────────────
+
+export interface FreshnessProvenance {
+  provider: string
+  model: string
+  sourceUrl: string
+  evidence: string
+}
+
+export interface FreshnessResult {
+  status: 'verified' | 'stale' | 'unknown'
+  checkedAt: string
+  currentDeadline?: string
+  warnings: string[]
+  provenance: FreshnessProvenance
+}
+
+export interface SubmissionDocumentProvenance {
+  requirementSource: 'curated_list' | 'ai_classified'
+  contentSource: 'template' | 'none'
+  templateId?: string
+  templateVersion?: string
+  classifiedFrom?: string
+  confidence?: number
+  reviewRequired: boolean
+  generatedAt: string
+}
+
+export interface SubmissionDocument {
+  id: string
+  title: string
+  content: string
+  category: 'declaration' | 'certificate' | 'annex' | 'form'
+  scope: 'general' | 'call_specific'
+  order: number
+  availability: 'generated' | 'needs_fill' | 'external_required'
+  instructions: string
+  sourceAnnex: string
+  userStatus: 'not_started' | 'completed'
+  userStatusAt: string | null
+  provenance: SubmissionDocumentProvenance
 }
 
 export interface ActionPlan {
