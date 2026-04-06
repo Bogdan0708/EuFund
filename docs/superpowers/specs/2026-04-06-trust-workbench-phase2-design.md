@@ -15,6 +15,16 @@ Two features that complete the trust layer built in Phase 1:
 - No AI-powered GDPR/ANI/state-aid detection in the text
 - No document versioning for forms (user prints the latest)
 
+## Design Principles
+
+1. **Template-first legal forms** — legal declarations and standard forms use curated Romanian templates with variable interpolation, not freeform AI generation. AI is used only to classify which forms apply, extract annex requirements from the ghid, and prefill known fields. This eliminates hallucination risk for legally binding text.
+
+2. **Provenance** — every trust-layer output carries traceability metadata: which provider checked freshness, when, based on which URL, what evidence. Generated documents record whether they came from a template or were AI-classified. This makes support/debugging possible when a user disputes a result.
+
+3. **Idempotent generation** — document IDs are deterministic (`doc-{scope}-{slugified-title}`), generation is safe to retry, and there is one canonical source of truth per data type. Re-running generation for the same project produces the same file set with updated content, never duplicates.
+
+4. **Separated availability vs completion** — document availability (`generated`, `needs_fill`, `external_required`) is system-managed. User completion state (`not_started`, `completed`) is user-managed. These are independent axes so neither blocks or overwrites the other.
+
 ---
 
 ## 1. Call Freshness Check
@@ -45,6 +55,12 @@ export interface MatchedCall {
     checkedAt: string
     currentDeadline?: string
     warnings: string[]
+    provenance: {
+      provider: string        // 'perplexity' | 'gemini' | 'skipped'
+      model: string           // 'sonar' | 'gemini-2.5-flash' etc.
+      sourceUrl: string       // the URL that was checked
+      evidence: string        // summary of what the provider found
+    }
   }
 }
 ```
@@ -70,34 +86,60 @@ New type in `types.ts`:
 
 ```ts
 export interface SubmissionDocument {
-  id: string                                      // e.g., "doc-declaratie-minimis"
+  id: string                                      // Deterministic: "doc-{scope}-{slugified-title}"
   title: string                                    // "Declarație de minimis"
-  content: string                                  // Full form text, pre-filled where possible
+  content: string                                  // Form text with variables interpolated
   category: 'declaration' | 'certificate' | 'annex' | 'form'
   scope: 'general' | 'call_specific'
-  status: 'ready' | 'needs_input' | 'external'
-  sourceAnnex: string                              // Which blueprint annex this maps to
-  instructions: string                             // "Semnați și ștampilați"
   order: number
-  completed: boolean                               // User checks this off
-  completedAt: string | null
+
+  // Availability — system-managed, describes what the system produced
+  availability: 'generated' | 'needs_fill' | 'external_required'
+  instructions: string                             // "Semnați și ștampilați" / "Obțineți de la ONRC"
+  sourceAnnex: string                              // Which blueprint annex this maps to
+
+  // Completion — user-managed, describes what the user has done
+  userStatus: 'not_started' | 'completed'
+  userStatusAt: string | null                      // When the user last changed status
+
+  // Provenance — how this document was produced
+  provenance: {
+    origin: 'template' | 'ai_classified'           // Template = curated form, AI = annex extraction
+    templateId?: string                             // Which template was used (if template origin)
+    classifiedFrom?: string                         // Which annex text triggered this (if AI origin)
+    generatedAt: string
+  }
 }
 ```
 
-**Status meanings:**
-- `ready` — fully generated, user can print/download as-is
-- `needs_input` — generated with `[___]` placeholders the user fills in (signature, stamp, specific data). The `instructions` field says exactly what.
-- `external` — can't be generated, must be obtained from an institution (e.g., "Certificat constatator ONRC — obțineți de la registrul.onrc.ro")
+**Availability** (system-managed):
+- `generated` — fully produced from a template with all variables interpolated. User can print/download.
+- `needs_fill` — produced from a template but has `[___]` placeholders the user must fill in (signature, stamp, specific data). `instructions` says exactly what.
+- `external_required` — can't be generated. Must be obtained from an institution (e.g., "Certificat constatator ONRC — obțineți de la registrul.onrc.ro"). No file generated.
+
+**User status** (user-managed, independent axis):
+- `not_started` — user hasn't marked this done yet
+- `completed` — user has checked this off
+
+These are independent: a `generated` document can be `not_started` (user hasn't printed it yet) or `completed`. An `external_required` document starts `not_started` and the user marks `completed` when they've obtained it.
+
+**Provenance**:
+- `template` — form content came from a curated template in `general-requirements.ts` with variable interpolation. `templateId` identifies which template.
+- `ai_classified` — AI determined this form is required by analyzing the call's mandatory annexes. The form content is still template-based when a matching template exists; `ai_classified` means the *selection* was AI-driven, not the content.
+
+**Deterministic IDs**: `id = "doc-{scope}-{slugifiedTitle}"`. Running generation twice for the same project produces the same IDs. Upsert semantics — existing rows are updated, never duplicated.
 
 **Scope meanings:**
 - `general` — standard EU requirements that apply to every project (GDPR, anti-fraud, publicity, beneficial ownership)
 - `call_specific` — required by the specific call's ghid/mandatory annexes
 
-### Storage on WorkflowContext
+### Source of Truth
 
-`submissionDocuments: SubmissionDocument[] | null` on `WorkflowContext`, persisted in `workflow_sessions.context` JSONB. Same pattern as `projectSections`.
+**Single canonical location**: `project_documents.metadata.submissionDocuments` is the source of truth for the structured `SubmissionDocument[]` array. This is where the project page reads from and where user completion state is updated.
 
-Structured metadata (status, instructions, completed) also stored in `project_documents.metadata.submissionDocuments` for the project page to read without loading the full session.
+The workflow session context (`workflow_sessions.context`) holds `submissionDocuments` only as a transient working copy during generation. Once the project is created and the array is written to `project_documents.metadata`, the session copy is not read again.
+
+This avoids dual-write drift: the session owns the data during the workflow, `project_documents` owns it after completion. No sync needed between the two.
 
 ### Two Sources for Requirements
 
@@ -114,20 +156,48 @@ Structured metadata (status, instructions, completed) also stored in `project_do
 - Formular de buget detaliat
 - Declarație ANI conflict de interese
 
-### Document Generation
+### Document Generation — Template-First
 
-New file: `app/src/lib/ai/orchestrator/agents/documents.ts`
+New files:
+- `app/src/lib/compliance/general-requirements.ts` — curated constant array of general EU form requirements
+- `app/src/lib/compliance/form-templates.ts` — curated Romanian legal form templates with `{{variable}}` placeholders
+- `app/src/lib/ai/orchestrator/agents/documents.ts` — orchestration function
 
-A function `generateSubmissionDocuments()` that:
+**Templates**: Each template is a string constant with the full Romanian legal text and `{{variabile}}` interpolation points:
 
-1. Reads the general requirements list from `general-requirements.ts`
-2. Reads `CallBlueprint.normalized.mandatoryAnnexes` for call-specific forms
-3. Makes a single Gemini Flash gateway call with a prompt that generates all forms in Romanian with proper legal language, pre-filled with org/project data (name, CUI, project title, program, budget). Fields the user must complete are marked with `[___]`.
-4. Parses the response into individual `SubmissionDocument` objects
-5. Converts each to DOCX via the existing `generateDocx` infrastructure in `lib/export/docx.ts`
-6. Saves each to storage as a `project_files` row
+```ts
+export interface FormTemplate {
+  templateId: string                    // e.g. "tpl-declaratie-minimis"
+  title: string                         // "Declarație privind ajutoarele de minimis"
+  category: SubmissionDocument['category']
+  scope: 'general' | 'call_specific'
+  availability: 'generated' | 'needs_fill'
+  instructions: string
+  bodyTemplate: string                  // Romanian legal text with {{orgName}}, {{cui}}, etc.
+  variables: string[]                   // Required interpolation variables
+  matchesAnnex?: RegExp                 // Pattern to match against mandatoryAnnexes entries
+}
+```
 
-For `external` documents (can't be generated), the AI produces only the `title`, `instructions`, and sets `status: 'external'`. No file generated.
+General forms (GDPR, anti-fraud, publicity, beneficial ownership) have hardcoded templates — these are standard across all Romanian EU programs. Call-specific forms that are common (de minimis, ANI, eligibility grid) also have templates, matched to blueprint annexes via `matchesAnnex` patterns.
+
+**The `generateSubmissionDocuments()` function**:
+
+1. **Collect general requirements** — iterate `general-requirements.ts`, produce one `SubmissionDocument` per entry using the curated template. Interpolate variables from org/project context (name, CUI, project title, program, budget).
+
+2. **Match call-specific requirements** — iterate `CallBlueprint.normalized.mandatoryAnnexes`. For each annex:
+   - If a template exists whose `matchesAnnex` pattern matches → use the template (provenance: `template`)
+   - If no template matches → make a Gemini Flash call to classify the annex and determine: title, category, availability, and instructions. The form *content* is not AI-generated; the AI only decides *what* is needed and writes the `instructions` field. Availability is set to `external_required` or `needs_fill` depending on classification. (provenance: `ai_classified`)
+
+3. **Assign deterministic IDs** — `id = "doc-{scope}-{slugifiedTitle}"`. If a document with this ID already exists in `project_documents.metadata`, update it (upsert). Never duplicate.
+
+4. **Convert to DOCX** — for documents with `availability !== 'external_required'`, generate a DOCX using the existing `generateDocx` infrastructure. Save to storage as a `project_files` row.
+
+5. **Persist** — write the full `SubmissionDocument[]` array to `project_documents.metadata.submissionDocuments`.
+
+**What AI does NOT do**: Generate legal form text. All legally binding content comes from curated templates. AI only classifies which call-specific forms are needed and extracts instructions for forms without templates.
+
+**What AI DOES**: Read the mandatory annexes list and decide which template to use, or if no template exists, produce a title + instructions for the user to source the document externally.
 
 ### When It Runs
 
@@ -183,7 +253,11 @@ Form files are named by slugified form title.
 
 **User uploads**: The existing upload API sets `storagePath` with the `projects/{id}/incarcate/` prefix for consistency.
 
-**Regeneration**: When the user edits sections post-completion or asks to regenerate a form, the old `project_files` row is updated in place (same `storagePath`, new content).
+**Regeneration / Idempotency**: Generation is safe to retry. Deterministic document IDs (`doc-{scope}-{slug}`) and deterministic storage paths mean re-running generation for the same project:
+- Matches existing `project_files` rows by `storagePath` and updates content in place
+- Matches existing `SubmissionDocument` entries by `id` and updates fields
+- Preserves `userStatus` — re-generation does not reset a user's completion checkmarks
+- Never creates duplicate files or documents
 
 ---
 
@@ -205,10 +279,12 @@ The page gets reorganized from a flat file list into three sections:
 
 **Dosar de depunere** — unified submission checklist:
 - Progress bar at top: "5/10 documente finalizate"
-- Items grouped by status: De completat (`needs_input`) / De obținut (`external`) / Finalizate (`completed`)
-- Each item shows: title, instructions, scope badge (General / Apel), download button (if file exists), checkbox
-- Checking/unchecking a checkbox calls `PATCH /api/v1/projects/:id/documents/:docId/complete` which updates the metadata
+- Items grouped by availability: De completat (`needs_fill`) / De obținut (`external_required`) / Gata de descărcat (`generated`)
+- Completed items (any availability with `userStatus: 'completed'`) move to a "Finalizate" group at the bottom
+- Each item shows: title, instructions, scope badge (General / Apel), provenance badge (Șablon / Clasificat AI), download button (if file exists), checkbox
+- Checking/unchecking a checkbox calls `PATCH /api/v1/projects/:id/submission-documents/:docId` which updates `userStatus` in `project_documents.metadata` (single source of truth)
 - Scope badge distinguishes general EU requirements from call-specific ones
+- Provenance badge shows whether the form came from a curated template or was AI-classified from the annex list
 
 **Documente încărcate** — existing upload section, unchanged.
 
@@ -219,10 +295,12 @@ No new pages. No new routes beyond the completion toggle endpoint.
 ## 4. Files Changed
 
 ### New Files
-- `app/src/lib/ai/orchestrator/agents/documents.ts` — `generateSubmissionDocuments()` function
+- `app/src/lib/ai/orchestrator/agents/documents.ts` — `generateSubmissionDocuments()` orchestration function
 - `app/src/lib/compliance/general-requirements.ts` — curated constant array of general EU requirements
-- `app/tests/unit/agent-documents.test.ts` — tests for document generation
-- `app/tests/unit/general-requirements.test.ts` — tests for requirements list
+- `app/src/lib/compliance/form-templates.ts` — curated Romanian legal form templates with `{{variable}}` interpolation
+- `app/tests/unit/agent-documents.test.ts` — tests for document generation orchestration
+- `app/tests/unit/form-templates.test.ts` — tests for template interpolation and matching
+- `app/tests/unit/general-requirements.test.ts` — tests for requirements list completeness
 
 ### Modified Files
 - `app/src/lib/ai/orchestrator/types.ts` — add `SubmissionDocument` interface, `freshness` field on `MatchedCall`, `submissionDocuments` on `WorkflowContext`
@@ -235,4 +313,5 @@ No new pages. No new routes beyond the completion toggle endpoint.
 
 ### No Schema Migrations
 - `project_files` table and `file_category` enum already exist and are sufficient
-- `submissionDocuments` metadata lives in existing JSONB columns
+- `submissionDocuments` metadata lives in `project_documents.metadata` (single source of truth)
+- No new tables, no enum changes
