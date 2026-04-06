@@ -886,6 +886,30 @@
     "statusBuilt": "Construit",
     "statusExported": "Exportat"
   },
+  "projectDossier": {
+    "propunere": "Propunere",
+    "dosar": "Dosar de depunere",
+    "incarcare": "Documente încărcate",
+    "progress": "{completed}/{total} documente finalizate",
+    "groupNeedsFill": "De completat",
+    "groupExternal": "De obținut",
+    "groupGenerated": "Gata de descărcat",
+    "groupCompleted": "Finalizate",
+    "scopeGeneral": "General",
+    "scopeCall": "Apel",
+    "provenanceTemplate": "Șablon",
+    "provenanceAi": "Clasificat AI",
+    "reviewRequired": "Verificați",
+    "download": "Descarcă",
+    "markComplete": "Finalizat",
+    "markIncomplete": "Nefinalizat",
+    "noFiles": "Nu sunt documente generate încă.",
+    "sectionStatus": {
+      "draft": "Ciornă",
+      "reviewed": "Revizuit",
+      "approved": "Aprobat"
+    }
+  },
   "calls": {
     "title": "Apeluri de finanțare",
     "searchPlaceholder": "Caută apeluri...",
