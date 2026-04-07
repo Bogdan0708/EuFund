@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAIAuth } from '@/lib/middleware/auth';
-import { aiGenerate } from '@/lib/ai/client-v2';
+import { aiGenerate } from '@/lib/ai/client';
 
 const searchCallsSchema = z.object({
   query: z.string().min(3).max(500),
@@ -31,7 +31,6 @@ Only include calls that are currently open or forthcoming. Do not include expire
       system: 'You are a funding call search assistant. Return only valid JSON arrays.',
       prompt,
       maxTokens: 2000,
-      taskType: 'search' as never,
     });
 
     let calls: unknown[] = [];
