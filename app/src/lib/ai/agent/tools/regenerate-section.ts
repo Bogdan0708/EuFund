@@ -12,6 +12,8 @@ import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'tool-regenerate-section' })
 
+const MODEL_ESCALATION_AFTER_RETRIES = 2
+
 const inputSchema = z.object({
   sectionKey: z.string().min(1),
   feedback: z.string().min(1).describe('User feedback on what to change'),
@@ -39,8 +41,8 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<{ con
     // Escalate model after 2+ retries
     const retryCount = section.retryCount || 0
     let model: string
-    if (retryCount >= 2) {
-      model = SECTION_MODEL_ROUTING.critical // Always use Opus after 2 failures
+    if (retryCount >= MODEL_ESCALATION_AFTER_RETRIES) {
+      model = SECTION_MODEL_ROUTING.critical
     } else {
       const modelKey = spec?.importance === 'critical' ? 'critical'
         : spec?.importance === 'supplementary' ? 'budget'
@@ -108,7 +110,7 @@ RULES:
       log.warn({ error: dbErr instanceof Error ? dbErr.message : String(dbErr) }, 'Failed to save regenerated version')
     }
 
-    log.info({ sectionKey: input.sectionKey, model, retryCount: retryCount + 1, escalated: retryCount >= 2, latencyMs: Date.now() - start }, 'Section regenerated')
+    log.info({ sectionKey: input.sectionKey, model, retryCount: retryCount + 1, escalated: retryCount >= MODEL_ESCALATION_AFTER_RETRIES, latencyMs: Date.now() - start }, 'Section regenerated')
 
     return {
       success: true,

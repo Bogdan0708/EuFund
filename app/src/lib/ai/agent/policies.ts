@@ -1,5 +1,8 @@
 import type { AgentSession, AgentSection, SectionSpec } from './types'
 
+const MIN_STRUCTURE_CONFIDENCE = 0.4
+const MIN_FRESHNESS_CONFIDENCE = 0.6
+
 export interface PolicyResult {
   allowed: boolean
   reason?: string
@@ -27,8 +30,8 @@ function checkPreGenerate(session: AgentSession, _sections: AgentSection[]): Pol
   if (session.eligibility && session.eligibility.failCount > 0) {
     return { allowed: false, reason: 'Cannot generate: eligibility has hard blockers' }
   }
-  if (session.blueprint && (session.blueprint as any).structureConfidence < 0.4) {
-    return { allowed: false, reason: 'Cannot generate: structure confidence too low (< 0.4)' }
+  if (session.blueprint && (session.blueprint as any).structureConfidence < MIN_STRUCTURE_CONFIDENCE) {
+    return { allowed: false, reason: `Cannot generate: structure confidence too low (< ${MIN_STRUCTURE_CONFIDENCE})` }
   }
   return { allowed: true }
 }
@@ -45,7 +48,7 @@ function checkPreComplete(session: AgentSession, sections: AgentSection[]): Poli
   if (missing.length > 0) {
     return { allowed: false, reason: `Cannot complete: mandatory sections not accepted: ${missing.join(', ')}` }
   }
-  if (session.blueprint && (session.blueprint as any).freshnessConfidence < 0.6) {
+  if (session.blueprint && (session.blueprint as any).freshnessConfidence < MIN_FRESHNESS_CONFIDENCE) {
     return { allowed: false, reason: 'Cannot complete: freshness confidence too low — refresh call status first' }
   }
   return { allowed: true }
