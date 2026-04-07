@@ -108,7 +108,7 @@ async function singleCall(
 
   try {
     const response = await client.chat.completions.create(
-      { model, messages, max_tokens: maxTokens, temperature },
+      { model, messages, max_completion_tokens: maxTokens, temperature },
       { signal: controller.signal },
     )
     const content = response.choices?.[0]?.message?.content ?? ''
