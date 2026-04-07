@@ -1,6 +1,7 @@
 import type { AgentFn, MatchedCall } from '../types'
 import { getMatchPrompt } from '../prompts/match'
 import { parseAIJson } from '../utils'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'match-agent' })
@@ -37,9 +38,10 @@ export const matchAgent: AgentFn = async (ctx, _input, stream, gateway) => {
     stream.send({ type: 'step_progress', step: 2, message: 'Searching Romanian funding platforms for open calls...' })
 
     try {
+      const webRouted = resolveAgentModel({ task: 'freshness_check' })
       const webResult = await gateway.generate({
-        provider: 'perplexity',
-        model: 'sonar-pro',
+        provider: webRouted.provider,
+        model: webRouted.model,
         system: `You are a Romanian EU funding specialist. Search for currently OPEN funding calls (apeluri de proiecte deschise) that match the project description below.
 Search on official platforms: mysmis2021.gov.ro, mfe.gov.ro, and other Romanian funding sources.
 For each call found, provide: the exact call title in Romanian, the program name (PNRR, PEO, POCIDIF, POTJ, PR-*, etc.), estimated budget range, deadline if known, and the source URL.
@@ -50,7 +52,7 @@ If you cannot find any matching open calls, return an empty array [].`,
           content: `Find open EU funding calls in Romania matching this project:\n\nSector: ${ctx.enhancedIdea.sector}\nRegion: ${ctx.enhancedIdea.region}\nDescription: ${ctx.enhancedIdea.refinedDescription}\nBudget: ${ctx.enhancedIdea.estimatedBudget}\nObjectives: ${ctx.enhancedIdea.keyObjectives.join(', ')}`,
         }],
         temperature: 0.1,
-        maxTokens: 4000,
+        maxTokens: 20_000,
       })
 
       // Parse web results and format as RAG context
@@ -74,17 +76,18 @@ If you cannot find any matching open calls, return an empty array [].`,
     stream.send({ type: 'step_progress', step: 2, message: `Found ${ragResults.length} potential matches, scoring...` })
   }
 
-  // Step 3: Score and rank matches with Gemini
+  // Step 3: Score and rank matches
+  const matchRouted = resolveAgentModel({ task: 'matching', ctx: ctx.routingCtx })
   const result = await gateway.generate({
-    provider: 'gemini',
-    model: 'gemini-2.5-flash',
+    provider: matchRouted.provider,
+    model: matchRouted.model,
     system: getMatchPrompt(ctx),
     messages: [{
       role: 'user',
       content: `PROJECT:\n${JSON.stringify(ctx.enhancedIdea, null, 2)}\n\nAVAILABLE CALLS:\n${ragContext || 'No calls found. Search your knowledge of Romanian EU funding programs (PNRR, PEO, POCIDIF, POTJ, PR-*, POIM, etc.) and suggest the most likely matching open calls. Generate realistic entries with callId, title, program, scores, and reasoning.'}`,
     }],
     temperature: 0.2,
-    maxTokens: 16384,
+    maxTokens: 32_000,
   })
 
   let matchedCalls: MatchedCall[] = []

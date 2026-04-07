@@ -16,6 +16,8 @@ export interface WorkflowContext {
   submissionDocuments?: SubmissionDocument[] | null
   /** User preference for generation length/tone. Loaded from user_preferences at session creation. */
   responseStyle?: 'concise' | 'detailed' | 'technical'
+  /** Pre-loaded model routing context (preferences + feature flags). */
+  routingCtx?: import('../model-routing').ModelRoutingContext
 }
 
 export interface EnhancedIdea {

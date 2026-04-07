@@ -2,6 +2,7 @@ import type { SubmissionDocument, GatewayClient } from '../types'
 import { GENERAL_REQUIREMENTS } from '@/lib/compliance/general-requirements'
 import { FORM_TEMPLATES, type FormTemplate } from '@/lib/compliance/form-templates'
 import { interpolate, makeDocumentId } from '@/lib/compliance/interpolate'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'document-generation' })
@@ -87,13 +88,14 @@ ${annexes.map((a, i) => `${i + 1}. "${a}"`).join('\n')}
 Return a JSON array of objects with fields: annexText, title, category, availability, instructions, confidence`
 
   try {
+    const { provider, model } = resolveAgentModel({ task: 'classification' })
     const result = await gateway.generate({
-      provider: 'gemini',
-      model: 'gemini-2.5-flash',
+      provider,
+      model,
       system: 'You classify Romanian EU funding documents. Return only valid JSON.',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
-      maxTokens: 2000,
+      maxTokens: 8_000,
     })
     return JSON.parse(result.content)
   } catch (err) {

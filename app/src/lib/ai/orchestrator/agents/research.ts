@@ -1,6 +1,7 @@
 import type { AgentFn, CallBlueprint, SectionSpec } from '../types'
 import { getResearchPrompt, getNotebookLmQuery, getPerplexityFreshnessQuery } from '../prompts/research'
 import { parseAIJson } from '../utils'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { DEFAULT_SECTIONS } from '../section-specs'
 import { db } from '@/lib/db'
 import { callKnowledge } from '@/lib/db/schema'
@@ -72,13 +73,14 @@ export const researchAgent: AgentFn = async (ctx, input, stream, gateway) => {
   if (!cachedData) {
     stream.send({ type: 'step_progress', step: 3, message: 'Querying knowledge base for call structure...' })
     try {
+      const researchRouted = resolveAgentModel({ task: 'freshness_check' })
       const researchResult = await gateway.generate({
-        provider: 'perplexity',
-        model: 'sonar-pro',
+        provider: researchRouted.provider,
+        model: researchRouted.model,
         system: getResearchPrompt(ctx),
         messages: [{ role: 'user', content: getNotebookLmQuery(selectedCall.title, selectedCall.program) }],
         temperature: 0.1,
-        maxTokens: 8000,
+        maxTokens: 20_000,
       })
       notebookLmResponse = researchResult.content
     } catch (err) {
@@ -92,13 +94,14 @@ export const researchAgent: AgentFn = async (ctx, input, stream, gateway) => {
   // 3. Freshness check (always)
   stream.send({ type: 'step_progress', step: 3, message: 'Verifying call status...' })
   try {
+    const freshnessRouted = resolveAgentModel({ task: 'freshness_check' })
     const freshnessResult = await gateway.generate({
-      provider: 'perplexity',
-      model: 'sonar',
+      provider: freshnessRouted.provider,
+      model: freshnessRouted.model,
       system: 'You verify EU funding call status. Return JSON: { isOpen: boolean, amendments: string[], warnings: string[] }',
       messages: [{ role: 'user', content: getPerplexityFreshnessQuery(selectedCall.title, selectedCall.program) }],
       temperature: 0.1,
-      maxTokens: 2000,
+      maxTokens: 4_000,
     })
     perplexityResponse = freshnessResult.content
   } catch {

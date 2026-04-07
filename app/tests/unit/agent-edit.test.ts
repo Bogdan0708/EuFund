@@ -25,8 +25,8 @@ describe('Edit Agent', () => {
     const result = await editAgent(ctx, 'Make the summary more detailed', mockStream, mockGateway)
     const sections = result.data.projectSections as any[]
     expect(sections[0].source).toBe('edited')
-    expect(sections[0].metadata.model).toBe('gpt-5.4')
-    expect(sections[0].metadata.provider).toBe('openai')
+    expect(sections[0].metadata.model).toBe('claude-sonnet-4-6')
+    expect(sections[0].metadata.provider).toBe('anthropic')
     expect(sections[0].metadata.generatedAt).toBeTruthy()
     expect(sections[0].contentHash).toBe(createHash('sha256').update('Updated summary').digest('hex'))
     expect(sections[1].source).toBe('generated') // unchanged

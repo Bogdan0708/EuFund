@@ -27,7 +27,7 @@ export const anthropicProvider: ProviderClient = {
     const response = await c.chat.completions.create({
       model: req.model,
       messages,
-      max_completion_tokens: req.maxTokens ?? 4096,
+      max_completion_tokens: req.maxTokens ?? 20_000,
       temperature: req.temperature ?? 0.7,
       ...(req.tools ? { tools: req.tools } : {}),
     })

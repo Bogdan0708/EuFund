@@ -30,9 +30,18 @@ interface SessionUser {
 // Labels reflect the actual models invoked by the gateway (see gateway.ts).
 const AI_MODEL_OPTIONS = [
   { value: 'auto', label: 'Auto — Best model per step (recommended)', provider: 'Mixed' },
+  // Anthropic
   { value: 'claude-sonnet', label: 'Claude Sonnet 4.6', provider: 'Anthropic' },
+  { value: 'claude-haiku', label: 'Claude Haiku 4.6', provider: 'Anthropic' },
+  // OpenAI
   { value: 'gpt-4o', label: 'GPT-5.4', provider: 'OpenAI' },
-  { value: 'gemini-pro', label: 'Gemini 2.5 Flash', provider: 'Google' },
+  { value: 'gpt-4o-mini', label: 'GPT-5.4 Mini', provider: 'OpenAI' },
+  { value: 'gpt-4o-nano', label: 'GPT-5.4 Nano', provider: 'OpenAI' },
+  // Google
+  { value: 'gemini-pro', label: 'Gemini 3.1 Pro', provider: 'Google' },
+  { value: 'gemini-flash', label: 'Gemini 3 Flash', provider: 'Google' },
+  { value: 'nano-banana', label: 'Nano Banana', provider: 'Google' },
+  // Perplexity
   { value: 'perplexity', label: 'Perplexity Sonar Pro', provider: 'Perplexity' },
 ];
 

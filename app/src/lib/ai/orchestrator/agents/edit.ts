@@ -1,6 +1,7 @@
 import type { AgentFn } from '../types'
 import { getEditPrompt } from '../prompts/edit'
 import { parseAIJson } from '../utils'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { createHash } from 'crypto'
 
 export const editAgent: AgentFn = async (ctx, input, stream, gateway) => {
@@ -10,8 +11,7 @@ export const editAgent: AgentFn = async (ctx, input, stream, gateway) => {
 
   stream.send({ type: 'step_progress', step: 7, message: 'Editing your project...' })
 
-  const provider = 'openai'
-  const model = 'gpt-5.4'
+  const { provider, model } = resolveAgentModel({ task: 'editing', ctx: ctx.routingCtx })
   const startedAt = Date.now()
 
   const result = await gateway.generate({
@@ -20,7 +20,7 @@ export const editAgent: AgentFn = async (ctx, input, stream, gateway) => {
     system: getEditPrompt(ctx),
     messages: [{ role: 'user', content: `Current sections:\n${JSON.stringify(ctx.projectSections)}\n\nEdit request: ${input}` }],
     temperature: 0.3,
-    maxTokens: 4000,
+    maxTokens: 20_000,
   })
 
   let editedSections

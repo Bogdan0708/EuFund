@@ -1,12 +1,12 @@
 import type { AgentFn, EnhancedIdea } from '../types'
 import { getEnhancePrompt } from '../prompts/enhance'
 import { parseAIJson } from '../utils'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
 
 export const enhanceAgent: AgentFn = async (ctx, input, stream, gateway) => {
   stream.send({ type: 'step_progress', step: 1, message: 'Analyzing your project idea...' })
 
-  const provider = 'openai'
-  const model = 'gpt-5.4'
+  const { provider, model } = resolveAgentModel({ task: 'enhancement', ctx: ctx.routingCtx })
   const result = await gateway.generate({
     provider,
     model,

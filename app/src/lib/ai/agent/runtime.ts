@@ -24,6 +24,7 @@ export interface RuntimeOptions {
   sections: AgentSection[]
   request: AgentRequest
   emit: EventEmitter
+  routingCtx?: import('../model-routing').ModelRoutingContext
 }
 
 /**
@@ -184,6 +185,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
             stateVersion: session.stateVersion,
             requestId: request.requestId,
             locale: session.locale,
+            routingCtx: opts.routingCtx,
           }
 
           let toolResult: ToolResult

@@ -4,6 +4,7 @@ import { registerTool } from './registry'
 import type { ToolResult, ToolContext } from '../types'
 import type { SectionSpec } from '@/lib/ai/orchestrator/types'
 import { generate } from '@/lib/ai/providers/router'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { parseAIJson } from '../utils'
 import { DEFAULT_SECTIONS } from '../section-specs'
 import { logger } from '@/lib/logger'
@@ -22,7 +23,7 @@ const inputSchema = z.object({
 
 type Input = z.infer<typeof inputSchema>
 
-async function execute(input: Input, _ctx: ToolContext): Promise<ToolResult<SectionSpec[]>> {
+async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<SectionSpec[]>> {
   const start = Date.now()
 
   try {
@@ -42,9 +43,10 @@ async function execute(input: Input, _ctx: ToolContext): Promise<ToolResult<Sect
       }
     }
 
+    const { provider, model } = resolveAgentModel({ task: 'structure_extraction', ctx: ctx.routingCtx })
     const response = await generate({
-      provider: 'anthropic',
-      model: 'claude-sonnet-4-6',
+      provider,
+      model,
       system: `You extract the required application structure from EU funding call documentation.
 Return a JSON array of section specs. Each object must have:
 - id: kebab-case identifier (e.g. "context-si-justificare")
@@ -64,7 +66,7 @@ Return a JSON array of section specs. Each object must have:
         content: `Extract the required sections from this call documentation:\n\nCall: ${input.callTitle || 'Unknown'}\nProgram: ${input.program || 'Unknown'}\n\n${evidenceText}`,
       }],
       temperature: 0.2,
-      maxTokens: 4000,
+      maxTokens: 20_000,
     })
 
     let sections: SectionSpec[]

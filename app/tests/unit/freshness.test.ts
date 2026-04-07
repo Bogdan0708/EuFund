@@ -54,7 +54,7 @@ describe('checkCallFreshness', () => {
 
     const result = await checkCallFreshness(calls as any, gateway as any)
     expect(result[0].freshness?.status).toBe('verified')
-    expect(result[0].freshness?.provenance.provider).toBe('gemini')
+    expect(result[0].freshness?.provenance.provider).toBe('openai')
     expect(gateway.generate).toHaveBeenCalledTimes(2)
   })
 

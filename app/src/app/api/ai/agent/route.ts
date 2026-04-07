@@ -6,6 +6,7 @@ import { runAgentTurn } from '@/lib/ai/agent/runtime'
 import type { AgentEvent, AgentSession, AgentSection } from '@/lib/ai/agent/types'
 import type { AgentRequest } from '@/lib/ai/agent/types'
 import { isFeatureEnabled } from '@/lib/feature-flags'
+import { getAIModelRoutingContext } from '@/lib/ai/model-routing'
 import { db } from '@/lib/db'
 import { agentSessions, agentSections } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
@@ -91,7 +92,8 @@ async function handler(req: NextRequest) {
       }
 
       try {
-        await runAgentTurn({ session, sections, request: body, emit })
+        const routingCtx = await getAIModelRoutingContext(user.id)
+        await runAgentTurn({ session, sections, request: body, emit, routingCtx })
       } catch (error) {
         const errorEvent: AgentEvent = {
           type: 'error',
