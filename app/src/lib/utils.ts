@@ -24,18 +24,19 @@ export function formatCurrency(
 }
 
 /**
- * Human-friendly relative time string (e.g. "5m", "2h", "3d").
+ * Human-friendly relative time string.
+ * Uses Romanian-style short labels: "acum", "5m", "2h", "3z", "1l".
  */
 export function relativeTime(dateStr: string): string {
   const diffMs = Date.now() - new Date(dateStr).getTime();
   const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1) return '<1m';
+  if (diffMin < 1) return 'acum';
   if (diffMin < 60) return `${diffMin}m`;
   const diffH = Math.floor(diffMs / 3_600_000);
   if (diffH < 24) return `${diffH}h`;
   const diffD = Math.floor(diffMs / 86_400_000);
-  if (diffD < 30) return `${diffD}d`;
-  return `${Math.floor(diffD / 30)}mo`;
+  if (diffD < 30) return `${diffD}z`;
+  return `${Math.floor(diffD / 30)}l`;
 }
 
 export function getBaseUrl() {
