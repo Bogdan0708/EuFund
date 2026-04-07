@@ -4,11 +4,12 @@ import { registerTool } from './registry'
 import type { ToolResult, ToolContext } from '../types'
 import type { SectionSpec } from '@/lib/ai/orchestrator/types'
 import { generate } from '@/lib/ai/providers/router'
-import { SECTION_MODEL_ROUTING } from '@/lib/ai/providers/types'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { db } from '@/lib/db'
 import { agentSectionVersions, agentSections } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
+import { normalizeMarkdown } from '@/lib/markdown/proposal-markdown'
 
 const log = logger.child({ component: 'tool-regenerate-section' })
 
@@ -38,17 +39,15 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<{ con
     const outline = (ctx.session.outline || []) as SectionSpec[]
     const spec = outline.find(s => s.id === input.sectionKey)
 
-    // Escalate model after 2+ retries
+    // Route model via centralized resolver (with escalation support)
     const retryCount = section.retryCount || 0
-    let model: string
-    if (retryCount >= MODEL_ESCALATION_AFTER_RETRIES) {
-      model = SECTION_MODEL_ROUTING.critical
-    } else {
-      const modelKey = spec?.importance === 'critical' ? 'critical'
-        : spec?.importance === 'supplementary' ? 'budget'
-        : 'standard'
-      model = SECTION_MODEL_ROUTING[modelKey]
-    }
+    const resolved = resolveAgentModel({
+      task: 'section_generation',
+      importance: (spec?.importance || 'standard') as 'critical' | 'standard' | 'supplementary',
+      ctx: ctx.routingCtx,
+      isEscalation: retryCount >= MODEL_ESCALATION_AFTER_RETRIES,
+    })
+    const { provider: resolvedProvider, model } = resolved
 
     const previousContent = section.content || ''
     const systemPrompt = `You are an expert EU funding proposal writer.
@@ -68,18 +67,28 @@ RULES:
 - Maintain the parts that were good
 - Write in ${ctx.locale === 'en' ? 'English' : 'Romanian'}
 - No placeholder text
-- Output the full rewritten section content directly`
+- Output the full rewritten section content directly
+
+FORMAT:
+- Use ## for sub-section headings within this section
+- Use ### for sub-sub-headings if needed
+- Use **bold** for key terms, regulation names, and important values
+- Use bullet lists (-) for enumerations of items, criteria, or features
+- Use numbered lists (1.) only for ordered steps, phases, or ranked criteria
+- Write in clear paragraphs between structured elements
+- Do NOT use code fences, blockquotes, images, links, or HTML
+- Do NOT include a section title heading — it is added separately`
 
     const response = await generate({
-      provider: 'anthropic',
+      provider: resolvedProvider,
       model,
       system: systemPrompt,
       messages: [{ role: 'user', content: `Rewrite the "${spec?.title || input.sectionKey}" section based on the feedback above.` }],
       temperature: 0.6,
-      maxTokens: spec?.expectedLength === 'long' ? 6000 : spec?.expectedLength === 'medium' ? 4000 : 2000,
+      maxTokens: spec?.expectedLength === 'long' ? 32_000 : spec?.expectedLength === 'medium' ? 20_000 : 8_000,
     })
 
-    const content = response.content.trim()
+    const content = normalizeMarkdown(response.content.trim())
     if (!content || content.length < 50) {
       return {
         success: false,

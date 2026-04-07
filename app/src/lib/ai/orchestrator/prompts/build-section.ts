@@ -52,5 +52,15 @@ RULES:
 - Maintain consistency with previously written sections
 - Use formal but accessible language appropriate for EU funding applications
 
+FORMAT (for the "content" field):
+- Use ## for sub-section headings within this section
+- Use ### for sub-sub-headings if needed
+- Use **bold** for key terms, regulation names, and important values
+- Use bullet lists (-) for enumerations of items, criteria, or features
+- Use numbered lists (1.) only for ordered steps, phases, or ranked criteria
+- Write in clear paragraphs between structured elements
+- Do NOT use code fences, blockquotes, images, links, or HTML
+- Do NOT include a section title heading — it is added separately
+
 OUTPUT: Return ONLY valid JSON: { "title": "...", "content": "...", "order": ${sectionSpec.order} }`
 }

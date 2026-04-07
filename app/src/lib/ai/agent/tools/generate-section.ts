@@ -4,12 +4,13 @@ import { registerTool } from './registry'
 import type { ToolResult, ToolContext } from '../types'
 import type { SectionSpec } from '@/lib/ai/orchestrator/types'
 import { generate } from '@/lib/ai/providers/router'
-import { SECTION_MODEL_ROUTING } from '@/lib/ai/providers/types'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { compactPreviousSections } from '../section-specs'
 import { db } from '@/lib/db'
 import { agentSectionVersions, agentSections } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
+import { normalizeMarkdown } from '@/lib/markdown/proposal-markdown'
 
 const log = logger.child({ component: 'tool-generate-section' })
 
@@ -42,11 +43,13 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<{ con
       }
     }
 
-    // Route model by importance
-    const modelKey = spec.importance === 'critical' ? 'critical'
-      : spec.importance === 'supplementary' ? 'budget'
-      : 'standard'
-    const model = SECTION_MODEL_ROUTING[modelKey]
+    // Route model by importance via centralized resolver
+    const resolved = resolveAgentModel({
+      task: 'section_generation',
+      importance: spec.importance as 'critical' | 'standard' | 'supplementary',
+      ctx: ctx.routingCtx,
+    })
+    const { provider: resolvedProvider, model } = resolved
 
     // Build context from previously generated sections
     const existingSections = ctx.sections
@@ -101,18 +104,28 @@ RULES:
 - Use formal but accessible language for EU funding applications
 - Do NOT use placeholder text like [insert here] or TBD
 
+FORMAT:
+- Use ## for sub-section headings within this section
+- Use ### for sub-sub-headings if needed
+- Use **bold** for key terms, regulation names, and important values
+- Use bullet lists (-) for enumerations of items, criteria, or features
+- Use numbered lists (1.) only for ordered steps, phases, or ranked criteria
+- Write in clear paragraphs between structured elements
+- Do NOT use code fences, blockquotes, images, links, or HTML
+- Do NOT include a section title heading — it is added separately
+
 OUTPUT: Write the section content directly. No JSON wrapping needed.`
 
     const response = await generate({
-      provider: 'anthropic',
+      provider: resolvedProvider,
       model,
       system: systemPrompt,
       messages: [{ role: 'user', content: `Generate the "${spec.title}" section now.` }],
       temperature: 0.6,
-      maxTokens: spec.expectedLength === 'long' ? 6000 : spec.expectedLength === 'medium' ? 4000 : 2000,
+      maxTokens: spec.expectedLength === 'long' ? 32_000 : spec.expectedLength === 'medium' ? 20_000 : 8_000,
     })
 
-    const content = response.content.trim()
+    const content = normalizeMarkdown(response.content.trim())
     if (!content || content.length < 50) {
       return {
         success: false,
