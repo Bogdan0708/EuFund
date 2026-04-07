@@ -2,8 +2,11 @@ import type { AgentFn, SectionResult, SectionSpec, CallBlueprint } from '../type
 import { getBuildSectionPrompt } from '../prompts/build-section'
 import { buildSectionSpecs } from '../section-specs'
 import { parseAIJson } from '../utils'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
+import { MODEL_CONFIGS } from '@/lib/ai/providers/types'
 import { createHash } from 'crypto'
 import { logger } from '@/lib/logger'
+import { normalizeMarkdown } from '@/lib/markdown/proposal-markdown'
 
 const log = logger.child({ component: 'build-agent' })
 
@@ -36,29 +39,31 @@ export const buildAgent: AgentFn = async (ctx, _input, stream, gateway) => {
     const spec = specs[i]
     stream.send({ type: 'step_progress', step: 5, message: `Writing section ${i + 1}/${totalSections}: ${spec.title}...` })
 
-    const provider = spec.modelHint === 'heavy' ? 'anthropic' : 'openai'
-    const model = spec.modelHint === 'heavy' ? 'claude-opus-4-6' : 'gpt-5.4'
+    // Map modelHint to section importance for routing
+    const importance = spec.modelHint === 'heavy' ? 'critical' as const : 'standard' as const
+    const resolved = resolveAgentModel({ task: 'section_generation', importance, ctx: ctx.routingCtx })
     const startMs = Date.now()
 
     let section: SectionResult | null = null
     let retryCount = 0
     let fallbackUsed = false
 
-    // Attempt 1: primary model
+    // Attempt 1: primary model from routing policy
     try {
-      section = await generateSection(ctx, spec, sections, provider, model, gateway)
+      section = await generateSection(ctx, spec, sections, resolved.provider, resolved.model, gateway)
     } catch (err) {
-      log.warn({ section: spec.title, provider, model, error: err instanceof Error ? err.message : String(err) }, 'Section generation failed')
+      log.warn({ section: spec.title, provider: resolved.provider, model: resolved.model, error: err instanceof Error ? err.message : String(err) }, 'Section generation failed')
       retryCount = 1
 
-      // Attempt 2: fallback model
-      const fbProvider = spec.modelHint === 'heavy' ? 'openai' : 'anthropic'
-      const fbModel = spec.modelHint === 'heavy' ? 'gpt-5.4' : 'claude-sonnet-4-6'
-      try {
-        section = await generateSection(ctx, spec, sections, fbProvider, fbModel, gateway)
-        fallbackUsed = true
-      } catch (fbErr) {
-        log.error({ section: spec.title, error: fbErr instanceof Error ? fbErr.message : String(fbErr) }, 'Section fallback also failed')
+      // Attempt 2: fallback from MODEL_CONFIGS
+      const fallback = MODEL_CONFIGS[resolved.model]?.fallback
+      if (fallback) {
+        try {
+          section = await generateSection(ctx, spec, sections, fallback.provider, fallback.model, gateway)
+          fallbackUsed = true
+        } catch (fbErr) {
+          log.error({ section: spec.title, error: fbErr instanceof Error ? fbErr.message : String(fbErr) }, 'Section fallback also failed')
+        }
       }
     }
 
@@ -99,7 +104,7 @@ async function generateSection(
     system: getBuildSectionPrompt(ctx, spec, previousSections),
     messages: [{ role: 'user', content: `Write section "${spec.title}" for the project proposal.` }],
     temperature: 0.4,
-    maxTokens: spec.expectedLength === 'long' ? 6000 : spec.expectedLength === 'medium' ? 4000 : 2000,
+    maxTokens: spec.expectedLength === 'long' ? 32_000 : spec.expectedLength === 'medium' ? 20_000 : 8_000,
   })
 
   let parsed: { title?: string; content?: string; order?: number }
@@ -109,7 +114,7 @@ async function generateSection(
     parsed = { title: spec.title, content: result.content, order: spec.order }
   }
 
-  const finalContent = parsed.content || result.content
+  const finalContent = normalizeMarkdown(parsed.content || result.content)
   const fullHash = createHash('sha256').update(finalContent).digest('hex')
 
   return {
