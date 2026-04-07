@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { diffWordsWithSpace } from 'diff';
 import { bootstrapCSRFToken, csrfFetch } from '@/lib/csrf/client';
 import { Icon } from '@/components/ui/ds-icon';
+import { MarkdownPreview } from './MarkdownPreview';
 
 /* ── Types ── */
 
@@ -170,8 +171,8 @@ function SectionHistoryPanel({
                   </div>
                 )}
                 {viewingVersion === v.version && !isCurrent && (
-                  <div className="mt-3 p-3 bg-surface-container-low rounded text-xs text-on-surface whitespace-pre-wrap border border-outline-variant/10 max-h-60 overflow-y-auto">
-                    {v.content}
+                  <div className="mt-3 p-3 bg-surface-container-low rounded text-xs text-on-surface border border-outline-variant/10 max-h-60 overflow-y-auto">
+                    <MarkdownPreview content={v.content} />
                   </div>
                 )}
                 {comparingVersion === v.version && !isCurrent && (
@@ -531,8 +532,8 @@ export function ProposalTabContent({
                     <p className="text-sm text-error/80 italic">{t('proposalTab.failedHint')}</p>
                   </div>
                 ) : (
-                  <div className="text-sm text-on-surface-variant leading-relaxed max-h-48 overflow-y-auto">
-                    {section.content}
+                  <div className="max-h-48 overflow-y-auto">
+                    <MarkdownPreview content={section.content} />
                   </div>
                 )}
 
