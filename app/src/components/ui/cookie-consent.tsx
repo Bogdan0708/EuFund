@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 
 type ConsentStatus = 'granted' | 'withdrawn';
@@ -77,10 +77,7 @@ export function CookieConsentBanner() {
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
   const [marketingEnabled, setMarketingEnabled] = useState(false);
 
-  const hasOptionalConsent = useMemo(
-    () => analyticsEnabled || marketingEnabled,
-    [analyticsEnabled, marketingEnabled],
-  );
+  const hasOptionalConsent = analyticsEnabled || marketingEnabled;
 
   useEffect(() => {
     setMounted(true);

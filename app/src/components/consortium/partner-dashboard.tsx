@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { formatCurrency } from '@/lib/utils';
 
 export interface Partner {
   id: string;
@@ -43,10 +44,6 @@ const ROLE_LABELS: Record<string, string> = {
 const ROLE_VARIANTS: Record<string, 'default' | 'secondary' | 'outline'> = {
   coordinator: 'default', partner: 'secondary', observer: 'outline',
 };
-
-function formatCurrency(n: number): string {
-  return new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
-}
 
 function PerformanceIndicator({ score }: { score?: number }) {
   if (score == null) return <span className="text-xs text-muted-foreground">N/A</span>;

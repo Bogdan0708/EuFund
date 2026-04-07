@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import { useTranslations } from 'next-intl';
 import { motion } from 'motion/react';
 import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
+import { relativeTime } from '@/lib/utils';
 import { Icon } from '@/components/ui/ds-icon';
 import { staggerContainer, staggerItem, staggerTransition } from '@/lib/motion';
 
@@ -20,19 +21,6 @@ interface Project {
   title: string;
   status: string;
   updatedAt: string;
-}
-
-function getRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return '<1m';
-  if (diffMin < 60) return `${diffMin}m`;
-  const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) return `${diffH}h`;
-  const diffD = Math.floor(diffH / 24);
-  return `${diffD}d`;
 }
 
 function getProgressPercent(status: string): number {
@@ -292,7 +280,7 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
                     <div className="flex items-center gap-4 mt-1">
                       <span className="text-xs text-on-surface-variant flex items-center gap-1">
                         <Icon name="schedule" size="sm" />
-                        {getRelativeTime(activeSession.updatedAt)}
+                        {relativeTime(activeSession.updatedAt)}
                       </span>
                       <div className="w-32 h-1.5 bg-surface-container rounded-full overflow-hidden">
                         <div
@@ -330,7 +318,7 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
                       <div className="flex items-center gap-4 mt-1">
                         <span className="text-xs text-on-surface-variant flex items-center gap-1">
                           <Icon name="schedule" size="sm" />
-                          {getRelativeTime(project.updatedAt)}
+                          {relativeTime(project.updatedAt)}
                         </span>
                         <div className="w-32 h-1.5 bg-surface-container rounded-full overflow-hidden">
                           <div className="bg-primary h-full" style={{ width: `${pct}%` }} />
