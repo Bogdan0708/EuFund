@@ -97,6 +97,8 @@ export interface LiveAIPrefs {
    * message, consistent with responseStyle behavior.
    */
   autoApprove?: boolean
+  /** Pre-loaded model routing context for centralized model selection. */
+  routingCtx?: import('../model-routing').ModelRoutingContext
 }
 
 export async function processMessage(
@@ -127,6 +129,9 @@ export async function processMessage(
   // on the next message, not just at session creation time.
   if (livePrefs?.responseStyle) {
     ctx.responseStyle = livePrefs.responseStyle
+  }
+  if (livePrefs?.routingCtx) {
+    ctx.routingCtx = livePrefs.routingCtx
   }
 
   // Check session status to route to edit agent for completed sessions

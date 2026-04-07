@@ -50,8 +50,9 @@ describe('Build Agent V2', () => {
     }
     const { buildAgent } = await import('@/lib/ai/orchestrator/agents/build')
     await buildAgent(baseCtx, '', mockStream, mockGateway)
+    // Heavy sections → critical tier (opus), light → standard tier (sonnet)
     expect(calls.some(c => c.model === 'claude-opus-4-6')).toBe(true)
-    expect(calls.some(c => c.model === 'gpt-5.4')).toBe(true)
+    expect(calls.some(c => c.model === 'claude-sonnet-4-6')).toBe(true)
   })
 
   it('continues on section failure with placeholder', async () => {

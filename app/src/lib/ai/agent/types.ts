@@ -160,6 +160,7 @@ export interface ToolContext {
   stateVersion: number
   requestId: string
   locale: 'ro' | 'en'
+  routingCtx?: import('../model-routing').ModelRoutingContext
 }
 
 export interface ToolDefinition<TInput = unknown, TOutput = unknown> {

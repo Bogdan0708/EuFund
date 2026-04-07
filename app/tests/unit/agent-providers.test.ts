@@ -5,8 +5,11 @@ describe('Provider types', () => {
   it('MODEL_CONFIGS has all expected models', () => {
     expect(MODEL_CONFIGS['claude-opus-4-6']).toBeDefined()
     expect(MODEL_CONFIGS['claude-sonnet-4-6']).toBeDefined()
+    expect(MODEL_CONFIGS['claude-haiku-4-5']).toBeDefined()
     expect(MODEL_CONFIGS['gpt-5.4']).toBeDefined()
-    expect(MODEL_CONFIGS['gemini-2.5-flash']).toBeDefined()
+    expect(MODEL_CONFIGS['gpt-5.4-mini']).toBeDefined()
+    expect(MODEL_CONFIGS['gemini-3.1-pro']).toBeDefined()
+    expect(MODEL_CONFIGS['gemini-3-flash']).toBeDefined()
     expect(MODEL_CONFIGS['sonar']).toBeDefined()
     expect(MODEL_CONFIGS['sonar-pro']).toBeDefined()
   })

@@ -120,6 +120,13 @@
       "when": 1775952000000,
       "tag": "0016_section_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1775952100000,
+      "tag": "0017_ai_model_options",
+      "breakpoints": true
     }
   ]
 }

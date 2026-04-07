@@ -46,16 +46,22 @@ export interface ModelConfig {
 }
 
 export const MODEL_CONFIGS: Record<string, ModelConfig> = {
+  // Anthropic
   'claude-opus-4-6': { provider: 'anthropic', model: 'claude-opus-4-6', timeout: 180_000, fallback: { provider: 'openai', model: 'gpt-5.4' } },
   'claude-sonnet-4-6': { provider: 'anthropic', model: 'claude-sonnet-4-6', timeout: 90_000, fallback: { provider: 'openai', model: 'gpt-5.4' } },
+  'claude-haiku-4-5': { provider: 'anthropic', model: 'claude-haiku-4-5', timeout: 30_000, fallback: { provider: 'openai', model: 'gpt-5.4-mini' } },
+  // OpenAI
   'gpt-5.4': { provider: 'openai', model: 'gpt-5.4', timeout: 60_000, fallback: { provider: 'anthropic', model: 'claude-sonnet-4-6' } },
-  'gemini-2.5-flash': { provider: 'google', model: 'gemini-2.5-flash', timeout: 45_000, fallback: { provider: 'openai', model: 'gpt-5.4' } },
-  'sonar': { provider: 'perplexity', model: 'sonar', timeout: 30_000, fallback: { provider: 'google', model: 'gemini-2.5-flash' } },
-  'sonar-pro': { provider: 'perplexity', model: 'sonar-pro', timeout: 30_000, fallback: { provider: 'google', model: 'gemini-2.5-flash' } },
+  'gpt-5.4-mini': { provider: 'openai', model: 'gpt-5.4-mini', timeout: 45_000, fallback: { provider: 'anthropic', model: 'claude-haiku-4-5' } },
+  'gpt-5.4-nano': { provider: 'openai', model: 'gpt-5.4-nano', timeout: 30_000, fallback: { provider: 'google', model: 'gemini-3-flash' } },
+  // Google
+  'gemini-3.1-pro': { provider: 'google', model: 'gemini-3.1-pro', timeout: 90_000, fallback: { provider: 'openai', model: 'gpt-5.4' } },
+  'gemini-3-flash': { provider: 'google', model: 'gemini-3-flash', timeout: 30_000, fallback: { provider: 'openai', model: 'gpt-5.4-mini' } },
+  'nano-banana': { provider: 'google', model: 'nano-banana', timeout: 60_000, fallback: { provider: 'openai', model: 'gpt-5.4' } },
+  // Perplexity
+  'sonar': { provider: 'perplexity', model: 'sonar', timeout: 30_000, fallback: { provider: 'google', model: 'gemini-3-flash' } },
+  'sonar-pro': { provider: 'perplexity', model: 'sonar-pro', timeout: 30_000, fallback: { provider: 'google', model: 'gemini-3-flash' } },
 }
 
-export const SECTION_MODEL_ROUTING = {
-  critical: 'claude-opus-4-6',
-  standard: 'claude-sonnet-4-6',
-  budget: 'gpt-5.4',
-} as const
+// Re-exported from the single source of truth in model-routing.ts
+export { SECTION_MODEL_ROUTING, type RoutingTier } from '../model-routing'

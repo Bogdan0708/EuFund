@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { registerTool } from './registry'
 import type { ToolResult, ToolContext } from '../types'
 import { generate } from '@/lib/ai/providers/router'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { parseAIJson } from '../utils'
 import { db } from '@/lib/db'
 import { callKnowledge } from '@/lib/db/schema'
@@ -30,16 +31,17 @@ async function execute(input: Input, _ctx: ToolContext): Promise<ToolResult<Fres
   const start = Date.now()
 
   try {
+    const { provider, model } = resolveAgentModel({ task: 'freshness_check' })
     const response = await generate({
-      provider: 'perplexity',
-      model: 'sonar',
+      provider,
+      model,
       system: 'You verify EU funding call status. Check official Romanian sources (mfe.gov.ro, fonduri-ue.ro, MySMIS). Return JSON: { "isOpen": boolean, "amendments": string[], "warnings": string[], "confidence": number }',
       messages: [{
         role: 'user',
         content: `Is the following EU funding call still open for submissions? Check for recent amendments or deadline changes.\n\nCall: ${input.callTitle}\nProgram: ${input.program}\nCall ID: ${input.callId}`,
       }],
       temperature: 0.1,
-      maxTokens: 2000,
+      maxTokens: 4_000,
     })
 
     let parsed: { isOpen: boolean; amendments: string[]; warnings: string[]; confidence?: number }

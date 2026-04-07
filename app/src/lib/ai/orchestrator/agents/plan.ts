@@ -1,6 +1,7 @@
 import type { AgentFn } from '../types'
 import { getPlanPrompt } from '../prompts/plan'
 import { parseAIJson } from '../utils'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
 
 export const planAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   if (!ctx.matchedCalls || !ctx.callBlueprint) {
@@ -10,15 +11,14 @@ export const planAgent: AgentFn = async (ctx, _input, stream, gateway) => {
   const selectedCall = (ctx.selectedCallId && ctx.matchedCalls.find(c => c.callId === ctx.selectedCallId)) || ctx.matchedCalls[0]
   stream.send({ type: 'step_progress', step: 4, message: 'Creating your action plan...' })
 
-  const provider = 'anthropic'
-  const model = 'claude-opus-4-6'
+  const { provider, model } = resolveAgentModel({ task: 'planning', ctx: ctx.routingCtx })
   const result = await gateway.generate({
     provider,
     model,
     system: getPlanPrompt(ctx),
     messages: [{ role: 'user', content: `Create an action plan for:\n\nProject: ${JSON.stringify(ctx.enhancedIdea)}\n\nCall: ${JSON.stringify(selectedCall)}\n\nBlueprint: ${JSON.stringify(ctx.callBlueprint)}` }],
     temperature: 0.3,
-    maxTokens: 8000,
+    maxTokens: 32_000,
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

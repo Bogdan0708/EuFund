@@ -1,4 +1,5 @@
 import type { MatchedCall, FreshnessResult, GatewayClient } from './types'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'freshness' })
@@ -82,33 +83,39 @@ export async function checkCallFreshness(
   let model = 'sonar'
 
   // Try Perplexity first, fallback to Gemini
+  const resolved = resolveAgentModel({ task: 'freshness_check' })
+  provider = resolved.provider
+  model = resolved.model
+
   try {
     const result = await gateway.generate({
-      provider: 'perplexity',
-      model: 'sonar',
+      provider,
+      model,
       system: 'You verify Romanian EU funding call statuses. Return only valid JSON.',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
-      maxTokens: 2000,
+      maxTokens: 4_000,
     })
     apiResults = JSON.parse(result.content)
-  } catch (perplexityErr) {
-    log.warn({ error: perplexityErr instanceof Error ? perplexityErr.message : String(perplexityErr) }, 'Perplexity freshness check failed, trying Gemini')
-    provider = 'gemini'
-    model = 'gemini-2.5-flash'
+  } catch (primaryErr) {
+    log.warn({ error: primaryErr instanceof Error ? primaryErr.message : String(primaryErr), provider, model }, 'Primary freshness check failed, trying fallback')
+    // Fallback: use budget tier (gpt-5.4) for structured JSON output
+    const fallback = resolveAgentModel({ task: 'enhancement' })
+    provider = fallback.provider
+    model = fallback.model
 
     try {
       const result = await gateway.generate({
-        provider: 'gemini',
-        model: 'gemini-2.5-flash',
+        provider,
+        model,
         system: 'You verify Romanian EU funding call statuses. Return only valid JSON.',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.1,
-        maxTokens: 2000,
+        maxTokens: 4_000,
       })
       apiResults = JSON.parse(result.content)
-    } catch (geminiErr) {
-      log.error({ error: geminiErr instanceof Error ? geminiErr.message : String(geminiErr) }, 'Both freshness providers failed')
+    } catch (fallbackErr) {
+      log.error({ error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr) }, 'Both freshness providers failed')
 
       return calls.map(call => ({
         ...call,
@@ -117,7 +124,7 @@ export async function checkCallFreshness(
               status: 'unknown' as const,
               checkedAt: new Date().toISOString(),
               warnings: ['Freshness check failed'],
-              provenance: { provider: 'gemini', model: 'gemini-2.5-flash', sourceUrl: call.sourceUrl, evidence: '' },
+              provenance: { provider, model, sourceUrl: call.sourceUrl, evidence: '' },
             }
           : undefined,
       }))

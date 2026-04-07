@@ -5,6 +5,7 @@ import type { ToolResult, ToolContext, StateTransition } from '../types'
 import type { CallBlueprint, SectionSpec } from '@/lib/ai/orchestrator/types'
 import { getVectorStore } from '@/lib/vectors/store'
 import { generate } from '@/lib/ai/providers/router'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { parseAIJson } from '../utils'
 import { DEFAULT_SECTIONS } from '../section-specs'
 import { db } from '@/lib/db'
@@ -66,13 +67,14 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<CallB
 
     if (evidenceText.trim()) {
       try {
+        const { provider: resolvedProvider, model: resolvedModel } = resolveAgentModel({ task: 'structure_extraction', ctx: ctx.routingCtx })
         const response = await generate({
-          provider: 'anthropic',
-          model: 'claude-sonnet-4-6',
+          provider: resolvedProvider,
+          model: resolvedModel,
           system: 'Extract required application sections from EU funding call docs. Return a JSON array of objects with: id, title, description, order, generationOrder, importance ("critical"|"standard"|"supplementary"), expectedLength ("short"|"medium"|"long"), dependsOn (string[]), modelHint ("heavy"|"light"), mandatory (boolean), confidence (0-1).',
           messages: [{ role: 'user', content: `Call: ${input.callTitle || input.callId}\nProgram: ${input.program || 'Unknown'}\n\n${evidenceText}` }],
           temperature: 0.2,
-          maxTokens: 4000,
+          maxTokens: 20_000,
         })
         const parsed = parseAIJson<SectionSpec[]>(response.content)
         if (Array.isArray(parsed) && parsed.length > 0) {

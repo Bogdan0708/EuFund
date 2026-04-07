@@ -1032,7 +1032,11 @@ export const teamMembers = pgTable('team_members', {
 
 // ─── User Preferences ───────────────────────────────────────────
 export const aiModelPreferenceEnum = pgEnum('ai_model_preference', [
-  'auto', 'claude-sonnet', 'gemini-pro', 'gpt-4o', 'perplexity'
+  'auto',
+  'claude-sonnet', 'claude-haiku',
+  'gpt-4o', 'gpt-4o-mini', 'gpt-4o-nano',
+  'gemini-pro', 'gemini-flash', 'nano-banana',
+  'perplexity',
 ])
 
 export const responseStyleEnum = pgEnum('response_style', [
