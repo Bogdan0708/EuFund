@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { motion } from 'motion/react';
 import { Icon } from '@/components/ui/ds-icon';
+import { relativeTime } from '@/lib/utils';
 import { staggerContainer, staggerItem, staggerTransition } from '@/lib/motion';
 
 /* ---------- types ---------- */
@@ -39,23 +40,6 @@ const STATUS_STYLES: Record<ProjectStatus, { bg: string; text: string; ring: str
   approved: { bg: 'bg-emerald-100', text: 'text-emerald-700', ring: 'stroke-emerald-500' },
   draft: { bg: 'bg-slate-200', text: 'text-slate-900', ring: 'stroke-slate-400' },
 };
-
-/* ---------- relative time helper ---------- */
-function relativeTime(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diffMs = now - then;
-  const diffMin = Math.floor(diffMs / 60_000);
-  const diffHrs = Math.floor(diffMs / 3_600_000);
-  const diffDays = Math.floor(diffMs / 86_400_000);
-
-  if (diffMin < 1) return 'acum';
-  if (diffMin < 60) return `${diffMin}m`;
-  if (diffHrs < 24) return `${diffHrs}h`;
-  if (diffDays < 30) return `${diffDays}z`;
-  const months = Math.floor(diffDays / 30);
-  return `${months}l`;
-}
 
 /* ---------- progress ring ---------- */
 function ProgressRing({

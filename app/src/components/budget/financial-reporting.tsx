@@ -8,6 +8,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import type { BudgetCategory } from './budget-dashboard';
+import { formatCurrency as formatCurrencyBase } from '@/lib/utils';
 
 interface ReportEntry {
   id: string;
@@ -36,7 +37,7 @@ interface FinancialReportingProps {
 }
 
 function formatCurrency(n: number, c: string = 'EUR'): string {
-  return new Intl.NumberFormat('ro-RO', { style: 'currency', currency: c, maximumFractionDigits: 2 }).format(n);
+  return formatCurrencyBase(n, c, 2);
 }
 
 export function FinancialReporting({

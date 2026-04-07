@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { WorkPackage, Milestone } from '@/types/work-packages';
+import { formatCurrency } from '@/lib/utils';
 
 interface WorkPackageDashboardProps {
   workPackages: WorkPackage[];
@@ -20,10 +21,6 @@ const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondar
   delayed: { label: 'Întârziat', variant: 'destructive' },
   cancelled: { label: 'Anulat', variant: 'outline' },
 };
-
-function formatCurrency(amount: number, currency = 'EUR'): string {
-  return new Intl.NumberFormat('ro-RO', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
-}
 
 function BudgetBar({ allocated, spent }: { allocated: number; spent: number }) {
   const pct = allocated > 0 ? Math.min((spent / allocated) * 100, 100) : 0;
