@@ -8,6 +8,21 @@ function hash(s: string): string {
   return createHash('sha256').update(s).digest('hex');
 }
 
+function makeDbMock(resolvedRows: unknown[]) {
+  const tx = {
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn().mockResolvedValue(resolvedRows),
+        })),
+      })),
+    })),
+  };
+  return {
+    withUserRLS: vi.fn(async (_userId: string, fn: Function) => fn(tx)),
+  };
+}
+
 describe('verifySectionIntegrity', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -23,24 +38,14 @@ describe('verifySectionIntegrity', () => {
       metadata: {},
     };
 
-    vi.doMock('@/lib/db', () => ({
-      db: {
-        select: vi.fn().mockImplementation(() => ({
-          from: vi.fn().mockImplementation(() => ({
-            where: vi.fn().mockImplementation(() => ({
-              limit: vi.fn().mockResolvedValue([
-                { version: 2, contentHash: hash('REAL content'), content: 'REAL content' },
-              ]),
-            })),
-          })),
-        })),
-      },
-    }));
+    vi.doMock('@/lib/db', () => makeDbMock([
+      { version: 2, contentHash: hash('REAL content'), content: 'REAL content' },
+    ]));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), fatal: vi.fn() }) } }));
 
     const { verifySectionIntegrity, SectionVersionError } = await import('@/lib/ai/orchestrator/section-versions');
 
-    await expect(verifySectionIntegrity(SESSION_ID, driftedSection as any))
+    await expect(verifySectionIntegrity(SESSION_ID, driftedSection as any, USER_ID))
       .rejects.toSatisfy((err: unknown) => err instanceof SectionVersionError && (err as InstanceType<typeof SectionVersionError>).code === 'VersionIntegrityMismatch');
   });
 
@@ -54,30 +59,17 @@ describe('verifySectionIntegrity', () => {
       metadata: {},
     };
 
-    vi.doMock('@/lib/db', () => ({
-      db: {
-        select: vi.fn().mockImplementation(() => ({
-          from: vi.fn().mockImplementation(() => ({
-            where: vi.fn().mockImplementation(() => ({
-              limit: vi.fn().mockResolvedValue([
-                { version: 2, contentHash: hash('REAL content'), content: 'REAL content' },
-              ]),
-            })),
-          })),
-        })),
-      },
-    }));
+    vi.doMock('@/lib/db', () => makeDbMock([
+      { version: 2, contentHash: hash('REAL content'), content: 'REAL content' },
+    ]));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), fatal: vi.fn() }) } }));
 
     const { verifySectionIntegrity } = await import('@/lib/ai/orchestrator/section-versions');
 
-    await expect(verifySectionIntegrity(SESSION_ID, okSection as any)).resolves.toBeUndefined();
+    await expect(verifySectionIntegrity(SESSION_ID, okSection as any, USER_ID)).resolves.toBeUndefined();
   });
 
   it('passes when no version row exists yet (legacy session, backfill handles it)', async () => {
-    // A legacy section with in-memory defaults but no DB rows should not trip
-    // the integrity check. The backfill path in persistSectionChanges will
-    // insert the baseline row on the next mutation.
     const legacySection = {
       id: 'context', title: 'Context', content: 'legacy content', order: 1,
       source: 'generated' as const,
@@ -87,21 +79,11 @@ describe('verifySectionIntegrity', () => {
       metadata: {},
     };
 
-    vi.doMock('@/lib/db', () => ({
-      db: {
-        select: vi.fn().mockImplementation(() => ({
-          from: vi.fn().mockImplementation(() => ({
-            where: vi.fn().mockImplementation(() => ({
-              limit: vi.fn().mockResolvedValue([]), // no rows
-            })),
-          })),
-        })),
-      },
-    }));
+    vi.doMock('@/lib/db', () => makeDbMock([])); // no rows
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), fatal: vi.fn() }) } }));
 
     const { verifySectionIntegrity } = await import('@/lib/ai/orchestrator/section-versions');
 
-    await expect(verifySectionIntegrity(SESSION_ID, legacySection as any)).resolves.toBeUndefined();
+    await expect(verifySectionIntegrity(SESSION_ID, legacySection as any, USER_ID)).resolves.toBeUndefined();
   });
 });

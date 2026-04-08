@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { and, asc, eq } from 'drizzle-orm';
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { sectionVersions, workflowSessions, auditLog } from '@/lib/db/schema';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
@@ -57,7 +57,7 @@ export async function persistSectionChanges(opts: PersistOptions): Promise<Secti
   // Collected inside the transaction, emitted after commit.
   const pendingAudits: Array<Parameters<typeof logAudit>[0]> = [];
 
-  const enriched = await db.transaction(async (tx) => {
+  const enriched = await withUserRLS(userId, async (tx) => {
     const result: SectionResult[] = [];
 
     for (const next of newSections) {
@@ -246,7 +246,7 @@ export async function transitionSectionState(opts: {
   // Collected inside the transaction, emitted post-commit (same pattern as persistSectionChanges)
   let pendingAudit: Parameters<typeof logAudit>[0] | null = null;
 
-  const updatedSection = await db.transaction(async (tx) => {
+  const updatedSection = await withUserRLS(userId, async (tx) => {
     const [session] = await tx
       .select()
       .from(workflowSessions)
@@ -357,7 +357,7 @@ export async function rollbackSection(opts: {
   // Collected inside the transaction, emitted post-commit (same pattern as persistSectionChanges + transitionSectionState)
   let pendingAudit: Parameters<typeof logAudit>[0] | null = null;
 
-  const updatedSection = await db.transaction(async (tx) => {
+  const updatedSection = await withUserRLS(userId, async (tx) => {
     const [session] = await tx
       .select()
       .from(workflowSessions)
@@ -497,8 +497,10 @@ export function sectionExistsInSession(
 export async function getVersionHistory(
   sessionId: string,
   sectionId: string,
+  userId: string,
 ): Promise<VersionHistoryResult> {
-  const versionRows = await db
+  return withUserRLS(userId, async (tx) => {
+  const versionRows = await tx
     .select()
     .from(sectionVersions)
     .where(and(
@@ -531,7 +533,7 @@ export async function getVersionHistory(
   });
 
   // Fetch audit entries for this section's state changes
-  const auditRows = await db
+  const auditRows = await tx
     .select()
     .from(auditLog)
     .where(and(
@@ -569,6 +571,7 @@ export async function getVersionHistory(
     });
 
   return { versions, stateTransitions };
+  });
 }
 
 /**
@@ -588,38 +591,41 @@ export async function getVersionHistory(
 export async function verifySectionIntegrity(
   sessionId: string,
   section: SectionResult,
+  userId: string,
 ): Promise<void> {
-  const [latest] = await db
-    .select()
-    .from(sectionVersions)
-    .where(and(
-      eq(sectionVersions.sessionId, sessionId),
-      eq(sectionVersions.sectionId, section.id),
-      eq(sectionVersions.version, section.currentVersion),
-    ))
-    .limit(1);
+  await withUserRLS(userId, async (tx) => {
+    const [latest] = await tx
+      .select()
+      .from(sectionVersions)
+      .where(and(
+        eq(sectionVersions.sessionId, sessionId),
+        eq(sectionVersions.sectionId, section.id),
+        eq(sectionVersions.version, section.currentVersion),
+      ))
+      .limit(1);
 
-  if (!latest) {
-    // Legacy section, no row yet — not a mismatch, backfill will handle it
-    return;
-  }
+    if (!latest) {
+      // Legacy section, no row yet — not a mismatch, backfill will handle it
+      return;
+    }
 
-  if (latest.contentHash !== section.contentHash) {
-    log.error({
-      sessionId,
-      sectionId: section.id,
-      jsonbHash: section.contentHash,
-      versionRowHash: latest.contentHash,
-      currentVersion: section.currentVersion,
-    }, 'SECTION_VERSION_INTEGRITY_MISMATCH');
-
-    throw new SectionVersionError(
-      'VersionIntegrityMismatch',
-      `Section ${section.id} contentHash mismatch between JSONB and version row`,
-      {
+    if (latest.contentHash !== section.contentHash) {
+      log.error({
+        sessionId,
+        sectionId: section.id,
         jsonbHash: section.contentHash,
         versionRowHash: latest.contentHash,
-      },
-    );
-  }
+        currentVersion: section.currentVersion,
+      }, 'SECTION_VERSION_INTEGRITY_MISMATCH');
+
+      throw new SectionVersionError(
+        'VersionIntegrityMismatch',
+        `Section ${section.id} contentHash mismatch between JSONB and version row`,
+        {
+          jsonbHash: section.contentHash,
+          versionRowHash: latest.contentHash,
+        },
+      );
+    }
+  });
 }
