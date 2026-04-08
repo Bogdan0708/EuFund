@@ -1265,6 +1265,7 @@
     "lastEdited": "Ultima editare {time}",
     "autoSaved": "Salvat automat",
     "conflictError": "Secțiunea a fost modificată de altcineva. Reîncărcați pentru a vedea ultima versiune.",
+    "saveError": "Salvarea a eșuat. Încercați din nou.",
     "readOnlyBanner": "Vizualizare. Porniți o sesiune AI pentru a edita.",
     "noSections": "Nicio secțiune generată. Folosiți Asistentul AI pentru a crea propunerea.",
     "sectionCount": "{count} secțiuni",
