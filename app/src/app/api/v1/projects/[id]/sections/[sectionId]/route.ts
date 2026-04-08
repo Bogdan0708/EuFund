@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth/helpers';
 import { resolveProjectWorkspace, editProjectSection } from '@/lib/ai/orchestrator/workspace';
 import { SectionVersionError } from '@/lib/ai/orchestrator/section-versions';
 import { editSectionContentSchema } from '@/lib/validators';
+import { enforceRateLimit } from '@/lib/middleware/rate-limit';
 import { Errors, FondEUError } from '@/lib/errors';
 
 type Params = { params: { id: string; sectionId: string } };
@@ -49,6 +50,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
+    const limit = await enforceRateLimit(req, { keyPrefix: 'section:edit', maxRequests: 60, windowMs: 60_000 });
+    if (!limit.ok) return limit.response;
+
     const user = await requireAuth();
     const { id, sectionId } = params;
 
