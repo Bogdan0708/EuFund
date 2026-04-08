@@ -1268,7 +1268,9 @@
     "readOnlyBanner": "View only. Start an AI session to edit.",
     "noSections": "No sections generated yet. Use the AI Assistant to create your proposal.",
     "sectionCount": "{count} sections",
-    "openWorkspace": "Open Workspace"
+    "openWorkspace": "Open Workspace",
+    "viewAction": "View",
+    "editAction": "Edit"
   },
   "workspace": {
     "title": "Documents",

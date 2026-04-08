@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { NextRequest } from 'next/server';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
@@ -24,7 +25,7 @@ describe('GET /api/v1/projects/:id/sections', () => {
     }));
 
     const { GET } = await import('@/app/api/v1/projects/[id]/sections/route');
-    const req = new Request('http://localhost/api/v1/projects/' + PROJECT_ID + '/sections');
+    const req = new Request('http://localhost/api/v1/projects/' + PROJECT_ID + '/sections') as unknown as NextRequest;
     const res = await GET(req, { params: { id: PROJECT_ID } });
     const body = await res.json();
 
@@ -50,7 +51,7 @@ describe('GET /api/v1/projects/:id/sections', () => {
     }));
 
     const { GET } = await import('@/app/api/v1/projects/[id]/sections/route');
-    const req = new Request('http://localhost/api/v1/projects/' + PROJECT_ID + '/sections');
+    const req = new Request('http://localhost/api/v1/projects/' + PROJECT_ID + '/sections') as unknown as NextRequest;
     const res = await GET(req, { params: { id: PROJECT_ID } });
     const body = await res.json();
 
@@ -69,7 +70,7 @@ describe('GET /api/v1/projects/:id/sections', () => {
     }));
 
     const { GET } = await import('@/app/api/v1/projects/[id]/sections/route');
-    const req = new Request('http://localhost/api/v1/projects/' + PROJECT_ID + '/sections');
+    const req = new Request('http://localhost/api/v1/projects/' + PROJECT_ID + '/sections') as unknown as NextRequest;
     const res = await GET(req, { params: { id: PROJECT_ID } });
 
     expect(res.status).toBe(404);
@@ -98,7 +99,7 @@ describe('PATCH /api/v1/projects/:id/sections/:sectionId', () => {
       method: 'PATCH',
       body: JSON.stringify({ content: 'New', expectedCurrentVersion: 1 }),
       headers: { 'Content-Type': 'application/json' },
-    });
+    }) as unknown as NextRequest;
     const res = await PATCH(req, { params: { id: PROJECT_ID, sectionId: 'sec-1' } });
 
     expect(res.status).toBe(400);
