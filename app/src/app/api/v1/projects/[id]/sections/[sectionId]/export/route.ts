@@ -40,8 +40,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       userId: user.id,
       action: 'section.export',
       resourceType: 'section',
-      resourceId: id,
-      metadata: { format: 'docx', sectionId },
+      resourceId: sectionId,
+      metadata: { format: 'docx', projectId: id },
     });
 
     return new Response(new Uint8Array(buffer), {

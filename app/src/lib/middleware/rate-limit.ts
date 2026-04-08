@@ -10,6 +10,8 @@ export interface RateLimitOptions {
   maxRequests: number;
   windowMs: number;
   messageRo?: string;
+  /** Override the default IP-based key suffix (e.g. pass userId for authenticated routes). */
+  keySuffix?: string;
 }
 
 export type NextRouteHandler = (request: NextRequest) => Promise<Response>;
@@ -48,17 +50,17 @@ export async function enforceRateLimit(
   | { ok: true; headers: Record<string, string> }
   | { ok: false; response: Response }
 > {
-  const ip = getClientIp(request);
+  const identity = options.keySuffix ?? getClientIp(request);
 
-  // If no IP can be determined, allow the request but skip rate limiting
-  if (!ip) {
+  // If no identity can be determined, allow the request but skip rate limiting
+  if (!identity) {
     log.warn('Request with no identifiable IP address — skipping rate limit');
     return { ok: true, headers: {} };
   }
 
   try {
     const rateLimit = await checkRateLimit(
-      `${options.keyPrefix}:${ip}`,
+      `${options.keyPrefix}:${identity}`,
       options.maxRequests,
       options.windowMs,
     );
