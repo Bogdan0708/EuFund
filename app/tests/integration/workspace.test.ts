@@ -35,6 +35,45 @@ describe('normalizeSections', () => {
     expect(result[0].currentVersion).toBe(3);
     expect(result[0].contentHash).toBe('abc123');
   });
+  it('returns empty array for empty input', async () => {
+    const { normalizeSections } = await import('@/lib/ai/orchestrator/workspace');
+    expect(normalizeSections([], '2026-01-01T00:00:00Z')).toEqual([]);
+  });
+
+  it('handles completely empty objects with safe defaults', async () => {
+    const { normalizeSections } = await import('@/lib/ai/orchestrator/workspace');
+    const result = normalizeSections([{}], '2026-01-01T00:00:00Z');
+    expect(result[0].id).toBe('');
+    expect(result[0].title).toBe('');
+    expect(result[0].content).toBe('');
+    expect(result[0].order).toBe(0);
+    expect(result[0].source).toBe('generated');
+    expect(result[0].state).toBe('draft');
+    expect(result[0].currentVersion).toBe(1);
+    expect(result[0].contentHash).toHaveLength(64);
+  });
+
+  it('computes consistent contentHash from content', async () => {
+    const { normalizeSections } = await import('@/lib/ai/orchestrator/workspace');
+    const a = normalizeSections([{ content: 'same' }], '2026-01-01T00:00:00Z');
+    const b = normalizeSections([{ content: 'same' }], '2026-06-01T00:00:00Z');
+    expect(a[0].contentHash).toBe(b[0].contentHash);
+    // Different content → different hash
+    const c = normalizeSections([{ content: 'different' }], '2026-01-01T00:00:00Z');
+    expect(a[0].contentHash).not.toBe(c[0].contentHash);
+  });
+
+  it('merges partial metadata with defaults', async () => {
+    const { normalizeSections } = await import('@/lib/ai/orchestrator/workspace');
+    const result = normalizeSections([{
+      id: 'x', content: 'text',
+      metadata: { model: 'gpt-4', provider: 'openai' },
+    }], '2026-01-01T00:00:00Z');
+    expect(result[0].metadata.model).toBe('gpt-4');
+    expect(result[0].metadata.provider).toBe('openai');
+    expect(result[0].metadata.tokensIn).toBe(0);
+    expect(result[0].metadata.latencyMs).toBe(0);
+  });
 });
 
 // ─── resolveProjectWorkspace Tests ───────────────────────────────
