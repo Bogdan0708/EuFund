@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth/helpers';
 import { resolveProjectWorkspace, syncProjectDocumentSnapshot } from '@/lib/ai/orchestrator/workspace';
 import { transitionSectionState, SectionVersionError } from '@/lib/ai/orchestrator/section-versions';
 import { transitionSectionStateSchema } from '@/lib/validators';
+import { enforceRateLimit } from '@/lib/middleware/rate-limit';
 import { Errors, FondEUError } from '@/lib/errors';
 
 type Params = { params: { id: string; sectionId: string } };
@@ -19,6 +20,9 @@ const ERROR_STATUS: Record<string, number> = {
 
 export async function POST(req: NextRequest, { params }: Params) {
   try {
+    const limit = await enforceRateLimit(req, { keyPrefix: 'section:state', maxRequests: 30, windowMs: 60_000 });
+    if (!limit.ok) return limit.response;
+
     const user = await requireAuth();
     const { id, sectionId } = params;
 
