@@ -67,6 +67,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       );
     }
 
+    if (workspace.session.status === 'completed') {
+      return NextResponse.json(
+        Errors.validation('session', 'Nu se poate edita o sesiune finalizată', 'Cannot edit a completed session').toResponse('ro'),
+        { status: 400 },
+      );
+    }
+
     const body = await req.json().catch(() => null);
     const parsed = editSectionContentSchema.safeParse(body);
     if (!parsed.success) {
