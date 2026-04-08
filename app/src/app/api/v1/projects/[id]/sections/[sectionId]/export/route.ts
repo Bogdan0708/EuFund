@@ -7,13 +7,14 @@ import { Errors, FondEUError } from '@/lib/errors';
 
 type Params = { params: { id: string; sectionId: string } };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SLUG_RE = /^[a-z][a-z0-9_]{0,63}$/;
 
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
     const { id, sectionId } = params;
 
-    if (!UUID_RE.test(id)) {
+    if (!UUID_RE.test(id) || !SLUG_RE.test(sectionId)) {
       return NextResponse.json(Errors.validation('id', 'ID invalid', 'Invalid ID').toResponse('ro'), { status: 400 });
     }
 

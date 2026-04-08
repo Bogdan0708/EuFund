@@ -100,7 +100,7 @@ describe('PATCH /api/v1/projects/:id/sections/:sectionId', () => {
       body: JSON.stringify({ content: 'New', expectedCurrentVersion: 1 }),
       headers: { 'Content-Type': 'application/json' },
     }) as unknown as NextRequest;
-    const res = await PATCH(req, { params: { id: PROJECT_ID, sectionId: 'sec-1' } });
+    const res = await PATCH(req, { params: { id: PROJECT_ID, sectionId: 'context' } });
 
     expect(res.status).toBe(400);
   });
@@ -125,7 +125,7 @@ describe('PATCH /api/v1/projects/:id/sections/:sectionId', () => {
       body: JSON.stringify({ content: 'New', expectedCurrentVersion: 1 }),
       headers: { 'Content-Type': 'application/json' },
     }) as unknown as NextRequest;
-    const res = await PATCH(req, { params: { id: PROJECT_ID, sectionId: 'sec-1' } });
+    const res = await PATCH(req, { params: { id: PROJECT_ID, sectionId: 'context' } });
 
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -148,7 +148,7 @@ describe('PATCH /api/v1/projects/:id/sections/:sectionId', () => {
       body: JSON.stringify({ content: 'New', expectedCurrentVersion: 1 }),
       headers: { 'Content-Type': 'application/json' },
     }) as unknown as NextRequest;
-    const res = await PATCH(req, { params: { id: PROJECT_ID, sectionId: 'sec-1' } });
+    const res = await PATCH(req, { params: { id: PROJECT_ID, sectionId: 'context' } });
 
     expect(res.status).toBe(404);
   });
@@ -179,7 +179,7 @@ describe('PATCH /api/v1/projects/:id/sections/:sectionId', () => {
       body: JSON.stringify({ content: 'Updated', expectedCurrentVersion: 1 }),
       headers: { 'Content-Type': 'application/json' },
     }) as unknown as NextRequest;
-    const res = await PATCH(req, { params: { id: PROJECT_ID, sectionId: 'sec-1' } });
+    const res = await PATCH(req, { params: { id: PROJECT_ID, sectionId: 'context' } });
 
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -218,7 +218,7 @@ describe('POST /api/v1/projects/:id/sections/:sectionId/state', () => {
       body: JSON.stringify({ state: 'reviewed', expectedCurrentVersion: 1 }),
       headers: { 'Content-Type': 'application/json' },
     }) as unknown as NextRequest;
-    const res = await POST(req, { params: { id: PROJECT_ID, sectionId: 'sec-1' } });
+    const res = await POST(req, { params: { id: PROJECT_ID, sectionId: 'context' } });
 
     expect(res.status).toBe(400);
     const body = await res.json();
