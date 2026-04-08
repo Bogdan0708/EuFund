@@ -28,12 +28,10 @@ describe('persistSectionChanges', () => {
     const insertedVersions: unknown[] = [];
 
     vi.doMock('@/lib/db', () => ({
-      db: {
-        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => {
           const tx = mockInsertChain(insertedVersions);
           return fn(tx);
         }),
-      },
     }));
 
     vi.doMock('@/lib/legal/audit', () => ({
@@ -88,8 +86,7 @@ describe('persistSectionChanges', () => {
     const insertedVersions: unknown[] = [];
 
     vi.doMock('@/lib/db', () => ({
-      db: {
-        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => {
           const tx = {
             ...mockInsertChain(insertedVersions),
             // Existing (non-legacy) sessions already have baseline version rows,
@@ -104,7 +101,6 @@ describe('persistSectionChanges', () => {
           };
           return fn(tx);
         }),
-      },
     }));
 
     const logAuditSpy = vi.fn().mockResolvedValue(undefined);
@@ -176,8 +172,7 @@ describe('persistSectionChanges', () => {
     const insertedVersions: unknown[] = [];
 
     vi.doMock('@/lib/db', () => ({
-      db: {
-        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => {
           const tx = {
             ...mockInsertChain(insertedVersions),
             select: vi.fn().mockReturnValue({
@@ -190,7 +185,6 @@ describe('persistSectionChanges', () => {
           };
           return fn(tx);
         }),
-      },
     }));
 
     vi.doMock('@/lib/legal/audit', () => ({
@@ -230,12 +224,10 @@ describe('persistSectionChanges', () => {
 
   it('preserves prior metadata when only metadata changes', async () => {
     vi.doMock('@/lib/db', () => ({
-      db: {
-        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => {
           const tx = mockInsertChain([]);
           return fn(tx);
         }),
-      },
     }));
 
     vi.doMock('@/lib/legal/audit', () => ({
@@ -302,8 +294,7 @@ describe('transitionSectionState', () => {
     const updates: unknown[] = [];
 
     vi.doMock('@/lib/db', () => ({
-      db: {
-        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => fn({
           select: vi.fn().mockReturnValue({
             from: vi.fn().mockReturnValue({
               where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([session]), for: vi.fn().mockResolvedValue([session]) }),
@@ -316,7 +307,6 @@ describe('transitionSectionState', () => {
             }),
           }),
         })),
-      },
     }));
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
@@ -340,8 +330,7 @@ describe('transitionSectionState', () => {
     const auditCalls: unknown[] = [];
 
     vi.doMock('@/lib/db', () => ({
-      db: {
-        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => fn({
           select: vi.fn().mockReturnValue({
             from: vi.fn().mockReturnValue({
               where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([session]), for: vi.fn().mockResolvedValue([session]) }),
@@ -349,7 +338,6 @@ describe('transitionSectionState', () => {
           }),
           update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
         })),
-      },
     }));
     vi.doMock('@/lib/legal/audit', () => ({
       logAudit: vi.fn().mockImplementation(async (entry: unknown) => { auditCalls.push(entry); }),
@@ -376,8 +364,7 @@ describe('transitionSectionState', () => {
     const session = mockSessionWithSection(section);
 
     vi.doMock('@/lib/db', () => ({
-      db: {
-        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => fn({
           select: vi.fn().mockReturnValue({
             from: vi.fn().mockReturnValue({
               where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([session]), for: vi.fn().mockResolvedValue([session]) }),
@@ -385,7 +372,6 @@ describe('transitionSectionState', () => {
           }),
           update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
         })),
-      },
     }));
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
@@ -406,8 +392,7 @@ describe('transitionSectionState', () => {
     const session = mockSessionWithSection(section);
 
     vi.doMock('@/lib/db', () => ({
-      db: {
-        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => fn({
           select: vi.fn().mockReturnValue({
             from: vi.fn().mockReturnValue({
               where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([session]), for: vi.fn().mockResolvedValue([session]) }),
@@ -415,7 +400,6 @@ describe('transitionSectionState', () => {
           }),
           update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
         })),
-      },
     }));
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
@@ -435,8 +419,7 @@ describe('transitionSectionState', () => {
     const session = mockSessionWithSection(SECTION);
 
     vi.doMock('@/lib/db', () => ({
-      db: {
-        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => fn({
           select: vi.fn().mockReturnValue({
             from: vi.fn().mockReturnValue({
               where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([session]), for: vi.fn().mockResolvedValue([session]) }),
@@ -444,7 +427,6 @@ describe('transitionSectionState', () => {
           }),
           update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
         })),
-      },
     }));
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
@@ -481,8 +463,7 @@ describe('rollbackSection', () => {
 
     const drizzleNameSym = Symbol.for('drizzle:Name');
     vi.doMock('@/lib/db', () => ({
-      db: {
-        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => fn({
           select: vi.fn().mockImplementation(() => ({
             from: vi.fn().mockImplementation((table: unknown) => ({
               where: vi.fn().mockImplementation(() => ({
@@ -503,7 +484,6 @@ describe('rollbackSection', () => {
             set: vi.fn().mockImplementation(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
           })),
         })),
-      },
     }));
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
@@ -539,8 +519,7 @@ describe('rollbackSection', () => {
     const auditLogSpy = vi.fn().mockResolvedValue(undefined);
 
     vi.doMock('@/lib/db', () => ({
-      db: {
-        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => fn({
           select: vi.fn().mockImplementation(() => ({
             from: vi.fn().mockImplementation(() => ({
               where: vi.fn().mockImplementation(() => ({
@@ -559,7 +538,6 @@ describe('rollbackSection', () => {
             set: vi.fn().mockImplementation(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
           })),
         })),
-      },
     }));
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: auditLogSpy }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
@@ -610,23 +588,26 @@ describe('getVersionHistory', () => {
     const { sectionVersions: sectionVersionsTable, auditLog: auditLogTable } = await import('@/lib/db/schema');
 
     vi.doMock('@/lib/db', () => ({
-      db: {
-        select: vi.fn().mockImplementation(() => ({
-          from: vi.fn().mockImplementation((table: unknown) => ({
-            where: vi.fn().mockImplementation(() => ({
-              orderBy: vi.fn().mockResolvedValue(
-                table === sectionVersionsTable ? versionRows : auditRows,
-              ),
+      withUserRLS: vi.fn(async (_userId: string, fn: Function) => {
+        const tx = {
+          select: vi.fn().mockImplementation(() => ({
+            from: vi.fn().mockImplementation((table: unknown) => ({
+              where: vi.fn().mockImplementation(() => ({
+                orderBy: vi.fn().mockResolvedValue(
+                  table === sectionVersionsTable ? versionRows : auditRows,
+                ),
+              })),
             })),
           })),
-        })),
-      },
+        };
+        return fn(tx);
+      }),
     }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
 
     const { getVersionHistory } = await import('@/lib/ai/orchestrator/section-versions');
 
-    const result = await getVersionHistory(SESSION_ID, 'context');
+    const result = await getVersionHistory(SESSION_ID, 'context', USER_ID);
 
     expect(result.versions).toHaveLength(2);
     expect(result.versions[0].version).toBe(1);
@@ -653,8 +634,7 @@ describe('persistSectionChanges legacy backfill', () => {
     const insertedVersions: unknown[] = [];
 
     vi.doMock('@/lib/db', () => ({
-      db: {
-        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => {
           const tx = {
             insert: vi.fn().mockReturnValue({
               values: vi.fn().mockImplementation((row: unknown) => {
@@ -672,7 +652,6 @@ describe('persistSectionChanges legacy backfill', () => {
           };
           return fn(tx);
         }),
-      },
     }));
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));

@@ -71,7 +71,7 @@ export async function POST(
     const sessionCtx = session.context as { projectSections?: SectionResult[] } | null;
     const targetSection = sessionCtx?.projectSections?.find((s) => s.id === sectionId);
     if (targetSection) {
-      await verifySectionIntegrity(sessionId, targetSection);
+      await verifySectionIntegrity(sessionId, targetSection, user.id);
     }
 
     const section = await rollbackSection({

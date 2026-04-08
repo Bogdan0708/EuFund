@@ -27,7 +27,7 @@ export async function GET(
       return NextResponse.json({ error: 'Section not found' }, { status: 404 });
     }
 
-    const history = await getVersionHistory(sessionId, sectionId);
+    const history = await getVersionHistory(sessionId, sectionId, user.id);
     return NextResponse.json(history);
   } catch (err) {
     if (err instanceof FondEUError) {
