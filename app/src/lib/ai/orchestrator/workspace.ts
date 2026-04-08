@@ -122,6 +122,14 @@ export async function resolveProjectWorkspace(
 
 // ─── Drift Reconciliation ────────────────────────────────────────
 
+/**
+ * Read-only drift detection: patches in-memory sections with the latest
+ * version row data if the session context is stale. Does NOT write back
+ * to the session — concurrent reads can no longer corrupt session state.
+ * The session context is updated on the next write (editProjectSection).
+ *
+ * Uses a single batched query instead of N+1 per-section fetches.
+ */
 async function reconcileDrift(tx: DbTransaction, sessionId: string, sections: SectionResult[]): Promise<SectionResult[]> {
   try {
     const maxVersionRows = await tx
@@ -139,27 +147,30 @@ async function reconcileDrift(tx: DbTransaction, sessionId: string, sections: Se
 
     log.warn(
       { sessionId, driftedSectionIds: drifted.map((s) => s.id) },
-      'Section version drift detected, reconciling',
+      'Section version drift detected (read-only reconciliation)',
     );
 
-    const latestRows: Array<typeof sectionVersions.$inferSelect> = [];
-    for (const section of drifted) {
-      const targetVersion = maxVersionMap.get(section.id)!;
-      const [row] = await tx
-        .select()
-        .from(sectionVersions)
-        .where(and(
-          eq(sectionVersions.sessionId, sessionId),
-          eq(sectionVersions.sectionId, section.id),
-          eq(sectionVersions.version, targetVersion),
-        ))
-        .limit(1);
-      if (row) latestRows.push(row);
+    // Batched fetch: all version rows for drifted sections in one query
+    const driftedIds = drifted.map((s) => s.id);
+    const allRows = await tx
+      .select()
+      .from(sectionVersions)
+      .where(and(
+        eq(sectionVersions.sessionId, sessionId),
+        inArray(sectionVersions.sectionId, driftedIds),
+      ))
+      .orderBy(desc(sectionVersions.version));
+
+    // Pick the latest row per sectionId
+    const latestBySection = new Map<string, typeof sectionVersions.$inferSelect>();
+    for (const row of allRows) {
+      if (!latestBySection.has(row.sectionId)) {
+        latestBySection.set(row.sectionId, row);
+      }
     }
 
-    const patchMap = new Map(latestRows.map((row) => [row.sectionId, row]));
-    const reconciled = sections.map((s) => {
-      const patch = patchMap.get(s.id);
+    return sections.map((s) => {
+      const patch = latestBySection.get(s.id);
       if (!patch) return s;
       return {
         ...s,
@@ -174,20 +185,6 @@ async function reconcileDrift(tx: DbTransaction, sessionId: string, sections: Se
         lastStateChangeBy: patch.createdBy,
       };
     });
-
-    // Write reconciled sections back to session context
-    const [freshSession] = await tx
-      .select({ context: workflowSessions.context })
-      .from(workflowSessions)
-      .where(eq(workflowSessions.id, sessionId))
-      .limit(1);
-    const existingCtx = (freshSession?.context ?? {}) as Record<string, unknown>;
-    await tx
-      .update(workflowSessions)
-      .set({ context: { ...existingCtx, projectSections: reconciled }, updatedAt: new Date() })
-      .where(eq(workflowSessions.id, sessionId));
-
-    return reconciled;
   } catch (err) {
     log.error(
       { error: err instanceof Error ? err.message : String(err), sessionId },
