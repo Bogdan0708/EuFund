@@ -1268,7 +1268,9 @@
     "readOnlyBanner": "Vizualizare. Porniți o sesiune AI pentru a edita.",
     "noSections": "Nicio secțiune generată. Folosiți Asistentul AI pentru a crea propunerea.",
     "sectionCount": "{count} secțiuni",
-    "openWorkspace": "Deschide Spațiul de Lucru"
+    "openWorkspace": "Deschide Spațiul de Lucru",
+    "viewAction": "Vizualizare",
+    "editAction": "Editează"
   },
   "workspace": {
     "title": "Documente",

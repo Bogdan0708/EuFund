@@ -106,7 +106,7 @@ export function SectionsTabContent({ projectId }: { projectId: string }) {
                 }`}
               >
                 <Icon name={data.readOnly ? 'visibility' : 'edit'} size="sm" />
-                {data.readOnly ? (locale === 'en' ? 'View' : 'Vizualizare') : (locale === 'en' ? 'Edit' : 'Editează')}
+                {data.readOnly ? t('viewAction') : t('editAction')}
               </a>
             </div>
           </motion.div>
