@@ -235,4 +235,61 @@ describe('editProjectSection', () => {
       userId: USER_ID,
     })).rejects.toThrow();
   });
+
+  it('returns original section unchanged when content and title are identical (no-op guard)', async () => {
+    const contentHash = '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'; // sha256 of 'hello'
+    const section = {
+      id: 'sec-1', title: 'Context', content: 'hello', order: 1,
+      source: 'generated' as const,
+      state: 'draft' as const, currentVersion: 1, versionCount: 1,
+      contentHash,
+      lastStateChangeAt: '2026-04-05T00:00:00Z', lastStateChangeBy: USER_ID,
+      metadata: { model: 'gpt-4', provider: 'openai', tokensIn: 100, tokensOut: 200, latencyMs: 500, retryCount: 0, fallbackUsed: false, generatedAt: '2026-04-05T00:00:00Z', checksum: 'abc' },
+    };
+
+    const insertValues = vi.fn();
+    vi.doMock('@/lib/db', () => ({
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: Function) => {
+        const tx = {
+          select: () => ({
+            from: () => ({
+              where: () => ({
+                for: () => [{ id: SESSION_ID, projectId: PROJECT_ID, context: { projectSections: [section] } }],
+              }),
+            }),
+          }),
+          insert: () => ({ values: insertValues }),
+          update: () => ({ set: () => ({ where: vi.fn() }) }),
+        };
+        return fn(tx);
+      }),
+    }));
+    vi.doMock('@/lib/db/schema', () => ({
+      workflowSessions: {}, sectionVersions: {}, projectDocuments: {},
+    }));
+    vi.doMock('drizzle-orm', () => ({
+      eq: vi.fn(), and: vi.fn(), desc: vi.fn(),
+    }));
+    vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
+    vi.doMock('@/lib/logger', () => ({
+      logger: { child: () => new Proxy({}, { get: () => vi.fn() }) },
+    }));
+
+    const { editProjectSection } = await import('@/lib/ai/orchestrator/workspace');
+
+    const result = await editProjectSection({
+      sessionId: SESSION_ID,
+      sectionId: 'sec-1',
+      content: 'hello',        // same content
+      title: 'Context',        // same title
+      expectedCurrentVersion: 1,
+      userId: USER_ID,
+    });
+
+    // No-op: returns original section, no insert called
+    expect(result.content).toBe('hello');
+    expect(result.currentVersion).toBe(1);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
 });
