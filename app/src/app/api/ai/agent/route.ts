@@ -120,6 +120,7 @@ function mapSessionRow(row: Record<string, unknown>): AgentSession {
   return {
     id: row.id as string,
     userId: row.userId as string,
+    projectId: (row.projectId as string) ?? null,
     status: row.status as AgentSession['status'],
     locale: row.locale as 'ro' | 'en',
     selectedCallId: row.selectedCallId as string | null,

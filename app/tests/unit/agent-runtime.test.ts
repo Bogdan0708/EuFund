@@ -38,7 +38,18 @@ vi.mock('@/lib/logger', () => ({
   logger: { child: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }) },
 }))
 
+vi.mock('@/lib/ai/knowledge/write-back', () => ({
+  onSectionAccepted: vi.fn().mockResolvedValue(undefined),
+  onPhaseTransition: vi.fn().mockResolvedValue(undefined),
+  trackPatternUsage: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('@/lib/ai/knowledge/session-knowledge', () => ({
+  getSessionKnowledge: vi.fn().mockResolvedValue([]),
+}))
+
 import { runAgentTurn } from '@/lib/ai/agent/runtime'
+import { onSectionAccepted, onPhaseTransition } from '@/lib/ai/knowledge/write-back'
 import type { AgentSession, AgentSection, AgentEvent } from '@/lib/ai/agent/types'
 
 function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
@@ -46,6 +57,7 @@ function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
     id: '11111111-1111-4111-8111-111111111111',
     userId: '22222222-2222-4222-8222-222222222222',
     status: 'active', locale: 'ro', selectedCallId: null, currentPhase: 'discovery',
+    projectId: null,
     blueprint: null, eligibility: null, outline: null, warnings: [],
     outlineFrozen: false,
     planningArtifact: null, messageSummary: null, stateVersion: 0,
@@ -108,5 +120,87 @@ describe('Agent Runtime', () => {
     })
 
     expect(result.session.stateVersion).toBe(6)
+  })
+
+  it('increments stateVersion on skipLLM structured actions', async () => {
+    const sections: AgentSection[] = [{
+      id: '33333333-3333-4333-8333-333333333333',
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      sectionKey: 'rezumat', title: 'Rezumat', documentOrder: 0, generationOrder: 11,
+      status: 'needs_review', content: 'Draft content', acceptedContent: null,
+      modelUsed: null, retryCount: 0, sourcesUsed: null, promptVersion: null,
+      latencyMs: null, tokenUsage: null, errorClass: null, updatedAt: new Date(),
+    }]
+
+    const result = await runAgentTurn({
+      session: makeSession({ currentPhase: 'drafting', outlineFrozen: true, stateVersion: 3 }),
+      sections,
+      request: { action: { type: 'accept_section', sectionKey: 'rezumat' }, requestId: 'req-ver', locale: 'ro' },
+      emit,
+    })
+
+    expect(result.session.stateVersion).toBe(4)
+  })
+
+  it('calls onPhaseTransition for direct action phase changes like approve_outline', async () => {
+    await runAgentTurn({
+      session: makeSession({ currentPhase: 'structuring', outlineFrozen: false }),
+      sections: [],
+      request: { action: { type: 'approve_outline' }, requestId: 'req-phase', locale: 'ro' },
+      emit,
+    })
+
+    expect(onPhaseTransition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fromPhase: 'structuring',
+        toPhase: 'drafting',
+      }),
+    )
+  })
+
+  it('calls onSectionAccepted inside persist path when ACCEPT_SECTION succeeds', async () => {
+    const session = makeSession({
+      currentPhase: 'drafting',
+      outlineFrozen: true,
+      blueprint: { program: 'PNRR' } as any,
+    })
+    const sections: AgentSection[] = [{
+      id: '33333333-3333-4333-8333-333333333333',
+      sessionId: session.id,
+      sectionKey: 'methodology',
+      title: 'Metodologie',
+      documentOrder: 3,
+      generationOrder: 3,
+      status: 'needs_review',
+      content: '## Approach\nPhased implementation...',
+      acceptedContent: null,
+      modelUsed: 'claude-opus-4-6',
+      retryCount: 0,
+      sourcesUsed: null,
+      promptVersion: null,
+      latencyMs: null,
+      tokenUsage: null,
+      errorClass: null,
+      updatedAt: new Date(),
+    }]
+
+    await runAgentTurn({
+      session,
+      sections,
+      request: {
+        requestId: 'req-accept',
+        locale: 'ro',
+        action: { type: 'accept_section', sectionKey: 'methodology' },
+      },
+      emit,
+    })
+
+    expect(onSectionAccepted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: session.id,
+        sectionKey: 'methodology',
+        program: 'PNRR',
+      }),
+    )
   })
 })

@@ -11,6 +11,8 @@ import { agentSectionVersions, agentSections } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 import { normalizeMarkdown } from '@/lib/markdown/proposal-markdown'
+import { findPatterns } from '@/lib/ai/knowledge/proposal-patterns'
+import { getSessionKnowledgeByKind } from '@/lib/ai/knowledge/session-knowledge'
 
 const log = logger.child({ component: 'tool-generate-section' })
 
@@ -20,6 +22,10 @@ const inputSchema = z.object({
 })
 
 type Input = z.infer<typeof inputSchema>
+
+const MAX_PATTERN_CHARS = 1500
+const MAX_BRIEF_CHARS = 800
+const MAX_KNOWLEDGE_CONTEXT_CHARS = 2500
 
 const LENGTH_GUIDE: Record<string, string> = {
   short: '500-1000 words (1-2 pages)',
@@ -73,6 +79,42 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<{ con
       ? `\n\nPREVIOUSLY WRITTEN SECTIONS:\n${compactPreviousSections(existingSections, spec)}`
       : ''
 
+    // Knowledge injection with hard token budget
+    let knowledgeContext = ''
+    let usedPatternIds: string[] = []
+
+    const bp = ctx.session.blueprint as any
+    const program = bp?.program ?? ''
+
+    // 1. Session brief (max 800 chars)
+    try {
+      const briefs = await getSessionKnowledgeByKind(ctx.sessionId, 'brief')
+      if (briefs.length > 0) {
+        const briefContent = briefs[0].contentMd.slice(0, MAX_BRIEF_CHARS)
+        knowledgeContext += `\nPROJECT BRIEF (from this session's knowledge):\n${briefContent}\n`
+      }
+    } catch { /* non-critical */ }
+
+    // 2. Best matching pattern (max 1500 chars)
+    if (program) {
+      try {
+        const patterns = await findPatterns(program, input.sectionKey)
+        if (patterns.length > 0) {
+          const best = patterns[0]
+          const patternContent = (best.contentMd as string).slice(0, MAX_PATTERN_CHARS)
+          knowledgeContext += `\nREFERENCE PATTERN (${(best as any).timesAccepted ?? 0}/${(best as any).timesUsed ?? 0} accept rate — adapt to this project, don't copy):\n${patternContent}\n`
+          usedPatternIds = [best.id]
+        }
+      } catch { /* non-critical */ }
+    }
+
+    // Final hard cap — enforced AFTER headers/labels are added
+    // Suffix is inside the budget so total never exceeds MAX_KNOWLEDGE_CONTEXT_CHARS
+    const TRUNCATION_SUFFIX = '\n[truncated]'
+    if (knowledgeContext.length > MAX_KNOWLEDGE_CONTEXT_CHARS) {
+      knowledgeContext = knowledgeContext.slice(0, MAX_KNOWLEDGE_CONTEXT_CHARS - TRUNCATION_SUFFIX.length) + TRUNCATION_SUFFIX
+    }
+
     const blueprint = ctx.session.blueprint
     const blueprintContext = blueprint
       ? `\nCALL: ${(blueprint as any).program}\nCO-FINANCING: ${(((blueprint as any).cofinancingRate || 0) * 100).toFixed(0)}%`
@@ -94,6 +136,7 @@ SECTION REQUIREMENTS:
 
 ${ctx.session.planningArtifact?.projectSummary ? `PROJECT SUMMARY:\n${ctx.session.planningArtifact.projectSummary}` : ''}
 ${previousContext}
+${knowledgeContext}
 ${input.additionalContext ? `\nADDITIONAL INSTRUCTIONS:\n${input.additionalContext}` : ''}
 
 RULES:
@@ -165,7 +208,7 @@ OUTPUT: Write the section content directly. No JSON wrapping needed.`
           kind: 'draft',
           content,
           modelUsed: model,
-          sourcesUsed: [] as unknown as Record<string, unknown>,
+          sourcesUsed: usedPatternIds as unknown as Record<string, unknown>,
         })
       }
     } catch (dbErr) {
@@ -182,7 +225,7 @@ OUTPUT: Write the section content directly. No JSON wrapping needed.`
         sectionKey: input.sectionKey,
         content,
         model,
-        sources: [],
+        sources: usedPatternIds,
       }],
       telemetry: {
         latencyMs: Date.now() - start,

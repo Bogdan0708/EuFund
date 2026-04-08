@@ -870,6 +870,7 @@ export const agentPhaseEnum = pgEnum('agent_phase', [
 export const agentSessions = pgTable('agent_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => users.id),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
   status: agentSessionStatusEnum('status').notNull().default('active'),
   locale: varchar('locale', { length: 5 }).notNull().default('ro'),
   selectedCallId: varchar('selected_call_id', { length: 255 }),
@@ -956,6 +957,51 @@ export const agentCheckpoints = pgTable('agent_checkpoints', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   idxSessionCreated: index('idx_agent_checkpoints_created').on(table.sessionId, table.createdAt),
+}))
+
+// ── Knowledge Layer Tables ─────────────────────────────────────
+
+export const sessionKnowledgeKindEnum = pgEnum('session_knowledge_kind', [
+  'brief', 'evidence_map', 'risks', 'budget_rationale',
+  'decision_log', 'section_pattern',
+])
+
+export const sessionKnowledge = pgTable('session_knowledge', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').notNull().references(() => agentSessions.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  kind: sessionKnowledgeKindEnum('kind').notNull(),
+  slug: varchar('slug', { length: 200 }).notNull(),
+  title: varchar('title', { length: 500 }).notNull(),
+  contentMd: text('content_md').notNull(),
+  frontmatter: jsonb('frontmatter').notNull().default({}),
+  sourceRefs: jsonb('source_refs').notNull().default([]),
+  derivedFromSectionId: uuid('derived_from_section_id').references(() => agentSections.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  idxSessionKind: index('idx_session_knowledge_session_kind').on(table.sessionId, table.kind),
+  idxProjectKind: index('idx_session_knowledge_project_kind').on(table.projectId, table.kind),
+  uniqSessionSlug: uniqueIndex('uniq_session_knowledge_session_slug').on(table.sessionId, table.slug),
+}))
+
+export const proposalPatterns = pgTable('proposal_patterns', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  program: varchar('program', { length: 50 }).notNull(),
+  sectionType: varchar('section_type', { length: 100 }).notNull(),
+  title: varchar('title', { length: 500 }).notNull(),
+  contentMd: text('content_md').notNull(),
+  frontmatter: jsonb('frontmatter').notNull().default({}),
+  derivedFromSections: jsonb('derived_from_sections').notNull().default([]),
+  timesUsed: integer('times_used').notNull().default(0),
+  timesAccepted: integer('times_accepted').notNull().default(0),
+  avgRegenCount: real('avg_regen_count').notNull().default(0),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  idxProgramSection: index('idx_proposal_patterns_program_section').on(table.program, table.sectionType),
+  idxTimesUsed: index('idx_proposal_patterns_used').on(table.timesUsed),
 }))
 
 export const discoveredCalls = pgTable('discovered_calls', {

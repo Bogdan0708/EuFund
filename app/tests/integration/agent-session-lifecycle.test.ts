@@ -82,6 +82,7 @@ function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
     id: '11111111-1111-4111-8111-111111111111',
     userId: '22222222-2222-4222-8222-222222222222',
     status: 'active', locale: 'ro', selectedCallId: null,
+    projectId: null,
     currentPhase: 'discovery', blueprint: null, eligibility: null,
     outline: null, warnings: [], planningArtifact: null,
     outlineFrozen: false,
