@@ -61,12 +61,13 @@ interface SectionEditorProps {
   value: string;
   onChange: (md: string) => void;
   readOnly?: boolean;
+  editorKey?: string | number;
 }
 
-export function SectionEditor({ value, onChange, readOnly }: SectionEditorProps) {
+export function SectionEditor({ value, onChange, readOnly, editorKey }: SectionEditorProps) {
   return (
     <div className="border border-outline-variant/20 rounded-xl overflow-hidden bg-surface">
-      <MDXEditor markdown={value} onChange={onChange} readOnly={readOnly} />
+      <MDXEditor key={editorKey} markdown={value} onChange={onChange} readOnly={readOnly} />
     </div>
   );
 }

@@ -218,6 +218,7 @@ export default function SectionEditorPage() {
         value={content}
         onChange={handleContentChange}
         readOnly={readOnly}
+        editorKey={versionRef.current}
       />
     </div>
   );
