@@ -37,6 +37,7 @@ export default function DocumentsPage() {
   const params = useParams();
   const locale = params.locale as string;
   const t = useTranslations('workspace');
+  const te = useTranslations('sectionEditor');
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<StateFilter>('all');
@@ -145,7 +146,7 @@ export default function DocumentsPage() {
                   <a
                     href={`/api/v1/projects/${p.id}/export?format=docx`}
                     className="shrink-0 p-2 rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors"
-                    title="Export DOCX"
+                    title={te('exportDocx')}
                   >
                     <Icon name="download" size="sm" />
                   </a>
@@ -153,16 +154,16 @@ export default function DocumentsPage() {
 
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-sm text-on-surface-variant">
-                    {p.sectionCount} {p.sectionCount === 1 ? 'secțiune' : 'secțiuni'}
+                    {te('sectionCount', { count: p.sectionCount })}
                   </span>
-                  {p.stateBreakdown.draft > 0 && <SectionStateBadge state="draft" />}
-                  {p.stateBreakdown.reviewed > 0 && <SectionStateBadge state="reviewed" />}
-                  {p.stateBreakdown.approved > 0 && <SectionStateBadge state="approved" />}
+                  {p.stateBreakdown.draft > 0 && <SectionStateBadge state="draft" locale={locale as 'ro' | 'en'} />}
+                  {p.stateBreakdown.reviewed > 0 && <SectionStateBadge state="reviewed" locale={locale as 'ro' | 'en'} />}
+                  {p.stateBreakdown.approved > 0 && <SectionStateBadge state="approved" locale={locale as 'ro' | 'en'} />}
                 </div>
 
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-on-surface-variant">
-                    {formatRelativeTime(p.lastEditedAt)} ago
+                    {te('lastEdited', { time: formatRelativeTime(p.lastEditedAt) })}
                   </span>
                   <a
                     href={`/${locale}/proiecte/${p.id}?tab=sections`}

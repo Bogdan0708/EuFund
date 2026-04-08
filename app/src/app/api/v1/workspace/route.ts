@@ -87,6 +87,9 @@ export async function GET(_req: NextRequest) {
 
       if (session) {
         const ctx = session.context as { projectSections?: unknown[] } | null;
+        // Note: skips reconcileDrift() for performance (avoids N+1 queries for up to 50 projects).
+        // Drift is a defense-in-depth edge case that should never occur in normal operation.
+        // The per-project sections view (GET /api/v1/projects/:id/sections) does reconcile.
         sections = normalizeSections(ctx?.projectSections ?? [], session.createdAt.toISOString());
         mode = 'session';
       } else if (doc) {

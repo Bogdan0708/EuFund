@@ -89,7 +89,7 @@ export function SectionsTabContent({ projectId }: { projectId: string }) {
                     {section.order}
                   </span>
                   <h3 className="text-base font-semibold text-on-surface truncate">{section.title}</h3>
-                  <SectionStateBadge state={section.state} />
+                  <SectionStateBadge state={section.state} locale={locale as 'ro' | 'en'} />
                   <span className="text-xs text-on-surface-variant">v{section.currentVersion}</span>
                 </div>
                 <div className="line-clamp-3 overflow-hidden">
@@ -106,7 +106,7 @@ export function SectionsTabContent({ projectId }: { projectId: string }) {
                 }`}
               >
                 <Icon name={data.readOnly ? 'visibility' : 'edit'} size="sm" />
-                {data.readOnly ? 'View' : 'Edit'}
+                {data.readOnly ? (locale === 'en' ? 'View' : 'Vizualizare') : (locale === 'en' ? 'Edit' : 'Editează')}
               </a>
             </div>
           </motion.div>
