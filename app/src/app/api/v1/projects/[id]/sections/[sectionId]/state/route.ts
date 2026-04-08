@@ -33,6 +33,13 @@ export async function POST(req: NextRequest, { params }: Params) {
       );
     }
 
+    if (workspace.session.status === 'completed') {
+      return NextResponse.json(
+        Errors.validation('session', 'Nu se poate modifica o sesiune finalizată', 'Cannot modify a completed session').toResponse('ro'),
+        { status: 400 },
+      );
+    }
+
     const body = await req.json().catch(() => null);
     const parsed = transitionSectionStateSchema.safeParse(body);
     if (!parsed.success) {
