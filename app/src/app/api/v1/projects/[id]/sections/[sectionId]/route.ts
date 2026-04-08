@@ -50,10 +50,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
-    const limit = await enforceRateLimit(req, { keyPrefix: 'section:edit', maxRequests: 60, windowMs: 60_000 });
-    if (!limit.ok) return limit.response;
-
     const user = await requireAuth();
+
+    const limit = await enforceRateLimit(req, { keyPrefix: 'section:edit', maxRequests: 60, windowMs: 60_000, keySuffix: user.id });
+    if (!limit.ok) return limit.response;
     const { id, sectionId } = params;
 
     if (!UUID_RE.test(id) || !SLUG_RE.test(sectionId)) {
