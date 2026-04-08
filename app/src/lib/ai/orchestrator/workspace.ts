@@ -30,7 +30,12 @@ export function normalizeSections(
       lastStateChangeBy: typeof s.lastStateChangeBy === 'string'
         ? s.lastStateChangeBy
         : null,
-      metadata: (s.metadata ?? {}) as SectionResult['metadata'],
+      metadata: {
+        model: '', provider: '', tokensIn: 0, tokensOut: 0,
+        latencyMs: 0, retryCount: 0, fallbackUsed: false,
+        generatedAt: fallbackCreatedAt, checksum: '',
+        ...(typeof s.metadata === 'object' && s.metadata !== null ? s.metadata as Record<string, unknown> : {}),
+      } as SectionResult['metadata'],
     };
   });
 }

@@ -95,3 +95,5 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type OrganizationInput = z.infer<typeof organizationSchema>;
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
+export type EditSectionContentInput = z.infer<typeof editSectionContentSchema>;
+export type TransitionSectionStateInput = z.infer<typeof transitionSectionStateSchema>;
