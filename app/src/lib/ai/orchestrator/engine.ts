@@ -384,25 +384,9 @@ async function handleWorkflowCompletion(
 
   // Phase 2: Save section DOCXs + generate submission dossier
   try {
-    const { generateSectionDocx, buildSectionStoragePath, generateFormDocx, buildFormStoragePath } = await import('@/lib/export/section-docx')
+    const { generateFormDocx, buildFormStoragePath } = await import('@/lib/export/section-docx')
     const { putObject } = await import('@/lib/storage/gcs')
     const { generateSubmissionDocuments } = await import('@/lib/ai/orchestrator/agents/documents')
-
-    for (const section of sections) {
-      const buffer = generateSectionDocx({ title: section.title, content: section.content, order: section.order })
-      const storagePath = buildSectionStoragePath(project.id, section.order, section.title)
-      const savedPath = await putObject(storagePath, buffer, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-      await db.insert(projectFiles).values({
-        projectId: project.id,
-        userId: ctx.userId,
-        filename: storagePath.split('/').pop()!,
-        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        sizeBytes: buffer.length,
-        storagePath: savedPath,
-        category: 'generated',
-        description: `Secțiune propunere: ${section.title}`,
-      })
-    }
 
     const [org] = await db.select({ name: organizations.name, cui: organizations.cui, address: organizations.address })
       .from(organizations).where(eq(organizations.id, membership.orgId)).limit(1)
