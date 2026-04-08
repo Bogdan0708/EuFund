@@ -596,7 +596,7 @@ export async function editProjectSection(opts: EditSectionOpts): Promise<Section
   const { sessionId, sectionId, content, title, expectedCurrentVersion, userId } = opts;
   const now = new Date().toISOString();
 
-  let pendingAudit: Parameters<typeof logAudit>[0] | null = null;
+  const pendingAudits: Array<Parameters<typeof logAudit>[0]> = [];
   let projectId: string | null = null;
 
   const updatedSection = await db.transaction(async (tx) => {
@@ -661,6 +661,19 @@ export async function editProjectSection(opts: EditSectionOpts): Promise<Section
         reason: 'legacy_backfill',
         createdBy: userId,
       });
+      // Emit audit for backfill — matches persistSectionChanges() contract
+      pendingAudits.push({
+        userId,
+        action: 'section.generated',
+        resourceType: 'workflow_session',
+        resourceId: sessionId,
+        metadata: {
+          sectionId,
+          version: section.currentVersion,
+          contentHash: baselineHash,
+          legacyBackfill: true,
+        },
+      });
     }
 
     // Insert new version row
@@ -702,7 +715,7 @@ export async function editProjectSection(opts: EditSectionOpts): Promise<Section
       })
       .where(eq(workflowSessions.id, sessionId));
 
-    pendingAudit = {
+    pendingAudits.push({
       userId,
       action: 'section.edited',
       resourceType: 'workflow_session',
@@ -714,14 +727,14 @@ export async function editProjectSection(opts: EditSectionOpts): Promise<Section
         contentHash: newContentHash,
         previousState: section.state,
       },
-    };
+    });
 
     return updated;
   });
 
-  // Post-commit: audit, snapshot sync, event publish
-  if (pendingAudit) {
-    await logAudit(pendingAudit);
+  // Post-commit: audit (backfill + edit entries), snapshot sync, event publish
+  for (const entry of pendingAudits) {
+    await logAudit(entry);
   }
 
   if (projectId) {
@@ -1114,6 +1127,7 @@ import { resolveProjectWorkspace, syncProjectDocumentSnapshot } from '@/lib/ai/o
 import { transitionSectionState, SectionVersionError } from '@/lib/ai/orchestrator/section-versions';
 import { transitionSectionStateSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
+import type { SectionResult } from '@/lib/ai/orchestrator/types';
 
 type Params = { params: { id: string; sectionId: string } };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -2161,11 +2175,15 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation';
 // Replace: const [activeTab, setActiveTab] = useState('overview');
 // With:
 const searchParams = useSearchParams();
-const tabParam = searchParams.get('tab');
-const [activeTab, setActiveTab] = useState(tabParam ?? 'overview');
-```
+const tabParam = searchParams.get('tab') ?? 'overview';
+const [activeTab, setActiveTab] = useState(tabParam);
 
-Note: `useSearchParams()` is hydration-safe — it returns the same value on server and client, avoiding SSR mismatch flashes that `window.location.search` would cause.
+// Add a useEffect to sync tab state when URL changes (e.g. navigating
+// from /documente "Open Workspace" link while already on this page):
+useEffect(() => {
+  setActiveTab(tabParam);
+}, [tabParam]);
+```
 
 3. Add the Sections tab trigger inside the `<Tabs.List>` (around line 600, after the overview TabTrigger):
 ```typescript
