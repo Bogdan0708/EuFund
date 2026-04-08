@@ -2,9 +2,11 @@ import { and, desc, eq, inArray, isNull, max } from 'drizzle-orm';
 
 import { db, withUserRLS } from '@/lib/db';
 import { projects, workflowSessions, projectDocuments, sectionVersions } from '@/lib/db/schema';
+import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
 
-import { hashContent } from './section-versions';
+import { persistAndPublishSectionUpdatedEvent } from './pubsub';
+import { hashContent, SectionVersionError } from './section-versions';
 import type { SectionResult } from './types';
 
 const log = logger.child({ component: 'workspace' });
@@ -189,5 +191,199 @@ async function reconcileDrift(sessionId: string, sections: SectionResult[]): Pro
       'Drift reconciliation failed, returning original sections',
     );
     return sections;
+  }
+}
+
+// ─── Edit Project Section ───────────────────────────────────────
+
+export interface EditSectionOpts {
+  sessionId: string;
+  sectionId: string;
+  content: string;
+  title?: string;
+  expectedCurrentVersion: number;
+  userId: string;
+}
+
+export async function editProjectSection(opts: EditSectionOpts): Promise<SectionResult> {
+  const { sessionId, sectionId, content, title, expectedCurrentVersion, userId } = opts;
+  const now = new Date().toISOString();
+  const pendingAudits: Array<Parameters<typeof logAudit>[0]> = [];
+  let projectId: string | null = null;
+
+  const updatedSection = await db.transaction(async (tx) => {
+    // Lock session row — concurrent edits block here
+    const [session] = await tx
+      .select()
+      .from(workflowSessions)
+      .where(eq(workflowSessions.id, sessionId))
+      .for('update');
+
+    if (!session) {
+      throw new SectionVersionError('SectionNotFound', `Session ${sessionId} not found`);
+    }
+
+    projectId = session.projectId;
+    const ctx = session.context as { projectSections?: SectionResult[] };
+    const sections = ctx.projectSections ?? [];
+    const idx = sections.findIndex((s) => s.id === sectionId);
+
+    if (idx < 0) {
+      throw new SectionVersionError('SectionNotFound', `Section ${sectionId} not found in session ${sessionId}`);
+    }
+
+    const section = sections[idx];
+
+    // Optimistic lock check
+    if (section.currentVersion !== expectedCurrentVersion) {
+      throw new SectionVersionError(
+        'ConcurrentModification',
+        `Section ${sectionId} has been modified since the client read`,
+        { currentVersion: section.currentVersion },
+      );
+    }
+
+    const newContentHash = hashContent(content);
+    const newVersion = section.currentVersion + 1;
+
+    // Legacy backfill: if no version row exists for the current version,
+    // insert a baseline row with the old content first
+    const [existingRow] = await tx
+      .select()
+      .from(sectionVersions)
+      .where(and(
+        eq(sectionVersions.sessionId, sessionId),
+        eq(sectionVersions.sectionId, sectionId),
+        eq(sectionVersions.version, section.currentVersion),
+      ))
+      .limit(1);
+
+    if (!existingRow) {
+      const baselineHash = hashContent(section.content);
+      await tx.insert(sectionVersions).values({
+        sessionId,
+        sectionId,
+        version: section.currentVersion,
+        content: section.content,
+        contentHash: baselineHash,
+        title: section.title,
+        metadata: section.metadata,
+        reason: 'legacy_backfill',
+        createdBy: userId,
+      });
+      pendingAudits.push({
+        userId,
+        action: 'section.generated',
+        resourceType: 'workflow_session',
+        resourceId: sessionId,
+        metadata: { sectionId, version: section.currentVersion, contentHash: baselineHash, legacyBackfill: true },
+      });
+    }
+
+    // Insert new version row
+    await tx.insert(sectionVersions).values({
+      sessionId,
+      sectionId,
+      version: newVersion,
+      content,
+      contentHash: newContentHash,
+      title: title ?? section.title,
+      metadata: section.metadata,
+      reason: 'user_edit',
+      createdBy: userId,
+    });
+
+    // Build updated section
+    const updated: SectionResult = {
+      ...section,
+      content,
+      title: title ?? section.title,
+      contentHash: newContentHash,
+      source: 'edited',
+      state: 'draft',
+      currentVersion: newVersion,
+      versionCount: section.versionCount + 1,
+      lastStateChangeAt: now,
+      lastStateChangeBy: userId,
+    };
+
+    // Update session context atomically
+    const updatedSections = [...sections];
+    updatedSections[idx] = updated;
+
+    await tx
+      .update(workflowSessions)
+      .set({
+        context: { ...ctx, projectSections: updatedSections },
+        updatedAt: new Date(),
+      })
+      .where(eq(workflowSessions.id, sessionId));
+
+    pendingAudits.push({
+      userId,
+      action: 'section.edited',
+      resourceType: 'workflow_session',
+      resourceId: sessionId,
+      metadata: { sectionId, fromVersion: section.currentVersion, toVersion: newVersion, contentHash: newContentHash, previousState: section.state },
+    });
+
+    return updated;
+  });
+
+  // Post-commit: audit, snapshot sync, event publish
+  for (const entry of pendingAudits) {
+    await logAudit(entry);
+  }
+
+  if (projectId) {
+    const ctx = await db
+      .select({ context: workflowSessions.context })
+      .from(workflowSessions)
+      .where(eq(workflowSessions.id, sessionId))
+      .limit(1);
+    const allSections = (ctx[0]?.context as { projectSections?: SectionResult[] })?.projectSections ?? [];
+    await syncProjectDocumentSnapshot(projectId, allSections);
+  }
+
+  try {
+    await persistAndPublishSectionUpdatedEvent(sessionId, sectionId, updatedSection);
+  } catch (err) {
+    log.warn({ error: err instanceof Error ? err.message : String(err), sessionId, sectionId }, 'Section updated event publish failed');
+  }
+
+  return updatedSection;
+}
+
+// ─── Snapshot Sync ──────────────────────────────────────────────
+
+export async function syncProjectDocumentSnapshot(
+  projectId: string,
+  sections: SectionResult[],
+): Promise<void> {
+  try {
+    const [existing] = await db
+      .select()
+      .from(projectDocuments)
+      .where(eq(projectDocuments.projectId, projectId))
+      .orderBy(desc(projectDocuments.version))
+      .limit(1);
+
+    if (existing) {
+      await db
+        .update(projectDocuments)
+        .set({
+          sections: sections as unknown as Record<string, unknown>[],
+          updatedAt: new Date(),
+        })
+        .where(eq(projectDocuments.id, existing.id));
+    } else {
+      await db.insert(projectDocuments).values({
+        projectId,
+        version: 1,
+        sections: sections as unknown as Record<string, unknown>[],
+      });
+    }
+  } catch (err) {
+    log.warn({ error: err instanceof Error ? err.message : String(err), projectId }, 'Snapshot sync failed');
   }
 }
