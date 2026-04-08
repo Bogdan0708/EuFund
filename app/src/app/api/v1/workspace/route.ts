@@ -103,7 +103,7 @@ export async function GET(_req: NextRequest) {
         title: p.title,
         sectionCount: sections.length,
         stateBreakdown,
-        lastEditedAt: (session?.updatedAt ?? doc?.updatedAt ?? p.updatedAt).toISOString(),
+        lastEditedAt: (session?.updatedAt ?? doc?.updatedAt ?? p.updatedAt ?? new Date()).toISOString(),
         mode,
         hasUploadedFiles: (fileCountMap.get(p.id) ?? 0) > 0,
       };
