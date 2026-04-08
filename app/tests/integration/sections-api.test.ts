@@ -104,4 +104,124 @@ describe('PATCH /api/v1/projects/:id/sections/:sectionId', () => {
 
     expect(res.status).toBe(400);
   });
+
+  it('returns 400 when session is completed', async () => {
+    vi.doMock('@/lib/auth/helpers', () => ({
+      requireAuth: vi.fn().mockResolvedValue({ id: USER_ID }),
+    }));
+    vi.doMock('@/lib/ai/orchestrator/workspace', () => ({
+      resolveProjectWorkspace: vi.fn().mockResolvedValue({
+        project: { id: PROJECT_ID },
+        session: { id: SESSION_ID, status: 'completed' },
+        mode: 'session',
+        sections: [{ id: 'sec-1', title: 'Context', content: 'Text', state: 'draft', currentVersion: 1 }],
+      }),
+      editProjectSection: vi.fn(),
+    }));
+
+    const { PATCH } = await import('@/app/api/v1/projects/[id]/sections/[sectionId]/route');
+    const req = new Request('http://localhost/test', {
+      method: 'PATCH',
+      body: JSON.stringify({ content: 'New', expectedCurrentVersion: 1 }),
+      headers: { 'Content-Type': 'application/json' },
+    }) as unknown as NextRequest;
+    const res = await PATCH(req, { params: { id: PROJECT_ID, sectionId: 'sec-1' } });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(JSON.stringify(body)).toContain('finalizat');
+  });
+
+  it('returns 404 when non-owner accesses project (RLS null)', async () => {
+    const OTHER_USER = '99999999-9999-4999-8999-999999999999';
+    vi.doMock('@/lib/auth/helpers', () => ({
+      requireAuth: vi.fn().mockResolvedValue({ id: OTHER_USER }),
+    }));
+    vi.doMock('@/lib/ai/orchestrator/workspace', () => ({
+      resolveProjectWorkspace: vi.fn().mockResolvedValue(null),
+      editProjectSection: vi.fn(),
+    }));
+
+    const { PATCH } = await import('@/app/api/v1/projects/[id]/sections/[sectionId]/route');
+    const req = new Request('http://localhost/test', {
+      method: 'PATCH',
+      body: JSON.stringify({ content: 'New', expectedCurrentVersion: 1 }),
+      headers: { 'Content-Type': 'application/json' },
+    }) as unknown as NextRequest;
+    const res = await PATCH(req, { params: { id: PROJECT_ID, sectionId: 'sec-1' } });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 200 with updated section on valid edit', async () => {
+    const updatedSection = {
+      id: 'sec-1', title: 'Context', content: 'Updated', state: 'draft',
+      currentVersion: 2, versionCount: 2, contentHash: 'newhash',
+      lastStateChangeAt: '2026-04-08T00:00:00Z', lastStateChangeBy: USER_ID,
+      source: 'edited', metadata: {},
+    };
+    vi.doMock('@/lib/auth/helpers', () => ({
+      requireAuth: vi.fn().mockResolvedValue({ id: USER_ID }),
+    }));
+    vi.doMock('@/lib/ai/orchestrator/workspace', () => ({
+      resolveProjectWorkspace: vi.fn().mockResolvedValue({
+        project: { id: PROJECT_ID },
+        session: { id: SESSION_ID, status: 'active' },
+        mode: 'session',
+        sections: [{ id: 'sec-1', title: 'Context', content: 'Old', state: 'draft', currentVersion: 1 }],
+      }),
+      editProjectSection: vi.fn().mockResolvedValue(updatedSection),
+    }));
+
+    const { PATCH } = await import('@/app/api/v1/projects/[id]/sections/[sectionId]/route');
+    const req = new Request('http://localhost/test', {
+      method: 'PATCH',
+      body: JSON.stringify({ content: 'Updated', expectedCurrentVersion: 1 }),
+      headers: { 'Content-Type': 'application/json' },
+    }) as unknown as NextRequest;
+    const res = await PATCH(req, { params: { id: PROJECT_ID, sectionId: 'sec-1' } });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.section.currentVersion).toBe(2);
+    expect(body.section.content).toBe('Updated');
+  });
+});
+
+describe('POST /api/v1/projects/:id/sections/:sectionId/state', () => {
+  beforeEach(() => { vi.resetModules(); });
+
+  it('returns 400 when session is completed', async () => {
+    vi.doMock('@/lib/auth/helpers', () => ({
+      requireAuth: vi.fn().mockResolvedValue({ id: USER_ID }),
+    }));
+    vi.doMock('@/lib/ai/orchestrator/workspace', () => ({
+      resolveProjectWorkspace: vi.fn().mockResolvedValue({
+        project: { id: PROJECT_ID },
+        session: { id: SESSION_ID, status: 'completed' },
+        mode: 'session',
+        sections: [],
+      }),
+      syncProjectDocumentSnapshot: vi.fn(),
+    }));
+    vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
+      transitionSectionState: vi.fn(),
+      SectionVersionError: class SectionVersionError extends Error { code: string; constructor(code: string, msg: string) { super(msg); this.code = code; } },
+    }));
+    vi.doMock('@/lib/validators', () => ({
+      transitionSectionStateSchema: { safeParse: vi.fn().mockReturnValue({ success: true, data: { state: 'reviewed', expectedCurrentVersion: 1 } }) },
+    }));
+
+    const { POST } = await import('@/app/api/v1/projects/[id]/sections/[sectionId]/state/route');
+    const req = new Request('http://localhost/test', {
+      method: 'POST',
+      body: JSON.stringify({ state: 'reviewed', expectedCurrentVersion: 1 }),
+      headers: { 'Content-Type': 'application/json' },
+    }) as unknown as NextRequest;
+    const res = await POST(req, { params: { id: PROJECT_ID, sectionId: 'sec-1' } });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(JSON.stringify(body)).toContain('finalizat');
+  });
 });
