@@ -79,6 +79,18 @@ export const updateProjectSectionSchema = z.object({
   content: z.union([z.string(), z.record(z.string(), z.unknown())]),
 });
 
+export const editSectionContentSchema = z.object({
+  content: z.string().min(1).max(100_000),
+  title: z.string().min(1).max(500).optional(),
+  expectedCurrentVersion: z.number().int().min(1),
+});
+
+export const transitionSectionStateSchema = z.object({
+  state: z.enum(['draft', 'reviewed', 'approved']),
+  expectedCurrentVersion: z.number().int().min(1),
+  reason: z.string().max(500).optional(),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type OrganizationInput = z.infer<typeof organizationSchema>;
