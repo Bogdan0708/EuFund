@@ -40,6 +40,7 @@ export type AuditAction =
   | 'section.regenerated'
   | 'section.rollback'
   | 'section.state_change'
+  | 'section.export'
   | 'project.version_save'
   | 'project.export'
   | 'project.status_change'
