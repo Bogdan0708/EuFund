@@ -75,3 +75,32 @@ describe('GET /api/v1/projects/:id/sections', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('PATCH /api/v1/projects/:id/sections/:sectionId', () => {
+  beforeEach(() => { vi.resetModules(); });
+
+  it('returns 400 when workspace is read-only (snapshot mode)', async () => {
+    vi.doMock('@/lib/auth/helpers', () => ({
+      requireAuth: vi.fn().mockResolvedValue({ id: USER_ID }),
+    }));
+    vi.doMock('@/lib/ai/orchestrator/workspace', () => ({
+      resolveProjectWorkspace: vi.fn().mockResolvedValue({
+        project: { id: PROJECT_ID },
+        session: null,
+        mode: 'snapshot',
+        sections: [],
+      }),
+      editProjectSection: vi.fn(),
+    }));
+
+    const { PATCH } = await import('@/app/api/v1/projects/[id]/sections/[sectionId]/route');
+    const req = new Request('http://localhost/test', {
+      method: 'PATCH',
+      body: JSON.stringify({ content: 'New', expectedCurrentVersion: 1 }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const res = await PATCH(req, { params: { id: PROJECT_ID, sectionId: 'sec-1' } });
+
+    expect(res.status).toBe(400);
+  });
+});

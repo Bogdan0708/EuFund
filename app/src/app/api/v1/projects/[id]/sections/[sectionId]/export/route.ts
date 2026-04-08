@@ -1,0 +1,49 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth/helpers';
+import { resolveProjectWorkspace } from '@/lib/ai/orchestrator/workspace';
+import { generateSectionDocx } from '@/lib/export/section-docx';
+import { Errors, FondEUError } from '@/lib/errors';
+
+type Params = { params: { id: string; sectionId: string } };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function GET(_req: NextRequest, { params }: Params) {
+  try {
+    const user = await requireAuth();
+    const { id, sectionId } = params;
+
+    if (!UUID_RE.test(id)) {
+      return NextResponse.json(Errors.validation('id', 'ID invalid', 'Invalid ID').toResponse('ro'), { status: 400 });
+    }
+
+    const workspace = await resolveProjectWorkspace(id, user.id);
+    if (!workspace) {
+      return NextResponse.json(Errors.notFound('project', id).toResponse('ro'), { status: 404 });
+    }
+
+    const section = workspace.sections.find((s) => s.id === sectionId);
+    if (!section) {
+      return NextResponse.json(Errors.notFound('section', sectionId).toResponse('ro'), { status: 404 });
+    }
+
+    const buffer = generateSectionDocx({
+      title: section.title,
+      content: section.content,
+      order: section.order,
+    });
+
+    const filename = `${section.order}-${section.title.replace(/[^a-zA-Z0-9-_ ]/g, '')}.docx`;
+
+    return new Response(new Uint8Array(buffer), {
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      },
+    });
+  } catch (error) {
+    if (error instanceof FondEUError) {
+      return NextResponse.json(error.toResponse('ro'), { status: error.statusCode });
+    }
+    return NextResponse.json(Errors.internal().toResponse('ro'), { status: 500 });
+  }
+}
