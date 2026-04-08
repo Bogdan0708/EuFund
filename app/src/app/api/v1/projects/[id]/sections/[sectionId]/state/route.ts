@@ -4,7 +4,6 @@ import { resolveProjectWorkspace, syncProjectDocumentSnapshot } from '@/lib/ai/o
 import { transitionSectionState, SectionVersionError } from '@/lib/ai/orchestrator/section-versions';
 import { transitionSectionStateSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
-import type { SectionResult } from '@/lib/ai/orchestrator/types';
 
 type Params = { params: { id: string; sectionId: string } };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,18 +50,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     // Best-effort snapshot sync after state change
     try {
-      const { db } = await import('@/lib/db');
-      const { workflowSessions } = await import('@/lib/db/schema');
-      const { eq } = await import('drizzle-orm');
-      const [freshSession] = await db
-        .select({ context: workflowSessions.context })
-        .from(workflowSessions)
-        .where(eq(workflowSessions.id, workspace.session!.id))
-        .limit(1);
-      const freshCtx = freshSession?.context as { projectSections?: SectionResult[] } | null;
-      if (freshCtx?.projectSections) {
-        await syncProjectDocumentSnapshot(id, freshCtx.projectSections);
-      }
+      await syncProjectDocumentSnapshot(id, user.id, workspace.session!.id);
     } catch {
       // Best-effort — snapshot may be stale until next edit
     }
