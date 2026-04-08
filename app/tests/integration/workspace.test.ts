@@ -41,6 +41,7 @@ describe('normalizeSections', () => {
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
+const SESSION_ID = '33333333-3333-4333-8333-333333333333';
 
 // Helper to create a chainable query builder mock
 function createChainMock(resolvedValue: unknown = []) {
@@ -203,5 +204,64 @@ describe('resolveProjectWorkspace', () => {
     expect(result!.sections[0].content).toBe('Snapshot content');
     expect(result!.sections[0].state).toBe('draft');
     expect(result!.sections[0].currentVersion).toBe(1);
+  });
+});
+
+// ─── editProjectSection Tests ───────────────────────────────────
+
+describe('editProjectSection', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('throws when expectedCurrentVersion is stale', async () => {
+    const section = {
+      id: 'sec-1', title: 'Context', content: 'Old text', order: 1,
+      source: 'generated' as const,
+      state: 'draft' as const, currentVersion: 3, versionCount: 3,
+      contentHash: 'oldhash',
+      lastStateChangeAt: '2026-04-05T00:00:00Z', lastStateChangeBy: USER_ID,
+      metadata: { model: 'gpt-4', provider: 'openai', tokensIn: 100, tokensOut: 200, latencyMs: 500, retryCount: 0, fallbackUsed: false, generatedAt: '2026-04-05T00:00:00Z', checksum: 'abc' },
+    };
+
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        transaction: vi.fn().mockImplementation(async (fn: Function) => {
+          const tx = {
+            select: () => ({
+              from: () => ({
+                where: () => ({
+                  for: () => [{ id: SESSION_ID, projectId: PROJECT_ID, context: { projectSections: [section] } }],
+                }),
+              }),
+            }),
+            insert: () => ({ values: vi.fn() }),
+            update: () => ({ set: () => ({ where: vi.fn() }) }),
+          };
+          return fn(tx);
+        }),
+      },
+    }));
+    vi.doMock('@/lib/db/schema', () => ({
+      workflowSessions: {}, sectionVersions: {}, projectDocuments: {},
+    }));
+    vi.doMock('drizzle-orm', () => ({
+      eq: vi.fn(), and: vi.fn(), desc: vi.fn(),
+    }));
+    vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }));
+    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
+    vi.doMock('@/lib/logger', () => ({
+      logger: { child: () => new Proxy({}, { get: () => vi.fn() }) },
+    }));
+
+    const { editProjectSection } = await import('@/lib/ai/orchestrator/workspace');
+
+    await expect(editProjectSection({
+      sessionId: SESSION_ID,
+      sectionId: 'sec-1',
+      content: 'New text',
+      expectedCurrentVersion: 2, // stale! section is at version 3
+      userId: USER_ID,
+    })).rejects.toThrow();
   });
 });
