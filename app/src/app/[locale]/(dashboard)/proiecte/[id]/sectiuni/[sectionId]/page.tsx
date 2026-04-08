@@ -34,8 +34,19 @@ export default function SectionEditorPage() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const versionRef = useRef<number>(0);
 
+  // Ref tracking latest mutable state — avoids stale closures in save/timer callbacks
+  const latestRef = useRef({ content: '', title: '', readOnly: true, hasSection: false });
+  useEffect(() => {
+    latestRef.current = { content, title, readOnly, hasSection: section !== null };
+  }, [content, title, readOnly, section]);
+
   // Bootstrap CSRF token on mount
   useEffect(() => { bootstrapCSRFToken(); }, []);
+
+  // Unmount cleanup — cancel pending auto-save
+  useEffect(() => () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+  }, []);
 
   // Fetch section data
   useEffect(() => {
@@ -61,9 +72,10 @@ export default function SectionEditorPage() {
     load();
   }, [projectId, sectionId]);
 
-  // Auto-save
-  const save = useCallback(async (contentToSave: string, titleToSave: string) => {
-    if (readOnly || !section) return;
+  // Stable save — reads from latestRef, no stale closures
+  const save = useCallback(async () => {
+    const { content: c, title: t2, readOnly: ro, hasSection } = latestRef.current;
+    if (ro || !hasSection) return;
     setSaveStatus('saving');
     setError(null);
 
@@ -72,8 +84,8 @@ export default function SectionEditorPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          content: contentToSave,
-          title: titleToSave,
+          content: c,
+          title: t2,
           expectedCurrentVersion: versionRef.current,
         }),
       });
@@ -92,21 +104,23 @@ export default function SectionEditorPage() {
       setIsDirty(false);
       setSaveStatus('saved');
     } catch {
+      setError(t('saveError'));
       setSaveStatus('error');
     }
-  }, [projectId, sectionId, readOnly, section, t]);
+  }, [projectId, sectionId, t]);
 
-  // Debounced auto-save on content change
+  // Single debounced save path — used by both content and title changes
+  const scheduleSave = useCallback(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => { save(); }, 3000);
+  }, [save]);
+
   const handleContentChange = useCallback((newContent: string) => {
     setContent(newContent);
     setIsDirty(true);
     setSaveStatus('idle');
-
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      save(newContent, title);
-    }, 3000);
-  }, [save, title]);
+    scheduleSave();
+  }, [scheduleSave]);
 
   // beforeunload guard
   useEffect(() => {
@@ -138,7 +152,10 @@ export default function SectionEditorPage() {
     <div className="max-w-5xl mx-auto py-8">
       {/* Breadcrumb */}
       <button
-        onClick={() => router.push(`/${params.locale}/proiecte/${projectId}?tab=sections`)}
+        onClick={() => {
+          if (isDirty && !window.confirm(t('unsavedChanges'))) return;
+          router.push(`/${params.locale}/proiecte/${projectId}?tab=sections`);
+        }}
         className="flex items-center gap-1 text-sm text-on-surface-variant hover:text-on-surface mb-6 transition-colors"
       >
         <Icon name="arrow_back" size="sm" />
@@ -162,12 +179,10 @@ export default function SectionEditorPage() {
               type="text"
               value={title}
               onChange={(e) => {
-                const newTitle = e.target.value;
-                setTitle(newTitle);
+                setTitle(e.target.value);
                 setIsDirty(true);
                 setSaveStatus('idle');
-                if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-                saveTimerRef.current = setTimeout(() => { save(content, newTitle); }, 3000);
+                scheduleSave();
               }}
               className="text-2xl font-bold text-on-surface bg-transparent border-none outline-none w-full focus:ring-0 p-0"
               placeholder={t('editTitle')}
@@ -196,7 +211,7 @@ export default function SectionEditorPage() {
             <button
               onClick={() => {
                 if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-                save(content, title);
+                save();
               }}
               disabled={!isDirty || saveStatus === 'saving'}
               className="px-4 py-2 rounded-xl text-sm font-medium bg-primary text-on-primary hover:bg-primary/90 disabled:opacity-50 transition-colors"
