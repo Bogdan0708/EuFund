@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import * as Tabs from '@radix-ui/react-tabs';
 import { AnimatePresence, motion } from 'motion/react';
 import { Icon } from '@/components/ui/ds-icon';
 import { pageVariants, pageTransition } from '@/lib/motion';
 import type { SubmissionDocument } from '@/lib/ai/orchestrator/types';
+import { SectionsTabContent } from './components/SectionsTabContent';
 
 /* ---------- types ---------- */
 interface ProjectDetail {
@@ -450,7 +451,13 @@ export default function ProiectDetailPage() {
   const [aiSessionId, setAiSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get('tab') ?? 'overview';
+  const [activeTab, setActiveTab] = useState(tabParam);
+
+  useEffect(() => {
+    setActiveTab(tabParam);
+  }, [tabParam]);
 
   // Fetch project details
   useEffect(() => {
@@ -597,6 +604,7 @@ export default function ProiectDetailPage() {
       <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
         <Tabs.List className="flex gap-10 mb-12 border-b border-outline-variant/15">
           <TabTrigger value="overview">{t('tabs.overview')}</TabTrigger>
+          <TabTrigger value="sections">{t('tabs.sections')}</TabTrigger>
           <TabTrigger value="documents">{t('tabs.documents')}</TabTrigger>
           <TabTrigger value="tasks">{t('tabs.tasks')}</TabTrigger>
           <TabTrigger value="timeline">{t('tabs.timeline')}</TabTrigger>
@@ -756,6 +764,22 @@ export default function ProiectDetailPage() {
                     </div>
                   </div>
                 </div>
+              </motion.div>
+            </Tabs.Content>
+          )}
+
+          {/* ---- Sections Tab ---- */}
+          {activeTab === 'sections' && (
+            <Tabs.Content value="sections" forceMount asChild>
+              <motion.div
+                key="sections"
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={pageTransition}
+              >
+                <SectionsTabContent projectId={id} />
               </motion.div>
             </Tabs.Content>
           )}
