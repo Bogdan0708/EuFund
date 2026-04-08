@@ -1,8 +1,34 @@
-import type { AgentFn } from '../types'
+import type { AgentFn, SectionResult } from '../types'
 import { getEditPrompt } from '../prompts/edit'
 import { parseAIJson } from '../utils'
 import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { createHash } from 'crypto'
+import { normalizeMarkdown } from '@/lib/markdown/proposal-markdown'
+
+/**
+ * Parse which section the user wants to edit from their message.
+ * Handles patterns like:
+ *   "Regenerate section: Grup țintă"
+ *   "Improve section: Metodologie și activități"
+ *   "Rewrite the budget section"
+ */
+function findTargetSection(input: string, sections: SectionResult[]): SectionResult | null {
+  // Try exact match from "Regenerate/Improve section: <title>"
+  const match = input.match(/(?:Regenerate|Improve|Rewrite|Edit)\s+section:\s*(.+)/i)
+  if (match) {
+    const requestedTitle = match[1].trim().toLowerCase()
+    const found = sections.find(s => s.title.toLowerCase() === requestedTitle)
+    if (found) return found
+  }
+
+  // Fuzzy: find any section title mentioned in the input
+  const inputLower = input.toLowerCase()
+  for (const s of sections) {
+    if (inputLower.includes(s.title.toLowerCase())) return s
+  }
+
+  return null
+}
 
 export const editAgent: AgentFn = async (ctx, input, stream, gateway) => {
   if (!ctx.projectSections) {
@@ -14,18 +40,48 @@ export const editAgent: AgentFn = async (ctx, input, stream, gateway) => {
   const { provider, model } = resolveAgentModel({ task: 'editing', ctx: ctx.routingCtx })
   const startedAt = Date.now()
 
+  // Find the specific section to edit — only send that section + brief context
+  const targetSection = findTargetSection(input, ctx.projectSections)
+
+  let userMessage: string
+  if (targetSection) {
+    // Send only the target section + a summary of adjacent sections for context
+    const adjacentSummaries = ctx.projectSections
+      .filter(s => s.id !== targetSection.id && s.source !== 'failed')
+      .map(s => `- ${s.title} (order ${s.order}): ${s.content.slice(0, 150)}...`)
+      .join('\n')
+
+    userMessage = [
+      `Section to edit (order ${targetSection.order}):`,
+      `Title: ${targetSection.title}`,
+      `Content:\n${targetSection.content}`,
+      '',
+      `Other sections (for context only, do not edit):`,
+      adjacentSummaries,
+      '',
+      `Edit request: ${input}`,
+    ].join('\n')
+  } else {
+    // Fallback: send compact version of all sections
+    userMessage = `Current sections:\n${ctx.projectSections.map(s =>
+      `[Order ${s.order}] ${s.title}:\n${s.content.slice(0, 500)}${s.content.length > 500 ? '...' : ''}`
+    ).join('\n\n')}\n\nEdit request: ${input}`
+  }
+
   const result = await gateway.generate({
     provider,
     model,
     system: getEditPrompt(ctx),
-    messages: [{ role: 'user', content: `Current sections:\n${JSON.stringify(ctx.projectSections)}\n\nEdit request: ${input}` }],
+    messages: [{ role: 'user', content: userMessage }],
     temperature: 0.3,
-    maxTokens: 20_000,
+    maxTokens: 8_000,
   })
 
-  let editedSections
+  let editedSections: { order: number; title?: string; content?: string }[]
   try {
-    editedSections = parseAIJson<{ order: number; title?: string; content?: string }[]>(result.content)
+    const parsed = parseAIJson<{ order: number; title?: string; content?: string } | { order: number; title?: string; content?: string }[]>(result.content)
+    // Handle both single object and array responses
+    editedSections = Array.isArray(parsed) ? parsed : [parsed]
   } catch {
     throw new Error('Failed to parse edited sections')
   }
@@ -42,7 +98,7 @@ export const editAgent: AgentFn = async (ctx, input, stream, gateway) => {
     if (!edited) return s
 
     const nextTitle = edited.title ?? s.title
-    const nextContent = edited.content ?? s.content
+    const nextContent = normalizeMarkdown(edited.content ?? s.content)
     if (nextTitle === s.title && nextContent === s.content) {
       return s
     }
@@ -51,7 +107,8 @@ export const editAgent: AgentFn = async (ctx, input, stream, gateway) => {
 
     return {
       ...s,
-      ...edited,
+      title: nextTitle,
+      content: nextContent,
       source: 'edited' as const,
       contentHash: createHash('sha256').update(nextContent).digest('hex'),
       metadata: {

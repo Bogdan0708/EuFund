@@ -104,7 +104,7 @@ async function generateSection(
     system: getBuildSectionPrompt(ctx, spec, previousSections),
     messages: [{ role: 'user', content: `Write section "${spec.title}" for the project proposal.` }],
     temperature: 0.4,
-    maxTokens: spec.expectedLength === 'long' ? 32_000 : spec.expectedLength === 'medium' ? 20_000 : 8_000,
+    maxTokens: spec.expectedLength === 'long' ? 12_000 : spec.expectedLength === 'medium' ? 8_000 : 4_000,
   })
 
   let parsed: { title?: string; content?: string; order?: number }
