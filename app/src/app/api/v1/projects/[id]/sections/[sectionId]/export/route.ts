@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/helpers';
 import { resolveProjectWorkspace } from '@/lib/ai/orchestrator/workspace';
 import { generateSectionDocx } from '@/lib/export/section-docx';
+import { logAudit } from '@/lib/legal/audit';
 import { Errors, FondEUError } from '@/lib/errors';
 
 type Params = { params: { id: string; sectionId: string } };
@@ -32,12 +33,20 @@ export async function GET(_req: NextRequest, { params }: Params) {
       order: section.order,
     });
 
-    const filename = `${section.order}-${section.title.replace(/[^a-zA-Z0-9-_ ]/g, '')}.docx`;
+    const safeName = encodeURIComponent(`${section.order}-${section.title}`.slice(0, 100));
+
+    await logAudit({
+      userId: user.id,
+      action: 'section.export',
+      resourceType: 'section',
+      resourceId: id,
+      metadata: { format: 'docx', sectionId },
+    });
 
     return new Response(new Uint8Array(buffer), {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Disposition': `attachment; filename="${safeName}.docx"`,
       },
     });
   } catch (error) {

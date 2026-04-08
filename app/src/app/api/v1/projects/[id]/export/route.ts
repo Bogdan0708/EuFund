@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/helpers';
 import { resolveProjectWorkspace } from '@/lib/ai/orchestrator/workspace';
 import { generateDocx } from '@/lib/export/docx';
+import { logAudit } from '@/lib/legal/audit';
 import { Errors, FondEUError } from '@/lib/errors';
 
 type Params = { params: { id: string } };
@@ -36,10 +37,20 @@ export async function GET(req: NextRequest, { params }: Params) {
       program: undefined,
     });
 
+    const safeName = encodeURIComponent(workspace.project.title.slice(0, 100));
+
+    await logAudit({
+      userId: user.id,
+      action: 'project.export',
+      resourceType: 'project',
+      resourceId: projectId,
+      metadata: { format: 'docx', sectionCount: workspace.sections.length },
+    });
+
     return new Response(new Uint8Array(buffer), {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="${workspace.project.title.replace(/[^a-zA-Z0-9-_ ]/g, '')}.docx"`,
+        'Content-Disposition': `attachment; filename="${safeName}.docx"`,
       },
     });
   } catch (error) {
