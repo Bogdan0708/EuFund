@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Icon } from '@/components/ui/ds-icon';
 import { SectionStateBadge } from '@/components/ui/section-state-badge';
 import { SectionEditor } from '@/components/editor/section-editor';
+import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
 import type { SectionResult } from '@/lib/ai/orchestrator/types';
 
 type SectionsResponse = {
@@ -32,6 +33,9 @@ export default function SectionEditorPage() {
   const [loading, setLoading] = useState(true);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const versionRef = useRef<number>(0);
+
+  // Bootstrap CSRF token on mount
+  useEffect(() => { bootstrapCSRFToken(); }, []);
 
   // Fetch section data
   useEffect(() => {
@@ -64,7 +68,7 @@ export default function SectionEditorPage() {
     setError(null);
 
     try {
-      const res = await fetch(`/api/v1/projects/${projectId}/sections/${sectionId}`, {
+      const res = await csrfFetch(`/api/v1/projects/${projectId}/sections/${sectionId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

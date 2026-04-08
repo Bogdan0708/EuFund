@@ -7,6 +7,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { AnimatePresence, motion } from 'motion/react';
 import { Icon } from '@/components/ui/ds-icon';
 import { pageVariants, pageTransition } from '@/lib/motion';
+import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
 import type { SubmissionDocument } from '@/lib/ai/orchestrator/types';
 import { SectionsTabContent } from './components/SectionsTabContent';
 
@@ -315,7 +316,7 @@ function DocumentsTabContent({
                             )}
                             <button
                               onClick={async () => {
-                                const res = await fetch(
+                                const res = await csrfFetch(
                                   `/api/v1/projects/${projectId}/submission-documents/${doc.id}`,
                                   {
                                     method: 'PATCH',
@@ -367,7 +368,7 @@ function DocumentsTabContent({
                         </div>
                         <button
                           onClick={async () => {
-                            const res = await fetch(
+                            const res = await csrfFetch(
                               `/api/v1/projects/${projectId}/submission-documents/${doc.id}`,
                               {
                                 method: 'PATCH',
@@ -458,6 +459,9 @@ export default function ProiectDetailPage() {
   useEffect(() => {
     setActiveTab(tabParam);
   }, [tabParam]);
+
+  // Bootstrap CSRF token on mount
+  useEffect(() => { bootstrapCSRFToken(); }, []);
 
   // Fetch project details
   useEffect(() => {
