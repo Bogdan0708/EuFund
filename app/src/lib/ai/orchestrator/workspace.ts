@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNull, max } from 'drizzle-orm';
 
-import { db, withUserRLS } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
+import type { Database } from '@/lib/db';
 import { projects, workflowSessions, projectDocuments, sectionVersions } from '@/lib/db/schema';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
@@ -8,6 +9,8 @@ import { logger } from '@/lib/logger';
 import { persistAndPublishSectionUpdatedEvent } from './pubsub';
 import { hashContent, SectionVersionError } from './section-versions';
 import type { SectionResult } from './types';
+
+type DbTransaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 const log = logger.child({ component: 'workspace' });
 
@@ -71,57 +74,57 @@ export async function resolveProjectWorkspace(
   projectId: string,
   userId: string,
 ): Promise<ProjectWorkspace | null> {
-  const project = await withUserRLS(userId, async (tx) => {
-    return tx.query.projects.findFirst({
+  return withUserRLS(userId, async (tx) => {
+    const project = await tx.query.projects.findFirst({
       where: and(eq(projects.id, projectId), isNull(projects.deletedAt)),
     });
-  });
-  if (!project) return null;
+    if (!project) return null;
 
-  const qualifyingSessions = await db
-    .select()
-    .from(workflowSessions)
-    .where(and(
-      eq(workflowSessions.projectId, projectId),
-      eq(workflowSessions.userId, userId),
-      inArray(workflowSessions.status, [...QUALIFYING_STATUSES]),
-    ))
-    .orderBy(desc(workflowSessions.updatedAt));
+    const qualifyingSessions = await tx
+      .select()
+      .from(workflowSessions)
+      .where(and(
+        eq(workflowSessions.projectId, projectId),
+        eq(workflowSessions.userId, userId),
+        inArray(workflowSessions.status, [...QUALIFYING_STATUSES]),
+      ))
+      .orderBy(desc(workflowSessions.updatedAt));
 
-  const session = qualifyingSessions.find(
-    (s) => PREFERRED_STATUSES.includes(s.status as typeof PREFERRED_STATUSES[number]),
-  ) ?? qualifyingSessions[0] ?? null;
+    const session = qualifyingSessions.find(
+      (s) => PREFERRED_STATUSES.includes(s.status as typeof PREFERRED_STATUSES[number]),
+    ) ?? qualifyingSessions[0] ?? null;
 
-  const [snapshotDoc] = await db
-    .select()
-    .from(projectDocuments)
-    .where(eq(projectDocuments.projectId, projectId))
-    .orderBy(desc(projectDocuments.version))
-    .limit(1);
+    const [snapshotDoc] = await tx
+      .select()
+      .from(projectDocuments)
+      .where(eq(projectDocuments.projectId, projectId))
+      .orderBy(desc(projectDocuments.version))
+      .limit(1);
 
-  if (session) {
-    const ctx = session.context as { projectSections?: unknown[] } | null;
-    let sections = normalizeSections(ctx?.projectSections ?? [], session.createdAt.toISOString());
-    if (sections.length > 0) {
-      sections = await reconcileDrift(session.id, sections);
+    if (session) {
+      const ctx = session.context as { projectSections?: unknown[] } | null;
+      let sections = normalizeSections(ctx?.projectSections ?? [], session.createdAt.toISOString());
+      if (sections.length > 0) {
+        sections = await reconcileDrift(tx, session.id, sections);
+      }
+      return { project, session, snapshotDoc: snapshotDoc ?? null, mode: 'session', sections };
     }
-    return { project, session, snapshotDoc: snapshotDoc ?? null, mode: 'session', sections };
-  }
 
-  if (snapshotDoc) {
-    const rawSections = (snapshotDoc.sections ?? []) as unknown[];
-    const sections = normalizeSections(rawSections, snapshotDoc.createdAt.toISOString());
-    return { project, session: null, snapshotDoc, mode: 'snapshot', sections };
-  }
+    if (snapshotDoc) {
+      const rawSections = (snapshotDoc.sections ?? []) as unknown[];
+      const sections = normalizeSections(rawSections, snapshotDoc.createdAt.toISOString());
+      return { project, session: null, snapshotDoc, mode: 'snapshot', sections };
+    }
 
-  return { project, session: null, snapshotDoc: null, mode: 'snapshot', sections: [] };
+    return { project, session: null, snapshotDoc: null, mode: 'snapshot', sections: [] };
+  });
 }
 
 // ─── Drift Reconciliation ────────────────────────────────────────
 
-async function reconcileDrift(sessionId: string, sections: SectionResult[]): Promise<SectionResult[]> {
+async function reconcileDrift(tx: DbTransaction, sessionId: string, sections: SectionResult[]): Promise<SectionResult[]> {
   try {
-    const maxVersionRows = await db
+    const maxVersionRows = await tx
       .select({
         sectionId: sectionVersions.sectionId,
         maxVersion: max(sectionVersions.version).as('max_version'),
@@ -142,7 +145,7 @@ async function reconcileDrift(sessionId: string, sections: SectionResult[]): Pro
     const latestRows: Array<typeof sectionVersions.$inferSelect> = [];
     for (const section of drifted) {
       const targetVersion = maxVersionMap.get(section.id)!;
-      const [row] = await db
+      const [row] = await tx
         .select()
         .from(sectionVersions)
         .where(and(
@@ -173,13 +176,13 @@ async function reconcileDrift(sessionId: string, sections: SectionResult[]): Pro
     });
 
     // Write reconciled sections back to session context
-    const [freshSession] = await db
+    const [freshSession] = await tx
       .select({ context: workflowSessions.context })
       .from(workflowSessions)
       .where(eq(workflowSessions.id, sessionId))
       .limit(1);
     const existingCtx = (freshSession?.context ?? {}) as Record<string, unknown>;
-    await db
+    await tx
       .update(workflowSessions)
       .set({ context: { ...existingCtx, projectSections: reconciled }, updatedAt: new Date() })
       .where(eq(workflowSessions.id, sessionId));
@@ -211,7 +214,7 @@ export async function editProjectSection(opts: EditSectionOpts): Promise<Section
   const pendingAudits: Array<Parameters<typeof logAudit>[0]> = [];
   let projectId: string | null = null;
 
-  const updatedSection = await db.transaction(async (tx) => {
+  const updatedSection = await withUserRLS(userId, async (tx) => {
     // Lock session row — concurrent edits block here
     const [session] = await tx
       .select()
@@ -343,13 +346,7 @@ export async function editProjectSection(opts: EditSectionOpts): Promise<Section
   }
 
   if (projectId) {
-    const ctx = await db
-      .select({ context: workflowSessions.context })
-      .from(workflowSessions)
-      .where(eq(workflowSessions.id, sessionId))
-      .limit(1);
-    const allSections = (ctx[0]?.context as { projectSections?: SectionResult[] })?.projectSections ?? [];
-    await syncProjectDocumentSnapshot(projectId, allSections);
+    await syncProjectDocumentSnapshot(projectId, userId, sessionId);
   }
 
   try {
@@ -365,31 +362,42 @@ export async function editProjectSection(opts: EditSectionOpts): Promise<Section
 
 export async function syncProjectDocumentSnapshot(
   projectId: string,
-  sections: SectionResult[],
+  userId: string,
+  sessionId: string,
 ): Promise<void> {
   try {
-    const [existing] = await db
-      .select()
-      .from(projectDocuments)
-      .where(eq(projectDocuments.projectId, projectId))
-      .orderBy(desc(projectDocuments.version))
-      .limit(1);
+    await withUserRLS(userId, async (tx) => {
+      // Re-read the latest session context to get fresh sections
+      const [freshSession] = await tx
+        .select({ context: workflowSessions.context })
+        .from(workflowSessions)
+        .where(eq(workflowSessions.id, sessionId))
+        .limit(1);
+      const allSections = (freshSession?.context as { projectSections?: SectionResult[] })?.projectSections ?? [];
 
-    if (existing) {
-      await db
-        .update(projectDocuments)
-        .set({
-          sections: sections as unknown as Record<string, unknown>[],
-          updatedAt: new Date(),
-        })
-        .where(eq(projectDocuments.id, existing.id));
-    } else {
-      await db.insert(projectDocuments).values({
-        projectId,
-        version: 1,
-        sections: sections as unknown as Record<string, unknown>[],
-      });
-    }
+      const [existing] = await tx
+        .select()
+        .from(projectDocuments)
+        .where(eq(projectDocuments.projectId, projectId))
+        .orderBy(desc(projectDocuments.version))
+        .limit(1);
+
+      if (existing) {
+        await tx
+          .update(projectDocuments)
+          .set({
+            sections: allSections as unknown as Record<string, unknown>[],
+            updatedAt: new Date(),
+          })
+          .where(eq(projectDocuments.id, existing.id));
+      } else {
+        await tx.insert(projectDocuments).values({
+          projectId,
+          version: 1,
+          sections: allSections as unknown as Record<string, unknown>[],
+        });
+      }
+    });
   } catch (err) {
     log.warn({ error: err instanceof Error ? err.message : String(err), projectId }, 'Snapshot sync failed');
   }

@@ -121,49 +121,6 @@ describe('resolveProjectWorkspace', () => {
       updatedAt: now,
     };
 
-    // Track which table is queried via .from()
-    const mockDb = {
-      select: vi.fn().mockReturnThis(),
-      from: vi.fn(function (this: typeof mockDb, table: unknown) {
-        (this as Record<string, unknown>).__lastTable = table;
-        return this;
-      }),
-      where: vi.fn().mockReturnThis(),
-      orderBy: vi.fn().mockReturnThis(),
-      limit: vi.fn(function (this: typeof mockDb) {
-        // Return empty sessions or the snapshot doc based on which table was queried
-        const tbl = (this as Record<string, unknown>).__lastTable as Record<string, string> | undefined;
-        if (tbl && tbl === mockSchema.workflowSessions) {
-          return Promise.resolve([]);
-        }
-        if (tbl && tbl === mockSchema.projectDocuments) {
-          return Promise.resolve([mockSnapshotDoc]);
-        }
-        return Promise.resolve([]);
-      }),
-      // For the sessions query (no .limit() call), make the chain thenable
-      then: vi.fn((resolve: (v: unknown) => void) => resolve([])),
-    };
-
-    // Override .where to resolve sessions query (which has no .limit())
-    // The sessions query chain: db.select().from(workflowSessions).where(...).orderBy(...)
-    // It resolves as a thenable without .limit()
-    let callCount = 0;
-    const originalOrderBy = mockDb.orderBy;
-    mockDb.orderBy = vi.fn(function (this: typeof mockDb) {
-      callCount++;
-      const tbl = (this as Record<string, unknown>).__lastTable as Record<string, string> | undefined;
-      if (tbl === mockSchema.workflowSessions) {
-        // Sessions query: return thenable array (no .limit())
-        const result = Object.assign([], {
-          then: (resolve: (v: unknown) => void) => resolve([]),
-          limit: vi.fn(() => Promise.resolve([])),
-        });
-        return result;
-      }
-      return this;
-    }) as typeof originalOrderBy;
-
     const mockSchema = {
       projects: { id: 'id', deletedAt: 'deleted_at' },
       workflowSessions: { projectId: 'project_id', userId: 'user_id', status: 'status', updatedAt: 'updated_at', id: 'id', context: 'context' },
@@ -172,16 +129,32 @@ describe('resolveProjectWorkspace', () => {
     };
 
     vi.doMock('@/lib/db', () => ({
-      db: mockDb,
       withUserRLS: vi.fn(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => {
-        const tx = {
-          query: {
-            projects: {
-              findFirst: vi.fn().mockResolvedValue(mockProject),
-            },
-          },
+        // Build a tx that supports query.projects.findFirst and chainable select/from/where/orderBy/limit
+        const makeTxChain = () => {
+          let lastTable: unknown = null;
+          const chain: Record<string, unknown> = {};
+          chain.select = vi.fn(() => chain);
+          chain.from = vi.fn((table: unknown) => { lastTable = table; return chain; });
+          chain.where = vi.fn(() => chain);
+          chain.orderBy = vi.fn(() => {
+            if (lastTable === mockSchema.workflowSessions) {
+              // Sessions query returns empty (no qualifying sessions)
+              return Object.assign([] as unknown[], { limit: vi.fn(() => Promise.resolve([])), then: (r: Function) => r([]) });
+            }
+            return chain;
+          });
+          chain.limit = vi.fn(() => {
+            if (lastTable === mockSchema.projectDocuments) {
+              return Promise.resolve([mockSnapshotDoc]);
+            }
+            return Promise.resolve([]);
+          });
+          chain.then = vi.fn((resolve: Function) => resolve([]));
+          chain.query = { projects: { findFirst: vi.fn().mockResolvedValue(mockProject) } };
+          return chain;
         };
-        return fn(tx);
+        return fn(makeTxChain());
       }),
     }));
 
@@ -225,22 +198,20 @@ describe('editProjectSection', () => {
     };
 
     vi.doMock('@/lib/db', () => ({
-      db: {
-        transaction: vi.fn().mockImplementation(async (fn: Function) => {
-          const tx = {
-            select: () => ({
-              from: () => ({
-                where: () => ({
-                  for: () => [{ id: SESSION_ID, projectId: PROJECT_ID, context: { projectSections: [section] } }],
-                }),
+      withUserRLS: vi.fn().mockImplementation(async (_userId: string, fn: Function) => {
+        const tx = {
+          select: () => ({
+            from: () => ({
+              where: () => ({
+                for: () => [{ id: SESSION_ID, projectId: PROJECT_ID, context: { projectSections: [section] } }],
               }),
             }),
-            insert: () => ({ values: vi.fn() }),
-            update: () => ({ set: () => ({ where: vi.fn() }) }),
-          };
-          return fn(tx);
-        }),
-      },
+          }),
+          insert: () => ({ values: vi.fn() }),
+          update: () => ({ set: () => ({ where: vi.fn() }) }),
+        };
+        return fn(tx);
+      }),
     }));
     vi.doMock('@/lib/db/schema', () => ({
       workflowSessions: {}, sectionVersions: {}, projectDocuments: {},
