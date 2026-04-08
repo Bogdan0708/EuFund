@@ -48,11 +48,11 @@ describe('Gateway Client V2', () => {
 
   it('applies model-specific timeouts', async () => {
     const { getTimeout } = await import('@/lib/ai/orchestrator/gateway')
-    expect(getTimeout('claude-opus-4-6')).toBe(180_000)
-    expect(getTimeout('gpt-5.4')).toBe(60_000)
-    expect(getTimeout('gemini-3.1-pro')).toBe(90_000)
-    expect(getTimeout('gemini-3-flash')).toBe(30_000)
-    expect(getTimeout('sonar')).toBe(30_000)
+    expect(getTimeout('claude-opus-4-6')).toBe(300_000)
+    expect(getTimeout('gpt-5.4')).toBe(180_000)
+    expect(getTimeout('gemini-3.1-pro')).toBe(180_000)
+    expect(getTimeout('gemini-3-flash')).toBe(60_000)
+    expect(getTimeout('sonar')).toBe(60_000)
     expect(getTimeout('unknown-model')).toBe(60_000)
   })
 })

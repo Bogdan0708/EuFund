@@ -45,17 +45,17 @@ function getClient(provider: string): OpenAI {
 // ─── Timeouts per model ─────────────────────────────────────────
 
 const MODEL_TIMEOUTS: Record<string, number> = {
-  'claude-opus-4-6': 180_000,
-  'claude-sonnet-4-6': 90_000,
-  'claude-haiku-4-5': 30_000,
-  'gpt-5.4': 60_000,
-  'gpt-5.4-mini': 45_000,
-  'gpt-5.4-nano': 30_000,
-  'gemini-3.1-pro': 90_000,
-  'gemini-3-flash': 30_000,
-  'nano-banana': 60_000,
-  'sonar': 30_000,
-  'sonar-pro': 30_000,
+  'claude-opus-4-6': 300_000,
+  'claude-sonnet-4-6': 180_000,
+  'claude-haiku-4-5': 60_000,
+  'gpt-5.4': 180_000,
+  'gpt-5.4-mini': 90_000,
+  'gpt-5.4-nano': 60_000,
+  'gemini-3.1-pro': 180_000,
+  'gemini-3-flash': 60_000,
+  'nano-banana': 120_000,
+  'sonar': 60_000,
+  'sonar-pro': 60_000,
   'text-embedding-3-small': 15_000,
 }
 
