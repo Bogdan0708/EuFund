@@ -831,7 +831,8 @@
       "overview": "Overview",
       "documents": "Documents",
       "tasks": "Tasks",
-      "timeline": "Timeline"
+      "timeline": "Timeline",
+      "sections": "Sections"
     },
     "executiveSummary": "Executive Summary",
     "grantAllocation": "Grant Allocation",
@@ -1247,5 +1248,37 @@
         "description": "Get help from our intelligent grant writing assistant."
       }
     }
+  },
+  "sectionEditor": {
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Saved",
+    "exportDocx": "Export DOCX",
+    "exportFullDocx": "Export Proposal DOCX",
+    "backToProject": "Back to Project",
+    "unsavedChanges": "You have unsaved changes. Are you sure you want to leave?",
+    "version": "Version {version}",
+    "editTitle": "Edit title",
+    "stateDraft": "Draft",
+    "stateReviewed": "Reviewed",
+    "stateApproved": "Approved",
+    "lastEdited": "Last edited {time}",
+    "autoSaved": "Auto-saved",
+    "conflictError": "This section has been modified by someone else. Reload to see the latest version.",
+    "readOnlyBanner": "View only. Start an AI session to edit.",
+    "noSections": "No sections generated yet. Use the AI Assistant to create your proposal.",
+    "sectionCount": "{count} sections",
+    "openWorkspace": "Open Workspace"
+  },
+  "workspace": {
+    "title": "Documents",
+    "subtitle": "Proposal workspace",
+    "generatedDocuments": "Generated Documents",
+    "uploadedFiles": "Uploaded Files",
+    "noProjects": "No projects with generated sections.",
+    "filterAll": "All",
+    "filterDraft": "Draft",
+    "filterReviewed": "Reviewed",
+    "filterApproved": "Approved"
   }
 }

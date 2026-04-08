@@ -831,7 +831,8 @@
       "overview": "Prezentare",
       "documents": "Documente",
       "tasks": "Sarcini",
-      "timeline": "Cronologie"
+      "timeline": "Cronologie",
+      "sections": "Secțiuni"
     },
     "executiveSummary": "Rezumat Executiv",
     "grantAllocation": "Alocare Grant",
@@ -1247,5 +1248,37 @@
         "description": "Obțineți ajutor de la asistentul nostru inteligent."
       }
     }
+  },
+  "sectionEditor": {
+    "save": "Salvează",
+    "saving": "Se salvează...",
+    "saved": "Salvat",
+    "exportDocx": "Exportă DOCX",
+    "exportFullDocx": "Exportă Propunerea DOCX",
+    "backToProject": "Înapoi la Proiect",
+    "unsavedChanges": "Aveți modificări nesalvate. Sigur doriți să părăsiți pagina?",
+    "version": "Versiunea {version}",
+    "editTitle": "Editează titlul",
+    "stateDraft": "Ciornă",
+    "stateReviewed": "Verificat",
+    "stateApproved": "Aprobat",
+    "lastEdited": "Ultima editare {time}",
+    "autoSaved": "Salvat automat",
+    "conflictError": "Secțiunea a fost modificată de altcineva. Reîncărcați pentru a vedea ultima versiune.",
+    "readOnlyBanner": "Vizualizare. Porniți o sesiune AI pentru a edita.",
+    "noSections": "Nicio secțiune generată. Folosiți Asistentul AI pentru a crea propunerea.",
+    "sectionCount": "{count} secțiuni",
+    "openWorkspace": "Deschide Spațiul de Lucru"
+  },
+  "workspace": {
+    "title": "Documente",
+    "subtitle": "Spațiul de lucru pentru propuneri",
+    "generatedDocuments": "Documente Generate",
+    "uploadedFiles": "Fișiere Încărcate",
+    "noProjects": "Niciun proiect cu secțiuni generate.",
+    "filterAll": "Toate",
+    "filterDraft": "Ciornă",
+    "filterReviewed": "Verificat",
+    "filterApproved": "Aprobat"
   }
 }
