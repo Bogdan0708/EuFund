@@ -321,7 +321,7 @@ export async function editProjectSection(opts: EditSectionOpts): Promise<Section
 
     pendingAudits.push({
       userId,
-      action: 'section.edited',
+      action: 'project.section_update',
       resourceType: 'workflow_session',
       resourceId: sessionId,
       metadata: { sectionId, fromVersion: section.currentVersion, toVersion: newVersion, contentHash: newContentHash, previousState: section.state },
