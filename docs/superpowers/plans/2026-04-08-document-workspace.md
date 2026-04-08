@@ -448,11 +448,19 @@ async function reconcileDrift(
       };
     });
 
-    // Persist the fix to session context
+    // Persist the fix to session context — merge into existing context to preserve
+    // other fields (matchedCalls, actionPlan, etc.) per engine convention
+    const [freshSession] = await db
+      .select({ context: workflowSessions.context })
+      .from(workflowSessions)
+      .where(eq(workflowSessions.id, sessionId))
+      .limit(1);
+    const existingCtx = (freshSession?.context ?? {}) as Record<string, unknown>;
+
     await db
       .update(workflowSessions)
       .set({
-        context: { projectSections: reconciled },
+        context: { ...existingCtx, projectSections: reconciled },
         updatedAt: new Date(),
       })
       .where(eq(workflowSessions.id, sessionId));
@@ -626,7 +634,36 @@ export async function editProjectSection(opts: EditSectionOpts): Promise<Section
     const newContentHash = hashContent(content);
     const newVersion = section.currentVersion + 1;
 
-    // Insert version row
+    // Legacy backfill: if no version row exists for the current version,
+    // insert a baseline row with the old content first. This matches the
+    // pattern in persistSectionChanges() (section-versions.ts:116-144)
+    // and ensures rollback/integrity checks work on older sessions.
+    const [existingRow] = await tx
+      .select()
+      .from(sectionVersions)
+      .where(and(
+        eq(sectionVersions.sessionId, sessionId),
+        eq(sectionVersions.sectionId, sectionId),
+        eq(sectionVersions.version, section.currentVersion),
+      ))
+      .limit(1);
+
+    if (!existingRow) {
+      const baselineHash = hashContent(section.content);
+      await tx.insert(sectionVersions).values({
+        sessionId,
+        sectionId,
+        version: section.currentVersion,
+        content: section.content,
+        contentHash: baselineHash,
+        title: section.title,
+        metadata: section.metadata,
+        reason: 'legacy_backfill',
+        createdBy: userId,
+      });
+    }
+
+    // Insert new version row
     await tx.insert(sectionVersions).values({
       sessionId,
       sectionId,
@@ -1121,13 +1158,24 @@ export async function POST(req: NextRequest, { params }: Params) {
       reason: parsed.data.reason,
     });
 
-    // Best-effort snapshot sync after state change
-    const ctx = workspace.session.context as { projectSections?: unknown[] };
-    const updatedSections = (ctx.projectSections ?? []) as import('@/lib/ai/orchestrator/types').SectionResult[];
-    const idx = updatedSections.findIndex((s: { id: string }) => s.id === sectionId);
-    if (idx >= 0) {
-      updatedSections[idx] = section;
-      await syncProjectDocumentSnapshot(id, updatedSections);
+    // Best-effort snapshot sync after state change.
+    // Must re-read session row because transitionSectionState() updated it
+    // in its own transaction — workspace.session.context is stale.
+    try {
+      const { db } = await import('@/lib/db');
+      const { workflowSessions } = await import('@/lib/db/schema');
+      const { eq } = await import('drizzle-orm');
+      const [freshSession] = await db
+        .select({ context: workflowSessions.context })
+        .from(workflowSessions)
+        .where(eq(workflowSessions.id, workspace.session!.id))
+        .limit(1);
+      const freshCtx = freshSession?.context as { projectSections?: SectionResult[] } | null;
+      if (freshCtx?.projectSections) {
+        await syncProjectDocumentSnapshot(id, freshCtx.projectSections);
+      }
+    } catch {
+      // Best-effort — snapshot may be stale until next edit
     }
 
     return NextResponse.json({ section });
@@ -1294,14 +1342,17 @@ export async function GET(_req: NextRequest) {
       }
     }
 
-    // Count uploaded files per project
+    // Count uploaded files per project (exclude generated DOCX artifacts)
     const fileCounts = await db
       .select({
         projectId: projectFiles.projectId,
         fileCount: count().as('file_count'),
       })
       .from(projectFiles)
-      .where(inArray(projectFiles.projectId, projectIds))
+      .where(and(
+        inArray(projectFiles.projectId, projectIds),
+        eq(projectFiles.category, 'uploaded'),
+      ))
       .groupBy(projectFiles.projectId);
 
     const fileCountMap = new Map(fileCounts.map((f) => [f.projectId, Number(f.fileCount)]));
@@ -2102,14 +2153,19 @@ Modify `app/src/app/[locale]/(dashboard)/proiecte/[id]/page.tsx`:
 import { SectionsTabContent } from './components/SectionsTabContent';
 ```
 
-2. Read `?tab=` query param to set initial active tab. Change the `useState` for `activeTab` (around line 453):
+2. Read `?tab=` query param to set initial active tab. Add `useSearchParams` import and replace the `useState` for `activeTab` (around line 453):
 ```typescript
+// Add to imports:
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
+
 // Replace: const [activeTab, setActiveTab] = useState('overview');
 // With:
-const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
-const initialTab = searchParams.get('tab') ?? 'overview';
-const [activeTab, setActiveTab] = useState(initialTab);
+const searchParams = useSearchParams();
+const tabParam = searchParams.get('tab');
+const [activeTab, setActiveTab] = useState(tabParam ?? 'overview');
 ```
+
+Note: `useSearchParams()` is hydration-safe — it returns the same value on server and client, avoiding SSR mismatch flashes that `window.location.search` would cause.
 
 3. Add the Sections tab trigger inside the `<Tabs.List>` (around line 600, after the overview TabTrigger):
 ```typescript
