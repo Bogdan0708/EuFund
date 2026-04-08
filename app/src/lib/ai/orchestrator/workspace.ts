@@ -244,6 +244,13 @@ export async function editProjectSection(opts: EditSectionOpts): Promise<Section
     }
 
     const newContentHash = hashContent(content);
+    const effectiveTitle = title ?? section.title;
+
+    // No-op: skip if content and title are unchanged
+    if (newContentHash === section.contentHash && effectiveTitle === section.title) {
+      return section;
+    }
+
     const newVersion = section.currentVersion + 1;
 
     // Legacy backfill: if no version row exists for the current version,
@@ -287,7 +294,7 @@ export async function editProjectSection(opts: EditSectionOpts): Promise<Section
       version: newVersion,
       content,
       contentHash: newContentHash,
-      title: title ?? section.title,
+      title: effectiveTitle,
       metadata: section.metadata,
       reason: 'user_edit',
       createdBy: userId,
@@ -297,7 +304,7 @@ export async function editProjectSection(opts: EditSectionOpts): Promise<Section
     const updated: SectionResult = {
       ...section,
       content,
-      title: title ?? section.title,
+      title: effectiveTitle,
       contentHash: newContentHash,
       source: 'edited',
       state: 'draft',
