@@ -13,9 +13,15 @@ import { zodToJsonSchema } from './utils'
 import { db } from '@/lib/db'
 import { agentSessions, agentCheckpoints, agentSections } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
+import { onSectionAccepted, onPhaseTransition } from '@/lib/ai/knowledge/write-back'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'agent-runtime' })
+
+interface WriteBackContext {
+  action?: NonNullable<AgentRequest['action']>
+  phaseTransition?: { from: string; to: string }
+}
 
 type EventEmitter = (event: AgentEvent) => void
 
@@ -47,6 +53,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
 }> {
   const { request, emit } = opts
   let { session, sections } = opts
+  let phaseTransitionOccurred: { from: string; to: string } | undefined
 
   try {
     // 1. Load history
@@ -71,12 +78,29 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     if (request.action) {
       const actionResult = handleStructuredAction(request.action, session, sections)
       if (actionResult.transitions.length > 0) {
+        // Track phase transitions from direct actions (e.g. approve_outline → drafting)
         for (const t of actionResult.transitions) {
+          const prevPhase = session.currentPhase
           const result = applyTransition(session, sections, t)
           session = result.session
           sections = result.sections
+          if (t.type === 'SET_PHASE' && (t as any).phase !== prevPhase) {
+            phaseTransitionOccurred = { from: prevPhase, to: (t as any).phase }
+          }
         }
-        await persistSessionState(session, sections)
+        const writeBack = {
+          action: request.action ?? undefined,
+          ...(phaseTransitionOccurred ? { phaseTransition: phaseTransitionOccurred } : {}),
+        }
+        if (actionResult.skipLLM) {
+          // Terminal path — bump version once and persist with write-back
+          session = { ...session, stateVersion: session.stateVersion + 1, updatedAt: new Date() }
+          await persistSessionState(session, sections, writeBack)
+        } else {
+          // Non-terminal — persist action state without version bump;
+          // end-of-turn persist (line ~337) handles the single version increment
+          await persistSessionState(session, sections, writeBack)
+        }
       }
       if (actionResult.policyViolation) {
         emit({ type: 'policy_violation', gate: request.action.type, reason: actionResult.policyViolation })
@@ -89,6 +113,17 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     }
 
     // 4. Build prompt and tool definitions
+    // Inject session knowledge summary for prompt
+    try {
+      const { getSessionKnowledge } = await import('@/lib/ai/knowledge/session-knowledge')
+      const pages = await getSessionKnowledge(session.id)
+      if (pages.length > 0) {
+        const kindCounts = new Map<string, number>()
+        for (const p of pages) kindCounts.set(p.kind, (kindCounts.get(p.kind) ?? 0) + 1)
+        ;(session as any)._knowledgeSummary = `${pages.length} pages: ${[...kindCounts.entries()].map(([k, c]) => c > 1 ? `${k}(${c})` : k).join(', ')}`
+      }
+    } catch { /* non-critical */ }
+
     const systemPrompt = buildSystemPrompt(session, sections)
     const phaseTools = getToolsForPhase(session.currentPhase)
 
@@ -247,9 +282,10 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
               session = result.session
               sections = result.sections
 
-              // Emit phase change
+              // Emit phase change and record for write-back
               if (transition.type === 'SET_PHASE' && transition.phase !== prevPhase) {
                 emit({ type: 'phase_changed', from: prevPhase, to: transition.phase })
+                phaseTransitionOccurred = { from: prevPhase, to: transition.phase }
               }
 
               // Handle section upserts — create in-memory section if it doesn't exist
@@ -306,7 +342,9 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
 
     // 8. Update state version and persist
     session = { ...session, stateVersion: session.stateVersion + 1, updatedAt: new Date() }
-    await persistSessionState(session, sections)
+    await persistSessionState(session, sections, {
+      ...(phaseTransitionOccurred ? { phaseTransition: phaseTransitionOccurred } : {}),
+    })
 
     // 9. Compact history if needed
     await compactIfNeeded(session.id, session.currentPhase)
@@ -369,7 +407,7 @@ function handleStructuredAction(
   }
 }
 
-async function persistSessionState(session: AgentSession, sections: AgentSection[]): Promise<void> {
+async function persistSessionState(session: AgentSession, sections: AgentSection[], writeBackContext?: WriteBackContext): Promise<void> {
   // Persist session
   await db.update(agentSessions).set({
     status: session.status,
@@ -421,6 +459,83 @@ async function persistSessionState(session: AgentSession, sections: AgentSection
         updatedAt: new Date(),
       },
     })
+  }
+
+  // ── Knowledge write-back (idempotent, all inside persist path) ──
+
+  // 1. Section accept write-back
+  if (writeBackContext?.action?.type === 'accept_section') {
+    const sectionKey = writeBackContext.action.sectionKey
+    const section = sections.find(s => s.sectionKey === sectionKey)
+    if (section?.acceptedContent) {
+      const bp = session.blueprint as Record<string, unknown> | null
+      try {
+        await onSectionAccepted({
+          sessionId: session.id,
+          sectionKey,
+          title: section.title,
+          content: section.acceptedContent,
+          program: (bp?.program as string) ?? 'unknown',
+          callId: session.selectedCallId,
+          retryCount: section.retryCount,
+          modelUsed: section.modelUsed ?? 'unknown',
+          sectionId: section.id,
+          sourcesUsed: (section.sourcesUsed as string[]) ?? [],
+        })
+      } catch (err) {
+        log.warn({ sectionKey, error: err instanceof Error ? err.message : String(err) }, 'Knowledge write-back failed — section still accepted')
+      }
+
+      // Track pattern usage — sourcesUsed contains pattern IDs from generate_section
+      const patternIds = ((section.sourcesUsed as string[]) ?? []).filter(
+        s => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)
+      )
+      if (patternIds.length > 0) {
+        try {
+          const { trackPatternUsage } = await import('@/lib/ai/knowledge/write-back')
+          await trackPatternUsage(patternIds, {
+            accepted: true,
+            regenCount: section.retryCount,
+          })
+        } catch { /* logged inside trackPatternUsage */ }
+      }
+    }
+  }
+
+  // 1b. Track pattern rejection on regenerate/reject (accepted=false)
+  if (writeBackContext?.action?.type === 'regenerate_section' || writeBackContext?.action?.type === 'reject_section') {
+    const sectionKey = writeBackContext.action.sectionKey
+    const section = sections.find(s => s.sectionKey === sectionKey)
+    if (section) {
+      const patternIds = ((section.sourcesUsed as string[]) ?? []).filter(
+        s => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)
+      )
+      if (patternIds.length > 0) {
+        try {
+          const { trackPatternUsage } = await import('@/lib/ai/knowledge/write-back')
+          await trackPatternUsage(patternIds, {
+            accepted: false,
+            regenCount: section.retryCount,
+          })
+        } catch { /* logged inside trackPatternUsage */ }
+      }
+    }
+  }
+
+  // 2. Phase transition write-back
+  if (writeBackContext?.phaseTransition) {
+    const { from, to } = writeBackContext.phaseTransition
+    try {
+      await onPhaseTransition({
+        sessionId: session.id,
+        fromPhase: from,
+        toPhase: to,
+        messageSummary: session.messageSummary,
+        planningArtifact: session.planningArtifact,
+      })
+    } catch (err) {
+      log.warn({ error: err instanceof Error ? err.message : String(err) }, 'Phase transition write-back failed')
+    }
   }
 }
 

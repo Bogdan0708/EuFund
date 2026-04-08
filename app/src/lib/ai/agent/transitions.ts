@@ -68,7 +68,7 @@ export function applyTransition(
       // Update in-memory section if it exists — increment retryCount on regeneration
       secs = secs.map(sec =>
         sec.sectionKey === transition.sectionKey
-          ? { ...sec, status: 'draft' as const, content: transition.content, modelUsed: transition.model, retryCount: sec.retryCount + 1 }
+          ? { ...sec, status: 'draft' as const, content: transition.content, modelUsed: transition.model, sourcesUsed: transition.sources, retryCount: sec.retryCount + 1 }
           : sec,
       )
       break

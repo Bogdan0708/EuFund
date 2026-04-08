@@ -57,6 +57,7 @@ export interface EligibilityResult {
 export interface AgentSession {
   id: string
   userId: string
+  projectId: string | null
   status: SessionStatus
   locale: 'ro' | 'en'
   selectedCallId: string | null

@@ -112,7 +112,7 @@ FORMAT:
           kind: 'regenerated',
           content,
           modelUsed: model,
-          sourcesUsed: [] as unknown as Record<string, unknown>,
+          sourcesUsed: (section.sourcesUsed ?? []) as unknown as Record<string, unknown>,
         })
       }
     } catch (dbErr) {
@@ -129,7 +129,7 @@ FORMAT:
         sectionKey: input.sectionKey,
         content,
         model,
-        sources: [],
+        sources: (section.sourcesUsed as string[]) ?? [],
       }],
       checkpoint: { type: 'section_regenerated', payload: { sectionKey: input.sectionKey, feedback: input.feedback, model } },
       telemetry: {

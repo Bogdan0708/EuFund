@@ -29,6 +29,22 @@ vi.mock('@/lib/logger', () => ({
   logger: { child: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }) },
 }))
 
+vi.mock('@/lib/ai/knowledge/proposal-patterns', () => ({
+  findPatterns: vi.fn().mockResolvedValue([
+    {
+      id: 'pp-1', program: 'PNRR', sectionType: 'context', title: 'Strong context',
+      contentMd: 'A'.repeat(3000), // Longer than 1500 char budget
+      timesUsed: 10, timesAccepted: 8, avgRegenCount: 0.5,
+    },
+  ]),
+}))
+
+vi.mock('@/lib/ai/knowledge/session-knowledge', () => ({
+  getSessionKnowledgeByKind: vi.fn().mockResolvedValue([
+    { id: 'sk-1', kind: 'brief', contentMd: 'B'.repeat(2000), title: 'Brief' }, // Longer than 800 char budget
+  ]),
+}))
+
 import '@/lib/ai/agent/tools/generate-section'
 import { getToolRegistry } from '@/lib/ai/agent/tools/registry'
 
@@ -80,5 +96,30 @@ describe('generate_section tool', () => {
 
     expect(result.telemetry.model).toBeDefined()
     expect(result.telemetry.provider).toBe('anthropic')
+  })
+
+  it('injects pattern and brief with total knowledge context under 2500 chars', async () => {
+    const { findPatterns } = await import('@/lib/ai/knowledge/proposal-patterns')
+    const { generate } = await import('@/lib/ai/providers/router')
+    const tool = getToolRegistry().find(t => t.name === 'generate_section')!
+
+    await tool.execute({ sectionKey: 'context' }, mockCtx)
+
+    const call = (generate as any).mock.calls.at(-1)[0]
+    const system: string = call.system
+
+    // Both injected
+    expect(system).toContain('REFERENCE PATTERN')
+    expect(system).toContain('PROJECT BRIEF')
+    expect(findPatterns).toHaveBeenCalledWith('PNRR', 'context')
+
+    // Extract knowledge block and verify total cap
+    const knowledgeStart = system.indexOf('PROJECT BRIEF')
+    const rulesStart = system.indexOf('RULES:')
+    if (knowledgeStart !== -1 && rulesStart !== -1) {
+      const knowledgeBlock = system.slice(knowledgeStart, rulesStart)
+      // Total must be under MAX_KNOWLEDGE_CONTEXT_CHARS (2500) + some header overhead
+      expect(knowledgeBlock.length).toBeLessThan(2700)
+    }
   })
 })
