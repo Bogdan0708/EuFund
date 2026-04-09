@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'crypto';
-import { eq, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { logger } from '@/lib/logger';
 
@@ -33,10 +33,7 @@ export async function verifyPasswordResetToken(token: string): Promise<string | 
   const tokenHash = hashToken(token);
 
   const tokenRecord = await db.query.passwordResetTokens.findFirst({
-    where: or(
-      eq(schema.passwordResetTokens.token, tokenHash),
-      eq(schema.passwordResetTokens.token, token),
-    ),
+    where: eq(schema.passwordResetTokens.token, tokenHash),
   });
 
   if (!tokenRecord) {
@@ -55,10 +52,7 @@ export async function consumePasswordResetToken(token: string): Promise<void> {
   try {
     const tokenHash = hashToken(token);
     await db.delete(schema.passwordResetTokens).where(
-      or(
-        eq(schema.passwordResetTokens.token, tokenHash),
-        eq(schema.passwordResetTokens.token, token),
-      ),
+      eq(schema.passwordResetTokens.token, tokenHash),
     );
   } catch (error) {
     logger.error({ error }, '[password-reset] Failed to delete token');
