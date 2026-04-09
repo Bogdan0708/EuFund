@@ -463,7 +463,7 @@ export default function ProiectDetailPage() {
   // Bootstrap CSRF token on mount
   useEffect(() => { bootstrapCSRFToken(); }, []);
 
-  // Fetch project details
+  // Fetch project details + extract submission docs from same response
   useEffect(() => {
     fetch(`/api/v1/projects/${id}`)
       .then(res => {
@@ -471,7 +471,10 @@ export default function ProiectDetailPage() {
         return res.json();
       })
       .then(data => {
-        setProject(data.data || data);
+        const p = data.data || data;
+        setProject(p);
+        const docs = p?.metadata?.submissionDocuments ?? [];
+        setSubmissionDocs(docs);
         setLoading(false);
       })
       .catch(err => {
@@ -480,40 +483,18 @@ export default function ProiectDetailPage() {
       });
   }, [id]);
 
-  // Fetch files when project loads
+  // Fetch files and AI sessions in parallel once project loads
   useEffect(() => {
     if (!project) return;
     setFilesLoading(true);
-    fetch(`/api/v1/projects/${id}/files`)
-      .then(res => res.ok ? res.json() : { files: [] })
-      .then(data => setFiles(data.files ?? []))
-      .catch(() => setFiles([]))
-      .finally(() => setFilesLoading(false));
-  }, [id, project]);
-
-  // Fetch submission documents from project metadata
-  useEffect(() => {
-    if (!project) return;
-    fetch(`/api/v1/projects/${id}`)
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        const docs = data?.data?.metadata?.submissionDocuments ?? data?.metadata?.submissionDocuments ?? [];
-        setSubmissionDocs(docs);
-      })
-      .catch(() => setSubmissionDocs([]));
-  }, [id, project]);
-
-  // Find linked AI session
-  useEffect(() => {
-    if (!project) return;
-    fetch('/api/ai/orchestrator/sessions?limit=20')
-      .then(res => res.ok ? res.json() : { sessions: [] })
-      .then(data => {
-        const sessions: WorkflowSession[] = data.sessions ?? [];
-        const linked = sessions.find(s => s.projectId === id && s.status === 'active');
-        setAiSessionId(linked?.id ?? null);
-      })
-      .catch(() => setAiSessionId(null));
+    Promise.all([
+      fetch(`/api/v1/projects/${id}/files`).then(r => r.ok ? r.json() : { files: [] }).catch(() => ({ files: [] })),
+      fetch('/api/ai/orchestrator/sessions?limit=20').then(r => r.ok ? r.json() : { sessions: [] }).catch(() => ({ sessions: [] })),
+    ]).then(([filesData, sessionsData]) => {
+      setFiles(filesData.files ?? []);
+      const sessions: WorkflowSession[] = sessionsData.sessions ?? [];
+      setAiSessionId(sessions.find(s => s.projectId === id && s.status === 'active')?.id ?? null);
+    }).finally(() => setFilesLoading(false));
   }, [id, project]);
 
   if (loading) return <PageSkeleton />;
