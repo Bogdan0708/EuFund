@@ -4,7 +4,9 @@ import { db } from '@/lib/db'
 import { agentSessions, projects } from '@/lib/db/schema'
 import { eq, and, inArray, desc, sql } from 'drizzle-orm'
 
-const RESUMABLE_STATUSES = ['active', 'paused', 'error'] as const
+type SessionStatus = 'active' | 'paused' | 'completed' | 'abandoned' | 'error'
+const VALID_STATUSES: SessionStatus[] = ['active', 'paused', 'completed', 'abandoned', 'error']
+const RESUMABLE_STATUSES: SessionStatus[] = ['active', 'paused', 'error']
 const MAX_LIMIT = 100
 const DEFAULT_LIMIT = 20
 
@@ -17,9 +19,9 @@ export async function GET(req: NextRequest) {
     const projectId = url.searchParams.get('projectId')
     const limitParam = Math.min(MAX_LIMIT, Math.max(1, parseInt(url.searchParams.get('limit') || '', 10) || DEFAULT_LIMIT))
 
-    // Parse status filter
-    const statuses = statusParam
-      ? statusParam.split(',').filter(Boolean)
+    // Parse status filter — validate against known enum values
+    const statuses: SessionStatus[] = statusParam
+      ? statusParam.split(',').filter((s): s is SessionStatus => VALID_STATUSES.includes(s as SessionStatus))
       : [...RESUMABLE_STATUSES]
 
     // Validate projectId is UUID-like if provided
