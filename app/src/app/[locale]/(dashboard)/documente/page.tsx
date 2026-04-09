@@ -156,9 +156,9 @@ export default function DocumentsPage() {
                   <span className="text-sm text-on-surface-variant">
                     {te('sectionCount', { count: p.sectionCount })}
                   </span>
-                  {p.stateBreakdown.draft > 0 && <SectionStateBadge state="draft" locale={locale as 'ro' | 'en'} />}
-                  {p.stateBreakdown.reviewed > 0 && <SectionStateBadge state="reviewed" locale={locale as 'ro' | 'en'} />}
-                  {p.stateBreakdown.approved > 0 && <SectionStateBadge state="approved" locale={locale as 'ro' | 'en'} />}
+                  {p.stateBreakdown.draft > 0 && <SectionStateBadge state="draft" />}
+                  {p.stateBreakdown.reviewed > 0 && <SectionStateBadge state="reviewed" />}
+                  {p.stateBreakdown.approved > 0 && <SectionStateBadge state="approved" />}
                 </div>
 
                 <div className="flex items-center justify-between">
