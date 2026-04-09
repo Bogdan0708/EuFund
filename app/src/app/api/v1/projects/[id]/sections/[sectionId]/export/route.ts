@@ -4,10 +4,9 @@ import { resolveProjectWorkspace } from '@/lib/ai/orchestrator/workspace';
 import { generateSectionDocx } from '@/lib/export/section-docx';
 import { logAudit } from '@/lib/legal/audit';
 import { Errors, FondEUError } from '@/lib/errors';
+import { UUID_RE, SLUG_RE } from '@/lib/validators/patterns';
 
 type Params = { params: { id: string; sectionId: string } };
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const SLUG_RE = /^[a-z][a-z0-9_]{0,63}$/;
 
 export async function GET(_req: NextRequest, { params }: Params) {
   try {

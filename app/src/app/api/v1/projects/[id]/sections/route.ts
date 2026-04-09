@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/helpers';
 import { resolveProjectWorkspace } from '@/lib/ai/orchestrator/workspace';
 import { Errors, FondEUError } from '@/lib/errors';
+import { UUID_RE } from '@/lib/validators/patterns';
 
 type Params = { params: { id: string } };
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
