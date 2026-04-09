@@ -30,22 +30,18 @@ export const {
     Apple({
       clientId: process.env.APPLE_CLIENT_ID!,
       clientSecret: process.env.APPLE_CLIENT_SECRET!,
-      allowDangerousEmailAccountLinking: true,
     }),
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      allowDangerousEmailAccountLinking: true,
     }),
     MicrosoftEntraID({
       clientId: process.env.MICROSOFT_CLIENT_ID!,
       clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
-      allowDangerousEmailAccountLinking: true,
     }),
     Facebook({
       clientId: process.env.FACEBOOK_CLIENT_ID!,
       clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
-      allowDangerousEmailAccountLinking: true,
     }),
     EmailProvider({
       server: {
@@ -96,13 +92,14 @@ export const {
   },
   callbacks: {
     async signIn({ user, account }) {
-      // For OAuth providers, link to existing user by email if one exists
       if (account?.type === 'oauth' && user.email) {
         const existing = await db.query.users.findFirst({
           where: eq(users.email, user.email),
+          columns: { id: true },
         });
         if (existing) {
-          user.id = existing.id;
+          // Reject: user must sign in with their original auth method
+          return false;
         }
       }
       return true;
