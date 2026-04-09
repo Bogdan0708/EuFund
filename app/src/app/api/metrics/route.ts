@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { metrics } from '@/lib/monitoring/metrics';
+import { constantTimeEquals } from '@/lib/security/constant-time';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,7 @@ function isAuthorized(request: NextRequest): boolean {
   const bearer = request.headers.get('authorization');
   const headerToken = request.headers.get('x-metrics-token');
 
-  return bearer === `Bearer ${expectedToken}` || headerToken === expectedToken;
+  return constantTimeEquals(bearer, `Bearer ${expectedToken}`) || constantTimeEquals(headerToken, expectedToken);
 }
 
 export async function GET(request: NextRequest) {

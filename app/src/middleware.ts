@@ -65,12 +65,12 @@ const publicPaths = [
   '/robots.txt',
   '/manifest.json',
   '/manifest.webmanifest',
-  '/sitemap.xml'
+  '/sitemap.xml',
+  '/ro/inregistrare',
+  '/en/inregistrare',
+  '/ro/resetare-parola',
+  '/en/resetare-parola',
 ];
-
-if (process.env.NODE_ENV === 'development') {
-  publicPaths.push('/api/test-ai'); // Testing endpoint
-}
 
 // CSRF validation helper — double-submit cookie pattern
 function validateCSRF(req: NextRequest): boolean {
