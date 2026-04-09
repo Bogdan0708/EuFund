@@ -2,102 +2,152 @@
 
 ## Goal
 
-Add a session listing endpoint and resume entry point to the V3 agent system so that dashboard and project detail pages can discover and resume V3 sessions. This is the foundation for phases 2 (surface integration) and 3 (section history/rollback).
+Add session listing and first-class resume to the V3 agent system so dashboard and project detail pages can discover and resume V3 sessions. Foundation for phases 2 (surface integration) and 3 (section history/rollback).
 
 ## Current State
 
-- V3 agent creates/resumes sessions via `POST /api/ai/agent` (accepts optional `sessionId`)
-- `GET /api/ai/agent/state?sessionId=` returns full state snapshot for reconnect
-- `useAgent` hook supports resume via `sessionId` param and has a `reconnect()` method
-- `agentSessions` table has `idx_agent_sessions_user_status` index on (userId, status, updatedAt)
-- No listing endpoint exists — dashboard and project detail pages only query V2 sessions
+- `POST /api/ai/agent` creates or continues a session (accepts optional `sessionId` in body)
+- `GET /api/ai/agent/state?sessionId=` returns a `UIStateSnapshot` (workspace state, no messages)
+- `useAgent(locale)` hook manages session lifecycle client-side. `sessionId` is internal state set after the first POST response. `reconnect()` only works when `sessionId` is already populated (guards with `if (!sessionId) return`).
+- `agentMessages` table stores full conversation history server-side. `loadContext()` in `history.ts` loads messages for LLM context, but no endpoint exposes message history to the client.
+- Dashboard and project pages only query V2 orchestrator sessions.
 
 ## What This Spec Adds
 
-### 1. GET /api/ai/agent/sessions
+### 1. GET /api/ai/agent/sessions — Session listing
 
 List the current user's V3 agent sessions with summary data.
 
 **Query params:**
-- `status` — comma-separated filter (e.g. `active,paused`). Defaults to all non-abandoned.
-- `projectId` — filter by linked project UUID. Optional.
+- `status` — comma-separated filter (e.g. `active,paused`). Defaults to `active,paused,error` (resumable states only — completed sessions excluded from resume surfaces).
+- `projectId` — filter by linked project UUID. Optional. Returns 400 if not a valid UUID.
 - `limit` — max results, default 20, max 100.
-- `offset` — pagination offset, default 0.
+
+**No offset pagination.** Return the latest N sessions ordered by `updatedAt DESC`. The existing `idx_agent_sessions_user_status` index covers this query. No `total` count query — the caller doesn't need it for a resume surface.
 
 **Response:**
 ```json
 {
   "success": true,
-  "data": {
-    "sessions": [
-      {
-        "id": "uuid",
-        "projectId": "uuid | null",
-        "status": "active",
-        "currentPhase": "drafting",
-        "locale": "ro",
-        "selectedCallId": "string | null",
-        "messageSummary": "string | null",
-        "stateVersion": 5,
-        "sectionCount": 7,
-        "createdAt": "2026-04-09T10:00:00Z",
-        "updatedAt": "2026-04-09T11:30:00Z"
-      }
-    ],
-    "total": 12
-  }
+  "data": [
+    {
+      "id": "uuid",
+      "projectId": "uuid | null",
+      "projectTitle": "string | null",
+      "status": "active",
+      "currentPhase": "drafting",
+      "locale": "ro",
+      "selectedCallId": "string | null",
+      "messageSummary": "string | null",
+      "sectionCount": 7,
+      "stateVersion": 5,
+      "createdAt": "ISO8601",
+      "updatedAt": "ISO8601"
+    }
+  ]
 }
 ```
 
-`sectionCount` is a count of `agentSections` rows for the session (gives a progress signal without loading full sections).
+`projectTitle` is a left join on `projects.title` when `projectId` is present. Avoids extra client-side fetches in phase 2.
 
-**Auth:** `requireAuth()`, filter by `userId = session.user.id`. No org-level check needed.
+`sectionCount` is a subquery count of `agentSections` rows per session.
 
-**Error handling:** Standard `FondEUError` pattern. Invalid UUID in `projectId` returns 400.
+**Auth:** `requireAuth()`, filter by `eq(agentSessions.userId, user.id)`. No 403 case for "other user's session" — the query simply returns only the caller's rows.
+
+**Error pattern:** Use plain `NextResponse.json()` to match existing V3 route conventions (`agent/route.ts` and `agent/state/route.ts` both use plain responses, not `FondEUError`).
 
 **File:** `app/src/app/api/ai/agent/sessions/route.ts`
 
-### 2. useAgent hook: initialSessionId support
+### 2. GET /api/ai/agent/sessions/[sessionId]/messages — Message history for resume
 
-The hook already accepts `sessionId` in the request body and has `reconnect()`. Add an `initialSessionId` parameter to the hook constructor so pages can pass a session ID from URL params:
+Return the user-visible conversation messages for a session. This powers the conversation pane on resume.
 
-```typescript
-function useAgent(locale: 'ro' | 'en', initialSessionId?: string)
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "role": "user | assistant | system",
+      "content": "string",
+      "toolName": "string | null",
+      "createdAt": "ISO8601"
+    }
+  ]
+}
 ```
 
-When `initialSessionId` is provided, the hook calls `reconnect(initialSessionId)` on mount instead of starting fresh.
+Returns all non-compacted messages ordered by `sequenceNumber ASC`. Tool-result messages are included (the client filters by role for display). Compacted messages are excluded (they've been summarized into `messageSummary`).
+
+**Auth:** `requireAuth()`, verify session belongs to user.
+
+**File:** `app/src/app/api/ai/agent/sessions/[sessionId]/messages/route.ts`
+
+### 3. useAgent hook: resumeSession support
+
+The current hook cannot be initialized with an existing session. `reconnect()` guards on `sessionId` state which is null on first mount. A `?session=` URL param has no effect.
+
+**Change:** Add `initialSessionId` parameter and a `resumeSession` flow:
+
+```typescript
+export function useAgent(locale: 'ro' | 'en', initialSessionId?: string)
+```
+
+On mount, if `initialSessionId` is provided:
+1. Set `sessionId` state immediately
+2. Fetch `GET /api/ai/agent/state?sessionId={id}` to hydrate workspace state (phase, sections, blueprint, eligibility, warnings)
+3. Fetch `GET /api/ai/agent/sessions/{id}/messages` to hydrate conversation history
+4. Set `status` to `'idle'` when both complete
+
+This gives the user a full resume experience: conversation history in the left pane, workspace state in the right pane, ready to continue.
 
 **File:** `app/src/hooks/useAgent.ts`
 
-### 3. Resume navigation contract
+### 4. /proiecte/nou page: read ?session= from URL
 
-When a user clicks a V3 session card (in dashboard or project detail — phase 2), the navigation target is:
+Read `searchParams.session` and pass to `useAgent`:
 
+```typescript
+const sessionId = searchParams?.session as string | undefined
+const agent = useAgent(locale, sessionId)
 ```
-/{locale}/proiecte/nou?session={sessionId}
-```
 
-The `/proiecte/nou` page reads `searchParams.session` and passes it to `useAgent` as `initialSessionId`. This matches the existing pattern where `/asistent-ai` reads `?session=` for V2 resume.
-
-No new pages or components are created in this phase.
+**File:** `app/src/app/[locale]/(dashboard)/proiecte/nou/page.tsx`
 
 ## What This Spec Does NOT Add
 
-- Dashboard/project page wiring (phase 2)
-- Session deletion or archival endpoints
-- Section version history API (phase 3)
-- V2 session migration or data backfill
+- Dashboard/project page wiring to show V3 sessions (phase 2)
+- Section version history or rollback API (phase 3)
+- Session deletion, archival, or V2 migration
+- Feature flag checks on the listing endpoint (all authenticated users can list their own V3 sessions, even if they can't create new ones)
 
 ## Testing
 
-- Integration test for `GET /api/ai/agent/sessions`: mock auth + DB, verify filtering by status/projectId, pagination, sectionCount aggregation, auth enforcement (403 for other users' sessions)
-- Unit test for useAgent initialSessionId: verify reconnect is called on mount when provided
+### Integration tests for session listing
+- Returns sessions filtered by status
+- Returns sessions filtered by projectId
+- Returns empty array for user with no sessions
+- Includes projectTitle and sectionCount
+- Returns 401 for unauthenticated request
+- Excludes sessions belonging to other users (verify empty result, not 403)
+
+### Integration tests for message history
+- Returns messages for session owner
+- Returns 404 for non-existent or other user's session
+- Excludes compacted messages
+- Orders by sequenceNumber ascending
+
+### useAgent hook
+- Verify resumeSession hydrates messages and workspace state on mount
 
 ## Files
 
 | Action | File |
 |--------|------|
 | Create | `app/src/app/api/ai/agent/sessions/route.ts` |
+| Create | `app/src/app/api/ai/agent/sessions/[sessionId]/messages/route.ts` |
 | Create | `app/tests/integration/agent-sessions-list.test.ts` |
-| Modify | `app/src/hooks/useAgent.ts` (add initialSessionId param) |
-| Modify | `app/src/app/[locale]/(dashboard)/proiecte/nou/page.tsx` (read ?session= from URL) |
+| Create | `app/tests/integration/agent-session-messages.test.ts` |
+| Modify | `app/src/hooks/useAgent.ts` |
+| Modify | `app/src/app/[locale]/(dashboard)/proiecte/nou/page.tsx` |
