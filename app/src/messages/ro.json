@@ -825,6 +825,7 @@
     "agentDescription": "Asistentul AI te ghidează pas cu pas în pregătirea cererii de finanțare."
   },
   "session": {
+    "aiSessions": "Sesiuni AI",
     "phase": {
       "discovery": "Descoperire",
       "research": "Cercetare",

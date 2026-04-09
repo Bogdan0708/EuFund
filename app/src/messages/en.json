@@ -825,6 +825,7 @@
     "agentDescription": "The AI assistant guides you step by step in preparing your funding application."
   },
   "session": {
+    "aiSessions": "AI Sessions",
     "phase": {
       "discovery": "Discovery",
       "research": "Research",

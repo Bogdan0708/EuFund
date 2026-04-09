@@ -493,7 +493,7 @@ export default function ProiectDetailPage() {
     setFilesLoading(true);
     Promise.all([
       fetch(`/api/v1/projects/${id}/files`).then(r => r.ok ? r.json() : { files: [] }).catch(() => ({ files: [] })),
-      csrfFetch(`/api/ai/agent/sessions?projectId=${id}`).then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] })),
+      csrfFetch(`/api/ai/agent/sessions?projectId=${id}&status=active,paused,error,completed,abandoned`).then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] })),
     ]).then(([filesData, sessionsData]) => {
       setFiles(filesData.files ?? []);
       const v3Sessions: V3Session[] = sessionsData.data ?? [];
@@ -710,7 +710,7 @@ export default function ProiectDetailPage() {
                     {projectSessions.length > 0 && (
                       <div className="mt-8">
                         <h3 className="text-sm font-semibold text-on-surface-variant uppercase tracking-wider mb-3">
-                          AI Sessions
+                          {tSession('aiSessions')}
                         </h3>
                         <div className="space-y-2">
                           {projectSessions.map(s => (

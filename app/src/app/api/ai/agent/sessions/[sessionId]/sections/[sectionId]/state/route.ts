@@ -25,7 +25,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Invalid ID format' }, { status: 400 })
     }
 
-    const body = await req.json()
+    let body: Record<string, unknown>
+    try { body = await req.json() } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    }
     const targetStatus = body?.status
     if (typeof targetStatus !== 'string') {
       return NextResponse.json({ error: 'status is required' }, { status: 400 })

@@ -30,21 +30,29 @@ describe('POST /api/ai/agent/sessions/[sessionId]/sections/[sectionId]/rollback'
             findFirst: vi.fn().mockResolvedValue({ id: SECTION_ID, sessionId: SESSION_ID, status: 'accepted' }),
           },
         },
-        select: vi.fn().mockReturnValue({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              orderBy: vi.fn().mockReturnValue({
-                limit: vi.fn().mockResolvedValue([{ versionNumber: 3 }]),
-              }),
-            }),
-          }),
-        }),
         transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+          let selectCallCount = 0
           const tx = {
-            select: vi.fn().mockReturnValue({
-              from: vi.fn().mockReturnValue({
-                where: vi.fn().mockResolvedValue([{ id: 'v2', versionNumber: 2, content: 'Old content from v2', modelUsed: null, sourcesUsed: null }]),
-              }),
+            select: vi.fn().mockImplementation(() => {
+              selectCallCount++
+              if (selectCallCount === 1) {
+                // First call: max version query
+                return {
+                  from: vi.fn().mockReturnValue({
+                    where: vi.fn().mockReturnValue({
+                      orderBy: vi.fn().mockReturnValue({
+                        limit: vi.fn().mockResolvedValue([{ versionNumber: 3 }]),
+                      }),
+                    }),
+                  }),
+                }
+              }
+              // Second call: target version lookup
+              return {
+                from: vi.fn().mockReturnValue({
+                  where: vi.fn().mockResolvedValue([{ id: 'v2', versionNumber: 2, content: 'Old content from v2', modelUsed: null, sourcesUsed: null }]),
+                }),
+              }
             }),
             insert: vi.fn().mockReturnValue({
               values: vi.fn().mockReturnValue({

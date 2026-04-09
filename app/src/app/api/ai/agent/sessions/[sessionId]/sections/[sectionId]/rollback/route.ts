@@ -18,9 +18,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Invalid ID format' }, { status: 400 })
     }
 
-    const body = await req.json()
-    const targetVersion = body?.targetVersion
-    if (typeof targetVersion !== 'number' || targetVersion < 1) {
+    let body: Record<string, unknown>
+    try { body = await req.json() } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    }
+    const targetVersion = body?.targetVersion as number | undefined
+    if (!Number.isInteger(targetVersion) || !targetVersion || targetVersion < 1) {
       return NextResponse.json({ error: 'targetVersion must be a positive integer' }, { status: 400 })
     }
 
@@ -43,18 +46,18 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Section not found' }, { status: 404 })
     }
 
-    // Get current max version number
-    const [maxRow] = await db
-      .select({ versionNumber: agentSectionVersions.versionNumber })
-      .from(agentSectionVersions)
-      .where(eq(agentSectionVersions.sectionId, sectionId))
-      .orderBy(desc(agentSectionVersions.versionNumber))
-      .limit(1)
-
-    const currentMax = maxRow?.versionNumber ?? 0
-
     // Execute rollback in a transaction
     const newVersion = await db.transaction(async (tx) => {
+      // Get current max version number inside transaction to prevent race
+      const [maxRow] = await tx
+        .select({ versionNumber: agentSectionVersions.versionNumber })
+        .from(agentSectionVersions)
+        .where(eq(agentSectionVersions.sectionId, sectionId))
+        .orderBy(desc(agentSectionVersions.versionNumber))
+        .limit(1)
+
+      const currentMax = maxRow?.versionNumber ?? 0
+
       // Find target version content
       const [target] = await tx
         .select()
