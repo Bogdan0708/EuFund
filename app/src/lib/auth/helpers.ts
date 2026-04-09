@@ -1,10 +1,19 @@
 // ─── Auth Helper Utilities ───────────────────────────────────────
 import { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
-import { withUserRLS } from '@/lib/db';
-import { users } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { db, withUserRLS } from '@/lib/db';
+import { users, orgMembers } from '@/lib/db/schema';
+import { eq, and } from 'drizzle-orm';
 import { Errors } from '@/lib/errors';
+
+export type OrgRole = 'admin' | 'org_admin' | 'project_manager' | 'viewer';
+
+const ROLE_RANK: Record<OrgRole, number> = {
+  admin: 4,
+  org_admin: 3,
+  project_manager: 2,
+  viewer: 1,
+};
 
 export interface SessionUser {
   id: string;
@@ -51,6 +60,42 @@ export async function requirePlatformAdmin(): Promise<SessionUser> {
   }
 
   return { ...user, isPlatformAdmin: true };
+}
+
+/**
+ * Require the caller to be a member of the given organization.
+ * Optionally checks that the member's role meets a minimum rank.
+ *
+ * NOTE: Uses `db` directly (not `withUserRLS`) because the caller
+ * may not yet be a member and RLS would hide the row.
+ */
+export async function requireOrgMembership(
+  orgId: string,
+  minRole?: OrgRole,
+): Promise<{ user: SessionUser; membership: { id: string; orgId: string; userId: string; role: OrgRole } }> {
+  const user = await requireAuth();
+
+  const membership = await db.query.orgMembers.findFirst({
+    where: and(eq(orgMembers.orgId, orgId), eq(orgMembers.userId, user.id)),
+  });
+
+  if (!membership) {
+    throw Errors.forbidden();
+  }
+
+  if (minRole && ROLE_RANK[membership.role as OrgRole] < ROLE_RANK[minRole]) {
+    throw Errors.forbidden();
+  }
+
+  return {
+    user,
+    membership: {
+      id: membership.id,
+      orgId: membership.orgId,
+      userId: membership.userId,
+      role: membership.role as OrgRole,
+    },
+  };
 }
 
 /**
