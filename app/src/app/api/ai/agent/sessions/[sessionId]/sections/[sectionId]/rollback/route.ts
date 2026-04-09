@@ -5,7 +5,7 @@ import { agentSessions, agentSections, agentSectionVersions } from '@/lib/db/sch
 import { eq, and, desc } from 'drizzle-orm'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const TERMINAL_STATUSES = ['completed', 'abandoned']
+const TERMINAL_STATUSES = ['completed', 'abandoned', 'error']
 
 type Params = { params: { sessionId: string; sectionId: string } }
 

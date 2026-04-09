@@ -572,7 +572,7 @@ export default function ProiectDetailPage() {
           </button>
           {aiSessionId ? (
             <button
-              onClick={() => router.push(`/${locale}/asistent-ai?session=${aiSessionId}`)}
+              onClick={() => router.push(`/${locale}/proiecte/nou?session=${aiSessionId}`)}
               className="flex items-center gap-2 px-5 py-3 rounded-full bg-on-surface text-white font-semibold text-sm hover:opacity-90 transition-opacity"
             >
               <Icon name="smart_toy" size="sm" />
@@ -580,7 +580,7 @@ export default function ProiectDetailPage() {
             </button>
           ) : (
             <button
-              onClick={() => router.push(`/${locale}/asistent-ai`)}
+              onClick={() => router.push(`/${locale}/proiecte/nou`)}
               className="flex items-center gap-2 px-5 py-3 rounded-full bg-on-surface text-white font-semibold text-sm hover:opacity-90 transition-opacity"
             >
               <Icon name="smart_toy" size="sm" />
@@ -785,7 +785,7 @@ export default function ProiectDetailPage() {
                         {t('curatorSuggestion')}
                       </p>
                       <button
-                        onClick={() => router.push(aiSessionId ? `/asistent-ai?session=${aiSessionId}` : '/asistent-ai')}
+                        onClick={() => router.push(aiSessionId ? `/${locale}/proiecte/nou?session=${aiSessionId}` : `/${locale}/proiecte/nou`)}
                         className="w-full py-3 bg-secondary/10 text-secondary font-bold text-sm rounded-full hover:bg-secondary/20 transition-colors"
                       >
                         {aiSessionId ? t('resumeAI') : t('startAI')}

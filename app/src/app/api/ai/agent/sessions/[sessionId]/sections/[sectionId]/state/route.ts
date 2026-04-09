@@ -5,7 +5,7 @@ import { agentSessions, agentSections } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const TERMINAL_STATUSES = ['completed', 'abandoned']
+const TERMINAL_STATUSES = ['completed', 'abandoned', 'error']
 
 // User-allowed state transitions
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {

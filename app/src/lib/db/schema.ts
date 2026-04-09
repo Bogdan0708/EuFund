@@ -939,7 +939,9 @@ export const agentSectionVersions = pgTable('agent_section_versions', {
   modelUsed: varchar('model_used', { length: 100 }),
   sourcesUsed: jsonb('sources_used'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (table) => ({
+  uniqSectionVersion: uniqueIndex('uniq_agent_section_version_number').on(table.sectionId, table.versionNumber),
+}))
 
 export const agentMessages = pgTable('agent_messages', {
   id: uuid('id').primaryKey().defaultRandom(),

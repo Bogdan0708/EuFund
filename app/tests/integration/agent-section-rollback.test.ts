@@ -109,4 +109,103 @@ describe('POST /api/ai/agent/sessions/[sessionId]/sections/[sectionId]/rollback'
 
     expect(res.status).toBe(409)
   })
+
+  it('returns 409 for errored session', async () => {
+    vi.doMock('@/lib/auth/helpers', () => ({
+      requireAuth: vi.fn().mockResolvedValue({ id: USER_ID, email: 'u@test.com' }),
+    }))
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        query: {
+          agentSessions: {
+            findFirst: vi.fn().mockResolvedValue({ id: SESSION_ID, userId: USER_ID, status: 'error' }),
+          },
+        },
+      },
+    }))
+
+    const { POST } = await import('@/app/api/ai/agent/sessions/[sessionId]/sections/[sectionId]/rollback/route')
+    const req = new NextRequest(`http://localhost/api/ai/agent/sessions/${SESSION_ID}/sections/${SECTION_ID}/rollback`, {
+      method: 'POST',
+      body: JSON.stringify({ targetVersion: 1 }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const res = await POST(req, { params: { sessionId: SESSION_ID, sectionId: SECTION_ID } })
+
+    expect(res.status).toBe(409)
+  })
+
+  it('returns 400 for malformed JSON body', async () => {
+    vi.doMock('@/lib/auth/helpers', () => ({
+      requireAuth: vi.fn().mockResolvedValue({ id: USER_ID, email: 'u@test.com' }),
+    }))
+    vi.doMock('@/lib/db', () => ({ db: {} }))
+
+    const { POST } = await import('@/app/api/ai/agent/sessions/[sessionId]/sections/[sectionId]/rollback/route')
+    const req = new NextRequest(`http://localhost/api/ai/agent/sessions/${SESSION_ID}/sections/${SECTION_ID}/rollback`, {
+      method: 'POST',
+      body: 'not json',
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const res = await POST(req, { params: { sessionId: SESSION_ID, sectionId: SECTION_ID } })
+
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.error).toBe('Invalid JSON')
+  })
+
+  it('returns 400 for non-existent target version', async () => {
+    vi.doMock('@/lib/auth/helpers', () => ({
+      requireAuth: vi.fn().mockResolvedValue({ id: USER_ID, email: 'u@test.com' }),
+    }))
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        query: {
+          agentSessions: {
+            findFirst: vi.fn().mockResolvedValue({ id: SESSION_ID, userId: USER_ID, status: 'active' }),
+          },
+          agentSections: {
+            findFirst: vi.fn().mockResolvedValue({ id: SECTION_ID, sessionId: SESSION_ID, status: 'draft' }),
+          },
+        },
+        transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+          let selectCallCount = 0
+          const tx = {
+            select: vi.fn().mockImplementation(() => {
+              selectCallCount++
+              if (selectCallCount === 1) {
+                return {
+                  from: vi.fn().mockReturnValue({
+                    where: vi.fn().mockReturnValue({
+                      orderBy: vi.fn().mockReturnValue({
+                        limit: vi.fn().mockResolvedValue([{ versionNumber: 3 }]),
+                      }),
+                    }),
+                  }),
+                }
+              }
+              return {
+                from: vi.fn().mockReturnValue({
+                  where: vi.fn().mockResolvedValue([]),
+                }),
+              }
+            }),
+          }
+          return fn(tx)
+        }),
+      },
+    }))
+
+    const { POST } = await import('@/app/api/ai/agent/sessions/[sessionId]/sections/[sectionId]/rollback/route')
+    const req = new NextRequest(`http://localhost/api/ai/agent/sessions/${SESSION_ID}/sections/${SECTION_ID}/rollback`, {
+      method: 'POST',
+      body: JSON.stringify({ targetVersion: 999 }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const res = await POST(req, { params: { sessionId: SESSION_ID, sectionId: SECTION_ID } })
+
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.error).toBe('Target version not found')
+  })
 })
