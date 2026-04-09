@@ -11,6 +11,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const user = await requireAuth()
     const { sessionId } = params
 
+    // Validate sessionId format
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) {
+      return NextResponse.json({ error: 'Invalid sessionId format' }, { status: 400 })
+    }
+
     // Verify session exists and belongs to user
     const session = await db.query.agentSessions.findFirst({
       where: and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, user.id)),
