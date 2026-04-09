@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { csrfFetch } from '@/lib/csrf/client'
 import type {
   AgentEvent, AgentRequest, StructuredAction, UIStateSnapshot,
@@ -29,7 +29,7 @@ export type AgentStatus = 'idle' | 'connecting' | 'streaming' | 'error'
 
 // ── Hook ────────────────────────────────────────────────────────
 
-export function useAgent(locale: 'ro' | 'en') {
+export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   const [messages, setMessages] = useState<AgentMessage[]>([])
   const [status, setStatus] = useState<AgentStatus>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -252,6 +252,68 @@ export function useAgent(locale: 'ro' | 'en') {
       // Best effort
     }
   }, [sessionId, applyFinalState])
+
+  // ── Resume from initialSessionId ──────────────────────────────
+  useEffect(() => {
+    if (!initialSessionId || initialSessionId === sessionId) return
+
+    let cancelled = false
+
+    async function resumeSession() {
+      setStatus('connecting')
+      setError(null)
+      // Clear prior state
+      setMessages([])
+      setSections([])
+      setWarnings([])
+      setBlueprint(null)
+      setEligibility(null)
+      setPhase('discovery')
+      setSessionId(initialSessionId!)
+
+      try {
+        // Fetch workspace state + messages in parallel
+        const [stateRes, msgsRes] = await Promise.all([
+          csrfFetch(`/api/ai/agent/state?sessionId=${initialSessionId}`),
+          csrfFetch(`/api/ai/agent/sessions/${initialSessionId}/messages`),
+        ])
+
+        if (cancelled) return
+
+        if (stateRes.ok) {
+          const state: UIStateSnapshot = await stateRes.json()
+          applyFinalState(state)
+        }
+
+        if (msgsRes.ok) {
+          const { data } = await msgsRes.json()
+          const restored: AgentMessage[] = (data as Array<{
+            id: string; role: string; content: string;
+            toolName?: string; createdAt: string;
+          }>).map((m) => ({
+            id: m.id,
+            role: m.role === 'tool' ? 'system' as const : m.role as 'user' | 'assistant' | 'system',
+            content: m.content,
+            toolName: m.toolName || undefined,
+            isToolActivity: m.role === 'tool',
+            timestamp: new Date(m.createdAt).getTime(),
+          }))
+          if (!cancelled) setMessages(restored)
+        }
+
+        if (!cancelled) setStatus('idle')
+      } catch (err) {
+        if (!cancelled) {
+          setStatus('error')
+          setError(err instanceof Error ? err.message : 'Failed to resume session')
+        }
+      }
+    }
+
+    resumeSession()
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSessionId])
 
   // ── Public API ──────────────────────────────────────────────
 
