@@ -13,9 +13,9 @@ import { requireAuth } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { UUID_RE } from '@/lib/validators/patterns';
 
 type Params = { params: { id: string } };
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DIRECT_MUTABLE_PROJECT_STATUSES = ['ciorna', 'in_lucru', 'verificare', 'depus'] as const;
 const TERMINAL_PROJECT_STATUSES = ['aprobat', 'respins', 'finalizat', 'arhivat'] as const;
 

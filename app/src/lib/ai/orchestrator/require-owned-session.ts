@@ -3,8 +3,7 @@ import { workflowSessions } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { requireAuth, type SessionUser } from '@/lib/auth/helpers';
 import { Errors } from '@/lib/errors';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { UUID_RE } from '@/lib/validators/patterns';
 
 /**
  * Authenticates the caller and verifies they own the session identified by
