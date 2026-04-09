@@ -86,14 +86,15 @@ Rollback a section to a previous version.
 
 **Behavior:**
 1. Validate `targetVersion` exists for this section
-2. Create a NEW `agent_section_versions` row with:
+2. Restore the selected version's content into `agent_sections.content`
+3. Reset `agent_sections.status` to `draft`
+4. Must update `agent_sections.updatedAt` to now
+5. Append a new `agent_section_versions` row capturing the rollback result as the latest version:
    - `versionNumber`: current max + 1
    - `kind`: `system_rewrite`
    - `content`: copied from `targetVersion` row
-3. Update `agent_sections.content` to the rolled-back content
-4. Reset `agent_sections.status` to `draft`
-5. Update `agent_sections.updatedAt` to now
-5. Return the new version row
+6. Must update `agent_sessions.updatedAt` to now (rollback is a session-visible change — keeps session lists correctly sorted by recent activity)
+7. Return the new version row
 
 **Guards:**
 - Session must not be `completed` or `abandoned` — return 409 ("Session is not active")
