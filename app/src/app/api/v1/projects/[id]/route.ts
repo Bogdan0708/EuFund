@@ -5,7 +5,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
-import { db } from '@/lib/db';
 import { organizations, projects, projectDocuments } from '@/lib/db/schema';
 import { updateProjectSectionSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
@@ -45,12 +44,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     });
 
     // Load latest project_documents metadata (submission dossier lives here)
-    const [latestDoc] = await db
-      .select({ metadata: projectDocuments.metadata })
-      .from(projectDocuments)
-      .where(eq(projectDocuments.projectId, project.id))
-      .orderBy(desc(projectDocuments.version))
-      .limit(1)
+    const [latestDoc] = await withUserRLS(user.id, async (tx) => {
+      return tx
+        .select({ metadata: projectDocuments.metadata })
+        .from(projectDocuments)
+        .where(eq(projectDocuments.projectId, project.id))
+        .orderBy(desc(projectDocuments.version))
+        .limit(1);
+    });
 
     return NextResponse.json({
       success: true,
