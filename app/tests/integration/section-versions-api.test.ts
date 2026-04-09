@@ -39,6 +39,7 @@ describe('GET /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/versi
 
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       getVersionHistory: historySpy,
+      sectionExistsInSession: vi.fn().mockReturnValue(true),
     }));
 
     const { GET } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/versions/route');
@@ -50,7 +51,7 @@ describe('GET /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/versi
     expect(response.status).toBe(200);
     expect(body.versions).toHaveLength(1);
     expect(body.stateTransitions).toEqual([]);
-    expect(historySpy).toHaveBeenCalledWith(SESSION_ID, 'context');
+    expect(historySpy).toHaveBeenCalledWith(SESSION_ID, 'context', USER_ID);
   });
 
   it('returns 200 with empty arrays when there is no history', async () => {
@@ -59,6 +60,7 @@ describe('GET /api/ai/orchestrator/sessions/:sessionId/sections/:sectionId/versi
 
     vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
       getVersionHistory: vi.fn().mockResolvedValue({ versions: [], stateTransitions: [] }),
+      sectionExistsInSession: vi.fn().mockReturnValue(true),
     }));
 
     const { GET } = await import('@/app/api/ai/orchestrator/sessions/[sessionId]/sections/[sectionId]/versions/route');
