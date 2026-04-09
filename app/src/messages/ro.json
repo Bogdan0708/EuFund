@@ -824,6 +824,28 @@
     "resumeProject": "Continuă proiectul",
     "agentDescription": "Asistentul AI te ghidează pas cu pas în pregătirea cererii de finanțare."
   },
+  "session": {
+    "phase": {
+      "discovery": "Descoperire",
+      "research": "Cercetare",
+      "structuring": "Structurare",
+      "drafting": "Redactare",
+      "review": "Revizuire"
+    },
+    "status": {
+      "active": "Activă",
+      "paused": "Întreruptă",
+      "error": "Eroare",
+      "completed": "Finalizată",
+      "abandoned": "Abandonată"
+    },
+    "resume": "Reia sesiunea",
+    "view": "Vezi detalii",
+    "noActiveSession": "Nicio sesiune activă",
+    "noSessions": "Nicio sesiune AI încă",
+    "sections": "{count} secțiuni",
+    "untitledProject": "Proiect fără titlu"
+  },
   "projectDetail": {
     "breadcrumb": "Proiecte",
     "statusInProgress": "În Lucru",
