@@ -22,14 +22,15 @@ interface WorkspaceProject {
 type StateFilter = 'all' | 'draft' | 'reviewed' | 'approved';
 
 /* ---------- helpers ---------- */
-function formatRelativeTime(dateStr: string): string {
+function formatRelativeTime(dateStr: string, locale: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto', style: 'short' });
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60) return rtf.format(-minutes, 'minute');
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
+  if (hours < 24) return rtf.format(-hours, 'hour');
   const days = Math.floor(hours / 24);
-  return `${days}d`;
+  return rtf.format(-days, 'day');
 }
 
 /* ---------- page component ---------- */
@@ -163,7 +164,7 @@ export default function DocumentsPage() {
 
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-on-surface-variant">
-                    {te('lastEdited', { time: formatRelativeTime(p.lastEditedAt) })}
+                    {te('lastEdited', { time: formatRelativeTime(p.lastEditedAt, locale) })}
                   </span>
                   <a
                     href={`/${locale}/proiecte/${p.id}?tab=sections`}
