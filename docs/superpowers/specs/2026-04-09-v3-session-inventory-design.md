@@ -69,16 +69,17 @@ Return the user-visible conversation messages for a session. This powers the con
   "data": [
     {
       "id": "uuid",
-      "role": "user | assistant | system",
+      "role": "user | assistant | system | tool",
       "content": "string",
       "toolName": "string | null",
+      "toolCallId": "string | null",
       "createdAt": "ISO8601"
     }
   ]
 }
 ```
 
-Returns all non-compacted messages ordered by `sequenceNumber ASC`. Tool-result messages are included (the client filters by role for display). Compacted messages are excluded (they've been summarized into `messageSummary`).
+Returns all non-compacted messages ordered by `sequenceNumber ASC`. The `role` field matches storage exactly (including `tool` for tool results). The client decides what to render — the API does not filter or normalize roles. Compacted messages are excluded (they've been summarized into `messageSummary`).
 
 **Auth:** `requireAuth()`, verify session belongs to user.
 
@@ -88,17 +89,22 @@ Returns all non-compacted messages ordered by `sequenceNumber ASC`. Tool-result 
 
 The current hook cannot be initialized with an existing session. `reconnect()` guards on `sessionId` state which is null on first mount. A `?session=` URL param has no effect.
 
-**Change:** Add `initialSessionId` parameter and a `resumeSession` flow:
+**Change:** Add `initialSessionId` parameter and a `resumeSession` effect:
 
 ```typescript
 export function useAgent(locale: 'ro' | 'en', initialSessionId?: string)
 ```
 
-On mount, if `initialSessionId` is provided:
-1. Set `sessionId` state immediately
-2. Fetch `GET /api/ai/agent/state?sessionId={id}` to hydrate workspace state (phase, sections, blueprint, eligibility, warnings)
-3. Fetch `GET /api/ai/agent/sessions/{id}/messages` to hydrate conversation history
-4. Set `status` to `'idle'` when both complete
+Resume triggers **whenever `initialSessionId` changes to a new non-empty value** (not just on mount). This handles both first load and in-page navigation between session cards without a full remount.
+
+The effect:
+1. Guard: if `initialSessionId` equals current `sessionId`, skip (prevent double-fetch)
+2. Clear prior local state (messages, sections, phase, etc.)
+3. Set `sessionId` state to `initialSessionId`
+4. Fetch `GET /api/ai/agent/state?sessionId={id}` to hydrate workspace state (phase, sections, blueprint, eligibility, warnings)
+5. Fetch `GET /api/ai/agent/sessions/{id}/messages` to hydrate conversation history
+6. Map stored messages to `AgentMessage[]` display format in the hook (filter/transform `tool` role messages into compact activity indicators)
+7. Set `status` to `'idle'` when both complete
 
 This gives the user a full resume experience: conversation history in the left pane, workspace state in the right pane, ready to continue.
 
