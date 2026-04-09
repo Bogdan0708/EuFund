@@ -189,7 +189,7 @@ export default function SectionEditorPage() {
             />
           )}
           <div className="flex items-center gap-3 mt-2">
-            {section && <SectionStateBadge state={section.state} locale={(params.locale as 'ro' | 'en') ?? 'ro'} />}
+            {section && <SectionStateBadge state={section.state} />}
             <span className="text-xs text-on-surface-variant">
               {t('version', { version: versionRef.current })}
             </span>
