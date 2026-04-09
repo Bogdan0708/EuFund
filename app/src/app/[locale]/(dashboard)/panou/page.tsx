@@ -203,7 +203,7 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
           variants={staggerItem}
           transition={staggerTransition}
           className="glass p-8 rounded-lg group hover:bg-white transition-all duration-300 cursor-pointer"
-          onClick={() => router.push(`/${locale}/proiecte/novo`)}
+          onClick={() => router.push(`/${locale}/proiecte/nou`)}
         >
           <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mb-6 group-hover:scale-110 transition-transform">
             <Icon name="add_circle" filled size="lg" />
