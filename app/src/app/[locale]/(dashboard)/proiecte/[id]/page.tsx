@@ -186,14 +186,12 @@ function DocumentsTabContent({
   setSubmissionDocs,
   projectId,
   td,
-  t,
 }: {
   files: ProjectFile[];
   submissionDocs: SubmissionDocument[];
   setSubmissionDocs: React.Dispatch<React.SetStateAction<SubmissionDocument[]>>;
   projectId: string;
   td: ReturnType<typeof useTranslations>;
-  t: ReturnType<typeof useTranslations>;
 }) {
   const proposalFiles = files.filter(f => f.storagePath?.includes('/propunere/'));
   const formFiles = files.filter(f => f.storagePath?.includes('/formulare/'));
@@ -837,7 +835,6 @@ export default function ProiectDetailPage() {
                     setSubmissionDocs={setSubmissionDocs}
                     projectId={id}
                     td={td}
-                    t={t}
                   />
                 )}
 
