@@ -16,7 +16,7 @@ export interface RateLimitOptions {
 
 export type NextRouteHandler = (request: NextRequest) => Promise<Response>;
 
-function getClientIp(request: NextRequest): string {
+function getClientIp(request: NextRequest): string | null {
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor) {
     const firstIp = forwardedFor.split(',')[0]?.trim();
@@ -26,7 +26,7 @@ function getClientIp(request: NextRequest): string {
   const realIp = request.headers.get('x-real-ip')?.trim();
   if (realIp) return realIp;
 
-  return '';
+  return null;
 }
 
 function buildRateLimitExceededResponse(retryAfterSeconds: number, messageRo?: string): NextResponse {
@@ -52,10 +52,15 @@ export async function enforceRateLimit(
 > {
   const identity = options.keySuffix ?? getClientIp(request);
 
-  // If no identity can be determined, allow the request but skip rate limiting
   if (!identity) {
-    log.warn('Request with no identifiable IP address — skipping rate limit');
-    return { ok: true, headers: {} };
+    log.warn('Request with no identifiable IP — rejecting');
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: 'Unable to identify request origin' },
+        { status: 403 },
+      ),
+    };
   }
 
   try {
@@ -83,10 +88,13 @@ export async function enforceRateLimit(
       },
     };
   } catch (error) {
-    log.error({ error }, 'Rate limit check failed — allowing request');
+    log.error({ error }, 'Rate limit check failed — rejecting request');
     return {
-      ok: true,
-      headers: {},
+      ok: false,
+      response: NextResponse.json(
+        Errors.serviceUnavailable('rate-limiter').toResponse('ro'),
+        { status: 503 },
+      ),
     };
   }
 }
