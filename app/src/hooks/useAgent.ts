@@ -269,7 +269,6 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
       setBlueprint(null)
       setEligibility(null)
       setPhase('discovery')
-      setSessionId(initialSessionId!)
 
       try {
         // Fetch workspace state + messages in parallel
@@ -280,10 +279,17 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
 
         if (cancelled) return
 
-        if (stateRes.ok) {
-          const state: UIStateSnapshot = await stateRes.json()
-          applyFinalState(state)
+        // If state fetch failed (404/403), reset to fresh — don't set bad sessionId
+        if (!stateRes.ok) {
+          setSessionId(null)
+          setStatus('error')
+          setError('Session not found or access denied')
+          return
         }
+
+        // State loaded successfully — now safe to adopt this sessionId
+        const state: UIStateSnapshot = await stateRes.json()
+        applyFinalState(state)
 
         if (msgsRes.ok) {
           const { data } = await msgsRes.json()
@@ -304,6 +310,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
         if (!cancelled) setStatus('idle')
       } catch (err) {
         if (!cancelled) {
+          setSessionId(null)
           setStatus('error')
           setError(err instanceof Error ? err.message : 'Failed to resume session')
         }

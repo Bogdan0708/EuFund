@@ -20,9 +20,20 @@ export async function GET(req: NextRequest) {
     const limitParam = Math.min(MAX_LIMIT, Math.max(1, parseInt(url.searchParams.get('limit') || '', 10) || DEFAULT_LIMIT))
 
     // Parse status filter — validate against known enum values
-    const statuses: SessionStatus[] = statusParam
-      ? statusParam.split(',').filter((s): s is SessionStatus => VALID_STATUSES.includes(s as SessionStatus))
-      : [...RESUMABLE_STATUSES]
+    let statuses: SessionStatus[]
+    if (statusParam) {
+      const requested = statusParam.split(',').filter(Boolean)
+      const invalid = requested.filter(s => !VALID_STATUSES.includes(s as SessionStatus))
+      if (invalid.length > 0) {
+        return NextResponse.json(
+          { error: `Invalid status values: ${invalid.join(', ')}. Valid: ${VALID_STATUSES.join(', ')}` },
+          { status: 400 },
+        )
+      }
+      statuses = requested as SessionStatus[]
+    } else {
+      statuses = [...RESUMABLE_STATUSES]
+    }
 
     // Validate projectId is UUID-like if provided
     if (projectId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)) {
