@@ -34,10 +34,8 @@ describe('GET /api/v1/projects/[id]', () => {
           projects: { findFirst: vi.fn().mockResolvedValue(project) },
           organizations: { findFirst: vi.fn().mockResolvedValue({ name: 'Org One' }) },
         },
-      })),
-      db: {
         select: vi.fn().mockReturnValue(latestDocChain),
-      },
+      })),
     }));
 
     const { GET } = await import('@/app/api/v1/projects/[id]/route');
