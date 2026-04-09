@@ -64,7 +64,7 @@ export default function SectionEditorPage() {
         setReadOnly(data.readOnly);
         versionRef.current = sec.currentVersion;
       } catch {
-        setError('Failed to load section');
+        setError(t('loadError'));
       } finally {
         setLoading(false);
       }
@@ -197,7 +197,7 @@ export default function SectionEditorPage() {
         </div>
 
         {/* Save status */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3" aria-live="polite">
           {saveStatus === 'saving' && (
             <span className="text-xs text-on-surface-variant">{t('saving')}</span>
           )}

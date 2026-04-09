@@ -1266,6 +1266,7 @@
     "autoSaved": "Auto-saved",
     "conflictError": "This section has been modified by someone else. Reload to see the latest version.",
     "saveError": "Save failed. Please try again.",
+    "loadError": "Failed to load section.",
     "readOnlyBanner": "View only. Start an AI session to edit.",
     "noSections": "No sections generated yet. Use the AI Assistant to create your proposal.",
     "sectionCount": "{count} sections",
@@ -1282,6 +1283,7 @@
     "filterAll": "All",
     "filterDraft": "Draft",
     "filterReviewed": "Reviewed",
-    "filterApproved": "Approved"
+    "filterApproved": "Approved",
+    "uploadedFilesHint": "Manually uploaded project documents"
   }
 }
