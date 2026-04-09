@@ -1,7 +1,9 @@
 import { z } from 'zod'
 import { registerTool } from './registry'
 import type { ToolResult, ToolContext } from '../types'
-import { getVectorStore, type SearchResult } from '@/lib/vectors/store'
+import type { CallMatch } from '../services/types'
+import { searchCalls } from '../services/evidence'
+import { buildServiceContextFromToolCtx } from '../services/context-helpers'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'tool-search-calls' })
@@ -14,54 +16,15 @@ const inputSchema = z.object({
 
 type Input = z.infer<typeof inputSchema>
 
-interface CallMatch {
-  callId: string
-  title: string
-  program: string
-  score: number
-  snippet: string
-  sourceUrl?: string
-}
-
-async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<CallMatch[]>> {
+async function execute(input: Input, toolCtx: ToolContext): Promise<ToolResult<CallMatch[]>> {
   const start = Date.now()
 
   try {
-    const store = getVectorStore()
-    const filter: Record<string, unknown> = {}
-    if (input.program) {
-      filter.program = input.program
-    }
-
-    const results: SearchResult[] = await store.search(
-      input.query,
-      input.maxResults * 2,
-      Object.keys(filter).length > 0 ? filter : undefined,
-    )
-
-    // Deduplicate by callId (multiple chunks from same call)
-    const seen = new Set<string>()
-    const matches: CallMatch[] = []
-    for (const r of results) {
-      const callId =
-        (r.metadata.callId as string) ||
-        (r.metadata.sourceId as string) ||
-        r.id
-      if (seen.has(callId)) continue
-      seen.add(callId)
-      matches.push({
-        callId,
-        title:
-          (r.metadata.callTitle as string) ||
-          (r.metadata.title as string) ||
-          callId,
-        program: (r.metadata.program as string) || 'unknown',
-        score: Math.round(r.score * 100) / 100,
-        snippet: r.content.slice(0, 200),
-        sourceUrl: r.metadata.sourceUrl as string | undefined,
-      })
-      if (matches.length >= input.maxResults) break
-    }
+    const ctx = buildServiceContextFromToolCtx(toolCtx)
+    const { matches } = await searchCalls(ctx, input.query, {
+      program: input.program,
+      maxResults: input.maxResults,
+    })
 
     log.info(
       { query: input.query, results: matches.length, latencyMs: Date.now() - start },
