@@ -819,7 +819,10 @@
     "tabs": { "sections": "Sections", "files": "Files", "history": "AI History" },
     "sectionsPlaceholder": "Proposal sections will appear here",
     "filesPlaceholder": "Project files will appear here",
-    "historyPlaceholder": "AI chat history will appear here"
+    "historyPlaceholder": "AI chat history will appear here",
+    "newProject": "New Project",
+    "resumeProject": "Resume Project",
+    "agentDescription": "The AI assistant guides you step by step in preparing your funding application."
   },
   "projectDetail": {
     "breadcrumb": "Projects",
