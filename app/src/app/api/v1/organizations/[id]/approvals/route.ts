@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { projects, users } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireAuth, getPaginationParams } from '@/lib/auth/helpers';
+import { requireOrgMembership, getPaginationParams } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { desc, eq, and, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -18,9 +18,8 @@ type Params = { params: { id: string } };
 
 export async function GET(req: NextRequest, { params }: Params) {
   try {
-    await requireAuth();
     const orgId = params.id;
-
+    await requireOrgMembership(orgId);
 
     const { page, perPage, offset } = getPaginationParams(req);
 
@@ -80,9 +79,8 @@ const approvalSchema = z.object({
 
 export async function POST(req: NextRequest, { params }: Params) {
   try {
-    const user = await requireAuth();
     const orgId = params.id;
-
+    const { user } = await requireOrgMembership(orgId, 'org_admin');
 
     const body = await req.json();
     const parsed = approvalSchema.safeParse(body);

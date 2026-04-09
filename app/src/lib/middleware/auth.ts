@@ -3,8 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sanitizeAIResponseDeep, sanitizeUserInput } from '@/lib/ai/sanitize';
+import { isBillingEnabled } from '@/lib/billing/config';
+import { resolveBillingTrialState, type BillingTier } from '@/lib/billing/trial';
+import { db } from '@/lib/db';
+import { users } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
-export type UserTier = 'free' | 'pro' | 'enterprise';
+export type UserTier = BillingTier;
 export type AIFeature = 'proposal' | 'document' | 'grant' | 'compliance';
 
 const log = logger.child({ component: 'auth' });
@@ -80,11 +85,37 @@ async function guardAIRequest(
     };
   }
 
+  let tier: UserTier = 'pro';
+
+  if (isBillingEnabled()) {
+    const [row] = await db
+      .select({
+        tier: users.tier,
+        subscriptionStatus: users.subscriptionStatus,
+        stripeSubscriptionId: users.stripeSubscriptionId,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .where(eq(users.id, session.user.id))
+      .limit(1);
+
+    if (row) {
+      tier = resolveBillingTrialState({
+        tier: row.tier as BillingTier | null,
+        subscriptionStatus: row.subscriptionStatus,
+        stripeSubscriptionId: row.stripeSubscriptionId,
+        createdAt: row.createdAt,
+      }).effectiveTier;
+    } else {
+      tier = 'free';
+    }
+  }
+
   const user: AuthenticatedUser = {
     id: session.user.id,
     email: session.user.email!,
     name: session.user.name || undefined,
-    tier: 'free' as UserTier,
+    tier,
   };
 
   // Rate limiting disabled — single-user dev mode

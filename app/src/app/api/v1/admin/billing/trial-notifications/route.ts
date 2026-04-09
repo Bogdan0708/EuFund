@@ -3,6 +3,7 @@ import { FondEUError, Errors } from '@/lib/errors';
 import { requirePlatformAdmin } from '@/lib/auth/helpers';
 import { runTrialLifecycleNotifications } from '@/lib/billing/trial-notifications';
 import { logger } from '@/lib/logger';
+import { constantTimeEquals } from '@/lib/security/constant-time';
 
 const log = logger.child({ component: 'admin-billing-trial-notifications-route' });
 export const dynamic = 'force-dynamic';
@@ -12,7 +13,7 @@ function isAuthorized(req: NextRequest): boolean {
   if (expectedToken) {
     const bearer = req.headers.get('authorization');
     const headerToken = req.headers.get('x-trial-notifications-token');
-    if (bearer === `Bearer ${expectedToken}` || headerToken === expectedToken) {
+    if (constantTimeEquals(bearer, `Bearer ${expectedToken}`) || constantTimeEquals(headerToken, expectedToken)) {
       return true;
     }
   }

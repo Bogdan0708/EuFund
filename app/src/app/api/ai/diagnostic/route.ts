@@ -3,6 +3,7 @@
 // Protected: requires platform admin or diagnostic token
 
 import { NextRequest, NextResponse } from 'next/server';
+import { constantTimeEquals } from '@/lib/security/constant-time';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
   const token = req.headers.get('x-diagnostic-token') || req.headers.get('authorization')?.replace('Bearer ', '');
   const expectedToken = process.env.HEALTHCHECK_AUTH_TOKEN || process.env.AI_GATEWAY_API_KEY;
 
-  if (!token || token !== expectedToken) {
+  if (!constantTimeEquals(token, expectedToken)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
