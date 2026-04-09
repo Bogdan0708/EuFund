@@ -8,7 +8,12 @@ describe('Auth config safety', () => {
     expect(source).not.toContain('allowDangerousEmailAccountLinking: true');
   });
 
-  it('signIn callback does not auto-link OAuth accounts by email', () => {
-    expect(source).not.toMatch(/user\.id\s*=\s*existing\.id/);
+  it('signIn callback checks authAccounts linkage before allowing OAuth re-login', () => {
+    // Must verify the linked account exists before setting user.id
+    expect(source).toContain('authAccounts.provider');
+    expect(source).toContain('authAccounts.providerAccountId');
+    expect(source).toContain('authAccounts.userId');
+    // Must reject unlinked OAuth identities claiming same email
+    expect(source).toContain('return false');
   });
 });

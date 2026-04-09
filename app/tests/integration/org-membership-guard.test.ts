@@ -16,6 +16,9 @@ describe('requireOrgMembership()', () => {
     vi.doMock('@/lib/db', () => ({
       db: {
         query: {
+          organizations: {
+            findFirst: vi.fn().mockResolvedValue({ id: MOCK_ORG_ID }),
+          },
           orgMembers: {
             findFirst: vi.fn().mockResolvedValue({
               id: MOCK_MEMBER_ID,
@@ -31,6 +34,7 @@ describe('requireOrgMembership()', () => {
     vi.doMock('@/lib/db/schema', () => ({
       users: { id: 'id' },
       orgMembers: { orgId: 'orgId', userId: 'userId' },
+      organizations: { id: 'id', deletedAt: 'deletedAt' },
     }));
 
     const { requireOrgMembership } = await import('@/lib/auth/helpers');
@@ -52,6 +56,9 @@ describe('requireOrgMembership()', () => {
     vi.doMock('@/lib/db', () => ({
       db: {
         query: {
+          organizations: {
+            findFirst: vi.fn().mockResolvedValue({ id: MOCK_ORG_ID }),
+          },
           orgMembers: {
             findFirst: vi.fn().mockResolvedValue(undefined),
           },
@@ -62,6 +69,7 @@ describe('requireOrgMembership()', () => {
     vi.doMock('@/lib/db/schema', () => ({
       users: { id: 'id' },
       orgMembers: { orgId: 'orgId', userId: 'userId' },
+      organizations: { id: 'id', deletedAt: 'deletedAt' },
     }));
 
     const { requireOrgMembership } = await import('@/lib/auth/helpers');
@@ -82,6 +90,9 @@ describe('requireOrgMembership()', () => {
     vi.doMock('@/lib/db', () => ({
       db: {
         query: {
+          organizations: {
+            findFirst: vi.fn().mockResolvedValue({ id: MOCK_ORG_ID }),
+          },
           orgMembers: {
             findFirst: vi.fn().mockResolvedValue({
               id: MOCK_MEMBER_ID,
@@ -97,6 +108,7 @@ describe('requireOrgMembership()', () => {
     vi.doMock('@/lib/db/schema', () => ({
       users: { id: 'id' },
       orgMembers: { orgId: 'orgId', userId: 'userId' },
+      organizations: { id: 'id', deletedAt: 'deletedAt' },
     }));
 
     const { requireOrgMembership } = await import('@/lib/auth/helpers');
@@ -117,6 +129,9 @@ describe('requireOrgMembership()', () => {
     vi.doMock('@/lib/db', () => ({
       db: {
         query: {
+          organizations: {
+            findFirst: vi.fn().mockResolvedValue({ id: MOCK_ORG_ID }),
+          },
           orgMembers: {
             findFirst: vi.fn().mockResolvedValue({
               id: MOCK_MEMBER_ID,
@@ -132,6 +147,7 @@ describe('requireOrgMembership()', () => {
     vi.doMock('@/lib/db/schema', () => ({
       users: { id: 'id' },
       orgMembers: { orgId: 'orgId', userId: 'userId' },
+      organizations: { id: 'id', deletedAt: 'deletedAt' },
     }));
 
     const { requireOrgMembership } = await import('@/lib/auth/helpers');

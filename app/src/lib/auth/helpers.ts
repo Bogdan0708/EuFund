@@ -2,8 +2,8 @@
 import { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db, withUserRLS } from '@/lib/db';
-import { users, orgMembers } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { users, orgMembers, organizations } from '@/lib/db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 import { Errors } from '@/lib/errors';
 
 export type OrgRole = 'admin' | 'org_admin' | 'project_manager' | 'viewer';
@@ -74,6 +74,16 @@ export async function requireOrgMembership(
   minRole?: OrgRole,
 ): Promise<{ user: SessionUser; membership: { id: string; orgId: string; userId: string; role: OrgRole } }> {
   const user = await requireAuth();
+
+  // Verify org exists and is not soft-deleted
+  const org = await db.query.organizations.findFirst({
+    where: and(eq(organizations.id, orgId), isNull(organizations.deletedAt)),
+    columns: { id: true },
+  });
+
+  if (!org) {
+    throw Errors.forbidden();
+  }
 
   const membership = await db.query.orgMembers.findFirst({
     where: and(eq(orgMembers.orgId, orgId), eq(orgMembers.userId, user.id)),

@@ -7,8 +7,8 @@ import EmailProvider from 'next-auth/providers/email';
 import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { db } from '@/lib/db';
-import { users } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { users, authAccounts } from '@/lib/db/schema';
+import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { FondEUAdapter } from './adapter';
 
@@ -92,14 +92,27 @@ export const {
   },
   callbacks: {
     async signIn({ user, account }) {
-      if (account?.type === 'oauth' && user.email) {
+      if (account?.type === 'oauth' && user.email && account.provider && account.providerAccountId) {
         const existing = await db.query.users.findFirst({
           where: eq(users.email, user.email),
           columns: { id: true },
         });
         if (existing) {
-          // Reject: user must sign in with their original auth method
-          return false;
+          // Check if this OAuth identity is already linked to the existing user
+          const linked = await db.query.authAccounts.findFirst({
+            where: and(
+              eq(authAccounts.provider, account.provider),
+              eq(authAccounts.providerAccountId, account.providerAccountId),
+              eq(authAccounts.userId, existing.id),
+            ),
+          });
+          if (linked) {
+            // Returning user with same provider — allow and set correct id
+            user.id = existing.id;
+          } else {
+            // Different OAuth identity claiming same email — reject
+            return false;
+          }
         }
       }
       return true;
