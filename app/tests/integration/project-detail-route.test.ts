@@ -138,8 +138,10 @@ describe('PUT /api/v1/projects/[id] workflow guards', () => {
       status: 'in_lucru',
     };
 
+    const { Errors } = await import('@/lib/errors');
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'u@test.com' }),
+      requirePlatformAdmin: vi.fn().mockRejectedValue(Errors.forbidden()),
     }));
     vi.doMock('@/lib/db', () => ({
       withUserRLS: vi.fn(async (_userId: string, fn: (tx: any) => Promise<unknown>) => fn({

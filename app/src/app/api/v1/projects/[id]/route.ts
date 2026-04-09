@@ -175,15 +175,20 @@ export async function PUT(req: NextRequest, { params }: Params) {
         });
       }
 
-      if (!user.isPlatformAdmin && nextStatus === 'depus') {
-        throw new FondEUError({
-          code: 'FORBIDDEN',
-          statusCode: 403,
-          messageEn: 'Only platform administrators can mark a project as submitted.',
-          messageRo: 'Doar administratorii platformei pot marca un proiect ca depus.',
-          details: { reason: 'PROJECT_SUBMISSION_REQUIRES_ADMIN' },
-          retryable: false,
-        });
+      if (nextStatus === 'depus') {
+        const { requirePlatformAdmin } = await import('@/lib/auth/helpers');
+        try {
+          await requirePlatformAdmin();
+        } catch {
+          throw new FondEUError({
+            code: 'FORBIDDEN',
+            statusCode: 403,
+            messageEn: 'Only platform administrators can mark a project as submitted.',
+            messageRo: 'Doar administratorii platformei pot marca un proiect ca depus.',
+            details: { reason: 'PROJECT_SUBMISSION_REQUIRES_ADMIN' },
+            retryable: false,
+          });
+        }
       }
     }
 
