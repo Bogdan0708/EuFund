@@ -13,7 +13,7 @@ interface Props {
 export function AgentConversation({ messages, status, error, onSendMessage }: Props) {
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
-  const isStreaming = status === 'streaming'
+  const isBusy = status === 'streaming' || status === 'connecting'
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -21,7 +21,7 @@ export function AgentConversation({ messages, status, error, onSendMessage }: Pr
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || isStreaming) return
+    if (!input.trim() || isBusy) return
     onSendMessage(input.trim())
     setInput('')
   }
@@ -44,7 +44,7 @@ export function AgentConversation({ messages, status, error, onSendMessage }: Pr
             </div>
           </div>
         ))}
-        {isStreaming && (
+        {isBusy && (
           <div className="flex justify-start">
             <div className="bg-gray-100 rounded-2xl px-4 py-2.5 text-sm text-gray-400 animate-pulse">
               Thinking...
@@ -65,13 +65,13 @@ export function AgentConversation({ messages, status, error, onSendMessage }: Pr
             type="text"
             value={input}
             onChange={e => setInput(e.target.value)}
-            placeholder={isStreaming ? 'Waiting for response...' : 'Describe your project or ask a question...'}
-            disabled={isStreaming}
+            placeholder={isBusy ? 'Waiting for response...' : 'Describe your project or ask a question...'}
+            disabled={isBusy}
             className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
           />
           <button
             type="submit"
-            disabled={isStreaming || !input.trim()}
+            disabled={isBusy || !input.trim()}
             className="px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             Send
