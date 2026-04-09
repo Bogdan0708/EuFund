@@ -42,14 +42,14 @@ const log = logger.child({ component: 'orchestrator-message' })
 
 const LOCK_TTL_SECONDS = 300 // 5 minutes
 
-async function acquireLock(sessionId: string): Promise<boolean> {
+async function acquireLock(sessionId: string): Promise<'acquired' | 'busy' | 'unavailable'> {
   try {
     const redis = getRedis()
-    if (!redis) return true // fail-open when Redis is not configured
+    if (!redis) return 'unavailable'
     const result = await redis.set(`orchestrator:lock:${sessionId}`, '1', 'EX', LOCK_TTL_SECONDS, 'NX')
-    return result === 'OK'
+    return result === 'OK' ? 'acquired' : 'busy'
   } catch {
-    return true // fail-open for lock — if Redis is down, allow the request
+    return 'unavailable'
   }
 }
 
@@ -86,7 +86,10 @@ export async function POST(req: NextRequest) {
       const stream = createPubSubStream(session.id)
       const gateway = createGatewayClient('fondeu')
       log.info({ sessionId: session.id, userId: user.id, modelPreference, responseStyle, autoApprove }, 'New session created, processing message')
-      await acquireLock(session.id)
+      const lockStatus = await acquireLock(session.id)
+      if (lockStatus === 'unavailable') {
+        return NextResponse.json({ error: 'Service temporarily unavailable' }, { status: 503 })
+      }
       processMessage(session.id, message, stream, gateway, false, { responseStyle, autoApprove, routingCtx }).then(() => {
         releaseLock(session.id)
       }).catch((err) => {
@@ -112,8 +115,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     }
 
-    const locked = await acquireLock(sessionId)
-    if (!locked) {
+    const lockStatus = await acquireLock(sessionId)
+    if (lockStatus === 'unavailable') {
+      return NextResponse.json({ error: 'Service temporarily unavailable' }, { status: 503 })
+    }
+    if (lockStatus === 'busy') {
       return NextResponse.json({ error: 'Session is already processing a message. Please wait.' }, { status: 409 })
     }
 
