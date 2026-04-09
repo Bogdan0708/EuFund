@@ -819,7 +819,10 @@
     "tabs": { "sections": "Secțiuni", "files": "Fișiere", "history": "Istoric AI" },
     "sectionsPlaceholder": "Secțiunile propunerii vor apărea aici",
     "filesPlaceholder": "Fișierele proiectului vor apărea aici",
-    "historyPlaceholder": "Istoricul conversațiilor AI va apărea aici"
+    "historyPlaceholder": "Istoricul conversațiilor AI va apărea aici",
+    "newProject": "Proiect nou",
+    "resumeProject": "Continuă proiectul",
+    "agentDescription": "Asistentul AI te ghidează pas cu pas în pregătirea cererii de finanțare."
   },
   "projectDetail": {
     "breadcrumb": "Proiecte",

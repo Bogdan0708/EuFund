@@ -1,6 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
+import { useSearchParams } from 'next/navigation'
 import { useAgent } from '@/hooks/useAgent'
 import { AgentConversation } from '@/components/agent/AgentConversation'
 import { AgentWorkspace } from '@/components/agent/AgentWorkspace'
@@ -11,14 +12,16 @@ export default function NewProjectPage({
   params: { locale: string }
 }) {
   const t = useTranslations('projects')
-  const agent = useAgent(locale as 'ro' | 'en')
+  const searchParams = useSearchParams()
+  const initialSessionId = searchParams?.get('session') || undefined
+  const agent = useAgent(locale as 'ro' | 'en', initialSessionId)
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-200 bg-white">
         <h1 className="text-lg font-semibold text-gray-900">
-          {t('newProject')}
+          {t(initialSessionId ? 'resumeProject' : 'newProject')}
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
           {t('agentDescription')}
