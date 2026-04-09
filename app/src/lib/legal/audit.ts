@@ -135,12 +135,13 @@ export function computeEntryHash(fields: {
 export async function logAudit(entry: AuditEntry): Promise<void> {
   try {
     await db.transaction(async (tx) => {
-      // 1. Read latest entry_hash
+      // 1. Read latest entry_hash (FOR UPDATE prevents concurrent chain forks)
       const [latest] = await tx
         .select({ entryHash: auditLog.entryHash })
         .from(auditLog)
         .orderBy(desc(auditLog.createdAt))
-        .limit(1);
+        .limit(1)
+        .for('update');
 
       const previousHash = latest?.entryHash ?? null;
 
