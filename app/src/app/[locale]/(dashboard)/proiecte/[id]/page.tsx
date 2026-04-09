@@ -8,6 +8,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Icon } from '@/components/ui/ds-icon';
 import { pageVariants, pageTransition } from '@/lib/motion';
 import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
+import { relativeTime } from '@/lib/utils';
 import type { SubmissionDocument } from '@/lib/ai/orchestrator/types';
 import { SectionsTabContent } from './components/SectionsTabContent';
 
@@ -41,15 +42,16 @@ interface ProjectFile {
   createdAt: string;
 }
 
-interface WorkflowSession {
+interface V3Session {
   id: string;
-  currentStep: string | null;
-  status: string;
-  projectId: string | null;
   projectTitle: string | null;
-  createdAt: string;
+  currentPhase: string;
+  status: string;
+  sectionCount: number;
   updatedAt: string;
 }
+
+const RESUMABLE_STATUSES = ['active', 'paused', 'error'];
 
 /* ---------- status display map ---------- */
 const STATUS_KEYS: Record<string, { labelKey: string; className: string }> = {
@@ -440,6 +442,7 @@ function DocumentsTabContent({
 export default function ProiectDetailPage() {
   const t = useTranslations('projectDetail');
   const td = useTranslations('projectDossier');
+  const tSession = useTranslations('session');
   const router = useRouter();
   const params = useParams<{ id: string; locale: string }>();
   const id = params.id;
@@ -450,6 +453,7 @@ export default function ProiectDetailPage() {
   const [filesLoading, setFilesLoading] = useState(false);
   const [submissionDocs, setSubmissionDocs] = useState<SubmissionDocument[]>([]);
   const [aiSessionId, setAiSessionId] = useState<string | null>(null);
+  const [projectSessions, setProjectSessions] = useState<V3Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const searchParams = useSearchParams();
@@ -489,11 +493,12 @@ export default function ProiectDetailPage() {
     setFilesLoading(true);
     Promise.all([
       fetch(`/api/v1/projects/${id}/files`).then(r => r.ok ? r.json() : { files: [] }).catch(() => ({ files: [] })),
-      fetch('/api/ai/orchestrator/sessions?limit=20').then(r => r.ok ? r.json() : { sessions: [] }).catch(() => ({ sessions: [] })),
+      csrfFetch(`/api/ai/agent/sessions?projectId=${id}`).then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] })),
     ]).then(([filesData, sessionsData]) => {
       setFiles(filesData.files ?? []);
-      const sessions: WorkflowSession[] = sessionsData.sessions ?? [];
-      setAiSessionId(sessions.find(s => s.projectId === id && s.status === 'active')?.id ?? null);
+      const v3Sessions: V3Session[] = sessionsData.data ?? [];
+      setProjectSessions(v3Sessions);
+      setAiSessionId(v3Sessions.find(s => RESUMABLE_STATUSES.includes(s.status))?.id ?? null);
     }).finally(() => setFilesLoading(false));
   }, [id, project]);
 
@@ -700,6 +705,45 @@ export default function ProiectDetailPage() {
                         </div>
                       </div>
                     </div>
+
+                    {/* V3 AI Sessions */}
+                    {projectSessions.length > 0 && (
+                      <div className="mt-8">
+                        <h3 className="text-sm font-semibold text-on-surface-variant uppercase tracking-wider mb-3">
+                          AI Sessions
+                        </h3>
+                        <div className="space-y-2">
+                          {projectSessions.map(s => (
+                            <div
+                              key={s.id}
+                              className="flex items-center gap-4 p-4 rounded-xl bg-surface-container-low hover:bg-surface-container transition-colors cursor-pointer"
+                              onClick={() => RESUMABLE_STATUSES.includes(s.status)
+                                ? router.push(`/${locale}/proiecte/nou?session=${s.id}`)
+                                : undefined
+                              }
+                            >
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-bold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                    {tSession(`phase.${s.currentPhase}`)}
+                                  </span>
+                                  <span className="text-[10px] font-medium text-on-surface-variant bg-surface-container-high px-2 py-0.5 rounded-full">
+                                    {tSession(`status.${s.status}`)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-3 mt-1 text-xs text-on-surface-variant">
+                                  <span>{tSession('sections', { count: s.sectionCount })}</span>
+                                  <span>{relativeTime(s.updatedAt)}</span>
+                                </div>
+                              </div>
+                              {RESUMABLE_STATUSES.includes(s.status) && (
+                                <span className="text-xs font-semibold text-primary">{tSession('resume')}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Sidebar */}
