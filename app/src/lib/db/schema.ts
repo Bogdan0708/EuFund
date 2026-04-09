@@ -136,6 +136,14 @@ export const authVerificationTokens = pgTable('auth_verification_tokens', {
   compoundKey: uniqueIndex('idx_auth_verification_tokens_compound').on(table.identifier, table.token),
 }));
 
+// ─── Stripe Webhook Events (idempotency) ────────────────────────
+export const stripeWebhookEvents = pgTable('stripe_webhook_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  eventId: varchar('event_id', { length: 255 }).unique().notNull(),
+  eventType: varchar('event_type', { length: 100 }).notNull(),
+  processedAt: timestamp('processed_at').defaultNow().notNull(),
+});
+
 // ─── Email Verification Tokens ──────────────────────────────────
 export const emailVerificationTokens = pgTable('email_verification_tokens', {
   id: uuid('id').primaryKey().defaultRandom(),

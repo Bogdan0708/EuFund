@@ -127,6 +127,13 @@
       "when": 1775952100000,
       "tag": "0017_ai_model_options",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1776038400000,
+      "tag": "0018_stripe_webhook_events",
+      "breakpoints": true
     }
   ]
 }
