@@ -5,14 +5,18 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useTranslations } from 'next-intl';
 import { motion } from 'motion/react';
-import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
+import { csrfFetch } from '@/lib/csrf/client';
 import { relativeTime } from '@/lib/utils';
 import { Icon } from '@/components/ui/ds-icon';
 import { staggerContainer, staggerItem, staggerTransition } from '@/lib/motion';
 
-interface AISession {
+interface V3Session {
   id: string;
-  currentStep: number;
+  projectTitle: string | null;
+  currentPhase: string;
+  status: string;
+  messageSummary: string | null;
+  sectionCount: number;
   updatedAt: string;
 }
 
@@ -35,11 +39,12 @@ function getProgressPercent(status: string): number {
 export default function PanouPage({ params }: { params: { locale: string } }) {
   const { locale } = params;
   const t = useTranslations('dashboard');
+  const tSession = useTranslations('session');
   const router = useRouter();
   const { data: session } = useSession();
 
   const [loading, setLoading] = useState(true);
-  const [activeSession, setActiveSession] = useState<AISession | null>(null);
+  const [activeSession, setActiveSession] = useState<V3Session | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [inputText, setInputText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -56,13 +61,13 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
     async function fetchData() {
       try {
         const [sessRes, projRes] = await Promise.all([
-          fetch('/api/ai/orchestrator/sessions?status=active&limit=1'),
+          csrfFetch('/api/ai/agent/sessions?status=active&limit=1'),
           fetch('/api/v1/projects?perPage=3'),
         ]);
 
         if (sessRes.ok) {
           const sessData = await sessRes.json();
-          const sessions: AISession[] = sessData.sessions ?? sessData.data ?? [];
+          const sessions: V3Session[] = sessData.data ?? [];
           setActiveSession(sessions[0] ?? null);
         }
 
@@ -85,18 +90,7 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
     e.preventDefault();
     if (!inputText.trim() || submitting) return;
     setSubmitting(true);
-    try {
-      await bootstrapCSRFToken();
-      const res = await csrfFetch('/api/ai/orchestrator/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: inputText, locale }),
-      });
-      const { sessionId } = await res.json();
-      router.push(`/${locale}/asistent-ai?session=${sessionId}`);
-    } catch {
-      setSubmitting(false);
-    }
+    router.push(`/${locale}/proiecte/nou`);
   }
 
   // Derive first name from session
@@ -270,26 +264,25 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
               {activeSession && (
                 <div
                   className="bg-white rounded-[1.5rem] p-6 shadow-sm flex items-center gap-6 group cursor-pointer border border-transparent hover:border-outline-variant/20 transition-all"
-                  onClick={() => router.push(`/${locale}/asistent-ai?session=${activeSession.id}`)}
+                  onClick={() => router.push(`/${locale}/proiecte/nou?session=${activeSession.id}`)}
                 >
                   <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-primary/10 flex items-center justify-center text-primary">
                     <Icon name="smart_toy" filled size="lg" />
                   </div>
                   <div className="flex-1">
-                    <h4 className="font-bold text-lg">{t('continueSession')}</h4>
-                    <div className="flex items-center gap-4 mt-1">
+                    <h4 className="font-bold text-lg">
+                      {activeSession.projectTitle ?? tSession('untitledProject')}
+                    </h4>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                        {tSession(`phase.${activeSession.currentPhase}`)}
+                      </span>
+                      <span className="text-xs text-on-surface-variant">
+                        {tSession('sections', { count: activeSession.sectionCount })}
+                      </span>
                       <span className="text-xs text-on-surface-variant flex items-center gap-1">
                         <Icon name="schedule" size="sm" />
                         {relativeTime(activeSession.updatedAt)}
-                      </span>
-                      <div className="w-32 h-1.5 bg-surface-container rounded-full overflow-hidden">
-                        <div
-                          className="bg-primary h-full"
-                          style={{ width: `${Math.round((activeSession.currentStep / 7) * 100)}%` }}
-                        />
-                      </div>
-                      <span className="text-[10px] font-bold text-primary">
-                        {t('complete', { percent: Math.round((activeSession.currentStep / 7) * 100) })}
                       </span>
                     </div>
                   </div>
