@@ -105,4 +105,76 @@ describe('PATCH /api/ai/agent/sessions/[sessionId]/sections/[sectionId]/state', 
 
     expect(res.status).toBe(409)
   })
+
+  it('returns 409 for errored session', async () => {
+    vi.doMock('@/lib/auth/helpers', () => ({
+      requireAuth: vi.fn().mockResolvedValue({ id: USER_ID, email: 'u@test.com' }),
+    }))
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        query: {
+          agentSessions: {
+            findFirst: vi.fn().mockResolvedValue({ id: SESSION_ID, userId: USER_ID, status: 'error' }),
+          },
+        },
+      },
+    }))
+
+    const { PATCH } = await import('@/app/api/ai/agent/sessions/[sessionId]/sections/[sectionId]/state/route')
+    const req = new NextRequest(`http://localhost/api/ai/agent/sessions/${SESSION_ID}/sections/${SECTION_ID}/state`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'accepted' }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const res = await PATCH(req, { params: { sessionId: SESSION_ID, sectionId: SECTION_ID } })
+
+    expect(res.status).toBe(409)
+  })
+
+  it('returns 400 for malformed JSON body', async () => {
+    vi.doMock('@/lib/auth/helpers', () => ({
+      requireAuth: vi.fn().mockResolvedValue({ id: USER_ID, email: 'u@test.com' }),
+    }))
+    vi.doMock('@/lib/db', () => ({ db: {} }))
+
+    const { PATCH } = await import('@/app/api/ai/agent/sessions/[sessionId]/sections/[sectionId]/state/route')
+    const req = new NextRequest(`http://localhost/api/ai/agent/sessions/${SESSION_ID}/sections/${SECTION_ID}/state`, {
+      method: 'PATCH',
+      body: 'not json',
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const res = await PATCH(req, { params: { sessionId: SESSION_ID, sectionId: SECTION_ID } })
+
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.error).toBe('Invalid JSON')
+  })
+
+  it('rejects system-managed state failed → draft', async () => {
+    vi.doMock('@/lib/auth/helpers', () => ({
+      requireAuth: vi.fn().mockResolvedValue({ id: USER_ID, email: 'u@test.com' }),
+    }))
+    vi.doMock('@/lib/db', () => ({
+      db: {
+        query: {
+          agentSessions: {
+            findFirst: vi.fn().mockResolvedValue({ id: SESSION_ID, userId: USER_ID, status: 'active' }),
+          },
+          agentSections: {
+            findFirst: vi.fn().mockResolvedValue({ id: SECTION_ID, sessionId: SESSION_ID, status: 'failed' }),
+          },
+        },
+      },
+    }))
+
+    const { PATCH } = await import('@/app/api/ai/agent/sessions/[sessionId]/sections/[sectionId]/state/route')
+    const req = new NextRequest(`http://localhost/api/ai/agent/sessions/${SESSION_ID}/sections/${SECTION_ID}/state`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'draft' }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const res = await PATCH(req, { params: { sessionId: SESSION_ID, sectionId: SECTION_ID } })
+
+    expect(res.status).toBe(400)
+  })
 })
