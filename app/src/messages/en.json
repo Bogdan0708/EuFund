@@ -824,6 +824,28 @@
     "resumeProject": "Resume Project",
     "agentDescription": "The AI assistant guides you step by step in preparing your funding application."
   },
+  "session": {
+    "phase": {
+      "discovery": "Discovery",
+      "research": "Research",
+      "structuring": "Structuring",
+      "drafting": "Drafting",
+      "review": "Review"
+    },
+    "status": {
+      "active": "Active",
+      "paused": "Paused",
+      "error": "Error",
+      "completed": "Completed",
+      "abandoned": "Abandoned"
+    },
+    "resume": "Resume session",
+    "view": "View details",
+    "noActiveSession": "No active session",
+    "noSessions": "No AI sessions yet",
+    "sections": "{count} sections",
+    "untitledProject": "Untitled project"
+  },
   "projectDetail": {
     "breadcrumb": "Projects",
     "statusInProgress": "In Progress",
