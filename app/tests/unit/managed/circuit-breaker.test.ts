@@ -43,9 +43,7 @@ describe('managedCircuitBreaker', () => {
     expect(managedCircuitBreaker.isOpen()).toBe(false)
   })
 
-  it('accepts all DegradedReason variants', () => {
-    expect(() => recordManagedFailure('circuit_open')).not.toThrow()
-    __resetBreakerForTests()
+  it('accepts all persistable DegradedReason variants', () => {
     expect(() => recordManagedFailure('anthropic_unavailable')).not.toThrow()
     __resetBreakerForTests()
     expect(() => recordManagedFailure('anthropic_timeout')).not.toThrow()
