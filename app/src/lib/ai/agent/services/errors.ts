@@ -57,11 +57,13 @@ export class ValidationError extends ServiceError {
   readonly code = 'VALIDATION' as const
   readonly httpStatus = 400 as const
   readonly field: string
+  readonly policyCode?: string
 
-  constructor(field: string, message: string) {
+  constructor(field: string, message: string, policyCode?: string) {
     super(message)
     this.name = this.constructor.name
     this.field = field
+    this.policyCode = policyCode
   }
 }
 
