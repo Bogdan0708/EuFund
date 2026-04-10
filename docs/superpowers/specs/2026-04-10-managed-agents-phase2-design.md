@@ -361,20 +361,26 @@ Existing rows get `runtime_mode='v3'` via the `DEFAULT` clause. `provider` and `
 
 ### 5.4 Feature flag seed
 
-Inserted via a one-off admin SQL or migration seed:
+Inserted via a one-off admin SQL or migration seed. Note: the `feature_flags` table stores targeting as a JSONB column, and `isFeatureEnabled()` fails closed when `enabled=false`:
 
 ```sql
-INSERT INTO feature_flags (key, enabled, rollout_strategy, target_user_ids, description)
+INSERT INTO feature_flags (key, enabled, targeting, description)
 VALUES (
   'managed_agent_enabled',
   false,
-  'user_allowlist',
-  '[]'::jsonb,
+  '{}'::jsonb,
   'Route POST /api/ai/agent to the managed runtime for allowlisted users. Phase 2 pilot — discovery/research only, no writes.'
 );
 ```
 
-Default `enabled=false` and empty allowlist → no user gets managed until their ID is explicitly added.
+Default `enabled=false` means the flag returns `false` for all users. To allowlist a user, update to `enabled=true` and set `targeting={"userIds": ["<user-id>"]}`:
+
+```sql
+UPDATE feature_flags
+SET enabled = true,
+    targeting = '{"userIds": ["<dev-user-id>"]}'::jsonb
+WHERE key = 'managed_agent_enabled';
+```
 
 ### 5.5 No changes to
 
@@ -664,7 +670,8 @@ Real Anthropic API calls gated behind `RUN_MANAGED_E2E=1` env var. Not in CI. Ru
 5. Add ANTHROPIC_API_KEY to Cloud Run env for the managed runtime.
 6. Flip flag ON for exactly one test user (developer's own account):
      UPDATE feature_flags
-     SET target_user_ids = '["<dev-user-id>"]'::jsonb
+     SET enabled = true,
+         targeting = '{"userIds": ["<dev-user-id>"]}'::jsonb
      WHERE key = 'managed_agent_enabled';
 7. Test a discovery turn. Verify:
      - SSE events arrive in correct order
@@ -683,7 +690,7 @@ Real Anthropic API calls gated behind `RUN_MANAGED_E2E=1` env var. Not in CI. Ru
 
 Three rollback levels, in order of preference:
 
-1. **Soft rollback (preferred):** Flip feature flag `enabled=false` or clear `target_user_ids`. All new sessions route to V3 immediately. Existing managed sessions can be resumed under V3 (resume flow respects current flag state, not the session's original runtime mode). Zero code deploy needed.
+1. **Soft rollback (preferred):** Flip feature flag `enabled=false` or clear `targeting.userIds`. All new sessions route to V3 immediately. Existing managed sessions can be resumed under V3 (resume flow respects current flag state, not the session's original runtime mode). Zero code deploy needed.
 2. **Hard rollback:** Revert the merge commit. DB migrations stay in place — no destructive changes — but the code path reading the new columns is gone. Safe because the new columns and table are additive only.
 3. **DB rollback (not recommended):** Drop `application_agent_sessions` and remove columns from `agent_messages`. Only needed if migrations broke something at the DB level. Manual SQL, not a Drizzle migration.
 
