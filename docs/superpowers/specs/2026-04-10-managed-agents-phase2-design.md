@@ -93,7 +93,7 @@ Three failure regions, mapped to three response patterns:
 | Region | Boundary | Response |
 |---|---|---|
 | **Pre-construction** | Before `new ReadableStream(...)` is called | Same-request fallback to V3. User experience is seamless. |
-| **Post-construction, pre-first-byte** | Inside `start(controller)` but before any `controller.enqueue` call | Emit one `error` SSE event with `retryable: true`. Client retries; next request hits V3 (breaker is now open or the re-evaluation sees the same state). |
+| **Post-construction, pre-first-byte** | Inside `start(controller)` but before any `controller.enqueue` call | Emit one `error` SSE event with `retryable: true`. Client retries; the next request is re-evaluated by the routing policy and may hit V3 if the breaker has tripped, or may attempt managed again if the single failure did not cross the threshold. |
 | **Mid-stream** | After any `controller.enqueue` call (aka "post-first-byte") | Emit one `error` SSE event with `retryable: true`. Mid-stream runtime switching is impossible because the frontend has already committed to the current runtime's output. |
 
 **Implementation hook:** the runtime tracks a `firstByteFlushed: boolean` variable set to `true` on the first `emit()` call. This variable disambiguates the second and third regions for logging and ops visibility, even though the user-facing behavior is identical.
@@ -238,9 +238,9 @@ emit done
 ```
 1. ReadableStream constructed.
 2. Inside start(controller), runManagedTurn begins.
-3. First await on stream iterator throws (e.g., Anthropic 401, 5xx, connection refused).
+3. First await on stream iterator throws (e.g., Anthropic 401, 429, 5xx, connection refused).
 4. firstByteFlushed is still false.
-5. recordManagedFailure(classifyError(err)), markDegraded.
+5. recordManagedFailure with the matching DegradedReason; markDegraded.
 6. controller.enqueue(error SSE event with retryable=true).
 7. controller.close().
 8. Client receives one error event; retries.
@@ -257,7 +257,7 @@ emit done
 5. controller.enqueue(error SSE event).
 6. controller.close().
 7. Frontend error handler shows toast, offers retry.
-8. User clicks retry → new request → breaker likely open → V3.
+8. User clicks retry → new request → routing policy re-evaluated; hits V3 if the breaker has tripped, otherwise retries managed.
 ```
 
 ### 4.6 Resume flow
@@ -279,8 +279,8 @@ emit done
 ```
 1. Client disconnects or aborts (request.signal.aborted).
 2. runManagedTurn detects abort → calls stream.abort().
-3. Any in-flight tool execution finishes (we do not kill service calls mid-transaction — risk of partial DB writes for writes, though Phase 2 is read-only).
-4. Partial assistant message (if any) is NOT persisted to agent_messages.
+3. Any in-flight tool execution is allowed to finish (Phase 2 tools are read-only, so no DB writes are at risk).
+4. Partial assistant output (if any) is NOT persisted to agent_messages.
 5. application_agent_sessions.status stays 'active'.
 6. Next resume picks up from the last persisted assistant message.
 ```
@@ -337,7 +337,7 @@ CREATE INDEX idx_app_agent_sessions_user_status
 ```typescript
 export type DegradedReason =
   | 'circuit_open'
-  | 'anthropic_5xx'
+  | 'anthropic_unavailable'  // 401, 429, 5xx
   | 'anthropic_timeout'
   | 'stream_disconnect'
   | 'auth_setup_failure'
@@ -440,7 +440,7 @@ export async function executeManagedTool(
    - `NotFoundError` → `isError: true`, content `"NOT_FOUND: <message>"`
    - `AuthorizationError` → `isError: true`, content `"AUTHORIZATION: Access denied to requested session"` (avoids existence-leak phrasing like "Session X not owned by you")
    - `ValidationError` → `isError: true`, content `"VALIDATION: <message>"`
-   - `ConcurrencyError` → `isError: true`, content `"CONCURRENCY: <message>"`
+   - `ConcurrencyError` → `isError: true`, content `"CONCURRENCY: <message>"` — retained for shared service-layer compatibility; Phase 2 exposes no write tools so this mapping is dormant
    - `ExternalDependencyError` → `isError: true`, content `"EXTERNAL_DEPENDENCY: <service> unavailable"`
    - Any other `Error` → `isError: true`, content `"Internal tool error"` (safe — no stack trace leaked to model).
 5. **Sequential execution.** If a single assistant message contains multiple `tool_use` blocks, Phase 2 executes them sequentially in emitted order and returns tool results in the same order.
@@ -521,7 +521,7 @@ Some `AgentEvent` types need service-layer data or cross-stream state and are em
 |---|---|---|
 | `tool_result` | runtime | After `executeManagedTool` returns |
 | `state_update` | runtime | After tool result changes session state (re-reads from DB, emits patch) |
-| `phase_changed` | runtime | If a tool result caused a phase transition (Phase 2 read-only: effectively never fires; wired for Phase 3) |
+| `phase_changed` | runtime | If a tool result caused a phase transition. Phase 2 does not expect to fire this event — the runtime is plumbed for it so Phase 3 can enable phase advancement without touching the translator or runtime loop. |
 | `done` | runtime | At end of entire turn (after all tool iterations complete) |
 | `error` | runtime | Pre-stream fallback, mid-stream Anthropic failure, iteration cap reached (iteration cap emits a `text_delta` + `done`, not `error`) |
 
@@ -534,7 +534,7 @@ Some `AgentEvent` types need service-layer data or cross-stream state and are em
 | Class | Source | Where | Runtime response |
 |---|---|---|---|
 | **Setup error** | `getAnthropicClient()` throws | Before `ReadableStream` construction | Pre-construction fallback to V3. `recordManagedFailure('auth_setup_failure')`. Log WARN. |
-| **Initial Anthropic rejection** | 401/429/5xx on first stream call | Post-construction, pre-first-byte | Emit `error` SSE event with `retryable: true`. `recordManagedFailure('anthropic_5xx'` or `'anthropic_timeout')`. Log WARN. |
+| **Initial Anthropic rejection** | 401/429/5xx on first stream call | Post-construction, pre-first-byte | Emit `error` SSE event with `retryable: true`. `recordManagedFailure('anthropic_unavailable'` or `'anthropic_timeout')`. Log WARN. |
 | **Mid-stream disconnect** | TCP drop or `overloaded_error` block after first byte | Mid-stream | Emit `error` SSE event with `retryable: true`. `recordManagedFailure('stream_disconnect')`. Do NOT persist partial assistant message. Log ERROR. |
 | **Tool execution failure** | Service layer throws `ServiceError` | Inside tool loop | Map to `isError: true` tool result, inject back into conversation, model continues turn. Not a runtime-level error. Log WARN. |
 | **Iteration cap hit** | Model called tools beyond 8 iterations | At cap | Emit `text_delta` ("reached tool iteration limit; please clarify your request") + `done`. Controlled stop. Log WARN (not ERROR — this is a controlled stop, not infrastructure failure). |
@@ -555,7 +555,7 @@ export const managedCircuitBreaker = new CircuitBreaker({
 
 export type DegradedReason =
   | 'circuit_open'
-  | 'anthropic_5xx'
+  | 'anthropic_unavailable'  // 401, 429, 5xx
   | 'anthropic_timeout'
   | 'stream_disconnect'
   | 'auth_setup_failure'
@@ -661,7 +661,7 @@ Real Anthropic API calls gated behind `RUN_MANAGED_E2E=1` env var. Not in CI. Ru
      npm run db:migrate
 3. Verify: `npm run build && npm run test` passes.
 4. Verify production DB: application_agent_sessions table exists, agent_messages has new columns.
-5. Add ANTHROPIC_API_KEY to Cloud Run env (if not already set for V3).
+5. Add ANTHROPIC_API_KEY to Cloud Run env for the managed runtime.
 6. Flip flag ON for exactly one test user (developer's own account):
      UPDATE feature_flags
      SET target_user_ids = '["<dev-user-id>"]'::jsonb
