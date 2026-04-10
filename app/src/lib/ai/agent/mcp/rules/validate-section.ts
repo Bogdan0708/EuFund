@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { validateSection } from '../../services/sections'
 import type { ServiceContext } from '../../services/types'
+import { withMcpErrorMapping } from '../tool-error'
 
 const inputShape = {
   sessionId: z.string().uuid(),
@@ -18,11 +19,11 @@ export function registerValidateSection(server: McpServer, ctx: ServiceContext):
     'validate_section',
     'Validate a generated section for quality issues using deterministic rules — checks for empty content, insufficient length, placeholder text, and repeated sentences. Returns a list of issues with severity, a quality score (0-100), and a recommended section status. No LLM calls.',
     inputShape,
-    async (args) => {
+    withMcpErrorMapping(async (args) => {
       const result = await validateSection(ctx, args.sessionId, args.sectionKey)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }
-    },
+    }),
   )
 }

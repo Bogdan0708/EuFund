@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { listUploadedDocuments } from '../../services/projects'
 import type { ServiceContext } from '../../services/types'
+import { withMcpErrorMapping } from '../tool-error'
 
 const inputShape = {
   projectId: z.string().uuid(),
@@ -17,11 +18,11 @@ export function registerListUploadedDocuments(server: McpServer, ctx: ServiceCon
     'list_uploaded_documents',
     'List documents uploaded for a project. Returns file metadata including name, MIME type, size, and upload time. Currently returns an empty array while the document storage integration is pending.',
     inputShape,
-    async (args) => {
+    withMcpErrorMapping(async (args) => {
       const result = await listUploadedDocuments(ctx, args.projectId)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }
-    },
+    }),
   )
 }

@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { checkMissingAnnexes } from '../../services/application'
 import type { ServiceContext } from '../../services/types'
+import { withMcpErrorMapping } from '../tool-error'
 
 const inputShape = {
   sessionId: z.string().uuid(),
@@ -17,11 +18,11 @@ export function registerCheckMissingAnnexes(server: McpServer, ctx: ServiceConte
     'check_missing_annexes',
     'Check which mandatory annexes from the call blueprint are referenced in section content and which are missing. Returns required, uploaded (mentioned), and missing annex lists. Sessions with no blueprint return empty lists. No LLM calls.',
     inputShape,
-    async (args) => {
+    withMcpErrorMapping(async (args) => {
       const result = await checkMissingAnnexes(ctx, args.sessionId)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }
-    },
+    }),
   )
 }

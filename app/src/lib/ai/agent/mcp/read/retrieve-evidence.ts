@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { retrieveEvidence } from '../../services/evidence'
 import type { ServiceContext } from '../../services/types'
+import { withMcpErrorMapping } from '../tool-error'
 
 const inputShape = {
   callId: z.string().min(1),
@@ -19,7 +20,7 @@ export function registerRetrieveEvidence(server: McpServer, ctx: ServiceContext)
     'retrieve_evidence',
     'Retrieve evidence chunks for a specific EU funding call from the knowledge base. Returns ranked chunks ordered by document type priority (ghid > anexa > cerere > legislation) and semantic score.',
     inputShape,
-    async (args) => {
+    withMcpErrorMapping(async (args) => {
       const result = await retrieveEvidence(ctx, args.callId, {
         query: args.query,
         maxChunks: args.maxChunks,
@@ -27,6 +28,6 @@ export function registerRetrieveEvidence(server: McpServer, ctx: ServiceContext)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }
-    },
+    }),
   )
 }

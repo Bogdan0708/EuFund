@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { searchCalls } from '../../services/evidence'
 import type { ServiceContext } from '../../services/types'
+import { withMcpErrorMapping } from '../tool-error'
 
 const inputShape = {
   query: z.string().min(1),
@@ -19,7 +20,7 @@ export function registerSearchCalls(server: McpServer, ctx: ServiceContext): voi
     'search_calls',
     'Search EU funding calls by semantic similarity. Returns ranked matches with call ID, title, program, relevance score, and a short snippet.',
     inputShape,
-    async (args) => {
+    withMcpErrorMapping(async (args) => {
       const result = await searchCalls(ctx, args.query, {
         program: args.program,
         maxResults: args.maxResults,
@@ -27,6 +28,6 @@ export function registerSearchCalls(server: McpServer, ctx: ServiceContext): voi
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }
-    },
+    }),
   )
 }
