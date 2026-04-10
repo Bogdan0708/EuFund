@@ -145,13 +145,36 @@ Authoritative table for every mutation in Phase 3. Shipped as:
 | # | Mutation | Ownership | stateVersion | Session preconditions | Section preconditions | Audit action | Idempotent mode |
 |---|---|---|---|---|---|---|---|
 | 1 | `setSelectedCall(callId)` | required | required | `status=active`, `outlineFrozen=false` | — | `session.call_selected` | No — cannot reselect once outline is frozen |
-| 2 | `freezeOutline()` | required | required | `status=active`, `selectedCallId != null`, `eligibility != null && eligibility.eligible === true`, `outlineFrozen=false` | — | `session.outline_frozen` | Yes — already-frozen returns current state (no-op, no stateVersion bump, no audit) |
-| 3 | `saveSectionDraft(sectionKey, content)` | required | required | `outlineFrozen=true`, `eligibility.eligible=true`, `status=active` | any (creates if missing) | `project.version_save` (legacy, preserved for hash chain continuity) | No — each call creates a new version entry |
+| 2 | `freezeOutline()` | required | required | `status=active`, `selectedCallId != null`, `isEligibilityPassed(eligibility)` (see §4.1), `outlineFrozen=false` | — | `session.outline_frozen` | Yes — already-frozen returns current state (no-op, no stateVersion bump, no audit) |
+| 3 | `saveSectionDraft(sectionKey, content)` | required | required | `outlineFrozen=true`, `isEligibilityPassed(eligibility)`, `status=active` | any (creates if missing) | `project.version_save` (legacy, preserved for hash chain continuity) | No — each call creates a new version entry |
 | 4 | `approveSection(sectionKey)` *(MCP name: `approve_revision`)* | required | required | `outlineFrozen=true` | section must exist; status ∈ `{draft, needs_review}` | `section.state_change` (legacy) | Yes — already-accepted no-op |
-| 5 | `rollbackSection(sectionKey, targetVersion)` | required | required | `outlineFrozen=true` | section must exist; target version must exist | `section.rolled_back` | No — creates a new version entry with `kind='rollback'` and pointer to `targetVersion` |
+| 5 | `rollbackSection(sectionKey, targetVersion)` | required | required | `outlineFrozen=true` | section must exist; target version must exist | `section.rolled_back` | No — creates a new version entry with `kind='rollback'` (new enum value, see §5.5) and pointer to `targetVersion` |
 | 6 | `markSectionStale(sectionKey)` | required | required | `outlineFrozen=true` | section must exist; status ∈ `{draft, needs_review, accepted}` | `section.marked_stale` | Yes — already-stale no-op. When demoting from `accepted`, sets `status=stale` and clears `acceptedContent`; prior accepted snapshot is preserved only via version history |
-| 7 | `rejectSection(sectionKey, reason)` | required | required | `outlineFrozen=true` | section must exist; status ∈ `{draft, needs_review, rejected}` | `section.rejected` | Partial — same `sectionKey` + same `reason` = no-op; same `sectionKey` + different `reason` throws `POLICY_SECTION_WRONG_STATE` (rejection is not a metadata-edit path) |
+| 7 | `rejectSection(sectionKey, reason)` | required | required | `outlineFrozen=true` | section must exist; status ∈ `{draft, needs_review, rejected}` (`'rejected'` is a new enum value, see §5.5) | `section.rejected` | Partial — same `sectionKey` + same `reason` = no-op; same `sectionKey` + different `reason` throws `POLICY_SECTION_WRONG_STATE` (rejection is not a metadata-edit path) |
 | 8 | `setApplicationStatus(status)` *(Phase 3 values: `'paused'`, `'completed'`)* | required | required | For `'completed'`: `validate_application` must pass (all required sections accepted, all mandatory annexes uploaded). For `'paused'`: `status=active`. | — | `session.status_change` | Yes — same-status no-op |
+
+### 4.1 Eligibility derivation
+
+The existing `EligibilityDecision` type in `app/src/lib/ai/agent/services/types.ts` has `results`, `score`, `passCount`, `failCount`, `warningCount` — it does **not** carry an `eligible: boolean` field, and no data migration is proposed for Phase 3. Instead, eligibility is derived from the existing fields via a single helper:
+
+```typescript
+// app/src/lib/ai/agent/policy/eligibility.ts  (NEW)
+import type { EligibilityDecision } from '../services/types'
+
+export function isEligibilityPassed(
+  eligibility: EligibilityDecision | null | undefined,
+): boolean {
+  return eligibility != null && eligibility.failCount === 0
+}
+```
+
+**Definition**: eligibility is "passed" iff it has been run and no hard fail criteria were produced. Warnings are not blockers — they're advisory. This matches V3's existing semantic (V3 never rejects a draft because of a warning; only because of a hard fail).
+
+`assertPolicy` calls this helper when a rule has `requiresEligibility: 'passed'`. The rule shape stays declarative; only the check predicate is centralized.
+
+**Why derived, not stored**: adding an `eligible: boolean` column would require a data migration of stored sessions and a coordinated rollout to any caller writing the field. Derivation gives us one source of definitional truth with zero migration risk.
+
+**Tests**: `tests/unit/policy/eligibility.test.ts` — `isEligibilityPassed(null) === false`, `isEligibilityPassed({failCount: 0, ...}) === true`, `isEligibilityPassed({failCount: 1, ...}) === false`, `isEligibilityPassed({failCount: 0, warningCount: 3, ...}) === true`.
 
 ### Policy error codes (stable vocabulary)
 
@@ -160,7 +183,7 @@ Authoritative table for every mutation in Phase 3. Shipped as:
 | `POLICY_NO_CALL_SELECTED` | freezeOutline | No `selectedCallId` set |
 | `POLICY_OUTLINE_ALREADY_FROZEN` | setSelectedCall, freezeOutline | Attempted mutation on a frozen outline |
 | `POLICY_OUTLINE_NOT_FROZEN` | saveSectionDraft, approveSection, rollbackSection, markSectionStale, rejectSection | Outline must be frozen first |
-| `POLICY_ELIGIBILITY_NOT_PASSED` | freezeOutline, saveSectionDraft | `eligibility == null` or `eligibility.eligible !== true` |
+| `POLICY_ELIGIBILITY_NOT_PASSED` | freezeOutline, saveSectionDraft | `!isEligibilityPassed(eligibility)` — either eligibility was never run (`null`) or had at least one hard fail (`failCount > 0`) |
 | `POLICY_SECTION_WRONG_STATE` | approveSection, rollbackSection, markSectionStale, rejectSection | Section is not in an allowed state for this mutation (includes current status + allowed list in message) |
 | `POLICY_VALIDATION_NOT_PASSED` | setApplicationStatus('completed') | `validate_application` failed |
 | `CONCURRENCY` | all services | `expectedStateVersion !== session.stateVersion` |
@@ -221,9 +244,11 @@ Reused legacy audit strings (`project.version_save`, `section.state_change`) are
 
 > The following audit actions intentionally reuse legacy V3 strings to preserve hash-chain continuity across the V3 → managed migration. Do not rename them without a coordinated audit migration.
 
-**New file: `app/src/lib/ai/agent/policy/enforce.ts`** — the `assertPolicy` helper used by services:
+**New file: `app/src/lib/ai/agent/policy/enforce.ts`** — the `assertPolicy` helper used by services. It calls `isEligibilityPassed` from `./eligibility` (see §4.1) — eligibility is derived from `failCount === 0`, not from a stored `eligible` field.
 
 ```typescript
+import { isEligibilityPassed } from './eligibility'
+
 export function assertPolicy(
   rule: PolicyRule,
   session: AgentSession,
@@ -242,10 +267,8 @@ export function assertPolicy(
   if (rule.requiresOutlineFrozen && !session.outlineFrozen) {
     throw new ValidationError('outlineFrozen', 'Outline must be frozen first', rule.errorCodes.outlineNotFrozen)
   }
-  if (rule.requiresEligibility === 'passed') {
-    if (!session.eligibility || session.eligibility.eligible !== true) {
-      throw new ValidationError('eligibility', 'Eligibility must have passed', rule.errorCodes.eligibility)
-    }
+  if (rule.requiresEligibility === 'passed' && !isEligibilityPassed(session.eligibility)) {
+    throw new ValidationError('eligibility', 'Eligibility must have passed (no hard fail criteria)', rule.errorCodes.eligibility)
   }
   if (rule.allowedSectionStates && opts?.sectionState && !rule.allowedSectionStates.includes(opts.sectionState)) {
     throw new ValidationError('sectionState',
@@ -379,19 +402,41 @@ export async function rejectSection(
 
 ### 5.5 Schema additions
 
-One migration: `NNNN_agent_sections_phase3_columns.sql`.
+Audit of current enum state (`app/src/lib/db/schema.ts:903-933`):
+
+- `agentSectionStatusEnum` currently allows: `pending | generating | draft | accepted | stale | invalidated | needs_review | failed`. **Note: `'stale'` is already present.**
+- `agentSectionVersionKindEnum` currently allows: `draft | accepted | regenerated | system_rewrite`.
+
+Phase 3 requires **two new enum values** and one new column. Two migrations (one file each keeps the rollback story clean):
+
+**Migration 1: `NNNN_agent_sections_phase3_columns.sql`**
 
 1. `agent_sections.rejection_reason` — `text`, nullable (new column for `rejectSection`)
-2. `agent_sections.status` enum — add `'stale'` value
+2. `agent_section_status` enum — add `'rejected'` value (required by `rejectSection`, which sets `status='rejected'`)
 
-**Propagation of `'stale'` across the codebase** (all in the same PR):
-- DB enum (migration)
-- Drizzle `sectionStatusEnum` in `schema.ts`
+**Migration 2: `NNNN_agent_section_version_kind_rollback.sql`**
+
+3. `agent_section_version_kind` enum — add `'rollback'` value (required by `rollbackSection`, which creates a new version entry with `kind='rollback'`)
+
+**Propagation across the codebase** — these changes must land together in the 3a PR to prevent any "unknown status" / "unknown kind" drift:
+
+For `'rejected'`:
+- DB enum migration
+- Drizzle `agentSectionStatusEnum` in `schema.ts`
 - `SectionStatus` TypeScript union in `services/types.ts` and `lib/ai/agent/types.ts`
 - Any Zod schemas referencing `SectionStatus`
 - Any `SectionStatus → UIStateSnapshot` mapper code
 
-`'stale'` must not become an "unknown status" in any existing code path. A sync test under `tests/unit/schema/section-status-enum.test.ts` asserts the enum values match the TS union match the Zod schema.
+For `'rollback'`:
+- DB enum migration
+- Drizzle `agentSectionVersionKindEnum` in `schema.ts`
+- Any TypeScript union for version kind in `services/types.ts`
+- Any Zod schemas referencing the version kind
+- `rollbackSection` service stores the pointer to `targetVersion` in a new structured column or in existing metadata — see the service signature in §5.4 for the canonical approach
+
+Neither `'rejected'` nor `'rollback'` may become an "unknown value" in any existing code path. A sync test under `tests/unit/schema/section-enums.test.ts` asserts the enum values match the TS unions match the Zod schemas, for both enums.
+
+**Note on rollback target pointer**: the existing `agent_section_versions` row shape has `sectionId, versionNumber, kind, content, modelUsed, sourcesUsed, createdAt`. The pointer to `targetVersion` for rollback rows is stored in a new nullable column `rolled_back_from_version` (integer, nullable, only populated when `kind='rollback'`). This is a third migration item inside Migration 2 — kept in the same file to keep the rollback-version semantics atomic.
 
 ### 5.6 V3 audit
 
@@ -666,7 +711,231 @@ export interface ServiceContext {
 
 **Services do not read `allowWrites`.** It's a managed-runtime rollout control, not a domain invariant. Enforcement happens in the executor and in the action bridge (§7).
 
-### 6.5 Prompt update
+### 6.5 History normalization (prerequisite for enabling writes)
+
+**Problem.** The current Phase 2 managed history loader at `app/src/lib/ai/agent/managed/history.ts:21-48` drops `role='tool'` rows entirely and stringifies object-shape assistant content into plain text. V3 persists tool calls and tool results in exactly that dropped/mangled shape (`app/src/lib/ai/agent/runtime.ts:253-266`):
+
+```typescript
+// V3 persistence shape
+await appendMessage(session.id, {
+  role: 'assistant',
+  messageType: 'tool_call',
+  content: { name: toolCall.name, arguments: toolCall.arguments },
+  toolName, toolCallId,
+})
+await appendMessage(session.id, {
+  role: 'tool',
+  messageType: 'tool_result',
+  content: { success, data, error },
+  toolName, toolCallId,
+})
+```
+
+After the current managed loader runs against a V3-era history:
+- The `role='assistant' + tool_call` row becomes a text-only assistant message with JSON-stringified content (`'{"name":"search_calls","arguments":{...}}'`). Claude sees this as if the assistant once emitted JSON-looking text rather than a structured tool call.
+- The `role='tool' + tool_result` row is **silently dropped** — Claude never sees the result.
+
+This is a pre-existing Phase 2 bug. In Phase 2 (reads only, no writes) the damage was limited: the agent might look confused about prior turns, but it could recover by re-fetching state. **In Phase 3 the damage becomes material.** A session that touched V3 and then transitions to managed could:
+- Replay a mangled write call into Claude's context
+- Cause Claude to retry a write the user already confirmed once
+- Produce duplicate drafts, double-audits, or confusing "I already did this" loops
+- Hit the managed runtime's iteration cap from the replay pathology
+
+**Enabling writes in 3b without fixing this is not safe.** History normalization is therefore a **blocking prerequisite for the `managed_agent_writes_enabled` flag being flipped on.** It lands in the same PR as 3b, in its own subsection so it can be reviewed independently.
+
+**Scope of the fix.** `loadManagedHistory` becomes a normalization pipeline that reconstructs Anthropic-shape `MessageParam[]` from any mix of V3-era and managed-era rows. The loader's contract becomes:
+
+> Given an ordered list of `agent_messages` rows for a session, return a `MessageParam[]` that faithfully represents the conversation in the Anthropic content-block format, preserving all assistant tool calls and their matching tool results.
+
+**Row classification.** The loader inspects each row and classifies it:
+
+| Source row shape | Target MessageParam shape |
+|---|---|
+| `role='user', messageType='text', content='string'` | `{role: 'user', content: string}` |
+| `role='user', messageType='text', content=[{type:'text', ...}, ...]` | `{role: 'user', content: content}` |
+| `role='user', messageType='tool_result', content=[{type:'tool_result', ...}, ...]` | `{role: 'user', content: content}` (managed-native, pass through) |
+| `role='assistant', messageType='text', content='string'` | `{role: 'assistant', content: string}` |
+| `role='assistant', messageType='text', content=[{type:'text', ...}, ...]` | `{role: 'assistant', content: content}` |
+| `role='assistant', messageType='tool_use', content=[{type:'tool_use', ...}, ...]` | `{role: 'assistant', content: content}` (managed/bridge-native) |
+| **`role='assistant', messageType='tool_call', content={name, arguments}` (V3-era)** | Emit `{role: 'assistant', content: [{type:'tool_use', id: row.toolCallId ?? `tu_legacy_${row.id}`, name: row.toolName, input: content.arguments}]}` |
+| **`role='tool', messageType='tool_result', content={success, data, error}` (V3-era)** | Emit `{role: 'user', content: [{type:'tool_result', tool_use_id: row.toolCallId ?? `tu_legacy_${...}`, content: JSON.stringify({success, data, error}), is_error: !success}]}` |
+| **`role='system', messageType='system_summary', content=string` (V3 compaction)** | **NOT dropped.** Captured into the `systemSummary: string` field of the loader's return value. The runtime then passes this to `buildManagedSystemPrompt` as a new `priorSummary` parameter, which embeds it in the managed system prompt under a "Prior conversation summary" block. This preserves compacted context across the V3 → managed migration. |
+| `role='system'` with any other messageType | Dropped (no semantic meaning for managed replay) |
+| Compacted row (`compactedAt` not null) | Dropped — their content is already represented via the `system_summary` row that compaction wrote |
+
+**Pairing invariant.** Anthropic's API requires every `tool_use` block in an assistant message to have a matching `tool_result` block in the next user message, sharing the same `tool_use_id`. The normalizer must:
+
+1. **Batch consecutive V3 `tool_call` rows into a single assistant message** if they are sequential and belong to the same logical turn. V3 may have persisted multiple tool calls from one assistant turn as N separate rows.
+2. **Batch consecutive V3 `tool_result` rows into a single user message** matching the preceding assistant batch's `tool_use_id` set.
+3. If a `tool_call` row has no matching `tool_result` row (e.g., V3 crashed mid-iteration), emit a synthetic `tool_result` with `is_error: true` and `content: 'Tool result missing from legacy history'` so the pairing invariant holds. Log a warning for ops visibility.
+4. If a `tool_result` row has no preceding `tool_call` row (shouldn't happen, but defensive), drop it and log a warning.
+
+**Synthetic `tool_use_id` fallback.** V3 may have persisted rows with `toolCallId = null`. The normalizer generates a deterministic synthetic ID: `tu_legacy_<row.id>` where `row.id` is the `agent_messages.id` UUID. Pairs are then resolved by matching the closest following `tool_result` row with the same `toolName`. This is a best-effort heuristic; if it fails, the synthetic-error-result path (point 3 above) kicks in.
+
+**Algorithm sketch:**
+
+```typescript
+// app/src/lib/ai/agent/managed/history.ts — replacement for loadManagedHistory
+
+export interface ManagedHistoryResult {
+  messages: MessageParam[]
+  systemSummary: string | null   // from V3 compaction or session.messageSummary
+}
+
+export async function loadManagedHistory(sessionId: string): Promise<ManagedHistoryResult> {
+  const rows = await db.select()
+    .from(agentMessages)
+    .where(eq(agentMessages.sessionId, sessionId))
+    .orderBy(asc(agentMessages.sequenceNumber))
+
+  const messages: MessageParam[] = []
+  let pendingAssistantBlocks: ContentBlock[] | null = null
+  let systemSummary: string | null = null
+
+  const flushAssistant = () => {
+    if (pendingAssistantBlocks && pendingAssistantBlocks.length > 0) {
+      messages.push({ role: 'assistant', content: pendingAssistantBlocks })
+    }
+    pendingAssistantBlocks = null
+  }
+
+  for (const row of rows) {
+    if (row.compactedAt) continue  // represented via the system_summary row that compaction wrote
+
+    const classification = classifyRow(row)
+
+    switch (classification.kind) {
+      case 'system_summary':
+        // V3 compaction summary — preserve into return value, do not emit as a message
+        systemSummary = classification.text
+        continue
+
+      case 'system_drop':
+        continue  // other role='system' rows have no managed meaning
+
+      case 'user_text':
+        flushAssistant()
+        messages.push({ role: 'user', content: classification.text })
+        break
+
+      case 'user_tool_result_native':
+        flushAssistant()
+        messages.push({ role: 'user', content: classification.blocks })
+        break
+
+      case 'user_tool_result_legacy_v3':
+        flushAssistant()
+        messages.push({
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: classification.toolUseId,
+            content: classification.contentString,
+            is_error: classification.isError,
+          }],
+        })
+        break
+
+      case 'assistant_text':
+        flushAssistant()
+        messages.push({ role: 'assistant', content: classification.text })
+        break
+
+      case 'assistant_blocks_native':
+        flushAssistant()
+        messages.push({ role: 'assistant', content: classification.blocks })
+        break
+
+      case 'assistant_tool_call_legacy_v3':
+        // Start or continue accumulating a V3-era assistant tool_use turn
+        if (!pendingAssistantBlocks) pendingAssistantBlocks = []
+        pendingAssistantBlocks.push({
+          type: 'tool_use',
+          id: classification.toolUseId,
+          name: classification.name,
+          input: classification.input,
+        })
+        break
+    }
+  }
+  flushAssistant()
+
+  // Second pass: verify every tool_use has a matching tool_result.
+  // Insert synthetic error results for orphans.
+  ensurePairingInvariant(messages)
+
+  return { messages, systemSummary }
+}
+```
+
+`classifyRow` is a pure function that inspects `row.role`, `row.messageType`, and `row.content` shape, returning a tagged classification. It handles malformed rows defensively by logging and dropping. One of its tags is `system_summary` which extracts the compacted summary text.
+
+`ensurePairingInvariant` walks `messages`, finds any `tool_use_id` without a matching `tool_result`, and either: (a) for orphans at the end of history, drops the orphan assistant message; (b) for orphans with later user/assistant messages intervening, inserts a synthetic `tool_result` with `is_error: true` right after the orphan.
+
+**Fallback source for `systemSummary`**: if no `system_summary` row is found in the history scan, the runtime checks `session.messageSummary` (the durable field V3's compaction writes alongside the row). If present, it's used as the summary. Priority: row scan → session field → null.
+
+**Prompt integration.** `buildManagedSystemPrompt` gains a new optional parameter:
+
+```typescript
+export function buildManagedSystemPrompt(
+  session: AgentSession,
+  sections: AgentSection[],
+  phase: Phase,
+  locale: 'ro' | 'en',
+  priorSummary: string | null = null,  // NEW
+): string
+```
+
+When `priorSummary` is non-null, the prompt includes a "Prior conversation summary" section at the end (after the current session state block) that embeds the summary verbatim with a locale-appropriate label:
+- RO: `## Rezumat conversație anterioară\n\n{priorSummary}`
+- EN: `## Prior conversation summary\n\n{priorSummary}`
+
+`runManagedTurn` wires this together: it calls `loadManagedHistory(session.id)`, destructures `{messages, systemSummary}`, passes `systemSummary` into `buildManagedSystemPrompt`, and uses `messages` as the message history. Phase 2's existing `loadManagedHistory` callers in Phase 3 must be updated to handle the new return shape — this is part of the 3b diff.
+
+### Read-time normalization vs one-time backfill
+
+**Phase 3 uses read-time normalization.** This is a deliberate choice with the following reasoning:
+
+**Read-time (chosen):**
+- The loader inspects each row at load time and converts to MessageParam[] on the fly
+- Stored rows stay in their original shape — no data mutation
+- Rollback is a code revert; old data is untouched
+- Safer for the Phase 3 rollout: if normalization has a bug, we fix the code and the next load gets the fix automatically
+- Slightly higher CPU per load, but history loads are low-frequency (once per turn)
+
+**One-time backfill (rejected):**
+- Would rewrite old `agent_messages` rows in-place to managed shape
+- Lower CPU at load time
+- **Higher risk**: a bug in the backfill corrupts historical data permanently
+- Rollback requires either restoring from backup or a second backfill to undo
+- Doesn't match Phase 3's "independently revertible PRs" principle
+
+If read-time normalization becomes a measured performance problem in Phase 4 (when managed traffic grows), a backfill can be considered then — but it's out of Phase 3 scope. The spec commits to read-time only.
+
+**Tests for history normalization:**
+
+- `tests/unit/managed/history-classify.test.ts` — every row classification branch with fixture rows
+- `tests/unit/managed/history-v3-replay.test.ts` — a synthetic V3-era row sequence (text → tool_call → tool_result → text) normalizes to the expected MessageParam[]
+- `tests/unit/managed/history-mixed-runtime.test.ts` — a sequence that starts as V3 and transitions to managed normalizes correctly; managed-native rows pass through unchanged
+- `tests/unit/managed/history-pairing-invariant.test.ts` — orphan tool_use → synthetic tool_result or dropped; orphan tool_result → dropped with warn log
+- `tests/unit/managed/history-batching.test.ts` — multiple consecutive V3 tool_call rows batch into one assistant message with multiple tool_use blocks
+- `tests/unit/managed/history-null-toolcallid.test.ts` — rows with `toolCallId=null` get synthetic `tu_legacy_<row.id>` IDs and pair correctly
+- `tests/unit/managed/history-compacted.test.ts` — `compactedAt` rows are dropped (preserves existing behavior)
+- `tests/unit/managed/history-system-dropped.test.ts` — `role='system'` rows are dropped
+- `tests/integration/managed/history-real-v3-session.test.ts` — seed a real V3-era session via direct DB inserts that mirror `runtime.ts` persistence, load via `loadManagedHistory`, assert the MessageParam[] is consumable by Anthropic's SDK (no shape errors)
+
+**Migration considerations.** No schema changes for normalization. The fix is entirely in the loader. Existing rows stay unchanged. Rollback means reverting the loader commit, which is safe because the original loader's behavior is strictly a subset (drops rows rather than mutating them).
+
+**Observability.** Add a counter metric `managed_history_normalizer_events_total{kind}` where `kind` ∈ `{v3_tool_call_converted, v3_tool_result_converted, orphan_tool_use_synth, orphan_tool_use_dropped, orphan_tool_result_dropped, compacted_row_skipped, system_row_skipped, classification_error}`. This gives ops immediate visibility into how much V3 history each session carries and whether the normalizer is encountering anomalies.
+
+**Rollout gate.** `managed_agent_writes_enabled` MUST NOT be flipped on for any user until:
+1. The history normalization code is merged and in production
+2. The 9 unit tests + 1 integration test all pass
+3. The normalizer metrics panel shows no `classification_error` events in a sample of at least 100 managed turns
+
+This is enforced operationally (runbook item) not programmatically — the flag has no coupling to the normalizer code, but the runbook's enable-writes checklist includes the normalizer as a prerequisite.
+
+### 6.6 Prompt update
 
 Replace `app/src/lib/ai/agent/managed/prompt.ts` contents. Keep the RO/EN split and the `buildManagedSystemPrompt(session, sections, phase, locale)` signature.
 
@@ -683,7 +952,7 @@ Key changes from Phase 2 prompt:
 
 Both RO and EN versions stay ≤ 2500 tokens.
 
-### 6.6 New feature flag
+### 6.7 New feature flag
 
 New flag `managed_agent_writes_enabled`, seeded via migration following the existing pattern (`0015_agent_v3_feature_flag.sql`, Phase 2's `0055_managed_agent_enabled_flag.sql`). Default off. Targeting empty.
 
@@ -703,21 +972,23 @@ const serviceCtx = {
 }
 ```
 
-### 6.7 Tests for 3b
+### 6.8 Tests for 3b
 
 **Unit tests:**
 - `tests/unit/managed/tools.test.ts` — 22 tools total (9 read + 5 rules + 8 write). Positive assertion per tool name. Verifies the four name sets are disjoint and their union matches `MANAGED_TOOL_NAMES`.
 - `tests/unit/managed/executor.test.ts` — one happy-path test per write tool with services mocked, one error-mapping test per new `POLICY_*` code, one `allowWrites=false` test per write tool
 - `tests/unit/managed/prompt.test.ts` — Phase 3 expectations: no "read-only" lockdown, all 5 phases listed, confirm-before-write rule present, concurrency recovery rule present, policy-code recovery rule present
 - `tests/unit/mcp/write/set-selected-call.test.ts`, `freeze-outline.test.ts`, `mark-section-stale.test.ts`, `reject-section.test.ts` — input validation, service call, error mapping for each new MCP handler
+- **History normalizer tests** (per §6.5): `history-classify.test.ts`, `history-v3-replay.test.ts`, `history-mixed-runtime.test.ts`, `history-pairing-invariant.test.ts`, `history-batching.test.ts`, `history-null-toolcallid.test.ts`, `history-compacted.test.ts`, `history-system-dropped.test.ts`
 
 **Integration tests (real Anthropic SDK mock, real DB):**
 - `tests/integration/managed/runtime-write-tool.test.ts` — synthetic stream emits `save_section_draft`; asserts service called, section row written, audit log entry present, `tool_result` event has `success: true`
 - `tests/integration/managed/runtime-write-disabled.test.ts` — `allowWrites=false`; synthetic stream emits `save_section_draft`; executor blocks with targeted error; turn completes without DB writes
 - `tests/integration/managed/runtime-concurrency-error.test.ts` — two parallel turns attempting to write to the same section; one succeeds, the other gets `CONCURRENCY` in `tool_result`; agent recovers via `get_application_state`
 - `tests/integration/managed/runtime-policy-error.test.ts` — synthetic stream emits `save_section_draft` before outline frozen; executor returns `POLICY_OUTLINE_NOT_FROZEN`; turn completes; no section written
+- `tests/integration/managed/history-real-v3-session.test.ts` — seed a session via direct DB inserts that mirror V3's `runtime.ts:253-266` shape, call `loadManagedHistory`, pass the result to Anthropic's SDK for validation (shape-checked, no network call); assert no tool_use orphans, correct pairing
 
-### 6.8 Estimated diff size
+### 6.9 Estimated diff size
 
 | Component | LOC |
 |---|---|
@@ -726,12 +997,13 @@ const serviceCtx = {
 | `managed/tools.ts` (entries + name sets) | ~90 |
 | `managed/executor.ts` (dispatch + gates + mapping) | ~110 |
 | `managed/prompt.ts` (full rewrite both languages) | ~150 |
+| `managed/history.ts` (normalizer rewrite, classification, pairing) | ~350 |
 | `route.ts` (writesEnabled + ctx field) | ~10 |
 | `services/types.ts` (allowWrites field) | ~2 |
 | New flag migration | ~15 |
-| Tests (~20 files) | ~1,200 |
+| Tests (~28 files, includes 9 normalizer tests) | ~1,700 |
 
-**Total:** ~1,800 LOC added, ~200 LOC modified.
+**Total:** ~2,700 LOC added, ~250 LOC modified.
 
 ---
 
