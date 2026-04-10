@@ -42,7 +42,12 @@ export const managedCircuitBreaker = {
   },
 }
 
-export function recordManagedFailure(_reason: DegradedReason): void {
+export function recordManagedFailure(reason: DegradedReason): void {
+  // `reason` is part of the contract: route.ts and session-metadata.ts
+  // classify failures and persist the reason to application_agent_sessions.
+  // The breaker itself only counts failures, but keeping reason in the
+  // signature lets callers pass classification through a single call site.
+  void reason
   consecutiveFailures += 1
   if (consecutiveFailures >= FAILURE_THRESHOLD) {
     state = 'open'
