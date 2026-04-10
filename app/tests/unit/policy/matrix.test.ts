@@ -54,7 +54,7 @@ describe('POLICY_MATRIX', () => {
   })
 
   it('rollbackSection requires outline frozen with no section state restriction', () => {
-    const rule = POLICY_MATRIX.rollbackSection
+    const rule = POLICY_MATRIX.rollbackSection as PolicyRule
     expect(rule.requiresOutlineFrozen).toBe(true)
     expect(rule.allowedSectionStates).toBeUndefined()
   })

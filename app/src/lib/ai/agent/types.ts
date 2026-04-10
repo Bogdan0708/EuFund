@@ -9,7 +9,7 @@ export const SESSION_STATUSES = ['active', 'paused', 'completed', 'abandoned', '
 export type SessionStatus = (typeof SESSION_STATUSES)[number]
 
 export const SECTION_STATUSES = [
-  'pending', 'generating', 'draft', 'accepted', 'stale', 'invalidated', 'needs_review', 'failed',
+  'pending', 'generating', 'draft', 'accepted', 'stale', 'invalidated', 'needs_review', 'failed', 'rejected',
 ] as const
 export type SectionStatus = (typeof SECTION_STATUSES)[number]
 
