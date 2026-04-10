@@ -311,6 +311,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
                     latencyMs: null,
                     tokenUsage: null,
                     errorClass: null,
+                    rejectionReason: null,
                     updatedAt: new Date(),
                   })
                 }

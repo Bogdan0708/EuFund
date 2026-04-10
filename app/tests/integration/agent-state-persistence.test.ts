@@ -26,7 +26,7 @@ function makeSection(overrides: Partial<AgentSection> = {}): AgentSection {
     generationOrder: 1, status: 'pending', content: null,
     acceptedContent: null, modelUsed: null, retryCount: 0,
     sourcesUsed: null, promptVersion: null, latencyMs: null,
-    tokenUsage: null, errorClass: null, updatedAt: new Date(),
+    tokenUsage: null, errorClass: null, rejectionReason: null, updatedAt: new Date(),
     ...overrides,
   }
 }
