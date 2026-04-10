@@ -23,8 +23,8 @@
 | `app/src/lib/ai/agent/policy/eligibility.ts` | `isEligibilityPassed(decision)` helper — single source of definitional truth for "eligibility passed". |
 | `app/src/lib/ai/agent/policy/matrix.ts` | `PolicyRule` interface + `POLICY_MATRIX` declarative constant for all 8 Phase 3 mutations. |
 | `app/src/lib/ai/agent/policy/enforce.ts` | `assertPolicy(rule, session, opts)` — throws typed `ValidationError` with stable `policyCode` when a gate fails. |
-| `app/drizzle/0023_agent_sections_rejected_and_reason.sql` | Generated migration: add `'rejected'` to `agent_section_status` enum + add `rejection_reason` text column. |
-| `app/drizzle/0024_agent_section_versions_rollback.sql` | Generated migration: add `'rollback'` to `agent_section_version_kind` enum + add `rolled_back_from_version` nullable integer column. |
+| `app/drizzle/NNNN_agent_sections_rejected_and_reason.sql` | Generated migration: add `'rejected'` to `agent_section_status` enum + add `rejection_reason` text column. `NNNN` is the next available sequence number at generation time (run `ls app/drizzle/*.sql \| tail -1` to check). |
+| `app/drizzle/NNNN_agent_section_versions_rollback.sql` | Generated migration: add `'rollback'` to `agent_section_version_kind` enum + add `rolled_back_from_version` nullable integer column. `NNNN` is the next available sequence number (one higher than the previous migration). |
 | `app/tests/unit/policy/eligibility.test.ts` | Unit tests for `isEligibilityPassed` covering null, zero fails, some fails, warnings-only. |
 | `app/tests/unit/policy/matrix.test.ts` | Asserts `POLICY_MATRIX` shape and completeness for all 8 Phase 3 mutations. |
 | `app/tests/unit/policy/enforce.test.ts` | Tests each gate branch of `assertPolicy` with fixture sessions. |
@@ -43,12 +43,15 @@
 
 | File | Change |
 |---|---|
+| `app/src/lib/legal/audit.ts` | `AuditAction` union extended with 5 new Phase 3 actions: `session.call_selected`, `session.outline_frozen`, `session.status_change`, `section.marked_stale`, `section.rejected`. Legacy strings (`section.rollback`, `section.state_change`, `project.version_save`) preserved unchanged for hash-chain continuity. **Must land before any service that calls `logAudit` with a new action.** |
 | `app/src/lib/ai/agent/services/errors.ts` | `ValidationError` constructor gains optional third `policyCode?: string` parameter. Backwards-compatible. |
-| `app/src/lib/ai/agent/types.ts` | `SECTION_STATUSES` TS union gains `'rejected'`. `SectionVersionKind` union (or new definition) gains `'rollback'`. `AgentSection` interface gains `rejectionReason: string \| null`. `AgentSectionVersion` interface gains `rolledBackFromVersion: number \| null`. |
+| `app/src/lib/ai/agent/types.ts` | `SECTION_STATUSES` TS union gains `'rejected'`. `AgentSection` interface gains `rejectionReason: string \| null`. `AgentSectionVersion` interface gains `rolledBackFromVersion: number \| null`. |
+| `app/src/lib/ai/agent/services/types.ts` | `SectionListItem.status` tightened from `string` to `SectionStatus`. Any consequent downstream type errors are pre-existing bugs masked by the stringly-typed field and must be fixed in the same commit. |
+| `app/src/lib/ai/agent/services/context-helpers.ts` | Gains `verifySessionOwnership(ctx, sessionId)` — the canonical ownership helper, extracted from `sections.ts` so the new services in `application.ts` can reuse it. |
 | `app/src/lib/db/schema.ts` | `agentSectionStatusEnum` pgEnum values extended with `'rejected'`. `agentSections` table gains `rejection_reason` column. `agentSectionVersionKindEnum` extended with `'rollback'`. `agentSectionVersions` table gains `rolled_back_from_version` column. |
-| `app/src/lib/ai/agent/services/sections.ts` | `saveSectionDraft`, `approveSection`, `rollbackSection` each gain an `assertPolicy` call after ownership + stateVersion. Add two new functions: `markSectionStale`, `rejectSection`. `rollbackSection` extended to accept the new policy check and to persist `rolledBackFromVersion`. |
-| `app/src/lib/ai/agent/services/application.ts` | `setApplicationStatus` gains an `assertPolicy` call. Add two new functions: `setSelectedCall`, `freezeOutline`. |
-| `app/drizzle/meta/_journal.json` | Two new journal entries for migrations 0023 and 0024. |
+| `app/src/lib/ai/agent/services/sections.ts` | `saveSectionDraft`, `approveSection`, `rollbackSection` each gain an `assertPolicy` call after ownership + stateVersion. Add two new functions: `markSectionStale`, `rejectSection`. `rollbackSection` extended to accept the new policy check and to persist `rolledBackFromVersion`. Local `verifySessionOwnership` removed (replaced by shared import). |
+| `app/src/lib/ai/agent/services/application.ts` | `setApplicationStatus` gains an `assertPolicy` call. Add two new functions: `setSelectedCall`, `freezeOutline`. Imports `verifySessionOwnership` from shared `context-helpers`. |
+| `app/drizzle/meta/_journal.json` | Two new journal entries for the new migrations (auto-updated by `npm run db:generate`). |
 
 ### V3 audit output
 
@@ -88,21 +91,44 @@ Create `docs/superpowers/specs/2026-04-10-phase3a-v3-audit.md` with this initial
 (populated by Step 4)
 ```
 
-- [ ] **Step 2: Enumerate V3 mutation call sites**
+- [ ] **Step 2: Enumerate V3 mutation call sites (repo-wide scope)**
 
-Search for every place V3 mutates session/section state:
+Grepping only `runtime.ts` is not enough. V3-era mutations live in multiple files. Search the entire agent + orchestrator surface for every write to `agent_sessions` or `agent_sections`:
 
 ```bash
 cd app
-grep -n "agentSections\b" src/lib/ai/agent/runtime.ts
-grep -n "agentSessions\b" src/lib/ai/agent/runtime.ts
-grep -n "dispatchStructuredAction\|applyTransition" src/lib/ai/agent/runtime.ts
+
+# Direct Drizzle writes against agent tables
+grep -rn "db\.update(agentSections)\|db\.update(agentSessions)" src/lib/ai/ 2>/dev/null
+grep -rn "db\.insert(agentSections)\|db\.insert(agentSessions)" src/lib/ai/ 2>/dev/null
+grep -rn "db\.delete(agentSections)\|db\.delete(agentSessions)" src/lib/ai/ 2>/dev/null
+
+# Transaction-scoped writes (tx.update / tx.insert)
+grep -rn "tx\.update(agentSections)\|tx\.update(agentSessions)" src/lib/ai/ 2>/dev/null
+grep -rn "tx\.insert(agentSections)\|tx\.insert(agentSessions)" src/lib/ai/ 2>/dev/null
+
+# V3 transition helpers
+grep -rn "applyTransition\|dispatchStructuredAction\|persistSessionState" src/lib/ai/ 2>/dev/null
+
+# Structured action helpers that may live outside runtime.ts
+grep -rn "ACCEPT_SECTION\|FREEZE_OUTLINE\|SET_SELECTED_CALL\|MARK_SECTION_STALE\|REJECT_SECTION\|SET_STATUS" src/lib/ai/ 2>/dev/null
+
+# Route-level mutation paths (API handlers that write directly)
+grep -rn "db\.update(agentSections)\|db\.update(agentSessions)" src/app/api/ 2>/dev/null
+grep -rn "db\.insert(agentSections)\|db\.insert(agentSessions)" src/app/api/ 2>/dev/null
 ```
 
-For each match, capture:
-- File + line number
-- What field it mutates (e.g., `status`, `content`, `outlineFrozen`, `selectedCallId`)
-- What upstream check, if any, guards the mutation (search upward from the mutation for any `if (session.outlineFrozen)` or `if (session.eligibility...)` patterns)
+**Expected mutation locations (known at the time this plan was written — verify each):**
+- `src/lib/ai/agent/runtime.ts` — the main V3 runtime tool loop (multiple call sites)
+- `src/lib/ai/agent/history.ts` — message summary / compaction writes
+- `src/lib/ai/agent/tools/generate-section.ts` — section insert on first draft
+- `src/lib/ai/orchestrator/section-versions.ts` — section-version writes with their own audit calls
+
+For each match, capture in the "Call sites audited" table:
+- File:line number
+- What field it mutates (e.g., `status`, `content`, `outlineFrozen`, `selectedCallId`, `stateVersion`)
+- What upstream check, if any, guards the mutation (search upward from the mutation for `if (session.outlineFrozen)`, `if (session.eligibility...)`, `if (section.status === ...)` patterns)
+- Whether the mutation emits a `logAudit` call
 
 Write findings into the "Call sites audited" section as a table:
 
@@ -373,8 +399,58 @@ and route layer can map them to user-facing recovery messages."
 ## Task 4: Policy matrix types and POLICY_MATRIX constant
 
 **Files:**
+- Modify: `app/src/lib/legal/audit.ts` (extend `AuditAction` union with 5 new Phase 3 actions)
 - Create: `app/src/lib/ai/agent/policy/matrix.ts`
 - Create: `app/tests/unit/policy/matrix.test.ts`
+
+> **Background (verified against actual source):** The current `AuditAction` type union in `app/src/lib/legal/audit.ts` contains `section.rollback`, `section.state_change`, and `project.version_save` (legacy strings reused by Phase 3 per the spec), but it does NOT contain any `session.*` actions, `section.marked_stale`, or `section.rejected`. If the new Phase 3 services call `logAudit` with unrecognized action strings, the services will not typecheck. The vocabulary extension MUST land as the first step of this task, before the matrix references any new strings.
+
+- [ ] **Step 0: Extend the AuditAction union**
+
+Open `app/src/lib/legal/audit.ts`. Find the `AuditAction` type declaration (around line 15-86). Add 5 new Phase 3 managed-agent entries immediately after the `section.state_change` line (around line 42) or in their own labeled block near the end of the union:
+
+```typescript
+export type AuditAction =
+  // ... existing entries unchanged ...
+  | 'section.rollback'
+  | 'section.state_change'
+  | 'section.export'
+  | 'project.version_save'
+  // ... existing entries unchanged ...
+  // Phase 3 managed-agent mutations (new narrow mutation services)
+  | 'session.call_selected'
+  | 'session.outline_frozen'
+  | 'session.status_change'
+  | 'section.marked_stale'
+  | 'section.rejected'
+  // ... rest of existing entries unchanged ...
+```
+
+Do NOT remove or rename any existing action. The new additions are purely additive. The spec's "legacy audit strings reused intentionally" rule applies to `project.version_save`, `section.state_change`, and `section.rollback` — those stay exactly as-is.
+
+- [ ] **Step 0b: Run the audit tests to verify nothing regressed**
+
+```bash
+cd app && npx vitest run tests/unit/legal tests/integration/legal 2>&1 | tail -30
+```
+
+Expected: all existing audit tests pass. If any audit-vocabulary validation test (e.g., asserting the union length) breaks, update it to include the 5 new entries.
+
+- [ ] **Step 0c: Commit the vocabulary extension**
+
+```bash
+cd app && git add src/lib/legal/audit.ts tests/unit/legal tests/integration/legal 2>/dev/null
+cd .. && git commit -m "feat(phase3a): extend AuditAction union with 5 Phase 3 mutation actions
+
+Adds session.call_selected, session.outline_frozen,
+session.status_change, section.marked_stale, section.rejected
+to the audit vocabulary. Required before Phase 3 services can
+call logAudit with the new action strings. Legacy strings
+(section.rollback, section.state_change, project.version_save)
+are kept unchanged for hash-chain continuity.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+```
 
 - [ ] **Step 1: Write the failing test**
 
@@ -579,7 +655,11 @@ export const POLICY_MATRIX = {
     requiresStateVersion: true,
     requiresOutlineFrozen: true,
     requiresEligibility: 'none',
-    auditAction: 'section.rolled_back',
+    // LEGACY: reuses the existing 'section.rollback' action string
+    // (audit.ts line 41) for hash-chain continuity with V3. Do not
+    // rename to 'section.rolled_back' — that would fork the audit
+    // semantics. See spec §4 rule 5 note.
+    auditAction: 'section.rollback',
     errorCodes: {
       outlineNotFrozen: 'POLICY_OUTLINE_NOT_FROZEN',
     },
@@ -918,8 +998,11 @@ same invariant is enforced regardless of caller (V3, MCP, managed)."
 **Files:**
 - Modify: `app/src/lib/db/schema.ts`
 - Modify: `app/src/lib/ai/agent/types.ts`
-- Create: `app/drizzle/0023_agent_sections_rejected_and_reason.sql` (generated)
+- Modify: `app/src/lib/ai/agent/services/types.ts` (propagate `SectionStatus` type — see Step 5b)
+- Create: `app/drizzle/NNNN_agent_sections_rejected_and_reason.sql` (generated — `NNNN` is the next available number)
 - Modify: `app/drizzle/meta/_journal.json` (auto-updated by db:generate)
+
+> **Postgres enum warning:** `ALTER TYPE ... ADD VALUE` cannot run inside a transaction block on some Postgres versions/environments (< 12 strictly, but also some managed Postgres setups). Drizzle usually handles this correctly by generating a standalone `ALTER TYPE` statement outside the transaction, but if `npm run db:push` fails with `ALTER TYPE ... cannot run inside a transaction block`, run the ALTER TYPE statement manually via `psql "$DATABASE_URL" -c "ALTER TYPE agent_section_status ADD VALUE 'rejected';"` and mark the migration applied.
 
 - [ ] **Step 1: Verify current enum state**
 
@@ -1023,13 +1106,47 @@ export interface AgentSection {
 }
 ```
 
+- [ ] **Step 5b: Propagate SectionStatus type into services/types.ts**
+
+Per the spec §5.5 propagation checklist, the service-layer types file currently uses a stringly-typed section status. Tighten it.
+
+Open `app/src/lib/ai/agent/services/types.ts`. Find the `SectionListItem` interface (around line 124). Change the `status: string` field to import and use the proper `SectionStatus` union:
+
+```typescript
+// Add to the top of services/types.ts imports
+import type { SectionStatus } from '../types'
+
+// Then update SectionListItem:
+export interface SectionListItem {
+  id: string
+  sessionId: string
+  sectionKey: string
+  title: string
+  documentOrder: number
+  generationOrder: number
+  status: SectionStatus  // was: string
+  retryCount: number
+  updatedAt: Date
+}
+```
+
+If the tightening causes typecheck errors elsewhere in the codebase (e.g., a caller was comparing `status` against a string literal that is not a `SectionStatus` member), those are real bugs and must be fixed in the same commit.
+
+Run `npm run typecheck` after this change to catch any downstream type errors:
+
+```bash
+cd app && npm run typecheck
+```
+
+Expected: clean. If errors appear, they are bugs in existing code that were masked by the stringly-typed field — fix them inline.
+
 - [ ] **Step 6: Generate the migration**
 
 ```bash
 cd app && npm run db:generate
 ```
 
-Expected: Drizzle prints the migration name (`0023_agent_sections_rejected_and_reason` or similar) and writes a new file under `app/drizzle/`. Read the generated file and confirm it contains:
+Expected: Drizzle prints the migration name (`NNNN_agent_sections_rejected_and_reason` where NNNN is the next available sequence number — run `ls app/drizzle/*.sql | tail -1` beforehand to confirm which number it should be) and writes a new file under `app/drizzle/`. Read the generated file and confirm it contains:
 - `ALTER TYPE "agent_section_status" ADD VALUE 'rejected';`
 - `ALTER TABLE "agent_sections" ADD COLUMN "rejection_reason" text;`
 
@@ -1073,7 +1190,9 @@ Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
 **Files:**
 - Modify: `app/src/lib/db/schema.ts`
 - Modify: `app/src/lib/ai/agent/types.ts`
-- Create: `app/drizzle/0024_agent_section_versions_rollback.sql` (generated)
+- Create: `app/drizzle/NNNN_agent_section_versions_rollback.sql` (generated — next number after Task 6's migration)
+
+> **Postgres enum warning**: same caveat as Task 6 — if `db:push` refuses the `ALTER TYPE ... ADD VALUE`, run it manually via `psql`. See Task 6's note.
 
 - [ ] **Step 1: Add 'rollback' to the Drizzle enum**
 
@@ -1148,7 +1267,7 @@ If any match is found, add `| 'rollback'` to the end. If none is found, version 
 cd app && npm run db:generate
 ```
 
-Expected: `0024_agent_section_versions_rollback.sql` appears under `drizzle/` with:
+Expected: the generated file `NNNN_agent_section_versions_rollback.sql` appears under `drizzle/` with:
 - `ALTER TYPE "agent_section_version_kind" ADD VALUE 'rollback';`
 - `ALTER TABLE "agent_section_versions" ADD COLUMN "rolled_back_from_version" integer;`
 
@@ -1603,9 +1722,25 @@ Change the ordering to:
     throw new NotFoundError('section', `${input.sessionId}:${input.sectionKey}`)
   }
 
-  // Idempotent no-op FIRST — already-accepted sections return current state
-  // without running policy checks. Per spec: idempotent no-ops do not
-  // throw policy errors because no mutation will occur.
+  // ── Service contract: idempotent no-op ordering ──────────────────────
+  // Per the Phase 3 policy matrix (§4) and idempotent no-op rule:
+  //
+  //   1. Idempotent no-op checks run BEFORE assertPolicy.
+  //   2. If the mutation would be a no-op (here: section already accepted),
+  //      return the current state unchanged — no stateVersion bump, no
+  //      updatedAt change, no audit event, AND no policy error.
+  //   3. Only non-idempotent paths run assertPolicy. The section state
+  //      allowlist `['draft', 'needs_review']` intentionally excludes
+  //      'accepted' because the idempotent short-circuit already handles
+  //      that case above.
+  //
+  // This ordering is a deliberate design choice, not a bug. It matches
+  // the spec's "no state change, no audit, no policy error" contract for
+  // no-ops. Re-approving an accepted section is a valid user gesture
+  // (e.g., double-click) and must not produce errors or audit noise.
+  // ─────────────────────────────────────────────────────────────────────
+
+  // Idempotent no-op FIRST
   if (section.status === 'accepted') {
     return { newStateVersion: session.stateVersion }
   }
@@ -1616,6 +1751,8 @@ Change the ordering to:
 
   // ... rest of existing code
 ```
+
+**Leave the contract comment block in the source file** — it is the in-code explanation of an intentional exception that would otherwise confuse future reviewers who expect policy to run before idempotency.
 
 - [ ] **Step 4: Run the tests and verify they pass**
 
@@ -1872,14 +2009,22 @@ Expected: the first test PASSES (sets paused successfully), the second test FAIL
 
 - [ ] **Step 3: Modify setApplicationStatus**
 
-Open `app/src/lib/ai/agent/services/application.ts`. Find `setApplicationStatus`. Add the policy check + completed-specific validation:
+Open `app/src/lib/ai/agent/services/application.ts`. Find `setApplicationStatus`. Add the policy check + completed-specific validation.
+
+**No self-import.** `validateApplication` lives in the same file as `setApplicationStatus`, so it is already in scope. Do NOT write `import { validateApplication } from './application'` — that's a self-import smell. Just call the local function directly.
+
+Add these imports to the top of the file (only if not already present):
 
 ```typescript
 import { assertPolicy } from '../policy/enforce'
 import { POLICY_MATRIX } from '../policy/matrix'
 import type { AgentSession } from '../types'
-import { validateApplication } from './application'  // if needed; may already be imported
+import { ValidationError } from './errors'
+```
 
+Then modify the function body:
+
+```typescript
 export async function setApplicationStatus(
   ctx: ServiceContext,
   input: { sessionId: string; status: 'paused' | 'completed'; expectedStateVersion: number },
@@ -1913,9 +2058,13 @@ export async function setApplicationStatus(
   // ... existing mutation code
 ```
 
-Read the current `setApplicationStatus` body first to understand its existing shape. If `validateApplication` is defined in the same file, import it directly. If it's defined elsewhere, add the import at the top.
+Read the current `setApplicationStatus` body first to understand its existing shape. `validateApplication` is defined in the same file (`application.ts`), so it is already in scope — call it directly, **no import statement needed**.
 
-If the existing service's `validateApplication` return shape differs from `{ passed: boolean }`, update the check to match — e.g., `if (validationResult.summary.missing > 0)` or similar. The goal is: if validation does not pass, throw `POLICY_VALIDATION_NOT_PASSED`.
+**Pinned validation rule** (verified against `app/src/lib/ai/agent/services/types.ts:195`): `ApplicationValidationResult` already has a `passed: boolean` field. The rule is exactly:
+
+> `validate_application` passes iff `validationResult.passed === true`.
+
+No further logic is required. Do not introspect `summary.missing` or `annexChecklist` in `setApplicationStatus`; that logic already lives inside `validateApplication` and is encoded in its `passed` return value.
 
 - [ ] **Step 4: Run tests and verify they pass**
 
@@ -1974,7 +2123,20 @@ Create `app/tests/unit/services/set-selected-call.test.ts`:
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ValidationError, ConcurrencyError, NotFoundError } from '@/lib/ai/agent/services/errors'
 
-vi.mock('@/lib/db', () => ({ db: { select: vi.fn(), update: vi.fn() } }))
+// vi.hoisted runs BEFORE imports so the mock db is available both at
+// module-eval time (vi.mock callback) and inside helper functions.
+// This is the idiomatic Vitest ESM pattern — no require(), no dynamic
+// import at call sites.
+const { mockDb } = vi.hoisted(() => ({
+  mockDb: {
+    select: vi.fn(),
+    update: vi.fn(),
+    insert: vi.fn(),
+    transaction: vi.fn(),
+  },
+}))
+
+vi.mock('@/lib/db', () => ({ db: mockDb }))
 vi.mock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }))
 
 const baseSession = {
@@ -1988,15 +2150,14 @@ const baseSession = {
 }
 
 function mockSelect(session: any) {
-  const { db } = require('@/lib/db')
-  ;(db.select as any).mockReturnValue({
+  ;(mockDb.select as any).mockReturnValue({
     from: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({
         limit: vi.fn().mockResolvedValue([session]),
       }),
     }),
   })
-  ;(db.update as any).mockReturnValue({
+  ;(mockDb.update as any).mockReturnValue({
     set: vi.fn().mockReturnValue({
       where: vi.fn().mockResolvedValue(undefined),
     }),
@@ -2080,7 +2241,81 @@ cd app && npx vitest run tests/unit/services/set-selected-call.test.ts
 
 Expected: FAIL — `setSelectedCall` not exported.
 
-- [ ] **Step 3: Implement setSelectedCall**
+- [ ] **Step 3a: Extract the shared ownership helper (prerequisite)**
+
+The existing `verifySessionOwnership` helper lives in `sections.ts` as a private (non-exported) function at around line 74. Before `setSelectedCall` and the other new services in `application.ts` can reuse it, we must promote it to a shared location.
+
+**Move `verifySessionOwnership` into `app/src/lib/ai/agent/services/context-helpers.ts`** (which already exists):
+
+1. Open `app/src/lib/ai/agent/services/context-helpers.ts`
+2. Add the function, exported:
+
+```typescript
+import { db } from '@/lib/db'
+import { agentSessions } from '@/lib/db/schema'
+import { eq, and } from 'drizzle-orm'
+import { NotFoundError } from './errors'
+import type { ServiceContext } from './types'
+
+/**
+ * Verifies that the session exists AND is owned by ctx.userId.
+ * Returns the full session row. Throws NotFoundError if the session
+ * is missing or owned by another user.
+ *
+ * This is the canonical ownership check for all Phase 3 service
+ * mutations. Do not inline equivalent logic in individual services.
+ */
+export async function verifySessionOwnership(
+  ctx: ServiceContext,
+  sessionId: string,
+): Promise<typeof agentSessions.$inferSelect> {
+  const rows = await db
+    .select()
+    .from(agentSessions)
+    .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, ctx.userId)))
+    .limit(1)
+
+  if (!rows[0]) {
+    throw new NotFoundError('session', sessionId)
+  }
+
+  return rows[0]
+}
+```
+
+3. Open `app/src/lib/ai/agent/services/sections.ts`. Remove the local `verifySessionOwnership` (around line 74) — now it's shared. Replace the local calls with an import:
+
+```typescript
+import { verifySessionOwnership } from './context-helpers'
+```
+
+The `assertSessionOwnership` helper (the void variant that doesn't return the row) can either stay local to `sections.ts` or be promoted too — **leave it local** for now to keep this PR's scope tight. Only `verifySessionOwnership` needs to be shared for the new services.
+
+4. Run the existing sections tests to verify no regression:
+
+```bash
+cd app && npx vitest run tests/unit/services/sections tests/unit/services/save-section-draft.test.ts tests/unit/services/approve-section.test.ts tests/unit/services/rollback-section.test.ts
+```
+
+Expected: all pass. The extracted helper preserves the exact same semantics.
+
+5. Commit the extraction as a separate commit BEFORE implementing `setSelectedCall`:
+
+```bash
+cd app && git add src/lib/ai/agent/services/context-helpers.ts src/lib/ai/agent/services/sections.ts
+cd .. && git commit -m "refactor(phase3a): share verifySessionOwnership via context-helpers
+
+Moves the ownership guard helper from sections.ts into the shared
+context-helpers module so the new narrow mutation services in
+application.ts (setSelectedCall, freezeOutline) can reuse the
+same canonical check without inlining or duplicating the logic.
+
+No behavior change for existing callers.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+```
+
+- [ ] **Step 3b: Implement setSelectedCall**
 
 Open `app/src/lib/ai/agent/services/application.ts`. Add the new function near the other session-level mutations (or at the end of the file):
 
@@ -2089,24 +2324,16 @@ import { assertPolicy } from '../policy/enforce'
 import { POLICY_MATRIX } from '../policy/matrix'
 import type { AgentSession } from '../types'
 import { logAudit } from '@/lib/legal/audit'
-import { ValidationError, ConcurrencyError, NotFoundError } from './errors'
+import { ConcurrencyError } from './errors'
+import { verifySessionOwnership } from './context-helpers'  // shared helper from Step 3a
 // Other imports should already exist.
 
 export async function setSelectedCall(
   ctx: ServiceContext,
   input: { sessionId: string; callId: string; expectedStateVersion: number },
 ): Promise<{ newStateVersion: number }> {
-  // 1. Verify ownership
-  const sessionRows = await db
-    .select()
-    .from(agentSessions)
-    .where(and(eq(agentSessions.id, input.sessionId), eq(agentSessions.userId, ctx.userId)))
-    .limit(1)
-
-  const session = sessionRows[0]
-  if (!session) {
-    throw new NotFoundError('session', input.sessionId)
-  }
+  // 1. Verify ownership (canonical helper — throws NotFoundError if missing/unauthorized)
+  const session = await verifySessionOwnership(ctx, input.sessionId)
 
   // 2. Concurrency check
   if (session.stateVersion !== input.expectedStateVersion) {
@@ -2114,6 +2341,7 @@ export async function setSelectedCall(
   }
 
   // 3. Idempotent no-op: same callId → return current state unchanged
+  //    (no stateVersion bump, no updatedAt change, no audit event)
   if (session.selectedCallId === input.callId) {
     return { newStateVersion: session.stateVersion }
   }
@@ -2141,17 +2369,11 @@ export async function setSelectedCall(
     metadata: { callId: input.callId, previousCallId: session.selectedCallId, requestId: ctx.requestId },
   })
 
-  // 7. Return
   return { newStateVersion }
 }
 ```
 
-The `agentSessions` import should already exist at the top of the file. If not, add:
-
-```typescript
-import { agentSessions } from '@/lib/db/schema'
-import { eq, and } from 'drizzle-orm'
-```
+The `agentSessions`, `db`, `eq`, and `and` imports should already exist at the top of `application.ts`. If not, add them.
 
 - [ ] **Step 4: Run the test and verify all pass**
 
@@ -2189,13 +2411,16 @@ Create `app/tests/unit/services/freeze-outline.test.ts`:
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ValidationError, ConcurrencyError } from '@/lib/ai/agent/services/errors'
 
-vi.mock('@/lib/db', () => ({ db: { select: vi.fn(), update: vi.fn() } }))
+const { mockDb } = vi.hoisted(() => ({
+  mockDb: { select: vi.fn(), update: vi.fn() },
+}))
+
+vi.mock('@/lib/db', () => ({ db: mockDb }))
 vi.mock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }))
 
 const eligiblePassing = { results: [], score: 100, passCount: 5, failCount: 0, warningCount: 2 }
 
 function mockSessionSelect(overrides: any) {
-  const { db } = require('@/lib/db')
   const session = {
     id: '11111111-1111-4111-8111-111111111111',
     userId: '22222222-2222-4222-8222-222222222222',
@@ -2207,14 +2432,14 @@ function mockSessionSelect(overrides: any) {
     currentPhase: 'research' as const,
     ...overrides,
   }
-  ;(db.select as any).mockReturnValue({
+  ;(mockDb.select as any).mockReturnValue({
     from: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({
         limit: vi.fn().mockResolvedValue([session]),
       }),
     }),
   })
-  ;(db.update as any).mockReturnValue({
+  ;(mockDb.update as any).mockReturnValue({
     set: vi.fn().mockReturnValue({
       where: vi.fn().mockResolvedValue(undefined),
     }),
@@ -2311,17 +2536,8 @@ export async function freezeOutline(
   ctx: ServiceContext,
   input: { sessionId: string; expectedStateVersion: number },
 ): Promise<{ newStateVersion: number }> {
-  // 1. Verify ownership
-  const sessionRows = await db
-    .select()
-    .from(agentSessions)
-    .where(and(eq(agentSessions.id, input.sessionId), eq(agentSessions.userId, ctx.userId)))
-    .limit(1)
-
-  const session = sessionRows[0]
-  if (!session) {
-    throw new NotFoundError('session', input.sessionId)
-  }
+  // 1. Verify ownership — use the shared helper extracted in Task 13 Step 3a
+  const session = await verifySessionOwnership(ctx, input.sessionId)
 
   // 2. Concurrency check
   if (session.stateVersion !== input.expectedStateVersion) {
@@ -2329,6 +2545,7 @@ export async function freezeOutline(
   }
 
   // 3. Idempotent no-op: already frozen
+  //    (no stateVersion bump, no updatedAt change, no audit event)
   if (session.outlineFrozen) {
     return { newStateVersion: session.stateVersion }
   }
@@ -2397,10 +2614,10 @@ Create `app/tests/unit/services/mark-section-stale.test.ts`:
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ValidationError } from '@/lib/ai/agent/services/errors'
 
-vi.mock('@/lib/db', () => ({
-  db: {
+const { mockDb } = vi.hoisted(() => ({
+  mockDb: {
     select: vi.fn(),
-    transaction: vi.fn((fn) => fn({
+    transaction: vi.fn((fn: any) => fn({
       update: vi.fn().mockReturnValue({
         set: vi.fn().mockReturnValue({
           where: vi.fn().mockResolvedValue(undefined),
@@ -2409,6 +2626,8 @@ vi.mock('@/lib/db', () => ({
     })),
   },
 }))
+
+vi.mock('@/lib/db', () => ({ db: mockDb }))
 vi.mock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }))
 
 const baseSession = {
@@ -2422,9 +2641,8 @@ const baseSession = {
 }
 
 function mockSelectChain(session: any, sectionRows: any[]) {
-  const { db } = require('@/lib/db')
   let call = 0
-  ;(db.select as any).mockImplementation(() => {
+  ;(mockDb.select as any).mockImplementation(() => {
     call += 1
     return {
       from: vi.fn().mockReturnValue({
@@ -2603,10 +2821,10 @@ Create `app/tests/unit/services/reject-section.test.ts`:
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ValidationError } from '@/lib/ai/agent/services/errors'
 
-vi.mock('@/lib/db', () => ({
-  db: {
+const { mockDb, mockLogAudit } = vi.hoisted(() => ({
+  mockDb: {
     select: vi.fn(),
-    transaction: vi.fn((fn) => fn({
+    transaction: vi.fn((fn: any) => fn({
       update: vi.fn().mockReturnValue({
         set: vi.fn().mockReturnValue({
           where: vi.fn().mockResolvedValue(undefined),
@@ -2614,8 +2832,11 @@ vi.mock('@/lib/db', () => ({
       }),
     })),
   },
+  mockLogAudit: vi.fn(),
 }))
-vi.mock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }))
+
+vi.mock('@/lib/db', () => ({ db: mockDb }))
+vi.mock('@/lib/legal/audit', () => ({ logAudit: mockLogAudit }))
 
 const baseSession = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -2628,9 +2849,8 @@ const baseSession = {
 }
 
 function mockSelectChain(session: any, sectionRows: any[]) {
-  const { db } = require('@/lib/db')
   let call = 0
-  ;(db.select as any).mockImplementation(() => {
+  ;(mockDb.select as any).mockImplementation(() => {
     call += 1
     return {
       from: vi.fn().mockReturnValue({
@@ -2665,11 +2885,16 @@ describe('rejectSection', () => {
     }])
     const { rejectSection } = await import('@/lib/ai/agent/services/sections')
 
+    mockLogAudit.mockClear()  // explicit — we want to verify zero calls below
+
     const result = await rejectSection(
       { userId: baseSession.userId, requestId: 'req-1', now: new Date() },
       { sessionId: baseSession.id, sectionKey: 'obiective', reason: 'not specific enough', expectedStateVersion: 4 },
     )
     expect(result.newStateVersion).toBe(4)  // unchanged
+
+    // Idempotent no-op invariant: no audit event emitted, stateVersion unchanged
+    expect(mockLogAudit).not.toHaveBeenCalled()
   })
 
   it('throws POLICY_SECTION_WRONG_STATE on different-reason re-reject', async () => {
@@ -3230,7 +3455,7 @@ Create `docs/superpowers/specs/2026-04-10-managed-agents-phase3-policy-matrix.md
 | 2 | `freezeOutline` | `status=active`, `selectedCallId != null`, `isEligibilityPassed(eligibility)`, `outlineFrozen=false` | — | `session.outline_frozen` | Already frozen = no-op |
 | 3 | `saveSectionDraft` | `status=active`, `outlineFrozen=true`, `isEligibilityPassed(eligibility)` | any (creates if missing) | `project.version_save` (legacy) | Creates new version each call |
 | 4 | `approveSection` | `outlineFrozen=true` | status ∈ {draft, needs_review} | `section.state_change` (legacy) | Already-accepted = no-op |
-| 5 | `rollbackSection` | `outlineFrozen=true` | section + target version must exist | `section.rolled_back` | Creates new rollback version each call |
+| 5 | `rollbackSection` | `outlineFrozen=true` | section + target version must exist | `section.rollback` (legacy, reused for hash-chain continuity) | Creates new rollback version each call |
 | 6 | `markSectionStale` | `outlineFrozen=true` | status ∈ {draft, needs_review, accepted} | `section.marked_stale` | Already-stale = no-op. Demotion from accepted clears acceptedContent. |
 | 7 | `rejectSection` | `outlineFrozen=true` | status ∈ {draft, needs_review, rejected} | `section.rejected` | Same reason = no-op; different reason = POLICY_SECTION_WRONG_STATE |
 | 8 | `setApplicationStatus` | For 'completed': validate_application must pass. For 'paused': status=active | — | `session.status_change` | Same-status = no-op |
