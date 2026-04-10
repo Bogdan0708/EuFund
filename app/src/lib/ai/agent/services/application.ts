@@ -1,14 +1,16 @@
 // ── Application State Service ─────────────────────────────────────────────
-// Load full application state and run deterministic validation rules.
+// Load full application state, run deterministic validation rules, and
+// write application-level state mutations.
 // Enforces session ownership so callers cannot cross tenant boundaries.
 //
 // Layer rule: import only from @/lib/db, @/lib/db/schema, drizzle-orm,
-// ./errors, and ./types. No V3 or MCP imports.
+// ./errors, ./types, and @/lib/legal/audit. No V3 or MCP imports.
 
 import { db } from '@/lib/db'
 import { agentSessions, agentSections } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
-import { NotFoundError } from './errors'
+import { NotFoundError, ConcurrencyError } from './errors'
+import { logAudit } from '@/lib/legal/audit'
 import type {
   ServiceContext,
   ApplicationState,
@@ -17,6 +19,19 @@ import type {
   AnnexChecklistItem,
   EligibilityDecision,
 } from './types'
+
+// ── Write result types ─────────────────────────────────────────────────────
+
+export interface SetApplicationStatusResult {
+  newStateVersion: number
+}
+
+export interface ExportSnapshot {
+  snapshotId: string
+  format: 'json'
+  downloadUrl: string
+  expiresAt: string
+}
 
 // ── getApplicationState ────────────────────────────────────────────────────
 
@@ -339,5 +354,144 @@ export async function checkMissingAnnexes(
     required: mandatoryAnnexes,
     uploaded: mentioned,
     missing,
+  }
+}
+
+// ── setApplicationStatus ───────────────────────────────────────────────────
+
+/**
+ * Update the status of an agent session.
+ * Allowed target statuses: 'paused' | 'completed'.
+ * Setting to the current status is a no-op (idempotent).
+ *
+ * Write contract:
+ *   1. Verify session ownership
+ *   2. Enforce expectedStateVersion
+ *   3. Update session status, increment stateVersion
+ *   4. Emit audit log
+ *   5. Return { newStateVersion }
+ */
+export async function setApplicationStatus(
+  ctx: ServiceContext,
+  input: {
+    sessionId: string
+    status: 'paused' | 'completed'
+    expectedStateVersion: number
+  },
+): Promise<SetApplicationStatusResult> {
+  // 1. Verify ownership
+  const sessionRows = await db
+    .select()
+    .from(agentSessions)
+    .where(and(eq(agentSessions.id, input.sessionId), eq(agentSessions.userId, ctx.userId)))
+    .limit(1)
+
+  const session = sessionRows[0]
+  if (!session) {
+    throw new NotFoundError('session', input.sessionId)
+  }
+
+  // 2. Enforce expectedStateVersion
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  // Idempotent: same status → no-op, return current stateVersion
+  if (session.status === input.status) {
+    return { newStateVersion: session.stateVersion }
+  }
+
+  const newStateVersion = session.stateVersion + 1
+
+  // 3. Persist mutation
+  await db
+    .update(agentSessions)
+    .set({ status: input.status, stateVersion: newStateVersion, updatedAt: new Date() })
+    .where(eq(agentSessions.id, input.sessionId))
+
+  // 4. Emit audit log
+  await logAudit({
+    userId: ctx.userId,
+    action: 'project.status_change',
+    resourceType: 'agent_session',
+    resourceId: input.sessionId,
+    metadata: { previousStatus: session.status, newStatus: input.status, requestId: ctx.requestId },
+  })
+
+  // 5. Return canonical result
+  return { newStateVersion }
+}
+
+// ── createExportSnapshot ───────────────────────────────────────────────────
+
+/**
+ * Create a JSON export snapshot of all accepted sections for a session.
+ * Each call creates a NEW snapshot — callers should not retry blindly.
+ *
+ * Write contract (no stateVersion guard — non-idempotent by design):
+ *   1. Verify session ownership
+ *   2. Load accepted sections
+ *   3. Create snapshot (in-memory JSON for now, persisted via audit log)
+ *   4. Emit audit log
+ *   5. Return ExportSnapshot { snapshotId, format, downloadUrl, expiresAt }
+ */
+export async function createExportSnapshot(
+  ctx: ServiceContext,
+  sessionId: string,
+): Promise<ExportSnapshot> {
+  // 1. Verify ownership
+  const sessionRows = await db
+    .select()
+    .from(agentSessions)
+    .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, ctx.userId)))
+    .limit(1)
+
+  const session = sessionRows[0]
+  if (!session) {
+    throw new NotFoundError('session', sessionId)
+  }
+
+  // 2. Load accepted sections
+  const sectionRows = await db
+    .select()
+    .from(agentSections)
+    .where(and(eq(agentSections.sessionId, sessionId), eq(agentSections.status, 'accepted')))
+
+  const snapshotId = crypto.randomUUID()
+  const exportedAt = ctx.now.toISOString()
+  const expiresAt = new Date(ctx.now.getTime() + 24 * 60 * 60 * 1000).toISOString()
+
+  // 3. Create snapshot payload (JSON export)
+  const payload = {
+    snapshotId,
+    sessionId,
+    exportedAt,
+    format: 'json' as const,
+    sections: sectionRows.map(r => ({
+      sectionKey: r.sectionKey,
+      title: r.title,
+      content: r.acceptedContent ?? r.content ?? '',
+    })),
+  }
+
+  // 4. Emit audit log (snapshot metadata stored via audit)
+  await logAudit({
+    userId: ctx.userId,
+    action: 'project.export',
+    resourceType: 'agent_session',
+    resourceId: sessionId,
+    metadata: { snapshotId, sectionCount: sectionRows.length, requestId: ctx.requestId },
+    newValue: payload,
+  })
+
+  // 5. Return ExportSnapshot
+  // downloadUrl is a placeholder — a real implementation would upload to GCS/S3
+  const downloadUrl = `/api/mcp/write/snapshots/${snapshotId}`
+
+  return {
+    snapshotId,
+    format: 'json',
+    downloadUrl,
+    expiresAt,
   }
 }
