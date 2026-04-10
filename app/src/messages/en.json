@@ -1311,5 +1311,10 @@
     "filterReviewed": "Reviewed",
     "filterApproved": "Approved",
     "uploadedFilesHint": "Manually uploaded project documents"
+  },
+  "managedAgent": {
+    "pilotBadge": "Pilot — managed assistant mode",
+    "degraded": "The managed assistant is temporarily unavailable. We switched back to the standard mode.",
+    "notAvailable": "The managed assistant is not available for your account in Phase 2."
   }
 }
