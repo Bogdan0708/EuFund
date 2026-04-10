@@ -5,8 +5,14 @@
 // the next request. Standalone implementation — does not share state
 // with the general-purpose CircuitBreaker in @/lib/errors.
 
+// DegradedReason — the set of reasons the managed runtime can persist
+// to application_agent_sessions.degraded_reason. This is deliberately
+// narrower than "all the ways we might fall back". In particular,
+// `circuit_open` is NOT in the union: when the breaker is open, the
+// route degrades to V3 without creating a managed session row, so there
+// is nothing to mark degraded. If Phase 3 wants to surface open-breaker
+// events in observability, add it back AND persist it at the same time.
 export type DegradedReason =
-  | 'circuit_open'
   | 'anthropic_unavailable'   // 401, 429, 5xx
   | 'anthropic_timeout'
   | 'stream_disconnect'

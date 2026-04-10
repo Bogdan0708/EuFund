@@ -88,8 +88,31 @@ async function handler(req: NextRequest) {
     log.info({ sessionId: session.id, userId: user.id }, 'New agent session created')
   }
 
-  // Decide which runtime to dispatch to
-  const managedEnabled = await isFeatureEnabled('managed_agent_enabled', { userId: user.id })
+  // Decide which runtime to dispatch to.
+  //
+  // Phase 2 compatibility guard: the managed runtime only consumes
+  // `request.message` — it does not yet handle structured `request.action`
+  // payloads that the frontend emits via useAgent.sendAction() (e.g.
+  // select_call, approve_outline, accept_section). Any request with an
+  // action MUST go through V3 to preserve the "zero frontend changes"
+  // contract the plan promised. Without this guard, allowlisted pilot
+  // users clicking action-driven UI would hit the managed path and get
+  // a no-op turn.
+  //
+  // Explicit action support in the managed runtime is a follow-up.
+  const hasStructuredAction = body.action !== undefined && body.action !== null
+
+  const managedEnabled =
+    !hasStructuredAction &&
+    (await isFeatureEnabled('managed_agent_enabled', { userId: user.id }))
+
+  if (hasStructuredAction) {
+    log.info(
+      { sessionId: session.id, userId: user.id, actionType: body.action?.type },
+      'structured action request — routing to V3 (managed runtime does not yet handle actions)',
+    )
+  }
+
   if (managedEnabled) {
     const { managedCircuitBreaker, recordManagedFailure } = await import(
       '@/lib/ai/agent/managed/circuit-breaker'
