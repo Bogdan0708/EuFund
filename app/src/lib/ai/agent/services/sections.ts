@@ -418,10 +418,29 @@ export async function approveSection(
     throw new NotFoundError('section', `${input.sessionId}:${input.sectionKey}`)
   }
 
-  // Idempotent: if already accepted, return current stateVersion (no mutation)
+  // ── Service contract: idempotent no-op ordering ──────────────────────
+  // Per the Phase 3 policy matrix and idempotent no-op rule:
+  //
+  //   1. Idempotent no-op checks run BEFORE assertPolicy.
+  //   2. If the mutation would be a no-op (here: section already accepted),
+  //      return the current state unchanged — no stateVersion bump, no
+  //      updatedAt change, no audit event, AND no policy error.
+  //   3. Only non-idempotent paths run assertPolicy. The section state
+  //      allowlist `['draft', 'needs_review']` intentionally excludes
+  //      'accepted' because the idempotent short-circuit already handles
+  //      that case above.
+  //
+  // This ordering is a deliberate design choice, not a bug.
+  // ─────────────────────────────────────────────────────────────────────
+
+  // Idempotent no-op FIRST
   if (section.status === 'accepted') {
     return { newStateVersion: session.stateVersion }
   }
+
+  // Policy gates (outline frozen + section state allowlist).
+  // Only runs for paths that will actually mutate.
+  assertPolicy(POLICY_MATRIX.approveSection, session as unknown as AgentSession, { sectionState: section.status })
 
   const newStateVersion = session.stateVersion + 1
 
