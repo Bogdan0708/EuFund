@@ -169,6 +169,13 @@
       "when": 1776470400000,
       "tag": "0023_agent_sections_rejected_and_reason",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1776556800000,
+      "tag": "0024_agent_section_versions_rollback",
+      "breakpoints": true
     }
   ]
 }

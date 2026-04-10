@@ -930,7 +930,7 @@ export const agentSections = pgTable('agent_sections', {
 }))
 
 export const agentSectionVersionKindEnum = pgEnum('agent_section_version_kind', [
-  'draft', 'accepted', 'regenerated', 'system_rewrite',
+  'draft', 'accepted', 'regenerated', 'system_rewrite', 'rollback',
 ])
 
 export const agentSectionVersions = pgTable('agent_section_versions', {
@@ -941,6 +941,7 @@ export const agentSectionVersions = pgTable('agent_section_versions', {
   content: text('content').notNull(),
   modelUsed: varchar('model_used', { length: 100 }),
   sourcesUsed: jsonb('sources_used'),
+  rolledBackFromVersion: integer('rolled_back_from_version'),  // Phase 3a; populated only when kind='rollback'
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   uniqSectionVersion: uniqueIndex('uniq_agent_section_version_number').on(table.sectionId, table.versionNumber),

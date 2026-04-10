@@ -99,10 +99,11 @@ export interface AgentSectionVersion {
   id: string
   sectionId: string
   versionNumber: number
-  kind: 'draft' | 'accepted' | 'regenerated' | 'system_rewrite'
+  kind: 'draft' | 'accepted' | 'regenerated' | 'system_rewrite' | 'rollback'
   content: string
   modelUsed: string | null
   sourcesUsed: string[] | null
+  rolledBackFromVersion: number | null  // Phase 3a; populated only when kind='rollback'
   createdAt: Date
 }
 
