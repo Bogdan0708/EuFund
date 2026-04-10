@@ -213,33 +213,47 @@ with runtime_mode='v3' via default."
 
 **Files:**
 - Create: `app/drizzle/NNNN_managed_agent_enabled_flag.sql`
+- Modify: `app/drizzle/meta/_journal.json`
 
-- [ ] **Step 1: Check existing migrations for seed-file naming convention**
+**Precedent:** This repo already uses hand-written SQL seed migrations with manual journal entries — see `app/drizzle/0015_agent_v3_feature_flag.sql` and its entry in `app/drizzle/meta/_journal.json`. Task 3 follows the same pattern.
+
+- [ ] **Step 1: Check existing migrations for the next sequence number**
 
 ```bash
-cd app && ls drizzle/*.sql | tail -10
+cd app && ls drizzle/*.sql | tail -3
 ```
 
 Identify the next available sequence number (e.g., if last is `0054_...sql`, next is `0055_...sql`).
 
-- [ ] **Step 2: Create the seed migration SQL**
+- [ ] **Step 2: Create the seed migration SQL (mirroring 0015_agent_v3_feature_flag.sql)**
 
 Create `app/drizzle/NNNN_managed_agent_enabled_flag.sql` (replace `NNNN` with the next number) with:
 
 ```sql
-INSERT INTO feature_flags (key, enabled, targeting, description)
+-- Managed agent Phase 2 feature flag
+-- Disabled by default. Enable via DB update with userIds targeting.
+INSERT INTO feature_flags (key, enabled, description, targeting, created_at, updated_at)
 VALUES (
   'managed_agent_enabled',
   false,
+  'Route POST /api/ai/agent to the managed runtime for allowlisted users. Phase 2 pilot — discovery/research only, no writes.',
   '{}'::jsonb,
-  'Route POST /api/ai/agent to the managed runtime for allowlisted users. Phase 2 pilot — discovery/research only, no writes.'
+  NOW(),
+  NOW()
 )
 ON CONFLICT (key) DO NOTHING;
 ```
 
 - [ ] **Step 3: Register the file in `meta/_journal.json`**
 
-Open `app/drizzle/meta/_journal.json`. Append a new entry matching the format of the previous entries, with `idx` incremented and `tag` matching the file name (minus `.sql`). Example (adapt to the actual incrementing values):
+Open `app/drizzle/meta/_journal.json`. The file is a JSON object with an `entries` array. Find the last entry in the array, copy its shape, and append a new entry with:
+- `idx` = previous idx + 1
+- `version` = same value as the preceding entry (currently `"7"`)
+- `when` = a fresh Unix ms timestamp (use `Date.now()` in a scratch node shell)
+- `tag` = the migration file name without `.sql` (e.g., `"0055_managed_agent_enabled_flag"`)
+- `breakpoints` = `true`
+
+Example entry (adjust `idx` and `when` to real values):
 
 ```json
 {
@@ -251,7 +265,7 @@ Open `app/drizzle/meta/_journal.json`. Append a new entry matching the format of
 }
 ```
 
-Important: the `idx` and `tag` must match the file name. Check the preceding entry to determine `version` and `when` format.
+The `tag` MUST match the file name exactly (minus `.sql`). Verify with `cd app && grep "0015_agent_v3_feature_flag" drizzle/meta/_journal.json` that the entry format in your file matches the precedent.
 
 - [ ] **Step 4: Apply the seed via `db:migrate`**
 
@@ -1306,11 +1320,13 @@ export async function appendManagedMessage(
 
   const sequenceNumber = last ? last.sequenceNumber + 1 : 0
 
+  // content can be a string, an array of content blocks, or an object.
+  // The jsonb column accepts any JSON shape; no runtime cast is required.
   await db.insert(agentMessages).values({
     sessionId,
     role: message.role,
     messageType: message.messageType,
-    content: message.content as Record<string, unknown>,
+    content: message.content as never,  // jsonb accepts any JSON — cast satisfies Drizzle's typed insert signature
     toolName: message.toolName ?? null,
     toolCallId: message.toolCallId ?? null,
     sequenceNumber,
@@ -2574,7 +2590,7 @@ function runManagedWithSSE(
         const { recordManagedSuccess } = await import('@/lib/ai/agent/managed/circuit-breaker')
         recordManagedSuccess()
       } catch (err) {
-        const { recordManagedFailure, type DegradedReason } = await import('@/lib/ai/agent/managed/circuit-breaker') as any
+        const { recordManagedFailure } = await import('@/lib/ai/agent/managed/circuit-breaker')
         const reason = classifyError(err)
         recordManagedFailure(reason)
 
@@ -2634,7 +2650,7 @@ function runV3WithSSE(
 }
 ```
 
-**Important:** the dynamic import of `DegradedReason` as `type` inside a value context is illegal. Replace with: `const { recordManagedFailure } = await import('@/lib/ai/agent/managed/circuit-breaker')`. Do not import types at runtime.
+**Type import note:** if you need the `DegradedReason` type in this file for annotations, import it statically at the top of the file with `import type { DegradedReason } from '@/lib/ai/agent/managed/circuit-breaker'`. Never mix type imports with runtime destructuring.
 
 - [ ] **Step 2: Write the pre-stream fallback test**
 
