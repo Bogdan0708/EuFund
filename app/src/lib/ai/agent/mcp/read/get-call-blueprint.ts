@@ -9,9 +9,11 @@ import { lookupBlueprint } from '../../services/blueprint'
 import type { ServiceContext } from '../../services/types'
 import { withMcpErrorMapping } from '../tool-error'
 
-const inputShape = {
+export const inputShape = {
   callId: z.string().min(1),
 }
+
+export const inputSchema = z.object(inputShape)
 
 export function registerGetCallBlueprint(server: McpServer, ctx: ServiceContext): void {
   server.tool(

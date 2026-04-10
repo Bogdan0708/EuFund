@@ -9,7 +9,7 @@ import { runEligibility } from '../../services/eligibility'
 import type { ServiceContext } from '../../services/types'
 import { withMcpErrorMapping } from '../tool-error'
 
-const inputShape = {
+export const inputShape = {
   projectSummary: z.object({
     organization: z.object({
       orgType: z.string(),
@@ -27,6 +27,8 @@ const inputShape = {
   }),
   callId: z.string(),
 }
+
+export const inputSchema = z.object(inputShape)
 
 export function registerRunEligibility(server: McpServer, ctx: ServiceContext): void {
   server.tool(
