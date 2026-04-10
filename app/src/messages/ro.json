@@ -1311,5 +1311,10 @@
     "filterReviewed": "Verificat",
     "filterApproved": "Aprobat",
     "uploadedFilesHint": "Documente încărcate manual pentru proiect"
+  },
+  "managedAgent": {
+    "pilotBadge": "Pilot — mod asistent gestionat",
+    "degraded": "Asistentul gestionat este temporar indisponibil. Am revenit la modul standard.",
+    "notAvailable": "Asistentul gestionat nu este disponibil pentru contul tău în Faza 2."
   }
 }
