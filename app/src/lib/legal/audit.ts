@@ -83,7 +83,13 @@ export type AuditAction =
   | 'funding_ai.extractions_upsert'
   | 'funding_ai.version_create'
   | 'funding_ai.review_queue_create'
-  | 'funding_ai.review_queue_update';
+  | 'funding_ai.review_queue_update'
+  // Phase 3 managed-agent mutations (new narrow mutation services)
+  | 'session.call_selected'
+  | 'session.outline_frozen'
+  | 'session.status_change'
+  | 'section.marked_stale'
+  | 'section.rejected';
 
 export interface AuditEntry {
   userId?: string;
