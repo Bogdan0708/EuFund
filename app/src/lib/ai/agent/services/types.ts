@@ -65,16 +65,21 @@ export interface CallMatch {
 
 // --- Blueprint ---
 
+// Cache hit: cached=true, blueprint populated, rawEvidence=null.
+// Cache miss: cached=false, blueprint=null, rawEvidence populated.
+// Cache miss is a valid domain outcome — callers must NOT treat it as failure.
+
 export interface BlueprintLookupResult {
+  cached: boolean
   blueprint: CallBlueprint | null
-  source: 'cache' | 'resolved' | 'not_found'
-  structureConfidence: number
+  rawEvidence: EvidenceChunk[] | null
 }
 
 export interface BlueprintSaveResult {
   callId: string
-  structureConfidence: number
-  savedAt: Date
+  version: number
+  contentHash: string
+  persistedAt: Date
 }
 
 // --- Evidence ---
