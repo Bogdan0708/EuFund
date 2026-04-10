@@ -162,6 +162,13 @@
       "when": 1776384000000,
       "tag": "0022_managed_agent_enabled_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1776470400000,
+      "tag": "0023_agent_sections_rejected_and_reason",
+      "breakpoints": true
     }
   ]
 }

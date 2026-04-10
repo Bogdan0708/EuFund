@@ -901,7 +901,7 @@ export const agentSessions = pgTable('agent_sessions', {
 }))
 
 export const agentSectionStatusEnum = pgEnum('agent_section_status', [
-  'pending', 'generating', 'draft', 'accepted', 'stale', 'invalidated', 'needs_review', 'failed',
+  'pending', 'generating', 'draft', 'accepted', 'stale', 'invalidated', 'needs_review', 'failed', 'rejected',
 ])
 
 export const agentSections = pgTable('agent_sections', {
@@ -921,6 +921,7 @@ export const agentSections = pgTable('agent_sections', {
   latencyMs: integer('latency_ms'),
   tokenUsage: jsonb('token_usage'),
   errorClass: varchar('error_class', { length: 100 }),
+  rejectionReason: text('rejection_reason'),  // NEW — Phase 3a
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   uniqSessionSection: uniqueIndex('uniq_agent_section_session_key').on(table.sessionId, table.sectionKey),

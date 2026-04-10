@@ -91,6 +91,7 @@ export interface AgentSection {
   latencyMs: number | null
   tokenUsage: { input: number; output: number } | null
   errorClass: string | null
+  rejectionReason: string | null  // NEW — Phase 3a
   updatedAt: Date
 }
 
