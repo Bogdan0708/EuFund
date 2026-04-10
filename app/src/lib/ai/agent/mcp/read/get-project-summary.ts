@@ -9,9 +9,11 @@ import { getProjectSummary } from '../../services/projects'
 import type { ServiceContext } from '../../services/types'
 import { withMcpErrorMapping } from '../tool-error'
 
-const inputShape = {
+export const inputShape = {
   projectId: z.string().uuid(),
 }
+
+export const inputSchema = z.object(inputShape)
 
 export function registerGetProjectSummary(server: McpServer, ctx: ServiceContext): void {
   server.tool(

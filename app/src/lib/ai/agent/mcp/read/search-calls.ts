@@ -9,11 +9,13 @@ import { searchCalls } from '../../services/evidence'
 import type { ServiceContext } from '../../services/types'
 import { withMcpErrorMapping } from '../tool-error'
 
-const inputShape = {
+export const inputShape = {
   query: z.string().min(1),
   program: z.string().optional(),
   maxResults: z.number().int().min(1).max(50).optional(),
 }
+
+export const inputSchema = z.object(inputShape)
 
 export function registerSearchCalls(server: McpServer, ctx: ServiceContext): void {
   server.tool(

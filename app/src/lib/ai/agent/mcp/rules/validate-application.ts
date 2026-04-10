@@ -9,9 +9,11 @@ import { validateApplication } from '../../services/application'
 import type { ServiceContext } from '../../services/types'
 import { withMcpErrorMapping } from '../tool-error'
 
-const inputShape = {
+export const inputShape = {
   sessionId: z.string().uuid(),
 }
+
+export const inputSchema = z.object(inputShape)
 
 export function registerValidateApplication(server: McpServer, ctx: ServiceContext): void {
   server.tool(

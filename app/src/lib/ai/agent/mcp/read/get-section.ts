@@ -9,10 +9,12 @@ import { getSection } from '../../services/sections'
 import type { ServiceContext } from '../../services/types'
 import { withMcpErrorMapping } from '../tool-error'
 
-const inputShape = {
+export const inputShape = {
   sessionId: z.string().uuid(),
   sectionKey: z.string().min(1),
 }
+
+export const inputSchema = z.object(inputShape)
 
 export function registerGetSection(server: McpServer, ctx: ServiceContext): void {
   server.tool(

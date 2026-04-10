@@ -9,11 +9,13 @@ import { retrieveEvidence } from '../../services/evidence'
 import type { ServiceContext } from '../../services/types'
 import { withMcpErrorMapping } from '../tool-error'
 
-const inputShape = {
+export const inputShape = {
   callId: z.string().min(1),
   query: z.string().optional(),
   maxChunks: z.number().int().min(1).max(50).optional(),
 }
+
+export const inputSchema = z.object(inputShape)
 
 export function registerRetrieveEvidence(server: McpServer, ctx: ServiceContext): void {
   server.tool(
