@@ -57,6 +57,9 @@ function makeSessionRow(overrides: Record<string, unknown> = {}) {
     userId: USER_ID,
     status: 'active',
     stateVersion: 5,
+    selectedCallId: 'call-1',
+    outlineFrozen: true,
+    eligibility: { results: [], score: 100, passCount: 1, failCount: 0, warningCount: 0 },
     updatedAt: new Date(),
     ...overrides,
   }
