@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { runEligibility } from '../../services/eligibility'
 import type { ServiceContext } from '../../services/types'
+import { withMcpErrorMapping } from '../tool-error'
 
 const inputShape = {
   projectSummary: z.object({
@@ -32,11 +33,11 @@ export function registerRunEligibility(server: McpServer, ctx: ServiceContext): 
     'run_eligibility',
     'Run deterministic eligibility rules for a project against a specific EU funding call. Checks org type, region, CAEN, budget, co-financing rate, duration, and deadline. Returns per-rule results with bilingual messages and an overall score. No LLM calls.',
     inputShape,
-    async (args) => {
+    withMcpErrorMapping(async (args) => {
       const result = await runEligibility(ctx, args.projectSummary, args.callId)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }
-    },
+    }),
   )
 }

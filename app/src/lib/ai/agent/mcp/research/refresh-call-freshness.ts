@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { refreshCallFreshness } from '../../services/freshness'
 import type { ServiceContext } from '../../services/types'
+import { withMcpErrorMapping } from '../tool-error'
 
 const inputShape = {
   callId: z.string().min(1),
@@ -17,11 +18,11 @@ export function registerRefreshCallFreshness(server: McpServer, ctx: ServiceCont
     'refresh_call_freshness',
     'Check if an EU funding call is still open using a live AI-powered web search. Makes an external network call — may be slow. Returns isOpen status, amendments list, warnings, and a confidence score.',
     inputShape,
-    async (args) => {
+    withMcpErrorMapping(async (args) => {
       const result = await refreshCallFreshness(ctx, args.callId)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }
-    },
+    }),
   )
 }

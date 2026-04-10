@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { getProjectSummary } from '../../services/projects'
 import type { ServiceContext } from '../../services/types'
+import { withMcpErrorMapping } from '../tool-error'
 
 const inputShape = {
   projectId: z.string().uuid(),
@@ -17,11 +18,11 @@ export function registerGetProjectSummary(server: McpServer, ctx: ServiceContext
     'get_project_summary',
     'Load a summary of a project including title, status, organization, and dates. Verifies ownership — only the project creator can retrieve it.',
     inputShape,
-    async (args) => {
+    withMcpErrorMapping(async (args) => {
       const result = await getProjectSummary(ctx, args.projectId)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }
-    },
+    }),
   )
 }

@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { lookupBlueprint } from '../../services/blueprint'
 import type { ServiceContext } from '../../services/types'
+import { withMcpErrorMapping } from '../tool-error'
 
 const inputShape = {
   callId: z.string().min(1),
@@ -17,11 +18,11 @@ export function registerGetCallBlueprint(server: McpServer, ctx: ServiceContext)
     'get_call_blueprint',
     'Look up the cached blueprint for an EU funding call. Returns the structured blueprint if confidence >= 0.4 (cache hit), or raw evidence chunks for agent extraction on cache miss.',
     inputShape,
-    async (args) => {
+    withMcpErrorMapping(async (args) => {
       const result = await lookupBlueprint(ctx, args.callId)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }
-    },
+    }),
   )
 }

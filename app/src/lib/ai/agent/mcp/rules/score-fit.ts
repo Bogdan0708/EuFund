@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { scoreFit } from '../../services/eligibility'
 import type { ServiceContext } from '../../services/types'
+import { withMcpErrorMapping } from '../tool-error'
 
 const inputShape = {
   projectSummary: z.object({
@@ -32,11 +33,11 @@ export function registerScoreFit(server: McpServer, ctx: ServiceContext): void {
     'score_fit',
     'Compute a multi-dimensional fit score comparing project characteristics against a specific EU funding call. Scores thematic fit (sector/org-type/region alignment), eligibility fit (rules engine), and budget fit (range alignment). Returns an overall weighted score with reasoning. No LLM calls.',
     inputShape,
-    async (args) => {
+    withMcpErrorMapping(async (args) => {
       const result = await scoreFit(ctx, args.projectSummary, args.callId)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }
-    },
+    }),
   )
 }

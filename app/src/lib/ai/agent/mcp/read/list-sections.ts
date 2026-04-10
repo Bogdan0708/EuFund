@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { listSections } from '../../services/sections'
 import type { ServiceContext } from '../../services/types'
+import { withMcpErrorMapping } from '../tool-error'
 
 const inputShape = {
   sessionId: z.string().uuid(),
@@ -17,11 +18,11 @@ export function registerListSections(server: McpServer, ctx: ServiceContext): vo
     'list_sections',
     'List all sections for an agent session. Returns section metadata (key, title, status, order) without content. Verifies session ownership.',
     inputShape,
-    async (args) => {
+    withMcpErrorMapping(async (args) => {
       const result = await listSections(ctx, args.sessionId)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }
-    },
+    }),
   )
 }

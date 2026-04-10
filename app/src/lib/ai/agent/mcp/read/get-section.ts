@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { getSection } from '../../services/sections'
 import type { ServiceContext } from '../../services/types'
+import { withMcpErrorMapping } from '../tool-error'
 
 const inputShape = {
   sessionId: z.string().uuid(),
@@ -18,11 +19,11 @@ export function registerGetSection(server: McpServer, ctx: ServiceContext): void
     'get_section',
     'Load a single section by session and section key. Returns full content, accepted content, model metadata, and error class. Verifies session ownership. Throws if section not found.',
     inputShape,
-    async (args) => {
+    withMcpErrorMapping(async (args) => {
       const result = await getSection(ctx, args.sessionId, args.sectionKey)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }
-    },
+    }),
   )
 }
