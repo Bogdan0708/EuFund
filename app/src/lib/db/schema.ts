@@ -875,6 +875,8 @@ export const agentPhaseEnum = pgEnum('agent_phase', [
   'discovery', 'research', 'structuring', 'drafting', 'review',
 ])
 
+export const runtimeModeEnum = pgEnum('runtime_mode', ['v3', 'managed'])
+
 export const agentSessions = pgTable('agent_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => users.id),
@@ -957,6 +959,32 @@ export const agentMessages = pgTable('agent_messages', {
 }, (table) => ({
   idxSessionSeq: index('idx_agent_messages_seq').on(table.sessionId, table.sequenceNumber),
   idxSessionCompacted: index('idx_agent_messages_compacted').on(table.sessionId, table.compactedAt),
+}))
+
+export const applicationAgentSessions = pgTable('application_agent_sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').notNull().unique()
+    .references(() => agentSessions.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id),
+
+  runtimeMode: runtimeModeEnum('runtime_mode').notNull().default('managed'),
+  createdWithFlag: boolean('created_with_flag').notNull().default(false),
+
+  status: agentSessionStatusEnum('status').notNull().default('active'),
+
+  degradedAt: timestamp('degraded_at', { withTimezone: true }),
+  degradedReason: text('degraded_reason'),
+
+  lastTurnAt: timestamp('last_turn_at', { withTimezone: true }),
+  lastTurnModel: varchar('last_turn_model', { length: 50 }),
+  lastTurnToolCount: integer('last_turn_tool_count').notNull().default(0),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+}, (table) => ({
+  idxUserStatus: index('idx_app_agent_sessions_user_status')
+    .on(table.userId, table.status, table.updatedAt),
 }))
 
 export const agentCheckpoints = pgTable('agent_checkpoints', {
