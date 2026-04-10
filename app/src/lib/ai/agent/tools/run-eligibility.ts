@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { registerTool } from './registry'
 import type { ToolResult, ToolContext, EligibilityResult } from '../types'
-import { runEligibilityRules, type RuleContext } from '@/lib/rules/eligibility'
+import { runEligibility } from '../services/eligibility'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'tool-run-eligibility' })
@@ -28,62 +28,37 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<Eligi
   const start = Date.now()
 
   try {
-    // Build RuleContext from blueprint + input
-    const blueprint = ctx.session.blueprint
-    const callData = blueprint ? {
-      eligibleTypes: (blueprint as any).eligibilityCriteria as string[] | undefined,
-      eligibleRegions: undefined as string[] | undefined,
-      eligibleCaen: undefined as string[] | undefined,
-      budgetMin: undefined as number | undefined,
-      budgetMax: undefined as number | undefined,
-      cofinancingRate: (blueprint as any).cofinancingRate as number | undefined,
-    } : {}
-
-    const ruleCtx: RuleContext = {
-      organization: {
-        orgType: input.organization.orgType,
-        orgSize: input.organization.orgSize,
-        caenPrimary: input.organization.caenPrimary,
-        nutsRegion: input.organization.nutsRegion,
-        employeeCount: input.organization.employeeCount,
-        annualRevenue: input.organization.annualRevenue,
-      },
-      project: {
-        totalBudget: input.project.totalBudget,
-        ownContrib: input.project.ownContrib,
-        durationMonths: input.project.durationMonths,
-      },
-      call: callData,
+    // Derive callId from session
+    const callId = ctx.session.selectedCallId
+    if (!callId) {
+      return {
+        success: false,
+        error: 'No call selected — run resolve_call first',
+        retryable: false,
+        telemetry: { latencyMs: Date.now() - start },
+      }
     }
 
-    const result = runEligibilityRules(ruleCtx)
-
-    const eligibility: EligibilityResult = {
-      results: result.results.map(r => ({
-        ruleId: r.ruleId,
-        ruleName: r.ruleName,
-        status: r.status,
-        messageRo: r.messageRo,
-        messageEn: r.messageEn,
-        details: r.details,
-      })),
-      score: result.score,
-      passCount: result.passCount,
-      failCount: result.failCount,
-      warningCount: result.warningCount,
+    const serviceCtx = {
+      userId: ctx.userId,
+      sessionId: ctx.sessionId,
+      requestId: ctx.requestId,
+      now: new Date(),
     }
 
-    const warnings = result.failCount > 0
-      ? [`Eligibility check has ${result.failCount} hard failure(s)`]
-      : result.warningCount > 0
-        ? [`Eligibility check has ${result.warningCount} warning(s)`]
+    const eligibility = await runEligibility(serviceCtx, { organization: input.organization, project: input.project }, callId)
+
+    const warnings = eligibility.failCount > 0
+      ? [`Eligibility check has ${eligibility.failCount} hard failure(s)`]
+      : eligibility.warningCount > 0
+        ? [`Eligibility check has ${eligibility.warningCount} warning(s)`]
         : undefined
 
     log.info({
-      score: result.score,
-      pass: result.passCount,
-      fail: result.failCount,
-      warn: result.warningCount,
+      score: eligibility.score,
+      pass: eligibility.passCount,
+      fail: eligibility.failCount,
+      warn: eligibility.warningCount,
     }, 'Eligibility check completed')
 
     return {
