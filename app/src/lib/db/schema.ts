@@ -956,9 +956,14 @@ export const agentMessages = pgTable('agent_messages', {
   sequenceNumber: integer('sequence_number').notNull(),
   compactedAt: timestamp('compacted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // Phase 2 managed-runtime observability columns
+  runtimeMode: runtimeModeEnum('runtime_mode').notNull().default('v3'),
+  provider: varchar('provider', { length: 20 }),
+  model: varchar('model', { length: 50 }),
 }, (table) => ({
   idxSessionSeq: index('idx_agent_messages_seq').on(table.sessionId, table.sequenceNumber),
   idxSessionCompacted: index('idx_agent_messages_compacted').on(table.sessionId, table.compactedAt),
+  idxRuntime: index('idx_agent_messages_runtime').on(table.runtimeMode, table.createdAt),
 }))
 
 export const applicationAgentSessions = pgTable('application_agent_sessions', {
