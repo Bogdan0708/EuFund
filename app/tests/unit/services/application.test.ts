@@ -22,7 +22,7 @@ vi.mock('drizzle-orm', () => ({
 
 // Import AFTER mocks
 import { db } from '@/lib/db'
-import { getApplicationState } from '@/lib/ai/agent/services/application'
+import { getApplicationState, getValidationReport } from '@/lib/ai/agent/services/application'
 import { NotFoundError } from '@/lib/ai/agent/services/errors'
 import type { ServiceContext } from '@/lib/ai/agent/services/types'
 
@@ -224,5 +224,126 @@ describe('getApplicationState', () => {
     const state = await getApplicationState(baseCtx, SESSION_ID)
 
     expect(state.eligibility).toBeNull()
+  })
+})
+
+// ── getValidationReport tests ──────────────────────────────────────────────
+
+describe('getValidationReport', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('throws NotFoundError when session does not exist', async () => {
+    setupDbSelect([])
+
+    await expect(getValidationReport(baseCtx, SESSION_ID)).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('throws NotFoundError when session belongs to a different user', async () => {
+    setupDbSelect([]) // ownership filter returns no rows
+
+    const ctxOther: ServiceContext = { ...baseCtx, userId: OTHER_USER_ID }
+
+    await expect(getValidationReport(ctxOther, SESSION_ID)).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('returns passed=false when no sections exist', async () => {
+    setupDbSelect([makeSession()], [])
+
+    const report = await getValidationReport(baseCtx, SESSION_ID)
+
+    expect(report.passed).toBe(false)
+    expect(report.summary.totalSections).toBe(0)
+    expect(report.summary.acceptedSections).toBe(0)
+  })
+
+  it('returns passed=true when all sections are accepted and no eligibility blockers', async () => {
+    const session = makeSession({ eligibility: { eligible: true, failCount: 0 } })
+    const section1 = makeSection({ status: 'accepted' })
+    const section2 = makeSection({
+      id: '44444444-4444-4444-8444-444444444444',
+      sectionKey: 'summary',
+      status: 'accepted',
+    })
+    setupDbSelect([session], [section1, section2])
+
+    const report = await getValidationReport(baseCtx, SESSION_ID)
+
+    expect(report.passed).toBe(true)
+    expect(report.summary.totalSections).toBe(2)
+    expect(report.summary.acceptedSections).toBe(2)
+  })
+
+  it('returns passed=false when some sections are not accepted', async () => {
+    const session = makeSession({ eligibility: { eligible: true, failCount: 0 } })
+    const section1 = makeSection({ status: 'accepted' })
+    const section2 = makeSection({
+      id: '44444444-4444-4444-8444-444444444444',
+      sectionKey: 'summary',
+      status: 'draft',
+    })
+    setupDbSelect([session], [section1, section2])
+
+    const report = await getValidationReport(baseCtx, SESSION_ID)
+
+    expect(report.passed).toBe(false)
+    expect(report.summary.acceptedSections).toBe(1)
+    expect(report.summary.draftSections).toBe(1)
+  })
+
+  it('counts pending sections as missingSections', async () => {
+    const section = makeSection({ status: 'pending' })
+    setupDbSelect([makeSession()], [section])
+
+    const report = await getValidationReport(baseCtx, SESSION_ID)
+
+    expect(report.summary.missingSections).toBe(1)
+    expect(report.summary.draftSections).toBe(0)
+  })
+
+  it('counts failed sections as missingSections', async () => {
+    const section = makeSection({ status: 'failed' })
+    setupDbSelect([makeSession()], [section])
+
+    const report = await getValidationReport(baseCtx, SESSION_ID)
+
+    expect(report.summary.missingSections).toBe(1)
+  })
+
+  it('reads eligibility blockers from session.eligibility.failCount', async () => {
+    const session = makeSession({ eligibility: { eligible: false, failCount: 3 } })
+    const section = makeSection({ status: 'accepted' })
+    setupDbSelect([session], [section])
+
+    const report = await getValidationReport(baseCtx, SESSION_ID)
+
+    expect(report.passed).toBe(false)
+    expect(report.summary.eligibilityBlockers).toBe(3)
+  })
+
+  it('returns 0 eligibility blockers when eligibility is null', async () => {
+    const session = makeSession({ eligibility: null })
+    setupDbSelect([session], [])
+
+    const report = await getValidationReport(baseCtx, SESSION_ID)
+
+    expect(report.summary.eligibilityBlockers).toBe(0)
+  })
+
+  it('returns issues as empty array (full rules run on rules server)', async () => {
+    setupDbSelect([makeSession()], [makeSection()])
+
+    const report = await getValidationReport(baseCtx, SESSION_ID)
+
+    expect(report.issues).toEqual([])
+  })
+
+  it('mandatoryAnnexesMissing is always 0 in read-only report', async () => {
+    setupDbSelect([makeSession()], [makeSection()])
+
+    const report = await getValidationReport(baseCtx, SESSION_ID)
+
+    expect(report.summary.mandatoryAnnexesMissing).toBe(0)
   })
 })
