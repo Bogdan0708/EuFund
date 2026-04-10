@@ -11,6 +11,9 @@ import { agentSessions, agentSections, agentSectionVersions } from '@/lib/db/sch
 import { eq, and, max } from 'drizzle-orm'
 import { NotFoundError, ConcurrencyError } from './errors'
 import { logAudit } from '@/lib/legal/audit'
+import { assertPolicy } from '../policy/enforce'
+import { POLICY_MATRIX } from '../policy/matrix'
+import type { AgentSession } from '../types'
 import type {
   ServiceContext,
   SectionListItem,
@@ -298,6 +301,9 @@ export async function saveSectionDraft(
   if (session.stateVersion !== input.expectedStateVersion) {
     throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
   }
+
+  // 3. Enforce policy gates (Phase 3a defense-in-depth; managed runtime relies on this in 3b)
+  assertPolicy(POLICY_MATRIX.saveSectionDraft, session as unknown as AgentSession)
 
   const newStateVersion = session.stateVersion + 1
 
