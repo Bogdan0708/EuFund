@@ -1,15 +1,16 @@
 // ── Sections Service ───────────────────────────────────────────────────────
-// Read-only access to agent sections and their versions.
+// Read and write access to agent sections and their versions.
 // Also exposes deterministic section validation (no LLM calls).
 // Enforces session ownership so callers cannot cross tenant boundaries.
 //
 // Layer rule: import only from @/lib/db, @/lib/db/schema, drizzle-orm,
-// ./errors, and ./types. No V3 or MCP imports.
+// ./errors, ./types, and @/lib/legal/audit. No V3 or MCP imports.
 
 import { db } from '@/lib/db'
-import { agentSessions, agentSections } from '@/lib/db/schema'
-import { eq, and } from 'drizzle-orm'
-import { NotFoundError } from './errors'
+import { agentSessions, agentSections, agentSectionVersions } from '@/lib/db/schema'
+import { eq, and, max } from 'drizzle-orm'
+import { NotFoundError, ConcurrencyError } from './errors'
+import { logAudit } from '@/lib/legal/audit'
 import type {
   ServiceContext,
   SectionListItem,
@@ -17,6 +18,24 @@ import type {
   SectionValidationResult,
   ValidationIssue,
 } from './types'
+
+// ── Write result types ─────────────────────────────────────────────────────
+
+export interface SectionDraftSaveResult {
+  versionNumber: number
+  sectionId: string
+  newStateVersion: number
+}
+
+export interface SectionApproveResult {
+  newStateVersion: number
+}
+
+export interface SectionRollbackResult {
+  content: string
+  restoredVersion: number
+  newStateVersion: number
+}
 
 // ── Validation constants ───────────────────────────────────────────────────
 
@@ -57,6 +76,23 @@ async function assertSessionOwnership(
   if (!rows[0]) {
     throw new NotFoundError('session', sessionId)
   }
+}
+
+async function verifySessionOwnership(
+  ctx: ServiceContext,
+  sessionId: string,
+): Promise<typeof agentSessions.$inferSelect> {
+  const rows = await db
+    .select()
+    .from(agentSessions)
+    .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, ctx.userId)))
+    .limit(1)
+
+  if (!rows[0]) {
+    throw new NotFoundError('session', sessionId)
+  }
+
+  return rows[0]
 }
 
 // ── listSections ───────────────────────────────────────────────────────────
@@ -239,4 +275,262 @@ export async function validateSection(
   const recommendedStatus = errorCount > 0 ? 'failed' : 'needs_review'
 
   return { sectionKey, issues, score, recommendedStatus }
+}
+
+// ── saveSectionDraft ───────────────────────────────────────────────────────
+
+/**
+ * Upsert a section draft by (sessionId, sectionKey).
+ *
+ * Write contract:
+ *   1. Verify session ownership
+ *   2. Enforce expectedStateVersion (ConcurrencyError on mismatch)
+ *   3. Upsert section, create version record, increment stateVersion
+ *   4. Emit audit log
+ *   5. Return { versionNumber, sectionId, newStateVersion }
+ */
+export async function saveSectionDraft(
+  ctx: ServiceContext,
+  input: {
+    sessionId: string
+    sectionKey: string
+    content: string
+    expectedStateVersion: number
+  },
+): Promise<SectionDraftSaveResult> {
+  // 1. Verify ownership
+  const session = await verifySessionOwnership(ctx, input.sessionId)
+
+  // 2. Enforce expectedStateVersion
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  const newStateVersion = session.stateVersion + 1
+
+  // 3. Persist mutation within a transaction
+  let sectionId!: string
+  let versionNumber!: number
+
+  await db.transaction(async (tx) => {
+    // Upsert section
+    const existing = await tx
+      .select()
+      .from(agentSections)
+      .where(and(eq(agentSections.sessionId, input.sessionId), eq(agentSections.sectionKey, input.sectionKey)))
+      .limit(1)
+
+    if (existing[0]) {
+      sectionId = existing[0].id
+      await tx
+        .update(agentSections)
+        .set({ content: input.content, status: 'draft', updatedAt: new Date() })
+        .where(eq(agentSections.id, sectionId))
+    } else {
+      // Create new section with minimal required fields
+      const inserted = await tx
+        .insert(agentSections)
+        .values({
+          sessionId: input.sessionId,
+          sectionKey: input.sectionKey,
+          title: input.sectionKey,
+          documentOrder: 0,
+          generationOrder: 0,
+          status: 'draft',
+          content: input.content,
+        })
+        .returning({ id: agentSections.id })
+      sectionId = inserted[0].id
+    }
+
+    // Determine next version number
+    const maxVersionRow = await tx
+      .select({ maxVersion: max(agentSectionVersions.versionNumber) })
+      .from(agentSectionVersions)
+      .where(eq(agentSectionVersions.sectionId, sectionId!))
+
+    versionNumber = (maxVersionRow[0]?.maxVersion ?? 0) + 1
+
+    await tx.insert(agentSectionVersions).values({
+      sectionId: sectionId!,
+      versionNumber: versionNumber!,
+      kind: 'draft',
+      content: input.content,
+    })
+
+    // Increment stateVersion on session
+    await tx
+      .update(agentSessions)
+      .set({ stateVersion: newStateVersion, updatedAt: new Date() })
+      .where(eq(agentSessions.id, input.sessionId))
+  })
+
+  // 4. Emit audit log
+  await logAudit({
+    userId: ctx.userId,
+    action: 'project.version_save',
+    resourceType: 'agent_section',
+    resourceId: sectionId!,
+    metadata: { sessionId: input.sessionId, sectionKey: input.sectionKey, versionNumber: versionNumber!, requestId: ctx.requestId },
+  })
+
+  // 5. Return canonical result
+  return { versionNumber: versionNumber!, sectionId: sectionId!, newStateVersion }
+}
+
+// ── approveSection ─────────────────────────────────────────────────────────
+
+/**
+ * Set a section status to 'accepted', copying content to acceptedContent.
+ * If already accepted, returns current state (no-op idempotent).
+ *
+ * Write contract:
+ *   1. Verify session ownership
+ *   2. Enforce expectedStateVersion
+ *   3. Update section status and acceptedContent, increment stateVersion
+ *   4. Emit audit log
+ *   5. Return { newStateVersion }
+ */
+export async function approveSection(
+  ctx: ServiceContext,
+  input: {
+    sessionId: string
+    sectionKey: string
+    expectedStateVersion: number
+  },
+): Promise<{ newStateVersion: number }> {
+  // 1. Verify ownership
+  const session = await verifySessionOwnership(ctx, input.sessionId)
+
+  // 2. Enforce expectedStateVersion
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  // Load the section
+  const sectionRows = await db
+    .select()
+    .from(agentSections)
+    .where(and(eq(agentSections.sessionId, input.sessionId), eq(agentSections.sectionKey, input.sectionKey)))
+    .limit(1)
+
+  const section = sectionRows[0]
+  if (!section) {
+    throw new NotFoundError('section', `${input.sessionId}:${input.sectionKey}`)
+  }
+
+  // Idempotent: if already accepted, return current stateVersion (no mutation)
+  if (section.status === 'accepted') {
+    return { newStateVersion: session.stateVersion }
+  }
+
+  const newStateVersion = session.stateVersion + 1
+
+  // 3. Persist mutation
+  await db.transaction(async (tx) => {
+    await tx
+      .update(agentSections)
+      .set({ status: 'accepted', acceptedContent: section.content, updatedAt: new Date() })
+      .where(eq(agentSections.id, section.id))
+
+    await tx
+      .update(agentSessions)
+      .set({ stateVersion: newStateVersion, updatedAt: new Date() })
+      .where(eq(agentSessions.id, input.sessionId))
+  })
+
+  // 4. Emit audit log
+  await logAudit({
+    userId: ctx.userId,
+    action: 'section.state_change',
+    resourceType: 'agent_section',
+    resourceId: section.id,
+    metadata: { sessionId: input.sessionId, sectionKey: input.sectionKey, newStatus: 'accepted', requestId: ctx.requestId },
+  })
+
+  // 5. Return canonical result
+  return { newStateVersion }
+}
+
+// ── rollbackSection ────────────────────────────────────────────────────────
+
+/**
+ * Restore a section to a previous version by version number.
+ * Sets status to 'draft' with the historical content.
+ *
+ * Write contract:
+ *   1. Verify session ownership
+ *   2. Enforce expectedStateVersion
+ *   3. Load target version, replace content, increment stateVersion
+ *   4. Emit audit log
+ *   5. Return { content, restoredVersion, newStateVersion }
+ */
+export async function rollbackSection(
+  ctx: ServiceContext,
+  input: {
+    sessionId: string
+    sectionKey: string
+    targetVersion: number
+    expectedStateVersion: number
+  },
+): Promise<SectionRollbackResult> {
+  // 1. Verify ownership
+  const session = await verifySessionOwnership(ctx, input.sessionId)
+
+  // 2. Enforce expectedStateVersion
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  // Load the section
+  const sectionRows = await db
+    .select()
+    .from(agentSections)
+    .where(and(eq(agentSections.sessionId, input.sessionId), eq(agentSections.sectionKey, input.sectionKey)))
+    .limit(1)
+
+  const section = sectionRows[0]
+  if (!section) {
+    throw new NotFoundError('section', `${input.sessionId}:${input.sectionKey}`)
+  }
+
+  // Load target version
+  const versionRows = await db
+    .select()
+    .from(agentSectionVersions)
+    .where(and(eq(agentSectionVersions.sectionId, section.id), eq(agentSectionVersions.versionNumber, input.targetVersion)))
+    .limit(1)
+
+  const targetVersionRow = versionRows[0]
+  if (!targetVersionRow) {
+    throw new NotFoundError('section_version', `${section.id}:v${input.targetVersion}`)
+  }
+
+  const newStateVersion = session.stateVersion + 1
+  const restoredContent = targetVersionRow.content
+
+  // 3. Persist mutation
+  await db.transaction(async (tx) => {
+    await tx
+      .update(agentSections)
+      .set({ content: restoredContent, status: 'draft', updatedAt: new Date() })
+      .where(eq(agentSections.id, section.id))
+
+    await tx
+      .update(agentSessions)
+      .set({ stateVersion: newStateVersion, updatedAt: new Date() })
+      .where(eq(agentSessions.id, input.sessionId))
+  })
+
+  // 4. Emit audit log
+  await logAudit({
+    userId: ctx.userId,
+    action: 'section.rollback',
+    resourceType: 'agent_section',
+    resourceId: section.id,
+    metadata: { sessionId: input.sessionId, sectionKey: input.sectionKey, targetVersion: input.targetVersion, requestId: ctx.requestId },
+  })
+
+  // 5. Return canonical result
+  return { content: restoredContent, restoredVersion: input.targetVersion, newStateVersion }
 }
