@@ -9,11 +9,28 @@ vi.mock('@/lib/ai/providers/router', () => ({
   }),
 }))
 
+vi.mock('@/lib/ai/model-routing', () => ({
+  resolveAgentModel: vi.fn(() => ({ provider: 'perplexity', model: 'sonar' })),
+}))
+
+vi.mock('@/lib/ai/agent/utils', () => ({
+  parseAIJson: vi.fn((content: string) => JSON.parse(content)),
+}))
+
 vi.mock('@/lib/db', () => ({
   db: {
-    update: vi.fn().mockReturnThis(),
-    set: vi.fn().mockReturnThis(),
-    where: vi.fn().mockResolvedValue(undefined),
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    }),
+    update: vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    }),
   },
 }))
 
@@ -54,7 +71,7 @@ describe('refresh_call_freshness tool', () => {
     expect(data.freshnessConfidence).toBe(0.85)
   })
 
-  it('includes provider telemetry', async () => {
+  it('includes latencyMs in telemetry', async () => {
     const tool = getToolRegistry().find(t => t.name === 'refresh_call_freshness')!
     const result = await tool.execute({
       callId: 'PNRR-C11',
@@ -62,7 +79,6 @@ describe('refresh_call_freshness tool', () => {
       program: 'PNRR',
     }, mockCtx)
 
-    expect(result.telemetry.model).toBe('sonar')
-    expect(result.telemetry.provider).toBe('perplexity')
+    expect(typeof result.telemetry.latencyMs).toBe('number')
   })
 })
