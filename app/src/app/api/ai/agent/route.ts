@@ -12,6 +12,11 @@ import { db } from '@/lib/db'
 import { agentSessions, agentSections } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
+import {
+  ensureAppAgentSession,
+  markDegraded,
+  recordTurnSuccess,
+} from '@/lib/ai/agent/managed/session-metadata'
 
 const log = logger.child({ component: 'api-agent' })
 
@@ -104,6 +109,31 @@ async function handler(req: NextRequest) {
           },
           'managed setup failed, degrading to V3',
         )
+        // Lazy-create the app_agent_sessions row and mark it degraded
+        // BEFORE falling back to V3, so the DB reflects that a managed
+        // attempt was made and immediately degraded pre-stream.
+        try {
+          await ensureAppAgentSession(session.id, user.id, true)
+        } catch (metaErr) {
+          log.warn(
+            {
+              sessionId: session.id,
+              err: metaErr instanceof Error ? metaErr.message : String(metaErr),
+            },
+            'ensureAppAgentSession failed (pre-stream fallback)',
+          )
+        }
+        try {
+          await markDegraded(session.id, user.id, 'auth_setup_failure')
+        } catch (metaErr) {
+          log.warn(
+            {
+              sessionId: session.id,
+              err: metaErr instanceof Error ? metaErr.message : String(metaErr),
+            },
+            'markDegraded failed (pre-stream fallback)',
+          )
+        }
         return runV3WithSSE(session, sections, body, user)
       }
       return runManagedWithSSE(session, sections, body, user)
@@ -174,6 +204,20 @@ function runManagedWithSSE(
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
       }
 
+      // Lazy-create the app_agent_sessions row on first managed attempt.
+      // Failure to write metadata must NOT crash the turn.
+      try {
+        await ensureAppAgentSession(session.id, user.id, true)
+      } catch (metaErr) {
+        log.warn(
+          {
+            sessionId: session.id,
+            err: metaErr instanceof Error ? metaErr.message : String(metaErr),
+          },
+          'ensureAppAgentSession failed',
+        )
+      }
+
       try {
         const { runManagedTurn } = await import('@/lib/ai/agent/managed/runtime')
         const serviceCtx = {
@@ -183,14 +227,49 @@ function runManagedWithSSE(
           requestId: body.requestId,
           now: new Date(),
         }
-        await runManagedTurn({ session, sections, request: body, emit, serviceCtx })
+        const result = await runManagedTurn({
+          session,
+          sections,
+          request: body,
+          emit,
+          serviceCtx,
+        })
 
         const { recordManagedSuccess } = await import('@/lib/ai/agent/managed/circuit-breaker')
         recordManagedSuccess()
+
+        try {
+          await recordTurnSuccess(
+            session.id,
+            user.id,
+            result.model,
+            result.toolCount,
+          )
+        } catch (metaErr) {
+          log.warn(
+            {
+              sessionId: session.id,
+              err: metaErr instanceof Error ? metaErr.message : String(metaErr),
+            },
+            'recordTurnSuccess failed',
+          )
+        }
       } catch (err) {
         const { recordManagedFailure } = await import('@/lib/ai/agent/managed/circuit-breaker')
         const reason = classifyManagedError(err)
         recordManagedFailure(reason)
+
+        try {
+          await markDegraded(session.id, user.id, reason)
+        } catch (metaErr) {
+          log.warn(
+            {
+              sessionId: session.id,
+              err: metaErr instanceof Error ? metaErr.message : String(metaErr),
+            },
+            'markDegraded failed',
+          )
+        }
 
         if (!firstByteFlushed) {
           log.warn(
