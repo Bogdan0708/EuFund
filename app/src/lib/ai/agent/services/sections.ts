@@ -17,24 +17,17 @@ import type {
   SectionDetail,
   SectionValidationResult,
   ValidationIssue,
+  SectionDraftSaveResult,
+  SectionApproveResult,
+  SectionRollbackResult,
 } from './types'
 
-// ── Write result types ─────────────────────────────────────────────────────
-
-export interface SectionDraftSaveResult {
-  versionNumber: number
-  sectionId: string
-  newStateVersion: number
-}
-
-export interface SectionApproveResult {
-  newStateVersion: number
-}
-
-export interface SectionRollbackResult {
-  content: string
-  restoredVersion: number
-  newStateVersion: number
+// Re-exported for backward compatibility with callers that imported write
+// result types from this module — single source of truth is ./types.
+export type {
+  SectionDraftSaveResult,
+  SectionApproveResult,
+  SectionRollbackResult,
 }
 
 // ── Validation constants ───────────────────────────────────────────────────

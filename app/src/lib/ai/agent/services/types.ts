@@ -144,18 +144,23 @@ export interface SectionDetail extends SectionListItem {
   errorClass: string | null
 }
 
+// Write result shapes — single source of truth. Service implementations
+// import these rather than defining local duplicates.
+
 export interface SectionDraftSaveResult {
   sectionId: string
-  sectionKey: string
-  newVersion: number
-  savedAt: Date
+  versionNumber: number
+  newStateVersion: number
+}
+
+export interface SectionApproveResult {
+  newStateVersion: number
 }
 
 export interface SectionRollbackResult {
-  sectionId: string
-  sectionKey: string
-  rolledBackToVersion: number
-  previousVersion: number
+  content: string
+  restoredVersion: number
+  newStateVersion: number
 }
 
 export interface ValidationIssue {
@@ -274,9 +279,12 @@ export interface UploadedDocument {
 // --- Export ---
 
 export interface ExportSnapshot {
-  sessionId: string
-  exportedAt: Date
-  format: 'docx' | 'pdf' | 'json'
-  filePath: string
-  sizeBytes: number
+  snapshotId: string
+  format: 'json'
+  downloadUrl: string
+  expiresAt: string
+}
+
+export interface SetApplicationStatusResult {
+  newStateVersion: number
 }
