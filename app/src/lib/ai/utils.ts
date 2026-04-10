@@ -93,44 +93,113 @@ export function parseAIJson<T = unknown>(raw: string): T {
 }
 
 /**
- * Convert a Zod schema to a JSON Schema object for OpenAI tool definitions.
- * Handles common Zod types: object, string, number, boolean, array, optional, enum.
+ * Convert a Zod schema to a JSON Schema object for OpenAI / Anthropic tool definitions.
+ * Handles common Zod types: object, string, number, boolean, array, optional, default, enum.
+ *
+ * Supports both Zod 3 (legacy `_def.typeName` = "ZodObject", `_def.shape()`) and
+ * Zod 4 (`_def.type` = "object", `_def.shape` is a plain record). The installed
+ * version is Zod 4.x but we keep the Zod 3 branch for safety during upgrades.
  */
 export function zodToJsonSchema(schema: unknown): Record<string, unknown> {
-  const s = schema as { _def?: { typeName?: string; shape?: () => Record<string, unknown>; innerType?: unknown; values?: string[]; type?: unknown; minLength?: unknown; maxLength?: unknown; minimum?: unknown; maximum?: unknown; description?: string; defaultValue?: () => unknown } }
+  const s = schema as {
+    _def?: {
+      // Shared
+      description?: string
+      innerType?: unknown
+      // Zod 3 fields
+      typeName?: string
+      values?: string[]
+      defaultValue?: () => unknown
+      // `type` is overloaded: in Zod 3 for ZodArray it is the element schema;
+      // in Zod 4 it is the lowercase type tag (e.g. "object", "string"). We
+      // read it as unknown and branch on its shape below.
+      type?: unknown
+      // Zod 4 object shape (plain record, not a function)
+      shape?: Record<string, unknown> | (() => Record<string, unknown>)
+      // Zod 4 array element
+      element?: unknown
+      // Zod 4 enum entries
+      entries?: Record<string, string | number>
+    }
+  }
   if (!s?._def) return { type: 'object', properties: {} }
 
   const def = s._def
   const base: Record<string, unknown> = {}
   if (def.description) base.description = def.description
 
-  switch (def.typeName) {
-    case 'ZodObject': {
-      const shape = def.shape?.() || {}
+  // Normalize the type tag: prefer Zod 3's `typeName`, fall back to Zod 4's `type`
+  // string (only when it is a plain string — in Zod 3 `def.type` held the array
+  // element schema, so we must not confuse them).
+  const tag =
+    typeof def.typeName === 'string'
+      ? def.typeName
+      : typeof def.type === 'string'
+        ? def.type
+        : undefined
+
+  switch (tag) {
+    // ── Object ────────────────────────────────────────────────
+    case 'ZodObject':
+    case 'object': {
+      const rawShape = def.shape
+      const shape =
+        typeof rawShape === 'function'
+          ? (rawShape as () => Record<string, unknown>)()
+          : (rawShape as Record<string, unknown>) || {}
       const properties: Record<string, unknown> = {}
       const required: string[] = []
       for (const [key, val] of Object.entries(shape)) {
         properties[key] = zodToJsonSchema(val)
-        const valDef = (val as { _def?: { typeName?: string } })?._def
-        if (valDef?.typeName !== 'ZodOptional' && valDef?.typeName !== 'ZodDefault') {
+        const valDef = (val as { _def?: { typeName?: string; type?: unknown } })?._def
+        const innerTag =
+          typeof valDef?.typeName === 'string'
+            ? valDef.typeName
+            : typeof valDef?.type === 'string'
+              ? valDef.type
+              : undefined
+        if (
+          innerTag !== 'ZodOptional' &&
+          innerTag !== 'ZodDefault' &&
+          innerTag !== 'optional' &&
+          innerTag !== 'default'
+        ) {
           required.push(key)
         }
       }
       return { ...base, type: 'object', properties, ...(required.length > 0 ? { required } : {}) }
     }
+    // ── Primitives ────────────────────────────────────────────
     case 'ZodString':
+    case 'string':
       return { ...base, type: 'string' }
     case 'ZodNumber':
+    case 'number':
       return { ...base, type: 'number' }
     case 'ZodBoolean':
+    case 'boolean':
       return { ...base, type: 'boolean' }
+    // ── Array ─────────────────────────────────────────────────
     case 'ZodArray':
-      return { ...base, type: 'array', items: zodToJsonSchema(def.type) }
+    case 'array': {
+      // Zod 4 stores the element under `element`; Zod 3 under `type`.
+      const items = def.element !== undefined ? def.element : def.type
+      return { ...base, type: 'array', items: zodToJsonSchema(items) }
+    }
+    // ── Wrappers — unwrap and recurse ─────────────────────────
     case 'ZodOptional':
+    case 'optional':
     case 'ZodDefault':
+    case 'default':
       return zodToJsonSchema(def.innerType)
+    // ── Enum ──────────────────────────────────────────────────
     case 'ZodEnum':
-      return { ...base, type: 'string', enum: def.values }
+    case 'enum': {
+      // Zod 3: `values` is a string array. Zod 4: `entries` is a record of
+      // label → value (keys equal values for string enums).
+      const values = def.values ?? (def.entries ? Object.values(def.entries) : [])
+      return { ...base, type: 'string', enum: values }
+    }
     default:
       return { ...base, type: 'string' }
   }
