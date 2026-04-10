@@ -148,6 +148,13 @@
       "when": 1776211200000,
       "tag": "0020_runtime_mode_and_app_agent_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1776297600000,
+      "tag": "0021_agent_messages_observability",
+      "breakpoints": true
     }
   ]
 }
