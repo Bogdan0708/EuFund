@@ -921,8 +921,9 @@ If read-time normalization becomes a measured performance problem in Phase 4 (wh
 - `tests/unit/managed/history-batching.test.ts` — multiple consecutive V3 tool_call rows batch into one assistant message with multiple tool_use blocks
 - `tests/unit/managed/history-null-toolcallid.test.ts` — rows with `toolCallId=null` get synthetic `tu_legacy_<row.id>` IDs and pair correctly
 - `tests/unit/managed/history-compacted.test.ts` — `compactedAt` rows are dropped (preserves existing behavior)
-- `tests/unit/managed/history-system-dropped.test.ts` — `role='system'` rows are dropped
-- `tests/integration/managed/history-real-v3-session.test.ts` — seed a real V3-era session via direct DB inserts that mirror `runtime.ts` persistence, load via `loadManagedHistory`, assert the MessageParam[] is consumable by Anthropic's SDK (no shape errors)
+- `tests/unit/managed/history-system-dropped.test.ts` — non-summary `role='system'` rows are dropped
+- `tests/unit/managed/history-system-summary.test.ts` — `role='system', messageType='system_summary'` rows are extracted into the loader's `systemSummary` return field (not dropped, not emitted as a user message); fallback to `session.messageSummary` when no such row exists; both sources null → `systemSummary = null`
+- `tests/integration/managed/history-real-v3-session.test.ts` — seed a real V3-era session via direct DB inserts that mirror `runtime.ts` persistence, load via `loadManagedHistory`, assert the MessageParam[] is consumable by Anthropic's SDK (no shape errors) and `systemSummary` carries the expected compaction text
 
 **Migration considerations.** No schema changes for normalization. The fix is entirely in the loader. Existing rows stay unchanged. Rollback means reverting the loader commit, which is safe because the original loader's behavior is strictly a subset (drops rows rather than mutating them).
 
@@ -937,7 +938,19 @@ This is enforced operationally (runbook item) not programmatically — the flag 
 
 ### 6.6 Prompt update
 
-Replace `app/src/lib/ai/agent/managed/prompt.ts` contents. Keep the RO/EN split and the `buildManagedSystemPrompt(session, sections, phase, locale)` signature.
+Replace `app/src/lib/ai/agent/managed/prompt.ts` contents. Keep the RO/EN split. The signature gains one optional parameter per §6.5 to accept the prior-conversation summary extracted by the history normalizer:
+
+```typescript
+buildManagedSystemPrompt(
+  session: AgentSession,
+  sections: AgentSection[],
+  phase: Phase,
+  locale: 'ro' | 'en',
+  priorSummary: string | null = null,   // NEW in Phase 3, populated by loadManagedHistory
+): string
+```
+
+Callers that existed in Phase 2 continue to work because `priorSummary` defaults to `null`. The runtime wires the value in explicitly by destructuring `{messages, systemSummary}` from `loadManagedHistory` and passing `systemSummary` as the fifth argument.
 
 Key changes from Phase 2 prompt:
 - **Remove** "Phase 2 — Read-Only Pilot" framing; replace with "FondEU Managed Mode"
@@ -979,7 +992,7 @@ const serviceCtx = {
 - `tests/unit/managed/executor.test.ts` — one happy-path test per write tool with services mocked, one error-mapping test per new `POLICY_*` code, one `allowWrites=false` test per write tool
 - `tests/unit/managed/prompt.test.ts` — Phase 3 expectations: no "read-only" lockdown, all 5 phases listed, confirm-before-write rule present, concurrency recovery rule present, policy-code recovery rule present
 - `tests/unit/mcp/write/set-selected-call.test.ts`, `freeze-outline.test.ts`, `mark-section-stale.test.ts`, `reject-section.test.ts` — input validation, service call, error mapping for each new MCP handler
-- **History normalizer tests** (per §6.5): `history-classify.test.ts`, `history-v3-replay.test.ts`, `history-mixed-runtime.test.ts`, `history-pairing-invariant.test.ts`, `history-batching.test.ts`, `history-null-toolcallid.test.ts`, `history-compacted.test.ts`, `history-system-dropped.test.ts`
+- **History normalizer tests** (9 unit files, per §6.5): `history-classify.test.ts`, `history-v3-replay.test.ts`, `history-mixed-runtime.test.ts`, `history-pairing-invariant.test.ts`, `history-batching.test.ts`, `history-null-toolcallid.test.ts`, `history-compacted.test.ts`, `history-system-dropped.test.ts`, `history-system-summary.test.ts`
 
 **Integration tests (real Anthropic SDK mock, real DB):**
 - `tests/integration/managed/runtime-write-tool.test.ts` — synthetic stream emits `save_section_draft`; asserts service called, section row written, audit log entry present, `tool_result` event has `success: true`
