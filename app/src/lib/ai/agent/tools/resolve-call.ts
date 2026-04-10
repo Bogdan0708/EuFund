@@ -3,7 +3,6 @@ import { z } from 'zod'
 import { registerTool } from './registry'
 import type { ToolResult, ToolContext, StateTransition } from '../types'
 import type { CallBlueprint, SectionSpec } from '@/lib/ai/orchestrator/types'
-import { getVectorStore } from '@/lib/vectors/store'
 import { generate } from '@/lib/ai/providers/router'
 import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { parseAIJson } from '../utils'
@@ -12,6 +11,8 @@ import { db } from '@/lib/db'
 import { callKnowledge } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
+import { lookupBlueprint } from '../services/blueprint'
+import { buildServiceContextFromToolCtx } from '../services/context-helpers'
 
 const log = logger.child({ component: 'tool-resolve-call' })
 
@@ -27,21 +28,20 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<CallB
   const start = Date.now()
 
   try {
-    // Step 1: Check cache
-    const [cached] = await db.select().from(callKnowledge).where(eq(callKnowledge.callId, input.callId)).limit(1)
+    const svcCtx = buildServiceContextFromToolCtx(ctx)
 
-    if (cached && cached.structureConfidence >= 0.4) {
-      const norm = (cached.normalized ?? {}) as Record<string, unknown>
-      const blueprint = buildBlueprintFromCache(cached, norm)
+    // Step 1: Delegate cache lookup and evidence retrieval to the blueprint service
+    const lookup = await lookupBlueprint(svcCtx, input.callId)
 
-      log.info({ callId: input.callId, source: 'cache', confidence: cached.structureConfidence }, 'Resolved from cache')
+    if (lookup.cached && lookup.blueprint) {
+      log.info({ callId: input.callId, source: 'cache', confidence: lookup.blueprint.structureConfidence }, 'Resolved from cache')
 
       return {
         success: true,
-        data: blueprint,
+        data: lookup.blueprint,
         stateTransitions: [
           { type: 'SET_SELECTED_CALL', callId: input.callId },
-          { type: 'SET_BLUEPRINT', blueprint },
+          { type: 'SET_BLUEPRINT', blueprint: lookup.blueprint },
           { type: 'SET_PHASE', phase: 'research' as const },
         ],
         checkpoint: { type: 'call_selected', payload: { callId: input.callId, source: 'cache' } },
@@ -49,17 +49,12 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<CallB
       }
     }
 
-    // Step 2: Retrieve evidence from Qdrant
-    log.info({ callId: input.callId }, 'Cache miss, retrieving evidence')
-    const store = getVectorStore()
-    const evidence = await store.search(input.callId, 20, { callId: input.callId })
-
-    // Broader search if filtered returns nothing
-    const chunks = evidence.length > 0 ? evidence : await store.search(input.callTitle || input.callId, 20)
+    // Step 2: Use raw evidence from service for LLM extraction
+    const chunks = lookup.rawEvidence ?? []
 
     // Step 3: Extract structure via LLM
     const evidenceText = chunks
-      .map(c => `[${(c.metadata.documentType as string) || 'doc'}] ${c.content}`)
+      .map(c => `[${c.docType || 'doc'}] ${c.content}`)
       .join('\n\n---\n\n')
 
     let sections: SectionSpec[] = DEFAULT_SECTIONS
@@ -99,7 +94,7 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<CallB
       evaluationGrid: [],
       cofinancingRate: 0,
       eligibilityResult: { score: 0, passCount: 0, failCount: 0, failures: [], warnings: [] },
-      sources: chunks.map(c => (c.metadata.source as string) || c.id),
+      sources: chunks.map(c => c.source || c.id),
       verifiedAt: new Date().toISOString(),
       raw: { notebookLmResponse: '', perplexityResponse: '', retrievedAt: new Date().toISOString() },
       normalized: { requiredSections: sections, mandatoryAnnexes: [], eligibilityCriteria: [], evaluationGrid: [], cofinancingRate: 0 },
@@ -116,7 +111,7 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<CallB
         status: 'provisional',
         extractedFrom: 'qdrant_obsidian',
         structureConfidence,
-        sourceDocs: chunks.map(c => (c.metadata.source as string) || c.id),
+        sourceDocs: chunks.map(c => c.source || c.id),
       }).onConflictDoUpdate({
         target: callKnowledge.callId,
         set: {
@@ -154,36 +149,6 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<CallB
       retryable: true,
       telemetry: { latencyMs: Date.now() - start },
     }
-  }
-}
-
-function buildBlueprintFromCache(
-  row: typeof callKnowledge.$inferSelect,
-  norm: Record<string, unknown>,
-): CallBlueprint {
-  const requiredSections = (norm.requiredSections ?? []) as { title: string; description: string; evaluationWeight?: number }[]
-  const mandatoryAnnexes = (norm.mandatoryAnnexes ?? []) as string[]
-  const eligibilityCriteria = (norm.eligibilityCriteria ?? []) as string[]
-  const evaluationGrid = (norm.evaluationGrid ?? []) as { criterion: string; maxPoints: number }[]
-  const cofinancingRate = (norm.cofinancingRate ?? 0) as number
-
-  return {
-    callId: row.callId,
-    program: row.program,
-    isOpen: true,
-    amendments: [],
-    warnings: [],
-    requiredSections,
-    mandatoryAnnexes,
-    eligibilityCriteria,
-    evaluationGrid,
-    cofinancingRate,
-    eligibilityResult: { score: 0, passCount: 0, failCount: 0, failures: [], warnings: [] },
-    sources: (row.sourceDocs as string[]) || [],
-    verifiedAt: row.contentExtractedAt.toISOString(),
-    raw: { notebookLmResponse: '[cached]', perplexityResponse: '', retrievedAt: row.contentExtractedAt.toISOString() },
-    normalized: { requiredSections: (norm.requiredSections ?? []) as SectionSpec[], mandatoryAnnexes, eligibilityCriteria, evaluationGrid, cofinancingRate },
-    structureConfidence: row.structureConfidence,
   }
 }
 
