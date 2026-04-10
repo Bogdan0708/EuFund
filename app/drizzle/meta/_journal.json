@@ -155,6 +155,13 @@
       "when": 1776297600000,
       "tag": "0021_agent_messages_observability",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1776384000000,
+      "tag": "0022_managed_agent_enabled_flag",
+      "breakpoints": true
     }
   ]
 }
