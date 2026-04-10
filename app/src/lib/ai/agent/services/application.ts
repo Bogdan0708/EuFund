@@ -18,20 +18,13 @@ import type {
   ValidationIssue,
   AnnexChecklistItem,
   EligibilityDecision,
+  SetApplicationStatusResult,
+  ExportSnapshot,
 } from './types'
 
-// ── Write result types ─────────────────────────────────────────────────────
-
-export interface SetApplicationStatusResult {
-  newStateVersion: number
-}
-
-export interface ExportSnapshot {
-  snapshotId: string
-  format: 'json'
-  downloadUrl: string
-  expiresAt: string
-}
+// Re-exported for backward compatibility with callers that imported write
+// result types from this module — single source of truth is ./types.
+export type { SetApplicationStatusResult, ExportSnapshot }
 
 // ── getApplicationState ────────────────────────────────────────────────────
 
@@ -126,10 +119,19 @@ export async function getValidationReport(
     .from(agentSections)
     .where(eq(agentSections.sessionId, sessionId))
 
+  // Draft counts include any in-progress or needs-attention status — matches
+  // the statuses the rules engine treats as non-final in validateApplication().
+  // Schema values: pending, generating, draft, accepted, stale, invalidated,
+  // needs_review, failed. See lib/db/schema.ts.
   const totalSections = sectionRows.length
   const acceptedSections = sectionRows.filter(r => r.status === 'accepted').length
   const draftSections = sectionRows.filter(
-    r => r.status === 'draft' || r.status === 'generating',
+    r =>
+      r.status === 'draft' ||
+      r.status === 'generating' ||
+      r.status === 'needs_review' ||
+      r.status === 'stale' ||
+      r.status === 'invalidated',
   ).length
   const missingSections = sectionRows.filter(
     r => r.status === 'pending' || r.status === 'failed',
@@ -200,8 +202,19 @@ export async function validateApplication(
   const acceptedKeys = new Set(
     sectionRows.filter(r => r.status === 'accepted').map(r => r.sectionKey),
   )
+  // In-progress: exists but not yet accepted. stale/invalidated still count
+  // as "exists" — they need re-work but haven't been deleted.
   const draftKeys = new Set(
-    sectionRows.filter(r => r.status === 'draft' || r.status === 'needs_review').map(r => r.sectionKey),
+    sectionRows
+      .filter(
+        r =>
+          r.status === 'draft' ||
+          r.status === 'generating' ||
+          r.status === 'needs_review' ||
+          r.status === 'stale' ||
+          r.status === 'invalidated',
+      )
+      .map(r => r.sectionKey),
   )
 
   let missingSections = 0
@@ -281,9 +294,19 @@ export async function validateApplication(
     })
   }
 
+  // Draft counts include any in-progress or needs-attention status — matches
+  // the statuses this function treats as draftKeys above (draft, needs_review)
+  // plus stale/invalidated which also require re-work before acceptance.
   const totalSections = sectionRows.length
   const acceptedSections = sectionRows.filter(r => r.status === 'accepted').length
-  const draftSections = sectionRows.filter(r => r.status === 'draft' || r.status === 'generating').length
+  const draftSections = sectionRows.filter(
+    r =>
+      r.status === 'draft' ||
+      r.status === 'generating' ||
+      r.status === 'needs_review' ||
+      r.status === 'stale' ||
+      r.status === 'invalidated',
+  ).length
   const errorIssues = issues.filter(i => i.severity === 'error')
   const passed = errorIssues.length === 0
 
