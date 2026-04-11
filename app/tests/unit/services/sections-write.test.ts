@@ -387,7 +387,27 @@ describe('rollbackSection', () => {
   function setupTransaction() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(db.transaction as any).mockImplementation(async (fn: (tx: any) => Promise<void>) => {
+      let selectCallCount = 0
       const tx = {
+        // tx.select is called twice inside the transaction:
+        //   1st call: FOR UPDATE lock on agentSections → returns locked row
+        //   2nd call: max(version_number) from agentSectionVersions → returns {maxVersion: 2}
+        select: vi.fn().mockImplementation(() => {
+          selectCallCount++
+          const callIndex = selectCallCount
+          const limit = vi.fn().mockResolvedValue([{ id: SECTION_ID }])
+          const forUpdate = vi.fn().mockReturnValue({ limit })
+          const whereForSelect = vi.fn().mockImplementation(() => {
+            if (callIndex === 1) {
+              // FOR UPDATE lock call
+              return { for: forUpdate }
+            }
+            // max(version_number) call
+            return Promise.resolve([{ maxVersion: 2 }])
+          })
+          const from = vi.fn().mockReturnValue({ where: whereForSelect })
+          return { from } as any
+        }),
         update: vi.fn().mockImplementation(() => {
           const returning = vi.fn().mockResolvedValue([{ id: SESSION_ID }])
           const where = vi.fn().mockReturnValue({ returning })
