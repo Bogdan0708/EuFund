@@ -500,6 +500,9 @@ export async function rollbackSection(
     throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
   }
 
+  // 3. Enforce policy gates — outline must be frozen
+  assertPolicy(POLICY_MATRIX.rollbackSection, session as unknown as AgentSession)
+
   // Load the section
   const sectionRows = await db
     .select()
@@ -527,12 +530,30 @@ export async function rollbackSection(
   const newStateVersion = session.stateVersion + 1
   const restoredContent = targetVersionRow.content
 
+  // Determine next version number (outside transaction to keep tx lean)
+  const maxVersionRow = await db
+    .select({ maxVersion: max(agentSectionVersions.versionNumber) })
+    .from(agentSectionVersions)
+    .where(eq(agentSectionVersions.sectionId, section.id))
+
+  const newVersionNumber = (maxVersionRow[0]?.maxVersion ?? 0) + 1
+
   // 3. Persist mutation
   await db.transaction(async (tx) => {
     await tx
       .update(agentSections)
       .set({ content: restoredContent, status: 'draft', updatedAt: new Date() })
       .where(eq(agentSections.id, section.id))
+
+    // Tag the restored snapshot as kind='rollback' and record the source version.
+    // This makes rollbacks explicit in the audit trail rather than opaque content swaps.
+    await tx.insert(agentSectionVersions).values({
+      sectionId: section.id,
+      versionNumber: newVersionNumber,
+      kind: 'rollback',
+      content: restoredContent,
+      rolledBackFromVersion: input.targetVersion,
+    })
 
     await tx
       .update(agentSessions)

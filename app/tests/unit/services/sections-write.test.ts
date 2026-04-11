@@ -359,7 +359,22 @@ describe('rollbackSection', () => {
     let callCount = 0
     vi.mocked(db.select).mockImplementation(() => {
       callCount++
-      const data = callCount === 1 ? [sessionRow] : callCount === 2 ? sectionRows : versionRows
+      // call 1 = session ownership check
+      // call 2 = section lookup
+      // call 3 = target version lookup
+      // call 4 = max version query (added when version insert was introduced)
+      let data: unknown[]
+      if (callCount === 1) {
+        data = [sessionRow]
+      } else if (callCount === 2) {
+        data = sectionRows
+      } else if (callCount === 3) {
+        data = versionRows
+      } else {
+        // maxVersion query — returns a row without limit() chain
+        const mockWhere = vi.fn().mockResolvedValue([{ maxVersion: 2 }])
+        return { from: vi.fn().mockReturnValue({ where: mockWhere }) } as any
+      }
       const mockLimit = vi.fn().mockResolvedValue(data)
       const mockWhere = vi.fn().mockReturnValue({ limit: mockLimit })
       return { from: vi.fn().mockReturnValue({ where: mockWhere }) } as any
@@ -374,6 +389,10 @@ describe('rollbackSection', () => {
           const where = vi.fn().mockResolvedValue([])
           const set = vi.fn().mockReturnValue({ where })
           return { set } as any
+        }),
+        insert: vi.fn().mockImplementation(() => {
+          const values = vi.fn().mockResolvedValue([])
+          return { values } as any
         }),
       }
       await fn(tx)
