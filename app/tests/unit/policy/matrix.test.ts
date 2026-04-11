@@ -69,9 +69,14 @@ describe('POLICY_MATRIX', () => {
     expect(rule.allowedSectionStates?.sort()).toEqual(['draft', 'needs_review', 'rejected'])
   })
 
-  it('setApplicationStatus has status-change metadata', () => {
+  it('setApplicationStatus preserves legacy project.status_change audit action', () => {
     const rule = POLICY_MATRIX.setApplicationStatus
-    expect(rule.auditAction).toBe('session.status_change')
+    expect(rule.auditAction).toBe('project.status_change')
+  })
+
+  it('setApplicationStatus requires active session status', () => {
+    const rule = POLICY_MATRIX.setApplicationStatus
+    expect(rule.requiresSessionStatus).toEqual(['active'])
   })
 
   it('all audit actions are non-empty and follow dotted convention', () => {

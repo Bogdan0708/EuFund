@@ -16,7 +16,7 @@
 | 5 | `rollbackSection` | `outlineFrozen=true` | section + target version must exist | `section.rollback` (legacy, reused for hash-chain continuity) | Creates new rollback version each call |
 | 6 | `markSectionStale` | `outlineFrozen=true` | status ∈ {draft, needs_review, accepted} | `section.marked_stale` | Already-stale = no-op. Demotion from accepted clears acceptedContent. |
 | 7 | `rejectSection` | `outlineFrozen=true` | status ∈ {draft, needs_review, rejected} | `section.rejected` | Same reason = no-op; different reason = POLICY_SECTION_WRONG_STATE |
-| 8 | `setApplicationStatus` | For 'completed': validate_application must pass. For 'paused': status=active | — | `session.status_change` | Same-status = no-op |
+| 8 | `setApplicationStatus` | `status=active` (source), for 'completed' additionally validate_application must pass | — | `project.status_change` (legacy, reused for hash-chain continuity) | Same-status = no-op |
 
 ## Eligibility derivation
 
@@ -31,7 +31,7 @@ Eligibility passes iff `eligibility != null && eligibility.failCount === 0`. War
 | `POLICY_OUTLINE_NOT_FROZEN` | saveSectionDraft, approveSection, rollbackSection, markSectionStale, rejectSection | No |
 | `POLICY_ELIGIBILITY_NOT_PASSED` | freezeOutline, saveSectionDraft | No |
 | `POLICY_SECTION_WRONG_STATE` | approveSection, markSectionStale, rejectSection | No |
-| `POLICY_SESSION_NOT_ACTIVE` | setSelectedCall, freezeOutline, saveSectionDraft | No |
+| `POLICY_SESSION_NOT_ACTIVE` | setSelectedCall, freezeOutline, saveSectionDraft, setApplicationStatus | No |
 | `POLICY_VALIDATION_NOT_PASSED` | setApplicationStatus('completed') | No |
 
 ## Idempotent no-op contract
@@ -44,4 +44,4 @@ A service function MUST treat an already-applied mutation as a no-op:
 
 ## Legacy audit string reuse
 
-Rules 3, 4, and 5 reuse legacy V3 audit actions (`project.version_save`, `section.state_change`, `section.rollback`) on purpose to preserve hash-chain continuity across the V3 → managed migration. Do not rename them without a coordinated audit migration.
+Rules 3, 4, 5, and 8 reuse legacy V3 audit actions (`project.version_save`, `section.state_change`, `section.rollback`, `project.status_change`) on purpose to preserve hash-chain continuity across the V3 → managed migration. Do not rename them without a coordinated audit migration.

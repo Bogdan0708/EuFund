@@ -139,6 +139,20 @@ describe('setApplicationStatus policy gates', () => {
     expect(db.update).not.toHaveBeenCalled()
   })
 
+  it('throws POLICY_SESSION_NOT_ACTIVE when setting status on a non-active session', async () => {
+    setupPausedSelect({ ...baseSession, status: 'completed', stateVersion: 0 })
+
+    const err = await setApplicationStatus(baseCtx, {
+      sessionId: SESSION_ID,
+      status: 'paused',
+      expectedStateVersion: 0,
+    }).catch(e => e)
+
+    expect(err).toBeInstanceOf(ValidationError)
+    expect(err.policyCode).toBe('POLICY_SESSION_NOT_ACTIVE')
+    expect(db.update).not.toHaveBeenCalled()
+  })
+
   it('does NOT throw when completing with all mandatory sections accepted', async () => {
     const sessionWithMandatory = {
       ...baseSession,

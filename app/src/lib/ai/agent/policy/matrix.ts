@@ -133,9 +133,17 @@ export const POLICY_MATRIX = {
   setApplicationStatus: {
     requiresOwnership: true,
     requiresStateVersion: true,
+    requiresSessionStatus: ['active'],
     requiresEligibility: 'none',
-    auditAction: 'session.status_change',
-    errorCodes: {},
+    // LEGACY: reuses the existing 'project.status_change' action string
+    // (pre-Phase 3a audit vocabulary) for hash-chain continuity with V3.
+    // Do not rename to 'session.status_change' — that would fork the audit
+    // semantics. Consistent with the other legacy string reuses (section.rollback,
+    // section.state_change, project.version_save).
+    auditAction: 'project.status_change',
+    errorCodes: {
+      sessionStatus: 'POLICY_SESSION_NOT_ACTIVE',
+    },
   },
 } as const satisfies Record<string, PolicyRule>
 
