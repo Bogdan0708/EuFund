@@ -7,7 +7,9 @@ const { mockDb, mockLogAudit } = vi.hoisted(() => ({
     transaction: vi.fn((fn: any) => fn({
       update: vi.fn().mockReturnValue({
         set: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue(undefined),
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: '11111111-1111-4111-8111-111111111111' }]),
+          }),
         }),
       }),
     })),

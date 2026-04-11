@@ -187,9 +187,10 @@ describe('saveSectionDraft', () => {
         }
       })
 
-      // tx.update: session stateVersion increment
+      // tx.update: session stateVersion increment (CAS returns affected row)
       tx.update.mockImplementation(() => {
-        const where = vi.fn().mockResolvedValue([])
+        const returning = vi.fn().mockResolvedValue([{ id: SESSION_ID }])
+        const where = vi.fn().mockReturnValue({ returning })
         const set = vi.fn().mockReturnValue({ where })
         return { set } as any
       })
@@ -236,7 +237,8 @@ describe('saveSectionDraft', () => {
         }
       })
       tx.update.mockImplementation(() => {
-        const where = vi.fn().mockResolvedValue([])
+        const returning = vi.fn().mockResolvedValue([{ id: SESSION_ID }])
+        const where = vi.fn().mockReturnValue({ returning })
         const set = vi.fn().mockReturnValue({ where })
         return { set } as any
       })
@@ -290,7 +292,8 @@ describe('approveSection', () => {
     ;(db.transaction as any).mockImplementation(async (fn: (tx: any) => Promise<void>) => {
       const tx = {
         update: vi.fn().mockImplementation(() => {
-          const where = vi.fn().mockResolvedValue([])
+          const returning = vi.fn().mockResolvedValue([{ id: SESSION_ID }])
+          const where = vi.fn().mockReturnValue({ returning })
           const set = vi.fn().mockReturnValue({ where })
           return { set } as any
         }),
@@ -386,7 +389,8 @@ describe('rollbackSection', () => {
     ;(db.transaction as any).mockImplementation(async (fn: (tx: any) => Promise<void>) => {
       const tx = {
         update: vi.fn().mockImplementation(() => {
-          const where = vi.fn().mockResolvedValue([])
+          const returning = vi.fn().mockResolvedValue([{ id: SESSION_ID }])
+          const where = vi.fn().mockReturnValue({ returning })
           const set = vi.fn().mockReturnValue({ where })
           return { set } as any
         }),

@@ -341,11 +341,23 @@ export async function saveSectionDraft(
       content: input.content,
     })
 
-    // Increment stateVersion on session
-    await tx
+    // Increment stateVersion on session (atomic CAS: only applies if stateVersion
+    // matches expected — guards against two concurrent writers both passing the
+    // fail-fast check above and racing to commit the same version).
+    const casSave = await tx
       .update(agentSessions)
       .set({ stateVersion: newStateVersion, updatedAt: new Date() })
-      .where(eq(agentSessions.id, input.sessionId))
+      .where(and(
+        eq(agentSessions.id, input.sessionId),
+        eq(agentSessions.stateVersion, input.expectedStateVersion),
+      ))
+      .returning({ id: agentSessions.id })
+
+    if (casSave.length === 0) {
+      // Another writer committed between our pre-read and this UPDATE.
+      // Throwing here rolls back the entire transaction automatically.
+      throw new ConcurrencyError(input.expectedStateVersion, -1)
+    }
   })
 
   // 4. Emit audit log
@@ -435,10 +447,19 @@ export async function approveSection(
       .set({ status: 'accepted', acceptedContent: section.content, updatedAt: new Date() })
       .where(eq(agentSections.id, section.id))
 
-    await tx
+    // Atomic CAS on stateVersion — rolls back tx if another writer committed.
+    const casApprove = await tx
       .update(agentSessions)
       .set({ stateVersion: newStateVersion, updatedAt: new Date() })
-      .where(eq(agentSessions.id, input.sessionId))
+      .where(and(
+        eq(agentSessions.id, input.sessionId),
+        eq(agentSessions.stateVersion, input.expectedStateVersion),
+      ))
+      .returning({ id: agentSessions.id })
+
+    if (casApprove.length === 0) {
+      throw new ConcurrencyError(input.expectedStateVersion, -1)
+    }
   })
 
   // 4. Emit audit log
@@ -539,10 +560,19 @@ export async function rollbackSection(
       rolledBackFromVersion: input.targetVersion,
     })
 
-    await tx
+    // Atomic CAS on stateVersion — rolls back tx if another writer committed.
+    const casRollback = await tx
       .update(agentSessions)
       .set({ stateVersion: newStateVersion, updatedAt: new Date() })
-      .where(eq(agentSessions.id, input.sessionId))
+      .where(and(
+        eq(agentSessions.id, input.sessionId),
+        eq(agentSessions.stateVersion, input.expectedStateVersion),
+      ))
+      .returning({ id: agentSessions.id })
+
+    if (casRollback.length === 0) {
+      throw new ConcurrencyError(input.expectedStateVersion, -1)
+    }
   })
 
   // 4. Emit audit log
@@ -627,10 +657,20 @@ export async function rejectSection(
       updatedAt: new Date(),
     }).where(eq(agentSections.id, section.id))
 
-    await tx.update(agentSessions).set({
+    // Atomic CAS on stateVersion — rolls back tx if another writer committed.
+    const casReject = await tx.update(agentSessions).set({
       stateVersion: newStateVersion,
       updatedAt: new Date(),
-    }).where(eq(agentSessions.id, input.sessionId))
+    })
+      .where(and(
+        eq(agentSessions.id, input.sessionId),
+        eq(agentSessions.stateVersion, input.expectedStateVersion),
+      ))
+      .returning({ id: agentSessions.id })
+
+    if (casReject.length === 0) {
+      throw new ConcurrencyError(input.expectedStateVersion, -1)
+    }
   })
 
   await logAudit({
@@ -703,10 +743,19 @@ export async function markSectionStale(
       })
       .where(eq(agentSections.id, section.id))
 
-    await tx
+    // Atomic CAS on stateVersion — rolls back tx if another writer committed.
+    const casStale = await tx
       .update(agentSessions)
       .set({ stateVersion: newStateVersion, updatedAt: new Date() })
-      .where(eq(agentSessions.id, input.sessionId))
+      .where(and(
+        eq(agentSessions.id, input.sessionId),
+        eq(agentSessions.stateVersion, input.expectedStateVersion),
+      ))
+      .returning({ id: agentSessions.id })
+
+    if (casStale.length === 0) {
+      throw new ConcurrencyError(input.expectedStateVersion, -1)
+    }
   })
 
   await logAudit({

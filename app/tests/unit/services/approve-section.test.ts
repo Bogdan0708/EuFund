@@ -5,7 +5,15 @@ vi.mock('@/lib/db', () => ({
   db: {
     select: vi.fn(),
     update: vi.fn(),
-    transaction: vi.fn((fn) => fn({ update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }) })),
+    transaction: vi.fn((fn) => fn({
+      update: vi.fn().mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: '11111111-1111-4111-8111-111111111111' }]),
+          }),
+        }),
+      }),
+    })),
   },
 }))
 
