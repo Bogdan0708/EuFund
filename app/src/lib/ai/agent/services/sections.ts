@@ -557,3 +557,79 @@ export async function rollbackSection(
   // 5. Return canonical result
   return { content: restoredContent, restoredVersion: input.targetVersion, newStateVersion }
 }
+
+/**
+ * Transitions a section to 'stale' status.
+ *
+ * - Idempotent: no-op if section is already stale (returns current stateVersion).
+ * - Clears `acceptedContent` when demoting from 'accepted'.
+ * - Requires the outline to be frozen (POLICY_MATRIX.markSectionStale).
+ * - Allowed source states: draft, needs_review, accepted.
+ *
+ * @throws ConcurrencyError when expectedStateVersion does not match
+ * @throws NotFoundError when the section does not exist
+ * @throws ValidationError(POLICY_SECTION_WRONG_STATE) when section is in a disallowed state
+ */
+export async function markSectionStale(
+  ctx: ServiceContext,
+  input: { sessionId: string; sectionKey: string; expectedStateVersion: number },
+): Promise<{ newStateVersion: number }> {
+  const session = await verifySessionOwnership(ctx, input.sessionId)
+
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  const sectionRows = await db
+    .select()
+    .from(agentSections)
+    .where(and(eq(agentSections.sessionId, input.sessionId), eq(agentSections.sectionKey, input.sectionKey)))
+    .limit(1)
+
+  const section = sectionRows[0]
+  if (!section) {
+    throw new NotFoundError('section', `${input.sessionId}:${input.sectionKey}`)
+  }
+
+  // Idempotent no-op: already stale — return current version without touching DB
+  if (section.status === 'stale') {
+    return { newStateVersion: session.stateVersion }
+  }
+
+  // Policy gate — requires outline frozen + allowed section state
+  assertPolicy(POLICY_MATRIX.markSectionStale, session as unknown as AgentSession, { sectionState: section.status })
+
+  const newStateVersion = session.stateVersion + 1
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(agentSections)
+      .set({
+        status: 'stale',
+        acceptedContent: null, // clear the accepted snapshot on demotion
+        updatedAt: new Date(),
+      })
+      .where(eq(agentSections.id, section.id))
+
+    await tx
+      .update(agentSessions)
+      .set({ stateVersion: newStateVersion, updatedAt: new Date() })
+      .where(eq(agentSessions.id, input.sessionId))
+  })
+
+  await logAudit({
+    userId: ctx.userId,
+    action: POLICY_MATRIX.markSectionStale.auditAction,
+    resourceType: 'agent_section',
+    resourceId: section.id,
+    metadata: {
+      sessionId: input.sessionId,
+      sectionKey: input.sectionKey,
+      previousStatus: section.status,
+      demotedFromAccepted: section.status === 'accepted',
+      requestId: ctx.requestId,
+    },
+  })
+
+  return { newStateVersion }
+}
