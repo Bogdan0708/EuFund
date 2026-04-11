@@ -10,6 +10,7 @@ import { db } from '@/lib/db'
 import { agentSessions, agentSections } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { NotFoundError, ConcurrencyError, ValidationError } from './errors'
+import { verifySessionOwnership } from './context-helpers'
 import { logAudit } from '@/lib/legal/audit'
 import { assertPolicy } from '../policy/enforce'
 import { POLICY_MATRIX } from '../policy/matrix'
@@ -535,4 +536,64 @@ export async function createExportSnapshot(
     downloadUrl,
     expiresAt,
   }
+}
+
+// ── setSelectedCall ────────────────────────────────────────────────────────
+
+/**
+ * Sets the selected call on an agent session.
+ *
+ * Idempotent: if the session already has the same callId, returns current
+ * stateVersion without bumping it, running the policy check, or emitting audit.
+ *
+ * Write contract:
+ *   1. Verify session ownership (canonical helper)
+ *   2. Enforce expectedStateVersion (concurrency guard)
+ *   3. Idempotent no-op if same callId
+ *   4. Policy gate — POLICY_OUTLINE_ALREADY_FROZEN
+ *   5. Persist mutation + bump stateVersion
+ *   6. Emit audit log as session.call_selected
+ *   7. Return { newStateVersion }
+ */
+export async function setSelectedCall(
+  ctx: ServiceContext,
+  input: { sessionId: string; callId: string; expectedStateVersion: number },
+): Promise<{ newStateVersion: number }> {
+  // 1. Verify ownership (canonical helper)
+  const session = await verifySessionOwnership(ctx, input.sessionId)
+
+  // 2. Concurrency check
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  // 3. Idempotent no-op: same callId → return current state unchanged
+  if (session.selectedCallId === input.callId) {
+    return { newStateVersion: session.stateVersion }
+  }
+
+  // 4. Policy gate — cannot reselect once outline is frozen
+  assertPolicy(POLICY_MATRIX.setSelectedCall, session as unknown as AgentSession)
+
+  // 5. Mutate
+  const newStateVersion = session.stateVersion + 1
+  await db
+    .update(agentSessions)
+    .set({
+      selectedCallId: input.callId,
+      stateVersion: newStateVersion,
+      updatedAt: new Date(),
+    })
+    .where(eq(agentSessions.id, input.sessionId))
+
+  // 6. Audit
+  await logAudit({
+    userId: ctx.userId,
+    action: POLICY_MATRIX.setSelectedCall.auditAction,
+    resourceType: 'agent_session',
+    resourceId: input.sessionId,
+    metadata: { callId: input.callId, previousCallId: session.selectedCallId, requestId: ctx.requestId },
+  })
+
+  return { newStateVersion }
 }
