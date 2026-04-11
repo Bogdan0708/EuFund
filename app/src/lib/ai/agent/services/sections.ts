@@ -158,6 +158,7 @@ export async function getSection(
       ? (row.tokenUsage as { input: number; output: number })
       : null,
     errorClass: row.errorClass ?? null,
+    rejectionReason: row.rejectionReason ?? null,
   }
 }
 
