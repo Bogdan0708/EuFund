@@ -9,7 +9,7 @@
 import { db } from '@/lib/db'
 import { agentSessions, agentSections, agentSectionVersions } from '@/lib/db/schema'
 import { eq, and, max } from 'drizzle-orm'
-import { NotFoundError, ConcurrencyError } from './errors'
+import { NotFoundError, ConcurrencyError, ValidationError } from './errors'
 import { verifySessionOwnership } from './context-helpers'
 import { logAudit } from '@/lib/legal/audit'
 import { assertPolicy } from '../policy/enforce'
@@ -556,6 +556,98 @@ export async function rollbackSection(
 
   // 5. Return canonical result
   return { content: restoredContent, restoredVersion: input.targetVersion, newStateVersion }
+}
+
+// ── rejectSection ──────────────────────────────────────────────────────────
+
+/**
+ * Set a section status to 'rejected' and record the rejection reason.
+ *
+ * Partial idempotency rules:
+ *   - Same reason on an already-rejected section → no-op (returns current
+ *     stateVersion, no DB write, no audit event).
+ *   - Different reason on an already-rejected section → throws
+ *     POLICY_SECTION_WRONG_STATE so rejection cannot become a stealth
+ *     metadata-edit path.
+ *
+ * Write contract:
+ *   1. Verify session ownership
+ *   2. Enforce expectedStateVersion
+ *   3. Idempotent no-op check (same reason)
+ *   4. Reject different-reason re-reject
+ *   5. Policy gate (outline frozen + allowed section state)
+ *   6. Update section + increment stateVersion
+ *   7. Emit audit log
+ *   8. Return { newStateVersion }
+ */
+export async function rejectSection(
+  ctx: ServiceContext,
+  input: { sessionId: string; sectionKey: string; reason: string; expectedStateVersion: number },
+): Promise<{ newStateVersion: number }> {
+  const session = await verifySessionOwnership(ctx, input.sessionId)
+
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  const sectionRows = await db
+    .select()
+    .from(agentSections)
+    .where(and(eq(agentSections.sessionId, input.sessionId), eq(agentSections.sectionKey, input.sectionKey)))
+    .limit(1)
+
+  const section = sectionRows[0]
+  if (!section) {
+    throw new NotFoundError('section', `${input.sessionId}:${input.sectionKey}`)
+  }
+
+  // Partial idempotency: already-rejected with same reason → no-op;
+  // different reason → POLICY_SECTION_WRONG_STATE (rejection is not
+  // a metadata-edit path).
+  if (section.status === 'rejected') {
+    if (section.rejectionReason === input.reason) {
+      return { newStateVersion: session.stateVersion }
+    }
+    throw new ValidationError(
+      'reason',
+      'Section already rejected with a different reason; cannot edit rejection metadata',
+      'POLICY_SECTION_WRONG_STATE',
+    )
+  }
+
+  // Policy gate — outline frozen + allowed section state
+  assertPolicy(POLICY_MATRIX.rejectSection, session as unknown as AgentSession, { sectionState: section.status })
+
+  const newStateVersion = session.stateVersion + 1
+
+  await db.transaction(async (tx) => {
+    await tx.update(agentSections).set({
+      status: 'rejected',
+      rejectionReason: input.reason,
+      updatedAt: new Date(),
+    }).where(eq(agentSections.id, section.id))
+
+    await tx.update(agentSessions).set({
+      stateVersion: newStateVersion,
+      updatedAt: new Date(),
+    }).where(eq(agentSessions.id, input.sessionId))
+  })
+
+  await logAudit({
+    userId: ctx.userId,
+    action: POLICY_MATRIX.rejectSection.auditAction,
+    resourceType: 'agent_section',
+    resourceId: section.id,
+    metadata: {
+      sessionId: input.sessionId,
+      sectionKey: input.sectionKey,
+      reason: input.reason,
+      previousStatus: section.status,
+      requestId: ctx.requestId,
+    },
+  })
+
+  return { newStateVersion }
 }
 
 /**
