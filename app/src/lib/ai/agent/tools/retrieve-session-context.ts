@@ -59,11 +59,11 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<Sessi
   }
 }
 
-registerTool({
+registerTool<Input, SessionContextPage[]>({
   name: 'retrieve_session_context',
   category: 'read',
   description: 'Retrieve session-specific knowledge pages (brief, evidence map, risks, decision log, accepted section patterns)',
   inputSchema,
-  execute: execute as any,
+  execute,
   timeout: 10_000,
 })

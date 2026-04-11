@@ -216,7 +216,7 @@ function SectionActionButtons({
   displayState,
   sessionId,
   onStateChange,
-  onRollback: _onRollback,
+  onRollback,
   onToggleHistory,
   onRegenerate,
   isHistoryOpen,
@@ -233,6 +233,7 @@ function SectionActionButtons({
   t: ReturnType<typeof useTranslations>;
 }) {
   const disabled = !sessionId;
+  void onRollback
 
   return (
     <div className="pt-2 border-t border-outline-variant/10 flex flex-wrap items-center gap-2">

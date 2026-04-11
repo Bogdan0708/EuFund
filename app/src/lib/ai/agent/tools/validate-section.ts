@@ -65,11 +65,11 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<Valid
   }
 }
 
-registerTool({
+registerTool<Input, ValidationResult>({
   name: 'validate_section',
   category: 'decision',
   description: 'Validate a generated section for quality issues — placeholders, length, repetition',
   inputSchema,
-  execute: execute as any,
+  execute,
   timeout: 5_000,
 })

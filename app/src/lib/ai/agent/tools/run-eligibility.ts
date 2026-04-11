@@ -79,11 +79,11 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<Eligi
   }
 }
 
-registerTool({
+registerTool<Input, EligibilityResult>({
   name: 'run_eligibility',
   category: 'decision',
   description: 'Run deterministic eligibility checks against call requirements',
   inputSchema,
-  execute: execute as any,
+  execute,
   timeout: 5_000,
 })

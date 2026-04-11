@@ -51,11 +51,11 @@ async function execute(input: Input, toolCtx: ToolContext): Promise<ToolResult<E
   }
 }
 
-registerTool({
+registerTool<Input, EvidenceChunk[]>({
   name: 'retrieve_call_evidence',
   category: 'read',
   description: 'Retrieve evidence chunks for a specific funding call from the knowledge base',
   inputSchema,
-  execute: execute as any,
+  execute,
   timeout: 20_000,
 })

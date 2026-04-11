@@ -108,11 +108,11 @@ Return a JSON array of section specs. Each object must have:
   }
 }
 
-registerTool({
+registerTool<Input, SectionSpec[]>({
   name: 'extract_structure',
   category: 'decision',
   description: 'Extract required application section structure from call evidence',
   inputSchema,
-  execute: execute as any,
+  execute,
   timeout: 60_000,
 })

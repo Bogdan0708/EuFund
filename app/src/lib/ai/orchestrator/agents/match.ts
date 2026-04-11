@@ -69,7 +69,7 @@ If you cannot find any matching open calls, return an empty array [].`,
         // If parsing fails, use raw text as context
         ragContext = webResult.content
       }
-    } catch (webErr) {
+    } catch {
       stream.send({ type: 'step_progress', step: 2, message: 'Web search failed, using AI knowledge only...' })
     }
   } else {

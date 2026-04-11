@@ -94,7 +94,8 @@ function saveGdprPrefs(prefs: GdprPrefs): void {
 }
 
 /* ---------- page component ---------- */
-export default function SetariPage({ params: _params }: { params: { locale: string } }) {
+export default function SetariPage({ params }: { params: { locale: string } }) {
+  void params
   const t = useTranslations('settings');
 
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);

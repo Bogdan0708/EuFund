@@ -1,6 +1,8 @@
 import type { AgentSession, AgentSection, Phase, EligibilityResult } from './types'
 import type { CallBlueprint } from '@/lib/ai/orchestrator/types'
 
+type SessionWithKnowledgeSummary = AgentSession & { _knowledgeSummary?: string }
+
 function formatEligibility(elig: EligibilityResult | null): string {
   if (!elig) return 'Not checked yet'
   if (elig.failCount > 0) return `BLOCKED — ${elig.failCount} hard failures`
@@ -32,7 +34,7 @@ const PHASE_GUIDANCE: Record<Phase, string> = {
 export function buildSystemPrompt(session: AgentSession, sections: AgentSection[]): string {
   const bp = session.blueprint as CallBlueprint | null
 
-  const knowledgeSummary = (session as any)._knowledgeSummary as string | undefined
+  const knowledgeSummary = (session as SessionWithKnowledgeSummary)._knowledgeSummary
   const knowledgeLine = knowledgeSummary
     ? `- Session knowledge: ${knowledgeSummary}`
     : '- Session knowledge: none yet'

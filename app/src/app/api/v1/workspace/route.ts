@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/helpers';
 import { withUserRLS } from '@/lib/db';
 import { projects, workflowSessions, projectDocuments, projectFiles } from '@/lib/db/schema';
@@ -7,7 +7,7 @@ import { Errors, FondEUError } from '@/lib/errors';
 import { normalizeSections } from '@/lib/ai/orchestrator/workspace';
 import type { SectionResult } from '@/lib/ai/orchestrator/types';
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   try {
     const user = await requireAuth();
 

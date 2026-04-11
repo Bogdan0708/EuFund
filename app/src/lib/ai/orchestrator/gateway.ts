@@ -170,9 +170,11 @@ export interface GatewayOptions {
 }
 
 export function createGatewayClient(
-  _tenantId: string,
-  _options: GatewayOptions = {},
+  tenantId: string,
+  options: GatewayOptions = {},
 ): GatewayClient {
+  void tenantId
+  void options
   // Model routing is now handled by resolveAgentModel() at the call site.
   // The gateway no longer applies preference overrides — agents pass the
   // already-resolved provider/model directly.

@@ -151,11 +151,11 @@ FORMAT:
   }
 }
 
-registerTool({
+registerTool<Input, { content: string; model: string }>({
   name: 'regenerate_section',
   category: 'generation',
   description: 'Regenerate a section with user feedback — escalates model after repeated failures',
   inputSchema,
-  execute: execute as any,
+  execute,
   timeout: 120_000,
 })

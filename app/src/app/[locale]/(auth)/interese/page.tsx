@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { DsButton } from '@/components/ui/ds-button';
 
@@ -28,7 +28,6 @@ const TOPICS = [
 export default function InterestsPage() {
   const params = useParams();
   const locale = (params.locale as string) || 'ro';
-  const router = useRouter();
   const { update: updateSession } = useSession();
   const t = useTranslations('onboarding');
 

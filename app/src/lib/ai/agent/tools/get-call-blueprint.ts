@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { registerTool } from './registry'
-import type { ToolResult, ToolContext } from '../types'
+import type { ToolResult } from '../types'
 import type { CallBlueprint, SectionSpec } from '@/lib/ai/orchestrator/types'
 import { db } from '@/lib/db'
 import { callKnowledge } from '@/lib/db/schema'
@@ -15,7 +15,7 @@ const inputSchema = z.object({
 
 type Input = z.infer<typeof inputSchema>
 
-async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<CallBlueprint | null>> {
+async function execute(input: Input): Promise<ToolResult<CallBlueprint | null>> {
   const start = Date.now()
 
   try {
@@ -80,11 +80,11 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<CallB
   }
 }
 
-registerTool({
+registerTool<Input, CallBlueprint | null>({
   name: 'get_call_blueprint',
   category: 'read',
   description: 'Look up a cached call blueprint from the knowledge base by call ID',
   inputSchema,
-  execute: execute as any,
+  execute,
   timeout: 10_000,
 })

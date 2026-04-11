@@ -151,11 +151,11 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<CallB
   }
 }
 
-registerTool({
+registerTool<Input, CallBlueprint>({
   name: 'resolve_call',
   category: 'decision',
   description: 'Resolve a funding call by ID — retrieves or builds its blueprint from knowledge base',
   inputSchema,
-  execute: execute as any,
+  execute,
   timeout: 90_000,
 })

@@ -59,9 +59,11 @@ export async function getProjectSummary(
  * This satisfies the service contract so callers can rely on the shape.
  */
 export async function listUploadedDocuments(
-  _ctx: ServiceContext,
-  _projectId: string,
+  ctx: ServiceContext,
+  projectId: string,
 ): Promise<UploadedDocument[]> {
+  void ctx
+  void projectId
   // Documents table integration is pending — return empty list.
   // When the table is ready, replace this with a DB query filtered by
   // projectId and the requesting userId.

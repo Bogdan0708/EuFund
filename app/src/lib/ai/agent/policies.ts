@@ -3,6 +3,11 @@ import type { AgentSession, AgentSection, SectionSpec } from './types'
 const MIN_STRUCTURE_CONFIDENCE = 0.4
 const MIN_FRESHNESS_CONFIDENCE = 0.6
 
+interface BlueprintConfidence {
+  structureConfidence?: number
+  freshnessConfidence?: number
+}
+
 export interface PolicyResult {
   allowed: boolean
   reason?: string
@@ -15,7 +20,7 @@ export function checkPolicyGate(
 ): PolicyResult {
   switch (toolName) {
     case 'generate_section':
-      return checkPreGenerate(session, sections)
+      return checkPreGenerate(session)
     case 'validate_application':
       return checkPreComplete(session, sections)
     default:
@@ -23,20 +28,24 @@ export function checkPolicyGate(
   }
 }
 
-function checkPreGenerate(session: AgentSession, _sections: AgentSection[]): PolicyResult {
+function checkPreGenerate(session: AgentSession): PolicyResult {
+  const blueprint = session.blueprint as (BlueprintConfidence & object) | null
+
   if (session.outline === null) {
     return { allowed: false, reason: 'Cannot generate: outline must be approved first' }
   }
   if (session.eligibility && session.eligibility.failCount > 0) {
     return { allowed: false, reason: 'Cannot generate: eligibility has hard blockers' }
   }
-  if (session.blueprint && (session.blueprint as any).structureConfidence < MIN_STRUCTURE_CONFIDENCE) {
+  if (blueprint?.structureConfidence != null && blueprint.structureConfidence < MIN_STRUCTURE_CONFIDENCE) {
     return { allowed: false, reason: `Cannot generate: structure confidence too low (< ${MIN_STRUCTURE_CONFIDENCE})` }
   }
   return { allowed: true }
 }
 
 function checkPreComplete(session: AgentSession, sections: AgentSection[]): PolicyResult {
+  const blueprint = session.blueprint as (BlueprintConfidence & object) | null
+
   if (!session.outline) {
     return { allowed: false, reason: 'Cannot complete: no outline exists' }
   }
@@ -48,7 +57,7 @@ function checkPreComplete(session: AgentSession, sections: AgentSection[]): Poli
   if (missing.length > 0) {
     return { allowed: false, reason: `Cannot complete: mandatory sections not accepted: ${missing.join(', ')}` }
   }
-  if (session.blueprint && (session.blueprint as any).freshnessConfidence < MIN_FRESHNESS_CONFIDENCE) {
+  if (blueprint?.freshnessConfidence != null && blueprint.freshnessConfidence < MIN_FRESHNESS_CONFIDENCE) {
     return { allowed: false, reason: 'Cannot complete: freshness confidence too low — refresh call status first' }
   }
   return { allowed: true }

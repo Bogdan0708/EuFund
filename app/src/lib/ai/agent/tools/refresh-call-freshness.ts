@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { registerTool } from './registry'
 import type { ToolResult, ToolContext } from '../types'
 import { refreshCallFreshness } from '../services/freshness'
+import type { FreshnessCheckResult } from '../services/types'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'tool-refresh-freshness' })
@@ -14,7 +15,7 @@ const inputSchema = z.object({
 
 type Input = z.infer<typeof inputSchema>
 
-async function execute(input: Input, toolCtx: ToolContext): Promise<ToolResult> {
+async function execute(input: Input, toolCtx: ToolContext): Promise<ToolResult<FreshnessCheckResult>> {
   const start = Date.now()
 
   // Build a minimal ServiceContext from ToolContext
@@ -53,11 +54,11 @@ async function execute(input: Input, toolCtx: ToolContext): Promise<ToolResult> 
   }
 }
 
-registerTool({
+registerTool<Input, Awaited<ReturnType<typeof refreshCallFreshness>>>({
   name: 'refresh_call_freshness',
   category: 'read',
   description: 'Check if a funding call is still open using live web search',
   inputSchema,
-  execute: execute as any,
+  execute,
   timeout: 30_000,
 })

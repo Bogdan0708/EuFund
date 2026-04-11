@@ -24,6 +24,7 @@ interface WriteBackContext {
 }
 
 type EventEmitter = (event: AgentEvent) => void
+type SessionWithKnowledgeSummary = AgentSession & { _knowledgeSummary?: string }
 
 export interface RuntimeOptions {
   session: AgentSession
@@ -84,8 +85,8 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
           const result = applyTransition(session, sections, t)
           session = result.session
           sections = result.sections
-          if (t.type === 'SET_PHASE' && (t as any).phase !== prevPhase) {
-            phaseTransitionOccurred = { from: prevPhase, to: (t as any).phase }
+          if (t.type === 'SET_PHASE' && t.phase !== prevPhase) {
+            phaseTransitionOccurred = { from: prevPhase, to: t.phase }
           }
         }
         const writeBack = {
@@ -120,7 +121,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       if (pages.length > 0) {
         const kindCounts = new Map<string, number>()
         for (const p of pages) kindCounts.set(p.kind, (kindCounts.get(p.kind) ?? 0) + 1)
-        ;(session as any)._knowledgeSummary = `${pages.length} pages: ${[...kindCounts.entries()].map(([k, c]) => c > 1 ? `${k}(${c})` : k).join(', ')}`
+        ;(session as SessionWithKnowledgeSummary)._knowledgeSummary = `${pages.length} pages: ${[...kindCounts.entries()].map(([k, c]) => c > 1 ? `${k}(${c})` : k).join(', ')}`
       }
     } catch { /* non-critical */ }
 

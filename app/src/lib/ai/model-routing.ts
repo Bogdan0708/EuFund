@@ -143,7 +143,7 @@ export function resolveAgentModel(input: ModelRoutingInput): ResolvedModel {
   const { task, importance, ctx, isEscalation } = input
 
   // 1. Map task to tier
-  let tier = mapTaskToTier(task, importance)
+  const tier = mapTaskToTier(task, importance)
 
   // 2. Task-specific escalation
   if (isEscalation && ESCALATION_ALLOWED_TASKS.has(task)) {

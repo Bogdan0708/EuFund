@@ -3,13 +3,17 @@ import { z } from 'zod'
 
 const tools: ToolDefinition[] = []
 
-export function registerTool(tool: ToolDefinition): void {
+export function registerTool<TInput = unknown, TOutput = unknown>(
+  tool: ToolDefinition<TInput, TOutput>,
+): void {
+  const registeredTool = tool as unknown as ToolDefinition
+
   // Deduplicate: real implementations replace placeholders
-  const idx = tools.findIndex(t => t.name === tool.name)
+  const idx = tools.findIndex(t => t.name === registeredTool.name)
   if (idx >= 0) {
-    tools[idx] = tool
+    tools[idx] = registeredTool
   } else {
-    tools.push(tool)
+    tools.push(registeredTool)
   }
 }
 
@@ -63,4 +67,3 @@ registerTool({
   execute: async () => ({ success: true, data: null, telemetry: { latencyMs: 0 } }),
   timeout: 30_000,
 })
-

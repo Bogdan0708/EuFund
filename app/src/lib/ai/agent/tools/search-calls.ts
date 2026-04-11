@@ -52,12 +52,12 @@ async function execute(input: Input, toolCtx: ToolContext): Promise<ToolResult<C
   }
 }
 
-registerTool({
+registerTool<Input, CallMatch[]>({
   name: 'search_calls',
   category: 'read',
   description:
     'Search for matching EU funding calls based on project description, sector, or keywords',
   inputSchema,
-  execute: execute as any,
+  execute,
   timeout: 15_000,
 })

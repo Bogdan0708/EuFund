@@ -94,8 +94,10 @@ export async function appendMessage(
  */
 export async function compactIfNeeded(
   sessionId: string,
-  _currentPhase: Phase,
+  currentPhase: Phase,
 ): Promise<{ compacted: boolean; summary?: string }> {
+  void currentPhase
+
   const allRows = await db.select()
     .from(agentMessages)
     .where(and(

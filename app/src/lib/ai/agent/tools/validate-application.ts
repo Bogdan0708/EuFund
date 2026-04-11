@@ -9,7 +9,7 @@ const log = logger.child({ component: 'tool-validate-application' })
 
 const inputSchema = z.object({})
 
-async function execute(_input: unknown, ctx: ToolContext): Promise<ToolResult<Awaited<ReturnType<typeof validateApplication>>>> {
+async function execute(_input: Record<string, never>, ctx: ToolContext): Promise<ToolResult<Awaited<ReturnType<typeof validateApplication>>>> {
   const start = Date.now()
 
   try {
@@ -50,11 +50,11 @@ async function execute(_input: unknown, ctx: ToolContext): Promise<ToolResult<Aw
   }
 }
 
-registerTool({
+registerTool<Record<string, never>, Awaited<ReturnType<typeof validateApplication>>>({
   name: 'validate_application',
   category: 'decision',
   description: 'Validate the complete application — check mandatory sections, eligibility, annexes',
   inputSchema,
-  execute: execute as any,
+  execute,
   timeout: 10_000,
 })

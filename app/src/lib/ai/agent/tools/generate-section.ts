@@ -13,6 +13,7 @@ import { logger } from '@/lib/logger'
 import { normalizeMarkdown } from '@/lib/markdown/proposal-markdown'
 import { findPatterns } from '@/lib/ai/knowledge/proposal-patterns'
 import { getSessionKnowledgeByKind } from '@/lib/ai/knowledge/session-knowledge'
+import type { CallBlueprint } from '@/lib/ai/orchestrator/types'
 
 const log = logger.child({ component: 'tool-generate-section' })
 
@@ -26,6 +27,11 @@ type Input = z.infer<typeof inputSchema>
 const MAX_PATTERN_CHARS = 1500
 const MAX_BRIEF_CHARS = 800
 const MAX_KNOWLEDGE_CONTEXT_CHARS = 2500
+
+interface PatternStats {
+  timesAccepted?: number
+  timesUsed?: number
+}
 
 const LENGTH_GUIDE: Record<string, string> = {
   short: '500-1000 words (1-2 pages)',
@@ -83,7 +89,7 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<{ con
     let knowledgeContext = ''
     let usedPatternIds: string[] = []
 
-    const bp = ctx.session.blueprint as any
+    const bp = ctx.session.blueprint as CallBlueprint | null
     const program = bp?.program ?? ''
 
     // 1. Session brief (max 800 chars)
@@ -98,13 +104,14 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<{ con
     // 2. Best matching pattern (max 1500 chars)
     if (program) {
       try {
-        const patterns = await findPatterns(program, input.sectionKey)
-        if (patterns.length > 0) {
-          const best = patterns[0]
-          const patternContent = (best.contentMd as string).slice(0, MAX_PATTERN_CHARS)
-          knowledgeContext += `\nREFERENCE PATTERN (${(best as any).timesAccepted ?? 0}/${(best as any).timesUsed ?? 0} accept rate — adapt to this project, don't copy):\n${patternContent}\n`
-          usedPatternIds = [best.id]
-        }
+          const patterns = await findPatterns(program, input.sectionKey)
+          if (patterns.length > 0) {
+            const best = patterns[0]
+            const patternContent = String(best.contentMd).slice(0, MAX_PATTERN_CHARS)
+            const stats = best as PatternStats
+            knowledgeContext += `\nREFERENCE PATTERN (${stats.timesAccepted ?? 0}/${stats.timesUsed ?? 0} accept rate — adapt to this project, don't copy):\n${patternContent}\n`
+            usedPatternIds = [best.id]
+          }
       } catch { /* non-critical */ }
     }
 
@@ -117,7 +124,7 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<{ con
 
     const blueprint = ctx.session.blueprint
     const blueprintContext = blueprint
-      ? `\nCALL: ${(blueprint as any).program}\nCO-FINANCING: ${(((blueprint as any).cofinancingRate || 0) * 100).toFixed(0)}%`
+      ? `\nCALL: ${blueprint.program}\nCO-FINANCING: ${((blueprint.cofinancingRate || 0) * 100).toFixed(0)}%`
       : ''
     const evalNote = spec.evaluationWeight
       ? `\nEVALUATION: This section is worth ${spec.evaluationWeight} points. Write to maximize score.`
@@ -245,11 +252,11 @@ OUTPUT: Write the section content directly. No JSON wrapping needed.`
   }
 }
 
-registerTool({
+registerTool<Input, { content: string; model: string }>({
   name: 'generate_section',
   category: 'generation',
   description: 'Generate a section of the funding application based on the outline and project context',
   inputSchema,
-  execute: execute as any,
+  execute,
   timeout: 120_000,
 })

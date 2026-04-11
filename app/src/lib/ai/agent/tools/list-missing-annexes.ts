@@ -14,7 +14,7 @@ interface AnnexStatus {
   status: 'missing' | 'mentioned'
 }
 
-async function execute(_input: unknown, ctx: ToolContext): Promise<ToolResult<AnnexStatus[]>> {
+async function execute(_input: Record<string, never>, ctx: ToolContext): Promise<ToolResult<AnnexStatus[]>> {
   const start = Date.now()
 
   try {
@@ -53,11 +53,11 @@ async function execute(_input: unknown, ctx: ToolContext): Promise<ToolResult<An
   }
 }
 
-registerTool({
+registerTool<Record<string, never>, AnnexStatus[]>({
   name: 'list_missing_annexes',
   category: 'read',
   description: 'Check which mandatory annexes are missing or not referenced',
   inputSchema,
-  execute: execute as any,
+  execute,
   timeout: 5_000,
 })

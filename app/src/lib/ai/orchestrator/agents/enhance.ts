@@ -15,9 +15,8 @@ export const enhanceAgent: AgentFn = async (ctx, input, stream, gateway) => {
     temperature: 0.3,
   })
 
-  let enhancedIdea: EnhancedIdea
   const parsed = parseAIJson<Record<string, unknown>>(result.content)
-  enhancedIdea = {
+  const enhancedIdea: EnhancedIdea = {
     originalIdea: input,
     refinedDescription: (parsed.refinedDescription as string) || 'No description provided',
     sector: (parsed.sector as string) || 'General',
