@@ -365,16 +365,37 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
   }
 }
 
-function handleStructuredAction(
+export function handleStructuredAction(
   action: NonNullable<AgentRequest['action']>,
   session: AgentSession,
   sections: AgentSection[],
 ): { transitions: StateTransition[]; skipLLM: boolean; policyViolation?: string } {
   switch (action.type) {
-    case 'select_call':
+    case 'select_call': {
+      if (session.status !== 'active') {
+        return { transitions: [], skipLLM: true, policyViolation: `POLICY_SESSION_NOT_ACTIVE: session status is '${session.status}'; call selection requires active session` }
+      }
+      if (session.outlineFrozen) {
+        return { transitions: [], skipLLM: true, policyViolation: 'POLICY_OUTLINE_ALREADY_FROZEN: cannot reselect call once outline is frozen' }
+      }
       return { transitions: [{ type: 'SET_SELECTED_CALL', callId: action.callId }], skipLLM: false }
-    case 'approve_outline':
+    }
+    case 'approve_outline': {
+      if (session.status !== 'active') {
+        return { transitions: [], skipLLM: true, policyViolation: `POLICY_SESSION_NOT_ACTIVE: session status is '${session.status}'; outline approval requires active session` }
+      }
+      if (!session.selectedCallId) {
+        return { transitions: [], skipLLM: true, policyViolation: 'POLICY_NO_CALL_SELECTED: cannot approve outline before a funding call has been selected' }
+      }
+      if (session.eligibility == null || session.eligibility.failCount > 0) {
+        const failCount = session.eligibility?.failCount ?? 'unknown'
+        return { transitions: [], skipLLM: true, policyViolation: `POLICY_ELIGIBILITY_NOT_PASSED: eligibility check must pass with zero failures before outline approval (failCount: ${failCount})` }
+      }
+      if (session.outlineFrozen) {
+        return { transitions: [], skipLLM: true, policyViolation: 'POLICY_OUTLINE_ALREADY_FROZEN: outline has already been approved and frozen' }
+      }
       return { transitions: [{ type: 'FREEZE_OUTLINE' }, { type: 'SET_PHASE', phase: 'drafting' }], skipLLM: false }
+    }
     case 'accept_section': {
       if (!session.outlineFrozen) {
         return { transitions: [], skipLLM: true, policyViolation: 'Cannot accept sections before outline is approved' }
@@ -386,10 +407,34 @@ function handleStructuredAction(
       }
       return { transitions: [{ type: 'ACCEPT_SECTION', sectionKey: action.sectionKey }], skipLLM: true }
     }
-    case 'regenerate_section':
+    case 'regenerate_section': {
+      if (!session.outlineFrozen) {
+        return { transitions: [], skipLLM: true, policyViolation: 'POLICY_OUTLINE_NOT_FROZEN: cannot regenerate sections before outline is frozen' }
+      }
+      const section = sections.find(s => s.sectionKey === action.sectionKey)
+      if (!section) {
+        return { transitions: [], skipLLM: true, policyViolation: `Section "${action.sectionKey}" not found` }
+      }
+      const ALLOWED_REGEN_STATES = ['draft', 'needs_review', 'accepted'] as const
+      if (!ALLOWED_REGEN_STATES.includes(section.status as (typeof ALLOWED_REGEN_STATES)[number])) {
+        return { transitions: [], skipLLM: true, policyViolation: `POLICY_SECTION_WRONG_STATE: section "${action.sectionKey}" has status '${section.status}'; regenerate allowed only from draft/needs_review/accepted` }
+      }
       return { transitions: [{ type: 'MARK_SECTION_STALE', sectionKey: action.sectionKey }], skipLLM: false }
-    case 'reject_section':
+    }
+    case 'reject_section': {
+      if (!session.outlineFrozen) {
+        return { transitions: [], skipLLM: true, policyViolation: 'POLICY_OUTLINE_NOT_FROZEN: cannot reject sections before outline is frozen' }
+      }
+      const section = sections.find(s => s.sectionKey === action.sectionKey)
+      if (!section) {
+        return { transitions: [], skipLLM: true, policyViolation: `Section "${action.sectionKey}" not found` }
+      }
+      const ALLOWED_REJECT_STATES = ['draft', 'needs_review', 'rejected'] as const
+      if (!ALLOWED_REJECT_STATES.includes(section.status as (typeof ALLOWED_REJECT_STATES)[number])) {
+        return { transitions: [], skipLLM: true, policyViolation: `POLICY_SECTION_WRONG_STATE: section "${action.sectionKey}" has status '${section.status}'; reject allowed only from draft/needs_review/rejected` }
+      }
       return { transitions: [{ type: 'REJECT_SECTION', sectionKey: action.sectionKey, reason: action.reason }], skipLLM: true }
+    }
     case 'request_refresh':
       return { transitions: [], skipLLM: false }
     case 'mark_complete': {
