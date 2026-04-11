@@ -10,6 +10,7 @@ import { db } from '@/lib/db'
 import { agentSessions, agentSections, agentSectionVersions } from '@/lib/db/schema'
 import { eq, and, max } from 'drizzle-orm'
 import { NotFoundError, ConcurrencyError } from './errors'
+import { verifySessionOwnership } from './context-helpers'
 import { logAudit } from '@/lib/legal/audit'
 import { assertPolicy } from '../policy/enforce'
 import { POLICY_MATRIX } from '../policy/matrix'
@@ -72,23 +73,6 @@ async function assertSessionOwnership(
   if (!rows[0]) {
     throw new NotFoundError('session', sessionId)
   }
-}
-
-async function verifySessionOwnership(
-  ctx: ServiceContext,
-  sessionId: string,
-): Promise<typeof agentSessions.$inferSelect> {
-  const rows = await db
-    .select()
-    .from(agentSessions)
-    .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, ctx.userId)))
-    .limit(1)
-
-  if (!rows[0]) {
-    throw new NotFoundError('session', sessionId)
-  }
-
-  return rows[0]
 }
 
 // ── listSections ───────────────────────────────────────────────────────────
