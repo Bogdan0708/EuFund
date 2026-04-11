@@ -536,16 +536,37 @@ export async function rollbackSection(
   const newStateVersion = session.stateVersion + 1
   const restoredContent = targetVersionRow.content
 
-  // Determine next version number (outside transaction to keep tx lean)
-  const maxVersionRow = await db
-    .select({ maxVersion: max(agentSectionVersions.versionNumber) })
-    .from(agentSectionVersions)
-    .where(eq(agentSectionVersions.sectionId, section.id))
-
-  const newVersionNumber = (maxVersionRow[0]?.maxVersion ?? 0) + 1
-
-  // 3. Persist mutation
+  // 3. Persist mutation — version-number allocation happens INSIDE the transaction
+  // under a FOR UPDATE lock on the parent section row. Without the lock, two
+  // concurrent rollbacks on the same section can both read the same
+  // max(version_number) from their MVCC snapshot, compute the same
+  // newVersionNumber, and collide on the (section_id, version_number) unique
+  // constraint with a raw DB error instead of a clean ConcurrencyError.
   await db.transaction(async (tx) => {
+    // Lock the parent section row to serialize concurrent version-number
+    // allocation. The second concurrent rollback blocks here until the first
+    // commits, then reads a fresh max and computes a correct new version number.
+    // The subsequent stateVersion CAS still fires and rejects the loser cleanly.
+    const lockedSection = await tx
+      .select({ id: agentSections.id })
+      .from(agentSections)
+      .where(eq(agentSections.id, section.id))
+      .for('update')
+      .limit(1)
+
+    if (!lockedSection[0]) {
+      // Section was deleted between our pre-read and the lock attempt.
+      throw new NotFoundError('section', `${input.sessionId}:${input.sectionKey}`)
+    }
+
+    // Under the row lock, read the current max version number.
+    const maxVersionRow = await tx
+      .select({ maxVersion: max(agentSectionVersions.versionNumber) })
+      .from(agentSectionVersions)
+      .where(eq(agentSectionVersions.sectionId, section.id))
+
+    const newVersionNumber = (maxVersionRow[0]?.maxVersion ?? 0) + 1
+
     await tx
       .update(agentSections)
       .set({ content: restoredContent, status: 'draft', updatedAt: new Date() })
