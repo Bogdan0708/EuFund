@@ -597,3 +597,48 @@ export async function setSelectedCall(
 
   return { newStateVersion }
 }
+
+export async function freezeOutline(
+  ctx: ServiceContext,
+  input: { sessionId: string; expectedStateVersion: number },
+): Promise<{ newStateVersion: number }> {
+  // 1. Verify ownership
+  const session = await verifySessionOwnership(ctx, input.sessionId)
+
+  // 2. Concurrency check
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  // 3. Idempotent no-op: already frozen
+  //    (no stateVersion bump, no updatedAt change, no audit event)
+  if (session.outlineFrozen) {
+    return { newStateVersion: session.stateVersion }
+  }
+
+  // 4. Policy gate
+  assertPolicy(POLICY_MATRIX.freezeOutline, session as unknown as AgentSession)
+
+  // 5. Mutate: set outlineFrozen=true and advance phase to drafting
+  const newStateVersion = session.stateVersion + 1
+  await db
+    .update(agentSessions)
+    .set({
+      outlineFrozen: true,
+      currentPhase: 'drafting',
+      stateVersion: newStateVersion,
+      updatedAt: new Date(),
+    })
+    .where(eq(agentSessions.id, input.sessionId))
+
+  // 6. Audit
+  await logAudit({
+    userId: ctx.userId,
+    action: POLICY_MATRIX.freezeOutline.auditAction,
+    resourceType: 'agent_session',
+    resourceId: input.sessionId,
+    metadata: { previousPhase: session.currentPhase, requestId: ctx.requestId },
+  })
+
+  return { newStateVersion }
+}
