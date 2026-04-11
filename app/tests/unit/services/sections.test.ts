@@ -98,6 +98,7 @@ function makeSectionRow(overrides: Record<string, unknown> = {}) {
     latencyMs: 1200,
     tokenUsage: { input: 500, output: 300 },
     errorClass: null,
+    rejectionReason: null,
     updatedAt: new Date('2026-04-09T09:00:00Z'),
     ...overrides,
   }
@@ -253,6 +254,7 @@ describe('getSection', () => {
       latencyMs: null,
       tokenUsage: null,
       errorClass: null,
+      rejectionReason: null,
     })
     setupGetSectionSequence([makeSessionRow()], [section])
 
@@ -266,5 +268,32 @@ describe('getSection', () => {
     expect(detail.latencyMs).toBeNull()
     expect(detail.tokenUsage).toBeNull()
     expect(detail.errorClass).toBeNull()
+    expect(detail.rejectionReason).toBeNull()
+  })
+
+  it('returns rejectionReason in SectionDetail for rejected sections', async () => {
+    const section = makeSectionRow({
+      status: 'rejected',
+      rejectionReason: 'not specific enough',
+    })
+    setupGetSectionSequence([makeSessionRow()], [section])
+
+    const detail = await getSection(baseCtx, SESSION_ID, 'context')
+
+    expect(detail.status).toBe('rejected')
+    expect(detail.rejectionReason).toBe('not specific enough')
+  })
+
+  it('returns null rejectionReason for non-rejected sections', async () => {
+    const section = makeSectionRow({
+      status: 'draft',
+      rejectionReason: null,
+    })
+    setupGetSectionSequence([makeSessionRow()], [section])
+
+    const detail = await getSection(baseCtx, SESSION_ID, 'context')
+
+    expect(detail.status).toBe('draft')
+    expect(detail.rejectionReason).toBeNull()
   })
 })
