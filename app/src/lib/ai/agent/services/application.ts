@@ -445,11 +445,25 @@ export async function setApplicationStatus(
 
   const newStateVersion = session.stateVersion + 1
 
-  // 3. Persist mutation
-  await db
+  // 3. Persist mutation (atomic CAS: WHERE includes stateVersion guard)
+  const casStatus = await db
     .update(agentSessions)
     .set({ status: input.status, stateVersion: newStateVersion, updatedAt: new Date() })
-    .where(eq(agentSessions.id, input.sessionId))
+    .where(and(
+      eq(agentSessions.id, input.sessionId),
+      eq(agentSessions.stateVersion, input.expectedStateVersion),
+    ))
+    .returning({ id: agentSessions.id })
+
+  if (casStatus.length === 0) {
+    // Another writer committed between our pre-read and this UPDATE.
+    const [current] = await db
+      .select({ stateVersion: agentSessions.stateVersion })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, input.sessionId))
+      .limit(1)
+    throw new ConcurrencyError(input.expectedStateVersion, current?.stateVersion ?? -1)
+  }
 
   // 4. Emit audit log
   await logAudit({
@@ -575,16 +589,30 @@ export async function setSelectedCall(
   // 4. Policy gate — cannot reselect once outline is frozen
   assertPolicy(POLICY_MATRIX.setSelectedCall, session as unknown as AgentSession)
 
-  // 5. Mutate
+  // 5. Mutate (atomic CAS: WHERE includes stateVersion guard)
   const newStateVersion = session.stateVersion + 1
-  await db
+  const casCall = await db
     .update(agentSessions)
     .set({
       selectedCallId: input.callId,
       stateVersion: newStateVersion,
       updatedAt: new Date(),
     })
-    .where(eq(agentSessions.id, input.sessionId))
+    .where(and(
+      eq(agentSessions.id, input.sessionId),
+      eq(agentSessions.stateVersion, input.expectedStateVersion),
+    ))
+    .returning({ id: agentSessions.id })
+
+  if (casCall.length === 0) {
+    // Another writer committed between our pre-read and this UPDATE.
+    const [current] = await db
+      .select({ stateVersion: agentSessions.stateVersion })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, input.sessionId))
+      .limit(1)
+    throw new ConcurrencyError(input.expectedStateVersion, current?.stateVersion ?? -1)
+  }
 
   // 6. Audit
   await logAudit({
@@ -620,8 +648,9 @@ export async function freezeOutline(
   assertPolicy(POLICY_MATRIX.freezeOutline, session as unknown as AgentSession)
 
   // 5. Mutate: set outlineFrozen=true and advance phase to drafting
+  // Atomic CAS: WHERE includes stateVersion guard to prevent double-freeze races.
   const newStateVersion = session.stateVersion + 1
-  await db
+  const casFreeze = await db
     .update(agentSessions)
     .set({
       outlineFrozen: true,
@@ -629,7 +658,21 @@ export async function freezeOutline(
       stateVersion: newStateVersion,
       updatedAt: new Date(),
     })
-    .where(eq(agentSessions.id, input.sessionId))
+    .where(and(
+      eq(agentSessions.id, input.sessionId),
+      eq(agentSessions.stateVersion, input.expectedStateVersion),
+    ))
+    .returning({ id: agentSessions.id })
+
+  if (casFreeze.length === 0) {
+    // Another writer committed between our pre-read and this UPDATE.
+    const [current] = await db
+      .select({ stateVersion: agentSessions.stateVersion })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, input.sessionId))
+      .limit(1)
+    throw new ConcurrencyError(input.expectedStateVersion, current?.stateVersion ?? -1)
+  }
 
   // 6. Audit
   await logAudit({

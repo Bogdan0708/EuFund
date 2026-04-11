@@ -33,7 +33,9 @@ function mockSelect(session: any) {
   })
   ;(mockDb.update as any).mockReturnValue({
     set: vi.fn().mockReturnValue({
-      where: vi.fn().mockResolvedValue(undefined),
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: baseSession.id }]),
+      }),
     }),
   })
 }

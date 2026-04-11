@@ -116,7 +116,8 @@ function setupCompletedSelect(sessionRow: unknown) {
 
 function setupUpdate() {
   vi.mocked(db.update).mockImplementation(() => {
-    const where = vi.fn().mockResolvedValue([])
+    const returning = vi.fn().mockResolvedValue([{ id: SESSION_ID }])
+    const where = vi.fn().mockReturnValue({ returning })
     const set = vi.fn().mockReturnValue({ where })
     return { set } as any
   })
