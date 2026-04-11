@@ -9,8 +9,11 @@
 import { db } from '@/lib/db'
 import { agentSessions, agentSections } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
-import { NotFoundError, ConcurrencyError } from './errors'
+import { NotFoundError, ConcurrencyError, ValidationError } from './errors'
 import { logAudit } from '@/lib/legal/audit'
+import { assertPolicy } from '../policy/enforce'
+import { POLICY_MATRIX } from '../policy/matrix'
+import type { AgentSession } from '../types'
 import type {
   ServiceContext,
   ApplicationState,
@@ -419,9 +422,24 @@ export async function setApplicationStatus(
     throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
   }
 
-  // Idempotent: same status → no-op, return current stateVersion
+  // Idempotent: same status → no-op, return current stateVersion (no policy check, no audit)
   if (session.status === input.status) {
     return { newStateVersion: session.stateVersion }
+  }
+
+  // Policy gate
+  assertPolicy(POLICY_MATRIX.setApplicationStatus, session as unknown as AgentSession)
+
+  // Completed-specific gate: validate_application must pass
+  if (input.status === 'completed') {
+    const validationResult = await validateApplication(ctx, input.sessionId)
+    if (!validationResult.passed) {
+      throw new ValidationError(
+        'validation',
+        'Application cannot be marked complete: validate_application did not pass',
+        'POLICY_VALIDATION_NOT_PASSED',
+      )
+    }
   }
 
   const newStateVersion = session.stateVersion + 1
