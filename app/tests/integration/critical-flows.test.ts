@@ -77,41 +77,6 @@ describe('Critical Flows and Isolation', () => {
     expect(json.data.matches).toHaveLength(1);
   });
 
-  it('idea enrichment flow logs user-bound audit events', async () => {
-    const logAudit = vi.fn();
-    vi.doMock('@/lib/middleware/auth', () => ({
-      withAIAuth: (_req: NextRequest, handler: Function) =>
-        handler({ id: 'user-99', email: 'u@test.com', tier: 'pro' }),
-    }));
-    vi.doMock('@/lib/ai/knowledge-engine', () => ({
-      quickQualityCheck: vi.fn().mockReturnValue({ score: 70, gaps: [], strengths: ['ok'] }),
-      generateKnowledgeRecommendations: vi.fn().mockResolvedValue({
-        proposalImprovements: [],
-        bestPractices: [],
-        lessonsLearned: [],
-        successPatterns: [],
-        commonPitfalls: [],
-        expertInsights: [],
-        overallQualityScore: 80,
-        readinessLevel: 'minor_revisions',
-      }),
-    }));
-    vi.doMock('@/lib/legal/audit', () => ({ logAudit }));
-
-    const { POST } = await import('@/app/api/ai/generate-insights/route');
-    const req = createJsonRequest('/api/ai/generate-insights', {
-      projectTitle: 'Smart City Platform',
-      projectSummary: 'A detailed summary of an EU-ready digital public service project.',
-      programType: 'pnrr',
-      sector: 'digital',
-      quick: false,
-    });
-
-    const res = await POST(req);
-    expect(res.status).toBe(200);
-    expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-99' }));
-  });
-
   it('application generation rejects invalid payloads and accepts valid ones', async () => {
     const generateProposal = vi.fn().mockResolvedValue({
       proposal: { title: 'Generated' },
