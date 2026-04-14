@@ -1,25 +1,79 @@
-// ─── AI Client ──────────────────────────────────────────────────
-// Simplified client for endpoints that need one-shot generation
-// without full orchestrator/agent infrastructure.
-// Uses the centralized routing policy and provider router.
-
+// ─── AI Client with Circuit Breaker ──────────────────────────────
+import OpenAI from 'openai';
 import { z } from 'zod';
 import { CircuitBreaker, Errors, withRetry } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { AI_CONFIG } from './config';
-import { resolveAgentModel } from './model-routing';
-import { generate } from './providers/router';
-import { zodToJsonSchema } from './utils';
-
+import { TaskType } from './types';
 const log = logger.child({ component: 'ai-client' });
 
+// Circuit breakers per service
 const generationBreaker = new CircuitBreaker('ai-generation', 5, 60000);
 const analysisBreaker = new CircuitBreaker('ai-analysis', 5, 60000);
 const embeddingBreaker = new CircuitBreaker('ai-embedding', 5, 60000);
+const gatewayUrl = process.env.AI_GATEWAY_URL?.replace(/\/$/, '');
+const gatewayKey = process.env.AI_GATEWAY_KEY || process.env.AI_GATEWAY_API_KEY;
+let gatewayClient: OpenAI | null = null;
+
+function resolveTaskType(hintText: string): TaskType {
+  const text = hintText.toLowerCase();
+
+  if (text.includes('proposal')) return TaskType.PROPOSAL_GENERATION;
+  if (text.includes('risk')) return TaskType.RISK_ASSESSMENT;
+  if (text.includes('grant')) return TaskType.GRANT_MATCHING;
+  if (text.includes('partner')) return TaskType.PARTNER_MATCHING;
+  if (text.includes('budget')) return TaskType.BUDGET_ANALYSIS;
+  if (text.includes('timeline')) return TaskType.TIMELINE_OPTIMIZATION;
+  if (text.includes('legal')) return TaskType.LEGAL_ANALYSIS;
+  if (text.includes('romania') || text.includes('romanian') || text.includes('română') || text.includes('romana')) {
+    return TaskType.ROMANIAN_LOCALIZATION;
+  }
+  if (text.includes('compliance')) return TaskType.COMPLIANCE_CHECK;
+
+  return TaskType.DOCUMENT_ANALYSIS;
+}
+
+function getGatewayClient(): OpenAI | null {
+  if (!gatewayUrl || !gatewayKey) {
+    return null;
+  }
+
+  if (!gatewayClient) {
+    gatewayClient = new OpenAI({
+      apiKey: gatewayKey,
+      baseURL: `${gatewayUrl}/v1`,
+      timeout: 30000,
+      defaultHeaders: {
+        'x-tenant-id': AI_CONFIG.gateway.tenantId,
+      },
+    });
+  }
+
+  return gatewayClient;
+}
+
+function requireGatewayClient(): OpenAI {
+  const gateway = getGatewayClient();
+  if (!gateway) {
+    throw Errors.serviceUnavailable('AI gateway is required but not configured');
+  }
+  return gateway;
+}
+
+function schemaToJsonSchema(schema: z.ZodType): unknown {
+  const zodAny = z as unknown as {
+    toJSONSchema?: (value: z.ZodType) => unknown;
+  };
+
+  if (typeof zodAny.toJSONSchema === 'function') {
+    return zodAny.toJSONSchema(schema);
+  }
+
+  return (schema as unknown as { _def?: unknown })._def ?? schema;
+}
 
 /**
- * Generate text with retry + circuit breaker.
- * Uses centralized routing policy (standard tier by default).
+ * Generate text with retry + circuit breaker
  */
 export async function aiGenerate(opts: {
   system: string;
@@ -28,44 +82,38 @@ export async function aiGenerate(opts: {
   maxTokens?: number;
 }): Promise<{ text: string; tokensUsed: number }> {
   const startTime = performance.now();
-  const resolved = resolveAgentModel({ task: 'editing' }); // standard tier
+  const gateway = requireGatewayClient();
   try {
     return await generationBreaker.execute(() =>
       withRetry(async () => {
         try {
-          const response = await generate({
-            provider: resolved.provider,
-            model: resolved.model,
-            system: opts.system,
-            messages: [{ role: 'user', content: opts.prompt }],
-            maxTokens: opts.maxTokens ?? 20_000,
+          const response = await gateway.chat.completions.create({
+            model: AI_CONFIG.generation.model,
+            messages: [
+              { role: 'system', content: opts.system },
+              { role: 'user', content: opts.prompt },
+            ],
+            max_tokens: opts.maxTokens ?? AI_CONFIG.generation.maxTokens,
             temperature: opts.temperature ?? AI_CONFIG.generation.temperature,
           });
 
           return {
-            text: response.content,
-            tokensUsed: response.tokensUsed.input + response.tokensUsed.output,
+            text: response.choices[0]?.message?.content || '',
+            tokensUsed: response.usage?.total_tokens || 0,
           };
         } catch (error) {
-          log.error({ error, provider: resolved.provider, model: resolved.model }, 'AI generation failed');
-          throw Errors.serviceUnavailable('AI generation failed');
+          log.error({ error, taskType: resolveTaskType(`${opts.system}\n${opts.prompt}`) }, 'AI gateway generation failed');
+          throw Errors.serviceUnavailable('AI gateway request failed');
         }
       })
     );
   } finally {
-    log.info({
-      operation: 'aiGenerate',
-      provider: resolved.provider,
-      model: resolved.model,
-      tier: resolved.tier,
-      durationMs: Number((performance.now() - startTime).toFixed(2)),
-    }, 'AI call completed');
+    log.info({ operation: 'aiGenerate', durationMs: Number((performance.now() - startTime).toFixed(2)) }, 'AI call completed');
   }
 }
 
 /**
- * Generate structured output with schema validation.
- * Uses centralized routing policy (budget tier for JSON reliability).
+ * Generate structured output with schema validation
  */
 export async function aiGenerateObject<T extends z.ZodType>(opts: {
   system: string;
@@ -75,57 +123,54 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
   temperature?: number;
 }): Promise<{ object: z.infer<T>; tokensUsed: number }> {
   const startTime = performance.now();
-  const resolved = resolveAgentModel({ task: 'structure_extraction' }); // budget tier — best JSON
+  const gateway = requireGatewayClient();
   try {
     return await analysisBreaker.execute(() =>
       withRetry(async () => {
         try {
-          const response = await generate({
-            provider: resolved.provider,
-            model: resolved.model,
-            system: `${opts.system}\n\nReturn only valid JSON that matches this schema: ${JSON.stringify(zodToJsonSchema(opts.schema))}`,
-            messages: [{ role: 'user', content: opts.prompt }],
-            maxTokens: AI_CONFIG.analysis.maxTokens,
+          const response = await gateway.chat.completions.create({
+            model: AI_CONFIG.analysis.model,
+            messages: [
+              {
+                role: 'system',
+                content: `${opts.system}\n\nReturn only valid JSON that matches this schema: ${JSON.stringify(schemaToJsonSchema(opts.schema))}`,
+              },
+              { role: 'user', content: opts.prompt },
+            ],
+            max_tokens: AI_CONFIG.analysis.maxTokens,
             temperature: opts.temperature ?? AI_CONFIG.analysis.temperature,
+            response_format: { type: 'json_object' },
           });
 
-          const object = opts.schema.parse(JSON.parse(response.content));
+          const content = response.choices[0]?.message?.content || '{}';
+          const object = opts.schema.parse(JSON.parse(content));
 
           return {
             object,
-            tokensUsed: response.tokensUsed.input + response.tokensUsed.output,
+            tokensUsed: response.usage?.total_tokens || 0,
           };
         } catch (error) {
-          log.error({ error, schemaName: opts.schemaName, provider: resolved.provider, model: resolved.model }, 'AI structured generation failed');
-          throw Errors.serviceUnavailable('AI structured generation failed');
+          log.error({ error, schemaName: opts.schemaName }, 'AI gateway structured generation failed');
+          throw Errors.serviceUnavailable('AI gateway request failed');
         }
       })
     );
   } finally {
-    log.info({
-      operation: 'aiGenerateObject',
-      provider: resolved.provider,
-      model: resolved.model,
-      tier: resolved.tier,
-      durationMs: Number((performance.now() - startTime).toFixed(2)),
-    }, 'AI call completed');
+    log.info({ operation: 'aiGenerateObject', durationMs: Number((performance.now() - startTime).toFixed(2)) }, 'AI call completed');
   }
 }
 
 /**
- * Generate embeddings for text.
- * Embeddings always use OpenAI (text-embedding-3-small).
+ * Generate embeddings for text
  */
 export async function aiEmbed(text: string): Promise<{ embedding: number[]; tokensUsed: number }> {
   const startTime = performance.now();
-  // Embeddings use OpenAI directly — no routing needed
-  const OpenAI = (await import('openai')).default;
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const gateway = requireGatewayClient();
   try {
     return await embeddingBreaker.execute(() =>
       withRetry(async () => {
         try {
-          const response = await client.embeddings.create({
+          const response = await gateway.embeddings.create({
             model: AI_CONFIG.embedding.model,
             input: text,
             dimensions: AI_CONFIG.embedding.dimensions,
@@ -136,8 +181,8 @@ export async function aiEmbed(text: string): Promise<{ embedding: number[]; toke
             tokensUsed: response.usage?.total_tokens || Math.ceil(text.length / 4),
           };
         } catch (error) {
-          log.error({ error }, 'Embedding generation failed');
-          throw Errors.serviceUnavailable('Embedding generation failed');
+          log.error({ error }, 'AI gateway embedding failed');
+          throw Errors.serviceUnavailable('AI gateway request failed');
         }
       })
     );
@@ -153,6 +198,7 @@ export async function aiEmbedBatch(texts: string[]): Promise<{ embeddings: numbe
   let totalTokens = 0;
   const embeddings: number[][] = [];
 
+  // Process in batches of 20
   for (let i = 0; i < texts.length; i += 20) {
     const batch = texts.slice(i, i + 20);
     const results = await Promise.all(batch.map((t) => aiEmbed(t)));

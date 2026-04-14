@@ -1,8 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { DsInput } from '@/components/ui/ds-input'
-import { DsChip } from '@/components/ui/ds-chip'
+import { GlassInput, GlassChip, GlassSkeleton } from '@/components/glass'
 import { ProjectCard } from './ProjectCard'
 
 interface Project {
@@ -30,7 +29,7 @@ export function ProjectGrid({ projects, loading = false }: ProjectGridProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {[...Array(6)].map((_, i) => <div key={i} className="animate-pulse bg-surface-container rounded-[1rem] h-40" />)}
+        {[...Array(6)].map((_, i) => <GlassSkeleton key={i} className="h-40" />)}
       </div>
     )
   }
@@ -38,17 +37,17 @@ export function ProjectGrid({ projects, loading = false }: ProjectGridProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-col md:flex-row gap-3">
-        <DsInput value={search} onChange={e => setSearch(e.target.value)} placeholder={t('searchPlaceholder')} className="md:max-w-sm" />
+        <GlassInput value={search} onChange={e => setSearch(e.target.value)} placeholder={t('searchPlaceholder')} className="md:max-w-sm" />
         <div className="flex gap-2 flex-wrap">
           {FILTERS.map(f => (
-            <DsChip key={f} variant={filter === f ? 'selected' : 'default'} onClick={() => setFilter(f)}>
+            <GlassChip key={f} active={filter === f} onClick={() => setFilter(f)}>
               {t(`filter.${f}`)}
-            </DsChip>
+            </GlassChip>
           ))}
         </div>
       </div>
       {filtered.length === 0 ? (
-        <p className="text-outline text-center py-12">{t('noProjects')}</p>
+        <p className="text-[var(--text-tertiary)] text-center py-12">{t('noProjects')}</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(p => <ProjectCard key={p.id} project={p} />)}

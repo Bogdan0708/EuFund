@@ -1,7 +1,7 @@
 import Stripe from 'stripe';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { users, stripeWebhookEvents } from '@/lib/db/schema';
+import { users } from '@/lib/db/schema';
 import { FREE_TRIAL_DAYS, resolveBillingTrialState } from '@/lib/billing/trial';
 
 export type BillingTier = 'free' | 'plus' | 'pro' | 'enterprise' | 'ultra';
@@ -351,13 +351,6 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
 }
 
 export async function handleWebhookEvent(event: Stripe.Event): Promise<void> {
-  // Idempotency: skip if already processed
-  const existing = await db.query.stripeWebhookEvents.findFirst({
-    where: eq(stripeWebhookEvents.eventId, event.id),
-  });
-  if (existing) return;
-
-  // Process the event
   switch (event.type) {
     case 'checkout.session.completed':
       await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
@@ -378,12 +371,6 @@ export async function handleWebhookEvent(event: Stripe.Event): Promise<void> {
     default:
       break;
   }
-
-  // Record as processed (after success — if handler throws, event can be retried)
-  await db.insert(stripeWebhookEvents).values({
-    eventId: event.id,
-    eventType: event.type,
-  }).onConflictDoNothing();
 }
 
 export function constructWebhookEvent(payload: string | Buffer, signature: string): Stripe.Event {

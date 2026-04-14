@@ -23,7 +23,6 @@ export type AuditAction =
   | 'user.update'
   | 'user.delete'
   | 'user.export_data'
-  | 'user.onboarding_complete'
   // Organization
   | 'organization.create'
   | 'organization.update'
@@ -36,11 +35,6 @@ export type AuditAction =
   | 'project.update'
   | 'project.delete'
   | 'project.section_update'
-  | 'section.generated'
-  | 'section.regenerated'
-  | 'section.rollback'
-  | 'section.state_change'
-  | 'section.export'
   | 'project.version_save'
   | 'project.export'
   | 'project.status_change'
@@ -135,13 +129,12 @@ export function computeEntryHash(fields: {
 export async function logAudit(entry: AuditEntry): Promise<void> {
   try {
     await db.transaction(async (tx) => {
-      // 1. Read latest entry_hash (FOR UPDATE prevents concurrent chain forks)
+      // 1. Read latest entry_hash
       const [latest] = await tx
         .select({ entryHash: auditLog.entryHash })
         .from(auditLog)
         .orderBy(desc(auditLog.createdAt))
-        .limit(1)
-        .for('update');
+        .limit(1);
 
       const previousHash = latest?.entryHash ?? null;
 
@@ -213,7 +206,6 @@ export async function logAudit(entry: AuditEntry): Promise<void> {
 function inferLegalBasis(action: AuditAction): string {
   if (action.startsWith('auth.') || action.startsWith('user.')) return 'contract';
   if (action.startsWith('project.') || action.startsWith('organization.')) return 'contract';
-  if (action.startsWith('section.')) return 'contract';
   if (action.startsWith('consent.')) return 'legal_obligation';
   if (action.startsWith('gdpr.')) return 'legal_obligation';
   if (action.startsWith('ai.')) return 'contract';

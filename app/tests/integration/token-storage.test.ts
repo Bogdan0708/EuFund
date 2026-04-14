@@ -64,8 +64,13 @@ describe('One-time token storage', () => {
     expect(insertValues).not.toHaveBeenCalledWith(expect.objectContaining({ token }));
   });
 
-  it('rejects plaintext password reset tokens (only hashed accepted)', async () => {
-    const findFirst = vi.fn().mockResolvedValue(null); // Hash of plaintext won't match a stored plaintext
+  it('accepts legacy plaintext password reset tokens during rollout', async () => {
+    const findFirst = vi.fn().mockResolvedValue({
+      id: 'token-row',
+      userId: 'user-1',
+      token: 'legacy-plaintext-token',
+      expiresAt: new Date(Date.now() + 60_000),
+    });
 
     vi.doMock('@/lib/db', () => ({
       db: {
@@ -84,7 +89,7 @@ describe('One-time token storage', () => {
     const { verifyPasswordResetToken } = await import('@/lib/email/password-reset');
     const userId = await verifyPasswordResetToken('legacy-plaintext-token');
 
-    expect(userId).toBeNull();
+    expect(userId).toBe('user-1');
     expect(findFirst).toHaveBeenCalled();
   });
 });

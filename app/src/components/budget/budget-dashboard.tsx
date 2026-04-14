@@ -3,7 +3,6 @@
 import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { formatCurrency } from '@/lib/utils';
 
 export interface BudgetCategory {
   id: string;
@@ -28,6 +27,12 @@ export interface BudgetData {
 interface BudgetDashboardProps {
   data: BudgetData;
   showForecast?: boolean;
+}
+
+function formatCurrency(amount: number, currency: string = 'EUR'): string {
+  return new Intl.NumberFormat('ro-RO', {
+    style: 'currency', currency, maximumFractionDigits: 0,
+  }).format(amount);
 }
 
 function ProgressBar({ value, max, color = 'bg-primary', warn = 80, danger = 95 }: {

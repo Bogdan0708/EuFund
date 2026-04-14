@@ -6,10 +6,10 @@ describe('Tier limits', () => {
     expect(Object.keys(TIER_LIMITS)).toEqual(['free', 'plus', 'pro', 'ultra'])
   })
 
-  it('free tier has 3 monthly workflows', () => {
+  it('free tier has 1 total workflow', () => {
     const limits = getTierLimits('free')
-    expect(limits.workflowsPerMonth).toBe(3)
-    expect(limits.isLifetimeLimit).toBe(false)
+    expect(limits.workflowsPerMonth).toBe(1)
+    expect(limits.isLifetimeLimit).toBe(true)
   })
 
   it('plus tier has 10 workflows/mo', () => {
@@ -30,6 +30,6 @@ describe('Tier limits', () => {
 
   it('unknown tier falls back to free', () => {
     const limits = getTierLimits('unknown' as any)
-    expect(limits.workflowsPerMonth).toBe(3)
+    expect(limits.workflowsPerMonth).toBe(1)
   })
 })

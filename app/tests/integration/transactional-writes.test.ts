@@ -2,20 +2,20 @@ import { describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 describe('Transactional write paths', () => {
-  it('onboarding profile step uses a DB transaction for user and org creation', async () => {
+  it('register uses a DB transaction for user and consent creation', async () => {
     vi.resetModules();
 
     const tx = {
-      update: vi.fn().mockReturnValue({
-        set: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue(undefined),
-        }),
-      }),
       insert: vi.fn()
         .mockReturnValueOnce({
           values: vi.fn().mockReturnValue({
             returning: vi.fn().mockResolvedValue([
-              { id: '123e4567-e89b-42d3-a456-426614174111' },
+              {
+                id: '123e4567-e89b-42d3-a456-426614174000',
+                email: 'new@test.com',
+                fullName: 'New User',
+                createdAt: new Date(),
+              },
             ]),
           }),
         })
@@ -25,30 +25,46 @@ describe('Transactional write paths', () => {
     };
 
     const dbMock = {
+      query: {
+        users: {
+          findFirst: vi.fn().mockResolvedValue(null),
+        },
+      },
       transaction: vi.fn(async (fn: Function) => fn(tx)),
     };
 
     vi.doMock('@/lib/db', () => ({ db: dbMock }));
-    vi.doMock('@/lib/auth/helpers', () => ({
-      requireAuth: vi.fn().mockResolvedValue({ id: '123e4567-e89b-42d3-a456-426614174000', email: 'u@test.com' }),
+    vi.doMock('@/lib/validators', () => ({
+      registerSchema: {
+        safeParse: vi.fn().mockReturnValue({
+          success: true,
+          data: {
+            email: 'new@test.com',
+            password: 'password123',
+            fullName: 'New User',
+            phone: undefined,
+            dateOfBirth: '1990-01-01',
+          },
+        }),
+      },
     }));
+    vi.doMock('bcryptjs', () => ({ hash: vi.fn().mockResolvedValue('hashed-password') }));
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
+    vi.doMock('@/lib/email/verification', () => ({ generateVerificationToken: vi.fn().mockResolvedValue('token') }));
+    vi.doMock('@/lib/email/transporter', () => ({ sendEmail: vi.fn().mockResolvedValue(undefined) }));
+    vi.doMock('@/lib/email/templates', () => ({ welcomeEmail: vi.fn().mockReturnValue({ subject: 'Welcome', html: '<p>ok</p>' }) }));
+    vi.doMock('@/lib/middleware/rate-limit', () => ({ withRateLimit: (_opts: unknown, handler: Function) => handler }));
 
-    const { POST } = await import('@/app/api/auth/onboarding/route');
-    const request = new NextRequest('http://localhost:3000/api/auth/onboarding', {
+    const { POST } = await import('@/app/api/auth/register/route');
+    const request = new NextRequest('http://localhost:3000/api/auth/register', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        step: 'profile',
-        fullName: 'Test User',
-        organizationName: 'Test Org',
-        organizationType: 'srl',
-      }),
+      body: JSON.stringify({}),
     });
 
     const response = await POST(request);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(201);
     expect(dbMock.transaction).toHaveBeenCalledOnce();
   });
 

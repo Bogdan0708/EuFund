@@ -14,7 +14,7 @@ export function FondEUAdapter(): Adapter {
         .insert(users)
         .values({
           email: data.email,
-          fullName: data.name || data.email?.split('@')[0] || 'User',
+          fullName: data.name || data.email.split('@')[0],
           emailVerified: !!data.emailVerified,
           avatarUrl: data.image || undefined,
         })

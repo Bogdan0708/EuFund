@@ -213,47 +213,6 @@ export function sanitizeAIResponseDeep<T>(data: T): { sanitized: T; piiRedacted:
   return { sanitized: walk(data) as T, piiRedacted: allRedactions };
 }
 
-// ─── User Input Sanitization for AI Endpoints ───────────────────
-// Scans user input fields from API request bodies for injection patterns
-// and returns a structured result with matched patterns for monitoring.
-
-export interface SanitizeResult {
-  clean: boolean;
-  input: string;
-  sanitized: string;
-  matched: string[];
-}
-
-/**
- * Sanitize user input before passing to AI prompts.
- * Extends the RAG poisoning detection pattern from pipeline.ts.
- * - Detects known injection patterns (for logging/monitoring)
- * - Wraps input in boundary markers for safe prompt insertion
- */
-export function sanitizeUserInput(input: string): SanitizeResult {
-  const matched: string[] = [];
-  const normalized = normalizePromptInput(input);
-
-  if (ASCII_DELIMITER_LOOKALIKE_PATTERN.test(normalized)) {
-    matched.push(ASCII_DELIMITER_LOOKALIKE_PATTERN.source);
-  }
-
-  for (const pattern of INJECTION_PATTERNS) {
-    if (pattern.test(normalized)) {
-      matched.push(pattern.source);
-    }
-  }
-
-  const sanitized = wrapUserInput(input);
-
-  return {
-    clean: matched.length === 0,
-    input,
-    sanitized,
-    matched,
-  };
-}
-
 function stripSensitiveAILeaks(text: string): { cleaned: string; redactions: string[] } {
   const redactions: string[] = [];
   let cleaned = text;

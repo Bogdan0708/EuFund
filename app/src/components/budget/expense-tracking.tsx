@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { formatCurrency as formatCurrencyBase } from '@/lib/utils';
 
 interface Expense {
   id: string;
@@ -49,7 +48,7 @@ interface NewExpenseData {
 }
 
 function formatCurrency(n: number, c: string = 'EUR'): string {
-  return formatCurrencyBase(n, c, 2);
+  return new Intl.NumberFormat('ro-RO', { style: 'currency', currency: c, maximumFractionDigits: 2 }).format(n);
 }
 
 const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {

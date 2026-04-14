@@ -5,14 +5,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
-import { organizations, projects, projectDocuments } from '@/lib/db/schema';
+import { organizations, projects } from '@/lib/db/schema';
 import { updateProjectSectionSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
-import { eq, and, isNull, desc } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
-import { UUID_RE } from '@/lib/validators/patterns';
 
 type Params = { params: { id: string } };
 const DIRECT_MUTABLE_PROJECT_STATUSES = ['ciorna', 'in_lucru', 'verificare', 'depus'] as const;
@@ -22,9 +21,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
     const { id } = params;
-    if (!UUID_RE.test(id)) {
-      return NextResponse.json(Errors.validation('id', 'ID de proiect invalid', 'Invalid project ID').toResponse('ro'), { status: 400 });
-    }
 
     const project = await withUserRLS(user.id, async (tx) => {
       return tx.query.projects.findFirst({
@@ -43,23 +39,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
       });
     });
 
-    // Load latest project_documents metadata (submission dossier lives here)
-    const [latestDoc] = await withUserRLS(user.id, async (tx) => {
-      return tx
-        .select({ metadata: projectDocuments.metadata })
-        .from(projectDocuments)
-        .where(eq(projectDocuments.projectId, project.id))
-        .orderBy(desc(projectDocuments.version))
-        .limit(1);
-    });
-
     return NextResponse.json({
       success: true,
-      data: {
-        ...project,
-        organizationName: organization?.name || null,
-        metadata: latestDoc?.metadata ?? null,
-      },
+      data: { ...project, organizationName: organization?.name || null },
     });
   } catch (error) {
     if (error instanceof FondEUError) {
@@ -74,9 +56,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
     const { id } = params;
-    if (!UUID_RE.test(id)) {
-      return NextResponse.json(Errors.validation('id', 'ID de proiect invalid', 'Invalid project ID').toResponse('ro'), { status: 400 });
-    }
 
     const project = await withUserRLS(user.id, async (tx) => {
       return tx.query.projects.findFirst({
@@ -175,20 +154,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
         });
       }
 
-      if (nextStatus === 'depus') {
-        const { requirePlatformAdmin } = await import('@/lib/auth/helpers');
-        try {
-          await requirePlatformAdmin();
-        } catch {
-          throw new FondEUError({
-            code: 'FORBIDDEN',
-            statusCode: 403,
-            messageEn: 'Only platform administrators can mark a project as submitted.',
-            messageRo: 'Doar administratorii platformei pot marca un proiect ca depus.',
-            details: { reason: 'PROJECT_SUBMISSION_REQUIRES_ADMIN' },
-            retryable: false,
-          });
-        }
+      if (!user.isPlatformAdmin && nextStatus === 'depus') {
+        throw new FondEUError({
+          code: 'FORBIDDEN',
+          statusCode: 403,
+          messageEn: 'Only platform administrators can mark a project as submitted.',
+          messageRo: 'Doar administratorii platformei pot marca un proiect ca depus.',
+          details: { reason: 'PROJECT_SUBMISSION_REQUIRES_ADMIN' },
+          retryable: false,
+        });
       }
     }
 
@@ -224,9 +198,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuth();
     const { id } = params;
-    if (!UUID_RE.test(id)) {
-      return NextResponse.json(Errors.validation('id', 'ID de proiect invalid', 'Invalid project ID').toResponse('ro'), { status: 400 });
-    }
 
     const project = await withUserRLS(user.id, async (tx) => {
       return tx.query.projects.findFirst({

@@ -12,7 +12,6 @@ function createJsonRequest(path: string, body: unknown) {
 describe('Tier-gated routes', () => {
   it('rejects proposal generation for free-tier users', async () => {
     vi.resetModules();
-    vi.stubEnv('BILLING_ENABLED', 'true');
 
     vi.doMock('@/lib/middleware/auth', () => ({
       withAIAuth: (_req: NextRequest, handler: Function) =>
@@ -29,12 +28,10 @@ describe('Tier-gated routes', () => {
     expect(response.status).toBe(403);
     expect(json.success).toBe(false);
     expect(json.error.code).toBe('FORBIDDEN');
-    vi.unstubAllEnvs();
   });
 
   it('allows proposal generation for pro-tier users', async () => {
     vi.resetModules();
-    vi.stubEnv('BILLING_ENABLED', 'true');
 
     const generateProposal = vi.fn().mockResolvedValue({
       proposal: { title: 'Generated Proposal' },
@@ -57,12 +54,10 @@ describe('Tier-gated routes', () => {
 
     expect(response.status).toBe(200);
     expect(generateProposal).toHaveBeenCalledOnce();
-    vi.unstubAllEnvs();
   });
 
   it('rejects MySMIS export for free-tier users', async () => {
     vi.resetModules();
-    vi.stubEnv('BILLING_ENABLED', 'true');
 
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'u@test.com' }),
@@ -87,6 +82,5 @@ describe('Tier-gated routes', () => {
     expect(response.status).toBe(403);
     expect(json.success).toBe(false);
     expect(json.error.code).toBe('FORBIDDEN');
-    vi.unstubAllEnvs();
   });
 });

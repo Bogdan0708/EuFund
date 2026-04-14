@@ -8,11 +8,9 @@ config({ path: '.env.local' });
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq } from 'drizzle-orm';
-import bcrypt from 'bcryptjs';
 import * as schema from '../src/lib/db/schema';
 
 const ADMIN_EMAIL = 'godjabogdan@gmail.com';
-const DEV_PASSWORD = 'DevAdmin123!';
 
 async function main() {
   const connectionString = process.env.DATABASE_URL;
@@ -28,21 +26,16 @@ async function main() {
     where: eq(schema.users.email, ADMIN_EMAIL),
   });
 
-  const passwordHash = await bcrypt.hash(DEV_PASSWORD, 12);
-
   if (existing) {
-    // Always update password hash for dev login
-    await db
-      .update(schema.users)
-      .set({
-        isPlatformAdmin: true,
-        passwordHash,
-        emailVerified: true,
-        onboardingCompleted: true,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.users.id, existing.id));
-    console.log(`Updated ${ADMIN_EMAIL} — platform admin + dev password + verified + onboarded (id: ${existing.id})`);
+    if (existing.isPlatformAdmin) {
+      console.log(`User ${ADMIN_EMAIL} is already a platform admin (id: ${existing.id})`);
+    } else {
+      await db
+        .update(schema.users)
+        .set({ isPlatformAdmin: true, updatedAt: new Date() })
+        .where(eq(schema.users.id, existing.id));
+      console.log(`Promoted ${ADMIN_EMAIL} to platform admin (id: ${existing.id})`);
+    }
   } else {
     const [user] = await db
       .insert(schema.users)
@@ -52,8 +45,6 @@ async function main() {
         emailVerified: true,
         isPlatformAdmin: true,
         ageVerified: true,
-        onboardingCompleted: true,
-        passwordHash,
       })
       .returning();
     console.log(`Created admin user ${ADMIN_EMAIL} (id: ${user.id})`);

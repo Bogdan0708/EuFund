@@ -10,13 +10,11 @@ export interface RateLimitOptions {
   maxRequests: number;
   windowMs: number;
   messageRo?: string;
-  /** Override the default IP-based key suffix (e.g. pass userId for authenticated routes). */
-  keySuffix?: string;
 }
 
 export type NextRouteHandler = (request: NextRequest) => Promise<Response>;
 
-function getClientIp(request: NextRequest): string | null {
+function getClientIp(request: NextRequest): string {
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor) {
     const firstIp = forwardedFor.split(',')[0]?.trim();
@@ -26,7 +24,7 @@ function getClientIp(request: NextRequest): string | null {
   const realIp = request.headers.get('x-real-ip')?.trim();
   if (realIp) return realIp;
 
-  return null;
+  return '';
 }
 
 function buildRateLimitExceededResponse(retryAfterSeconds: number, messageRo?: string): NextResponse {
@@ -50,22 +48,17 @@ export async function enforceRateLimit(
   | { ok: true; headers: Record<string, string> }
   | { ok: false; response: Response }
 > {
-  const identity = options.keySuffix ?? getClientIp(request);
+  const ip = getClientIp(request);
 
-  if (!identity) {
-    log.warn('Request with no identifiable IP — rejecting');
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: 'Unable to identify request origin' },
-        { status: 403 },
-      ),
-    };
+  // If no IP can be determined, allow the request but skip rate limiting
+  if (!ip) {
+    log.warn('Request with no identifiable IP address — skipping rate limit');
+    return { ok: true, headers: {} };
   }
 
   try {
     const rateLimit = await checkRateLimit(
-      `${options.keyPrefix}:${identity}`,
+      `${options.keyPrefix}:${ip}`,
       options.maxRequests,
       options.windowMs,
     );
@@ -88,13 +81,10 @@ export async function enforceRateLimit(
       },
     };
   } catch (error) {
-    log.error({ error }, 'Rate limit check failed — rejecting request');
+    log.error({ error }, 'Rate limit check failed — allowing request');
     return {
-      ok: false,
-      response: NextResponse.json(
-        Errors.serviceUnavailable('rate-limiter').toResponse('ro'),
-        { status: 503 },
-      ),
+      ok: true,
+      headers: {},
     };
   }
 }

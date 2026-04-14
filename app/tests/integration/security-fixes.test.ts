@@ -84,13 +84,15 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
 
       const { withAIAuth } = await import('@/lib/middleware/auth');
       const handler = vi.fn(() => Promise.resolve(NextResponse.json({ success: true })));
-
+      
       const request = createNextRequest('/api/ai/predict');
       const response = await withAIAuth(request, handler);
 
-      // Rate limiting disabled in dev mode — handler is called regardless of mock
-      expect(response.status).toBe(200);
-      expect(handler).toHaveBeenCalledOnce();
+      expect(response.status).toBe(429);
+      const json = await response.json();
+      expect(json.code).toBe('RATE_LIMIT_EXCEEDED');
+      expect(json.error).toBe('Rate limit exceeded');
+      expect(json.tier).toBe('free');
     });
 
     it('should set X-RateLimit headers on success', async () => {
@@ -121,11 +123,10 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
       const request = createNextRequest('/api/ai/generate');
       const response = await withAIAuth(request, handler);
 
-      // Rate limiting disabled in dev mode — no rate limit headers set
       expect(response.status).toBe(200);
-      expect(response.headers.get('X-RateLimit-Limit')).toBeNull();
-      expect(response.headers.get('X-RateLimit-Remaining')).toBeNull();
-      expect(response.headers.get('X-RateLimit-Reset')).toBeNull();
+      expect(response.headers.get('X-RateLimit-Limit')).toBe('100'); // Pro tier limit
+      expect(response.headers.get('X-RateLimit-Remaining')).toBe('9');
+      expect(response.headers.get('X-RateLimit-Reset')).toBe(resetTime.toString());
     });
 
     it('should reject missing Content-Type in withAIAuth for POST requests', async () => {

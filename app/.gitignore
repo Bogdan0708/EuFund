@@ -7,4 +7,3 @@ out/
 .env*.local
 *.tsbuildinfo
 node_modules/
-uploads/

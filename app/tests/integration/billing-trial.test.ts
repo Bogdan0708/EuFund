@@ -15,9 +15,6 @@ describe('billing trial behavior', () => {
   });
 
   it('treats new free users as trialing with effective pro limits', async () => {
-    // Use a date within the 30-day trial window (relative to now)
-    const recentDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000); // 5 days ago
-
     dbSelectMock.mockReturnValue({
       from: () => ({
         where: () => ({
@@ -29,7 +26,7 @@ describe('billing trial behavior', () => {
               stripeCustomerId: null,
               stripeSubscriptionId: null,
               subscriptionPeriodEnd: null,
-              createdAt: recentDate,
+              createdAt: new Date('2026-03-01T00:00:00.000Z'),
               apiCallsThisMonth: 120,
             },
           ]),

@@ -2,13 +2,6 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
-import type {
-  ActionPlan,
-  MatchedCall,
-  SectionResult,
-  SSEEvent,
-  WorkflowContext,
-} from '@/lib/ai/orchestrator/types';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -28,18 +21,20 @@ export interface ChatMessage {
   timestamp?: string;
 }
 
-export interface CanvasState {
-  matchedCalls: MatchedCall[] | null;
-  actionPlan: ActionPlan | null;
-  proposalSections: SectionResult[] | null;
-  activeTab: 'calls' | 'plan' | 'proposal';
-}
-
-function deriveActiveTab(step: number): 'calls' | 'plan' | 'proposal' {
-  if (step >= 5) return 'proposal';
-  if (step >= 4) return 'plan';
-  return 'calls';
-}
+type SSEEvent = { eventId: number } & (
+  | { type: 'step_start'; step: number; label: string }
+  | { type: 'step_progress'; step: number; message: string }
+  | { type: 'ai_chunk'; step: number; content: string }
+  | {
+      type: 'checkpoint';
+      step: number;
+      data: CheckpointData;
+    }
+  | { type: 'step_complete'; step: number; summary: string }
+  | { type: 'discovery'; items: unknown[] }
+  | { type: 'error'; step: number; message: string; retryable: boolean }
+  | { type: 'done'; projectId?: string }
+);
 
 type Status = 'idle' | 'connecting' | 'streaming' | 'error';
 
@@ -52,12 +47,6 @@ export function useOrchestrator(locale: string) {
   const [error, setError] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [canvasState, setCanvasState] = useState<CanvasState>({
-    matchedCalls: null,
-    actionPlan: null,
-    proposalSections: null,
-    activeTab: 'calls',
-  });
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const lastEventIdRef = useRef<number>(0);
@@ -70,24 +59,6 @@ export function useOrchestrator(locale: string) {
   // Exponential backoff for SSE reconnect
   const reconnectAttemptsRef = useRef<number>(0);
   const MAX_RECONNECT_ATTEMPTS = 5;
-
-  // Ref to sendMessage so the SSE event handler can call it for auto-approve
-  // without needing to be rebuilt every time sendMessage changes. Assigned
-  // below after sendMessage is defined.
-  const sendMessageRef = useRef<((msg: string, displayText?: string) => Promise<boolean>) | null>(null);
-
-  // Pending auto-approve timeout. Scheduled when a confirm checkpoint arrives
-  // and the server reports autoApprove=true. Stored so we can cancel it if the
-  // user interacts with the checkpoint (modify, continue, or any other message)
-  // before the timeout fires.
-  const pendingAutoApproveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const cancelPendingAutoApprove = useCallback(() => {
-    if (pendingAutoApproveRef.current !== null) {
-      clearTimeout(pendingAutoApproveRef.current);
-      pendingAutoApproveRef.current = null;
-    }
-  }, []);
 
   // ─── SSE Connection ──────────────────────────────────────────
 
@@ -210,18 +181,8 @@ export function useOrchestrator(locale: string) {
         break;
       }
 
-      case 'checkpoint': {
+      case 'checkpoint':
         flushChunkBuffer();
-        // Update canvas state from context if present (shows calls/plan before user chooses)
-        if ('context' in event && event.context) {
-          const ctx = event.context as Partial<WorkflowContext>;
-          setCanvasState((prev) => ({
-            matchedCalls: ctx.matchedCalls ?? prev.matchedCalls,
-            actionPlan: ctx.actionPlan ?? prev.actionPlan,
-            proposalSections: ctx.projectSections ?? prev.proposalSections,
-            activeTab: deriveActiveTab(event.step),
-          }));
-        }
         setMessages((prev) => [
           ...prev,
           {
@@ -234,27 +195,7 @@ export function useOrchestrator(locale: string) {
           },
         ]);
         setIsStreaming(false);
-
-        // Auto-approve: for confirm-type checkpoints, automatically send
-        // 'continue' when the server reports the user's preference allows it.
-        // The flag is read server-side per message (see LiveAIPrefs in
-        // engine.ts) so settings changes take effect on the next message.
-        // Select and freetext checkpoints still require user input.
-        //
-        // The timeout is stored so cancelPendingAutoApprove() can clear it if
-        // the user clicks Modify or sends any other message before it fires.
-        if (event.data.type === 'confirm' && event.autoApprove === true) {
-          // Clear any stale pending timeout from a prior checkpoint (defensive)
-          if (pendingAutoApproveRef.current !== null) {
-            clearTimeout(pendingAutoApproveRef.current);
-          }
-          pendingAutoApproveRef.current = setTimeout(() => {
-            pendingAutoApproveRef.current = null;
-            sendMessageRef.current?.('continue');
-          }, 400); // brief delay so the checkpoint card is visible before it's answered
-        }
         break;
-      }
 
       case 'step_complete':
         flushChunkBuffer();
@@ -268,21 +209,6 @@ export function useOrchestrator(locale: string) {
             step: event.step,
           },
         ]);
-        // Update canvas state from context snapshot if present
-        if ('context' in event && event.context) {
-          const ctx = event.context as Partial<WorkflowContext>;
-          setCanvasState((prev) => ({
-            matchedCalls: ctx.matchedCalls ?? prev.matchedCalls,
-            actionPlan: ctx.actionPlan ?? prev.actionPlan,
-            proposalSections: ctx.projectSections ?? prev.proposalSections,
-            activeTab: deriveActiveTab(event.step),
-          }));
-        } else {
-          setCanvasState((prev) => ({
-            ...prev,
-            activeTab: deriveActiveTab(event.step),
-          }));
-        }
         break;
 
       case 'discovery':
@@ -306,40 +232,16 @@ export function useOrchestrator(locale: string) {
         ]);
         break;
 
-      case 'done': {
+      case 'done':
         flushChunkBuffer();
         setIsStreaming(false);
         setStatus('idle');
-        // Add completion message so UI can render a summary card
-        const cStatus = 'completionStatus' in event ? (event.completionStatus ?? 'complete') : 'complete';
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `done-${Date.now()}`,
-            role: 'assistant',
-            content: cStatus,
-            eventType: 'done',
-          },
-        ]);
-        // Switch to proposal tab to show generated sections
-        setCanvasState((prev) => ({
-          ...prev,
-          activeTab: 'proposal',
-        }));
+        // Close the SSE connection — session is complete
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+          eventSourceRef.current = null;
+        }
         break;
-      }
-
-      case 'section_updated': {
-        setCanvasState((prev) => {
-          if (!prev.proposalSections) return prev;
-          const idx = prev.proposalSections.findIndex((s) => s.id === event.sectionId);
-          if (idx < 0) return prev;
-          const next = [...prev.proposalSections];
-          next[idx] = event.section;
-          return { ...prev, proposalSections: next };
-        });
-        break;
-      }
     }
   }, []);
 
@@ -374,15 +276,6 @@ export function useOrchestrator(locale: string) {
       if (data.session?.currentStep) {
         setCurrentStep(data.session.currentStep);
       }
-      if (data.session?.context) {
-        const ctx = data.session.context as Partial<WorkflowContext>;
-        setCanvasState({
-          matchedCalls: ctx.matchedCalls ?? null,
-          actionPlan: ctx.actionPlan ?? null,
-          proposalSections: ctx.projectSections ?? null,
-          activeTab: deriveActiveTab(data.session.currentStep || 1),
-        });
-      }
     } catch {
       // Fail silently — user can still send new messages
     }
@@ -391,19 +284,14 @@ export function useOrchestrator(locale: string) {
   // ─── Send message ──────────────────────────────────────────────
 
   const sendMessage = useCallback(
-    async (message: string, displayText?: string): Promise<boolean> => {
-      if (!message.trim()) return false;
+    async (message: string) => {
+      if (!message.trim()) return;
 
-      // Any manual send supersedes a pending auto-approve. This prevents the
-      // 400ms confirm timeout from firing after the user has already taken
-      // action on the checkpoint (e.g. submitted a freetext override).
-      cancelPendingAutoApprove();
-
-      // Add user message to UI (displayText overrides for checkpoints where ID differs from label)
+      // Add user message to UI
       const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,
         role: 'user',
-        content: displayText ?? message,
+        content: message,
       };
       setMessages((prev) => [...prev, userMsg]);
       setIsStreaming(true);
@@ -438,32 +326,14 @@ export function useOrchestrator(locale: string) {
           setActiveSessionId(newSessionId);
           connectSSE(newSessionId);
         }
-        return true;
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         setIsStreaming(false);
         setStatus('error');
-        setError(errorMessage);
-        // Remove the user message that was never processed and add error as visible chat message
-        setMessages((prev) => [
-          ...prev.filter((m) => m.id !== userMsg.id),
-          {
-            id: `error-send-${Date.now()}`,
-            role: 'assistant',
-            content: errorMessage,
-            eventType: 'error',
-            step: 0,
-          },
-        ]);
-        return false;
+        setError(err instanceof Error ? err.message : 'Unknown error');
       }
     },
-    [activeSessionId, locale, connectSSE, cancelPendingAutoApprove],
+    [activeSessionId, locale, connectSSE],
   );
-
-  // Keep the ref pointing at the latest sendMessage so the SSE handler
-  // (which captures a stable reference at mount) can call it for auto-approve.
-  sendMessageRef.current = sendMessage;
 
   // ─── Start new session ─────────────────────────────────────────
 
@@ -473,7 +343,6 @@ export function useOrchestrator(locale: string) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
-    cancelPendingAutoApprove();
     setActiveSessionId(null);
     setMessages([]);
     setCurrentStep(0);
@@ -482,13 +351,7 @@ export function useOrchestrator(locale: string) {
     setIsStreaming(false);
     lastEventIdRef.current = 0;
     flushChunkBuffer();
-    setCanvasState({
-      matchedCalls: null,
-      actionPlan: null,
-      proposalSections: null,
-      activeTab: 'calls',
-    });
-  }, [cancelPendingAutoApprove]);
+  }, []);
 
   // ─── Resume session ────────────────────────────────────────────
 
@@ -509,10 +372,6 @@ export function useOrchestrator(locale: string) {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
-      if (pendingAutoApproveRef.current !== null) {
-        clearTimeout(pendingAutoApproveRef.current);
-        pendingAutoApproveRef.current = null;
-      }
     };
   }, []);
 
@@ -525,8 +384,6 @@ export function useOrchestrator(locale: string) {
     isStreaming,
     startNewSession,
     resumeSession,
-    cancelPendingAutoApprove,
     error,
-    canvasState,
   };
 }

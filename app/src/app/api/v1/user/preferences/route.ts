@@ -8,13 +8,7 @@ import { Errors } from '@/lib/errors'
 import { logAudit } from '@/lib/legal/audit'
 
 const updatePreferencesSchema = z.object({
-  defaultModel: z.enum([
-    'auto',
-    'claude-sonnet', 'claude-haiku',
-    'gpt-4o', 'gpt-4o-mini', 'gpt-4o-nano',
-    'gemini-pro', 'gemini-flash', 'nano-banana',
-    'perplexity',
-  ]).optional(),
+  defaultModel: z.enum(['auto', 'claude-sonnet', 'gemini-pro', 'gpt-4o', 'perplexity']).optional(),
   responseStyle: z.enum(['concise', 'detailed', 'technical']).optional(),
   autoApprove: z.boolean().optional(),
 })

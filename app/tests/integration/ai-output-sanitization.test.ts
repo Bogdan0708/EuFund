@@ -12,11 +12,7 @@ describe('AI Output PII Sanitization', () => {
       db: { select: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ tier: 'free' }]) }) }) }) },
       schema: { users: { tier: 'tier', id: 'id' } },
     }));
-    vi.doMock('@/lib/logger', () => ({
-      logger: {
-        child: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }),
-      },
-    }));
+    vi.doMock('drizzle-orm', () => ({ eq: vi.fn() }));
     vi.doMock('@/lib/redis/client', () => ({
       isRedisAvailable: vi.fn().mockResolvedValue(true),
       checkRateLimit: vi.fn().mockResolvedValue({

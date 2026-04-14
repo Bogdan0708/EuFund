@@ -12,14 +12,14 @@ export interface TierLimits {
 
 export const TIER_LIMITS: Record<string, TierLimits> = {
   free: {
-    workflowsPerMonth: 3,
+    workflowsPerMonth: 1,
     editsPerMonth: 5,
     maxActiveSessions: 1,
     fileStorageMB: 50,
     exportFormats: ['docx'],
     buildModel: 'standard',
     maxTeamMembers: 1,
-    isLifetimeLimit: false,
+    isLifetimeLimit: true,
     priceGBP: 0,
   },
   plus: {
