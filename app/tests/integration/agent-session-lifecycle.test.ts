@@ -118,6 +118,8 @@ describe('Agent Session Lifecycle', () => {
   it('handles approve_outline action and transitions to drafting', async () => {
     const session = makeSession({
       currentPhase: 'structuring',
+      selectedCallId: 'CALL-123',
+      eligibility: { results: [], score: 100, passCount: 5, failCount: 0, warningCount: 0 },
       outline: [{ id: 'context', title: 'Context', description: 'test', order: 1, generationOrder: 1, importance: 'critical', expectedLength: 'long', dependsOn: [], modelHint: 'heavy', mandatory: true, confidence: 1 }] as any,
     })
 

@@ -17,15 +17,29 @@ function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
 }
 
 describe('Policy Gates', () => {
-  it('generate_section blocked without frozen outline', () => {
-    const result = checkPolicyGate('generate_section', makeSession(), [])
+  it('generate_section blocked without outline (null)', () => {
+    const result = checkPolicyGate('generate_section', makeSession({ outline: null }), [])
     expect(result.allowed).toBe(false)
-    expect(result.reason).toContain('outline')
+    expect(result.reason).toContain('outline must be approved first')
+  })
+
+  it('generate_section blocked when outline exists but not frozen (V3 guard)', () => {
+    const session = makeSession({
+      outline: [{ id: 'rezumat', title: 'Rezumat' }] as any,
+      outlineFrozen: false, // outline exists but is not frozen
+      currentPhase: 'drafting',
+      blueprint: { structureConfidence: 0.7 } as any,
+      eligibility: { results: [], score: 100, passCount: 5, failCount: 0, warningCount: 0 },
+    })
+    const result = checkPolicyGate('generate_section', session, [])
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toContain('outline must be frozen')
   })
 
   it('generate_section blocked with eligibility blocker', () => {
     const session = makeSession({
-      outline: [] as any,
+      outline: [{ id: 'rezumat', title: 'Rezumat' }] as any,
+      outlineFrozen: true,
       currentPhase: 'drafting',
       eligibility: {
         results: [{ ruleId: 'ELIG-001', ruleName: 'test', status: 'fail', messageRo: '', messageEn: '', details: {} }],
@@ -37,9 +51,23 @@ describe('Policy Gates', () => {
     expect(result.reason).toContain('eligibility')
   })
 
-  it('generate_section allowed with outline + no blockers', () => {
+  it('generate_section blocked with low structure confidence', () => {
     const session = makeSession({
       outline: [{ id: 'rezumat', title: 'Rezumat' }] as any,
+      outlineFrozen: true,
+      currentPhase: 'drafting',
+      blueprint: { structureConfidence: 0.2 } as any, // below MIN_STRUCTURE_CONFIDENCE (0.4)
+      eligibility: { results: [], score: 100, passCount: 5, failCount: 0, warningCount: 0 },
+    })
+    const result = checkPolicyGate('generate_section', session, [])
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toContain('structure confidence too low')
+  })
+
+  it('generate_section allowed with outline + frozen + no blockers', () => {
+    const session = makeSession({
+      outline: [{ id: 'rezumat', title: 'Rezumat' }] as any,
+      outlineFrozen: true,
       currentPhase: 'drafting',
       blueprint: { structureConfidence: 0.7 } as any,
       eligibility: { results: [], score: 100, passCount: 5, failCount: 0, warningCount: 0 },

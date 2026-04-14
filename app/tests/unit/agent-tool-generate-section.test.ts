@@ -57,6 +57,7 @@ describe('generate_section tool', () => {
         { id: 'context', title: 'Context și justificare', description: 'Describe context', order: 1, generationOrder: 1, importance: 'critical', expectedLength: 'long', dependsOn: [], modelHint: 'heavy', mandatory: true, confidence: 1 },
         { id: 'buget', title: 'Buget', description: 'Budget plan', order: 7, generationOrder: 7, importance: 'critical', expectedLength: 'long', dependsOn: [], modelHint: 'heavy', mandatory: true, confidence: 1 },
       ],
+      outlineFrozen: true, // Required for generate_section (V3 guard)
       blueprint: { program: 'PNRR', cofinancingRate: 0.85 },
       planningArtifact: { projectSummary: 'Green energy project' },
     } as any,

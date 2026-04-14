@@ -34,6 +34,9 @@ function checkPreGenerate(session: AgentSession): PolicyResult {
   if (session.outline === null) {
     return { allowed: false, reason: 'Cannot generate: outline must be approved first' }
   }
+  if (!session.outlineFrozen) {
+    return { allowed: false, reason: 'Cannot generate: outline must be frozen before drafting sections' }
+  }
   if (session.eligibility && session.eligibility.failCount > 0) {
     return { allowed: false, reason: 'Cannot generate: eligibility has hard blockers' }
   }

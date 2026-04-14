@@ -144,7 +144,12 @@ describe('Agent Runtime', () => {
 
   it('calls onPhaseTransition for direct action phase changes like approve_outline', async () => {
     await runAgentTurn({
-      session: makeSession({ currentPhase: 'structuring', outlineFrozen: false }),
+      session: makeSession({
+        currentPhase: 'structuring',
+        outlineFrozen: false,
+        selectedCallId: 'CALL-123',
+        eligibility: { results: [], score: 100, passCount: 5, failCount: 0, warningCount: 0 },
+      }),
       sections: [],
       request: { action: { type: 'approve_outline' }, requestId: 'req-phase', locale: 'ro' },
       emit,
