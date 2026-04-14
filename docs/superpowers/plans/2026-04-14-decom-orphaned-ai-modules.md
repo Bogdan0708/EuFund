@@ -32,10 +32,34 @@ For each route URL being retired in this PR:
 
 ```bash
 rg -n "<route-url>" app/src/ app/tests/ app/e2e/ app/scripts/ docs/
-rg -n "from ['\"]<module-path>" app/src/ app/tests/   # for each helper also retiring
 ```
 
-Write output to the PR's `reference-sweep.md` artifact. Zero frontend refs required before proceeding; tests to delete must be explicitly listed.
+For each helper module also retiring, use the **helper reference sweep** (below) — a direct-path grep alone undercounts consumers when the helper is re-exported from the `lib/ai/index.ts` barrel.
+
+#### Helper reference sweep (must run for every helper being considered for deletion)
+
+`app/src/lib/ai/index.ts` is a barrel file that re-exports many symbols from the root-level helpers. Any consumer doing `import { symbol } from '@/lib/ai'` hits the barrel, not the helper module directly. A plain `rg "from '@/lib/ai/<helper>"` misses every such consumer and produces a false "zero-ref" reading. Skipping the barrel audit is how helper deletion breaks the build.
+
+Run all four steps below for each helper module:
+
+```bash
+# 1. Direct path consumers (original probe-5 pattern)
+rg -n "from ['\"]@/lib/ai/<helper>['\"]" app/src app/tests app/scripts
+
+# 2. Relative consumers inside lib/ai/ (other root helpers importing this one)
+rg -n "from ['\"]\\./<helper>['\"]" app/src/lib/ai/
+
+# 3. Barrel re-export detection — does index.ts re-export this helper?
+rg -n "from ['\"]\\./<helper>['\"]" app/src/lib/ai/index.ts
+
+# 4. Barrel-consumer detection — for each symbol the barrel re-exports from this helper, grep for the symbol imported from '@/lib/ai' (without the helper path)
+# Read index.ts to enumerate the re-exported symbols, then for each <symbol>:
+rg -n "import .*\\b<symbol>\\b.* from ['\"]@/lib/ai['\"]" app/src app/tests app/scripts
+```
+
+If Step 3 returns a match, the helper IS re-exported through the barrel, and Step 4 must enumerate every symbol the barrel exposes from it. The post-delete plan must (a) remove the re-export line from `index.ts` AND (b) migrate or delete every consumer found in Step 4, not just Step 1.
+
+Write all four probe outputs to the PR's `reference-sweep.md` artifact. The artifact's "Expected post-delete ref count" column must account for barrel consumers — a helper with "0 direct-path consumers" but "5 barrel consumers" cannot be deleted in this PR unless those 5 are also handled.
 
 ### Phase 3 — Delete routes + tests + orphaned helpers
 
@@ -43,9 +67,16 @@ Order matters:
 
 1. `git rm` the test files scoped exclusively to the retiring route. (Tests that exercise a keeper via the retiring route migrate or are deleted based on their shape — inspect each individually; do not blanket-delete.)
 2. `git rm` the route file(s).
-3. After route delete, re-run probe 5 (`rg -n "from ['\"]@/lib/ai/<helper>" app/src app/tests app/scripts`) for every helper module the route imported. Any helper whose post-delete reference count is zero is included in this PR's deletion via another `git rm`.
-4. If a helper module itself imports other helpers, rerun probe 5 for those transitively — a helper going to zero may cascade.
-5. Remove empty directories: `find app/src/app/api/ai -type d -empty -delete`.
+3. After route delete, run the full helper reference sweep from Phase 2 for every helper module the route imported. Classify each helper:
+   - **Zero consumers across all four probe steps** → include in this PR's deletion (Steps 3a–3c below).
+   - **Zero direct-path consumers but non-zero barrel consumers** → EITHER migrate those barrel consumers to direct imports of the replacement surface (agent tools / Managed tools / keeper modules) before deleting the helper, OR retain the helper in this PR and retire it in a later PR once the barrel consumers are handled.
+   - **Non-zero direct-path consumers** → defer to a later PR as before.
+4. For helpers passing step 3's classification as "delete now":
+   - **3a.** Edit `app/src/lib/ai/index.ts` to remove every `export ... from './<helper>'` line for the helper being deleted. This is one commit with the index edit plus the helper `git rm`, so the tree is never in a broken re-exporting state.
+   - **3b.** `git rm` the helper file(s).
+   - **3c.** Verify `rg -n "<helper>" app/src/lib/ai/index.ts` returns zero matches before committing.
+5. If a helper module itself imports other helpers, rerun the full Phase 2 helper reference sweep for those transitively — a helper going to zero may cascade.
+6. Remove empty directories: `find app/src/app/api/ai -type d -empty -delete`.
 
 ### Phase 4 — Verification (rubric items 3 and 5)
 
@@ -170,20 +201,65 @@ cat /tmp/orphan-pr1-refs.txt
 ```
 Expected: each route shows `(none)` or only the route's own handler file.
 
-- [ ] **Step 2: Sweep helper module importers**
+- [ ] **Step 2: Sweep helper module importers — full barrel-aware sweep per Phase 2 guidance**
 
-Run:
+Run the four-step helper reference sweep from Cross-cutting Phase 2 for each of the four candidate helpers. The critical addition beyond the naive `@/lib/ai/<mod>` grep is that `app/src/lib/ai/index.ts` re-exports symbols from these helpers, and consumers importing those symbols via `@/lib/ai` never match a direct-path grep.
+
 ```bash
 cd /home/godja/Dev/EU-Funds-decom-orphan-1 && {
   for mod in enhanced-proposal-generator reporting-engine fact-checker eu-knowledge-base; do
-    echo "## $mod importers"
-    rg -n "from ['\"]@/lib/ai/$mod" app/src app/tests app/scripts 2>/dev/null || echo "(none)"
+    echo "## $mod — direct path consumers"
+    rg -n "from ['\"]@/lib/ai/$mod['\"]" app/src app/tests app/scripts 2>/dev/null || echo "(none)"
+    echo
+    echo "## $mod — relative consumers inside lib/ai/"
+    rg -n "from ['\"]\\./$mod['\"]" app/src/lib/ai/ 2>/dev/null || echo "(none)"
+    echo
+    echo "## $mod — barrel re-export in index.ts"
+    rg -n "from ['\"]\\./$mod['\"]" app/src/lib/ai/index.ts 2>/dev/null || echo "(not re-exported)"
     echo
   done
 } > /tmp/orphan-pr1-helper-refs.txt
 cat /tmp/orphan-pr1-helper-refs.txt
 ```
-Expected: shows current importers. After PR #1's route deletes, `enhanced-proposal-generator` and `reporting-engine` should drop to 0; `fact-checker` and `eu-knowledge-base` keep other callers.
+
+After reading the barrel re-export lines from the third section above, capture every symbol the barrel exports from each helper. Then grep for barrel consumers of those symbols:
+
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orphan-1 && {
+  # Read index.ts once and enumerate the re-exported symbols from enhanced-proposal-generator
+  # Example (actual symbol list comes from reading index.ts on the current master):
+  #   enhanced-proposal-generator exports: generateEnhancedProposal, EnhancedProposalInput, EUProposal, EnhancedProposalOutput
+  #   reporting-engine exports: generateReport, quickReportSummary, ReportGeneration, ReportInput, FinancialReport, ProgressReport, RiskReport, PartnerReport, ComplianceReport
+  #   fact-checker exports: (read from index.ts)
+  #   eu-knowledge-base exports: EU_PROGRAMS, getProgramInfo, getEvaluationCriteria, getBudgetCategories, getProposalSections, getRomanianAdvantages, findBestProgram, EUProgramKey
+  echo "## Barrel consumers of enhanced-proposal-generator symbols (via @/lib/ai)"
+  for sym in generateEnhancedProposal EnhancedProposalInput EUProposal EnhancedProposalOutput; do
+    echo "### $sym"
+    rg -n "import .*\\b$sym\\b.* from ['\"]@/lib/ai['\"]" app/src app/tests app/scripts 2>/dev/null || echo "(none)"
+  done
+  echo
+  echo "## Barrel consumers of reporting-engine symbols (via @/lib/ai)"
+  for sym in generateReport quickReportSummary ReportGeneration ReportInput FinancialReport ProgressReport RiskReport PartnerReport ComplianceReport; do
+    echo "### $sym"
+    rg -n "import .*\\b$sym\\b.* from ['\"]@/lib/ai['\"]" app/src app/tests app/scripts 2>/dev/null || echo "(none)"
+  done
+  echo
+  # fact-checker and eu-knowledge-base barrel consumers: enumerate their exported symbols from index.ts first, then grep each
+  echo "## fact-checker barrel consumers — first read its exported symbols from index.ts then grep each here"
+  echo "(expand this section after reading the current index.ts)"
+  echo
+  echo "## eu-knowledge-base barrel consumers"
+  for sym in EU_PROGRAMS getProgramInfo getEvaluationCriteria getBudgetCategories getProposalSections getRomanianAdvantages findBestProgram EUProgramKey; do
+    echo "### $sym"
+    rg -n "import .*\\b$sym\\b.* from ['\"]@/lib/ai['\"]" app/src app/tests app/scripts 2>/dev/null || echo "(none)"
+  done
+} > /tmp/orphan-pr1-barrel-consumers.txt
+cat /tmp/orphan-pr1-barrel-consumers.txt
+```
+
+Expected: captures the true consumer set. If a helper has barrel consumers, those consumers must be migrated (switched to import from the replacement agent/Managed surface) or deleted alongside the helper in this PR. If migration is large, defer the helper deletion to a later PR and retire only the route(s) here.
+
+**Critical classification rule:** a helper is only a "confirmed delete candidate in PR #1" if ALL four probe sections above return zero matches after the PR #1 route deletes. "Zero direct path consumers" alone is not sufficient.
 
 - [ ] **Step 3: Write the reference-sweep artifact**
 
@@ -208,12 +284,16 @@ Create `/home/godja/Dev/EU-Funds-decom-orphan-1/docs/superpowers/decom-artifacts
 
 ## Expected post-delete helper classification
 
-| Helper | Pre-delete ref count | Post-delete ref count | Disposition in this PR |
-|--------|---------------------|----------------------|------------------------|
-| enhanced-proposal-generator.ts | 1 (route only) | 0 | Delete in this PR |
-| reporting-engine.ts | 1 (route only) | 0 | Delete in this PR |
-| fact-checker.ts | 2 (both proposal routes) | 1 | Stays until PR #4 |
-| eu-knowledge-base.ts | 4 (multiple callers) | 3 | Stays until final cleanup |
+All counts below are expectations to verify, not assertions. The actual barrel-consumer counts come from the Task 1.1 Step 2 output. If any barrel consumers exist (and they likely do — `index.ts` re-exports these helpers and consumers import via `@/lib/ai`), the disposition column must be revised before Task 1.3.
+
+| Helper | Direct-path consumers (pre) | Barrel consumers (pre) | Post-route-delete direct | Post-route-delete barrel | Disposition in this PR |
+|--------|------------------------------|--------------------------|---------------------------|----------------------------|------------------------|
+| enhanced-proposal-generator.ts | 1 (route) | <fill from barrel sweep> | 0 | <fill — may be non-zero> | Delete only if total (direct + barrel + relative) is 0 after the route and any needed migrations |
+| reporting-engine.ts | 1 (route) | <fill from barrel sweep> | 0 | <fill> | Same rule |
+| fact-checker.ts | 2 (both proposal routes) | <fill> | 1 | <fill> | Stays (still direct-path consumed) |
+| eu-knowledge-base.ts | 4 (multiple callers) | <fill> | 3 | <fill> | Stays (still direct-path consumed) |
+
+Every "Delete in this PR" row must also trigger the `index.ts` edit per Phase 3 Step 4a.
 ```
 
 - [ ] **Step 4: Commit the sweep artifact**
@@ -254,44 +334,101 @@ Routes: generate-proposal-enhanced, generate-report, ghid-to-tasks, search-calls
 0 frontend refs + 0 test refs per bootstrap probe 04."
 ```
 
-### Task 1.3 — Re-probe helpers and delete those that hit zero
+### Task 1.3 — Re-probe helpers, handle barrel, delete those that hit zero
 
-- [ ] **Step 1: Re-run helper reference sweep**
+- [ ] **Step 1: Re-run the full four-part helper reference sweep after route deletion**
 
-Run:
+Use the same command block as Task 1.1 Step 2 (direct path + relative + barrel re-export + barrel consumers). Target helpers: `enhanced-proposal-generator`, `reporting-engine`.
+
 ```bash
 cd /home/godja/Dev/EU-Funds-decom-orphan-1 && {
   for mod in enhanced-proposal-generator reporting-engine; do
-    echo "## $mod post-route-delete"
-    rg -n "from ['\"]@/lib/ai/$mod" app/src app/tests app/scripts 2>/dev/null || echo "(none — safe to delete)"
+    echo "## $mod — post-route-delete direct path"
+    rg -n "from ['\"]@/lib/ai/$mod['\"]" app/src app/tests app/scripts 2>/dev/null || echo "(none)"
+    echo "## $mod — relative inside lib/ai/"
+    rg -n "from ['\"]\\./$mod['\"]" app/src/lib/ai/ 2>/dev/null || echo "(none)"
+    echo "## $mod — barrel re-export in index.ts"
+    rg -n "from ['\"]\\./$mod['\"]" app/src/lib/ai/index.ts 2>/dev/null || echo "(not re-exported)"
     echo
   done
 }
 ```
-Expected: both show `(none — safe to delete)`.
 
-- [ ] **Step 2: Delete the two now-orphan helpers**
+Expected: direct-path and relative both `(none)` after the route deletes. The barrel re-export line is still present — that's what Step 2 handles.
 
-Run:
+- [ ] **Step 2: Handle barrel consumers BEFORE helper file deletion**
+
+For each helper that shows a barrel re-export in Step 1, enumerate the exported symbols (read `app/src/lib/ai/index.ts` directly) and grep for each symbol being imported via `@/lib/ai`:
+
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orphan-1 && cat app/src/lib/ai/index.ts | head -40
+# Identify the re-export lines for enhanced-proposal-generator and reporting-engine, then:
+for sym in <every symbol exported from those helpers via index.ts>; do
+  echo "### $sym"
+  rg -n "import .*\\b$sym\\b.* from ['\"]@/lib/ai['\"]" app/src app/tests app/scripts 2>/dev/null || echo "(none)"
+done
+```
+
+Branch on results:
+- **All symbols have zero barrel consumers across the grep** → proceed to Step 3. The helpers are safely orphan.
+- **Any symbol has non-zero barrel consumers** → STOP this PR's helper-deletion scope. Proceed to Step 3 but ONLY delete the helpers whose barrel-consumer count is zero. Helpers with non-zero barrel consumers are deferred to a later PR that first migrates those consumers to the replacement surface. Document the deferral decision in the rubric evidence (Section 5 / Section 6).
+
+- [ ] **Step 3: Edit `app/src/lib/ai/index.ts` to remove re-exports for the helpers being deleted in this PR**
+
+For each helper being deleted in this PR (per Step 2's classification), edit `app/src/lib/ai/index.ts` to remove the entire `export { ... } from './<helper>';` line.
+
+After editing, verify:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orphan-1 && {
+  for mod in enhanced-proposal-generator reporting-engine; do
+    rg -n "from ['\"]\\./$mod['\"]" app/src/lib/ai/index.ts && echo "FAIL: $mod still re-exported" || echo "OK: $mod re-export removed"
+  done
+}
+```
+Expected: both print `OK: <mod> re-export removed`. If either prints `FAIL`, edit again.
+
+- [ ] **Step 4: Delete the helper file(s)**
+
+Run (only for helpers that passed Step 2's classification AND had their index.ts re-export removed in Step 3):
+
 ```bash
 cd /home/godja/Dev/EU-Funds-decom-orphan-1 && git rm app/src/lib/ai/enhanced-proposal-generator.ts app/src/lib/ai/reporting-engine.ts
 ```
 
-- [ ] **Step 3: Transitively re-probe `eu-knowledge-base.ts`**
+If Step 2 deferred either helper, skip it in the `git rm` — only delete what Step 2 approved.
 
-Run:
+- [ ] **Step 5: Transitively re-probe `eu-knowledge-base.ts` (barrel-aware)**
+
+Run the four-part helper sweep for `eu-knowledge-base`:
+
 ```bash
-cd /home/godja/Dev/EU-Funds-decom-orphan-1 && rg -n "from ['\"]@/lib/ai/eu-knowledge-base" app/src app/tests app/scripts 2>/dev/null
+cd /home/godja/Dev/EU-Funds-decom-orphan-1 && {
+  echo "## eu-knowledge-base — direct path"
+  rg -n "from ['\"]@/lib/ai/eu-knowledge-base['\"]" app/src app/tests app/scripts 2>/dev/null || echo "(none)"
+  echo "## eu-knowledge-base — relative inside lib/ai/"
+  rg -n "from ['\"]\\./eu-knowledge-base['\"]" app/src/lib/ai/ 2>/dev/null || echo "(none)"
+  echo "## eu-knowledge-base — barrel re-export in index.ts"
+  rg -n "from ['\"]\\./eu-knowledge-base['\"]" app/src/lib/ai/index.ts 2>/dev/null || echo "(not re-exported)"
+  echo "## eu-knowledge-base — barrel consumers (enumerate symbols from index.ts first)"
+  for sym in EU_PROGRAMS getProgramInfo getEvaluationCriteria getBudgetCategories getProposalSections getRomanianAdvantages findBestProgram EUProgramKey; do
+    echo "### $sym"
+    rg -n "import .*\\b$sym\\b.* from ['\"]@/lib/ai['\"]" app/src app/tests app/scripts 2>/dev/null || echo "(none)"
+  done
+}
 ```
-Expected: still has callers (fact-checker.ts, knowledge-engine.ts, /api/ai/generate-insights). Do NOT delete in this PR — retires in final cleanup after PR #3 deletes knowledge-engine dependencies.
 
-- [ ] **Step 4: Commit helper deletions**
+Expected: direct-path and relative still non-zero (callers: fact-checker.ts, knowledge-engine.ts, /api/ai/generate-insights). Do NOT delete in this PR — retires in final cleanup after PR #3 deletes knowledge-engine dependencies.
+
+- [ ] **Step 6: Commit the helper deletions and the index.ts edit together**
+
+The index.ts edit and the `git rm` of helper files must land in one commit so the tree is never in a state where `index.ts` re-exports a file that no longer exists.
 
 Run:
 ```bash
-cd /home/godja/Dev/EU-Funds-decom-orphan-1 && git -c commit.gpgsign=false commit -m "feat(decom): delete orphan helpers enhanced-proposal-generator, reporting-engine
+cd /home/godja/Dev/EU-Funds-decom-orphan-1 && git add app/src/lib/ai/index.ts && git -c commit.gpgsign=false commit -m "feat(decom): delete orphan helpers enhanced-proposal-generator, reporting-engine
 
-Both became 0-ref after their route deletions above."
+Both became 0-ref after their route deletions above. app/src/lib/ai/index.ts
+updated in the same commit to remove the re-export lines."
 ```
 
 ### Task 1.4 — Verification
