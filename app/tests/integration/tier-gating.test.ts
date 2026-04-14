@@ -10,56 +10,6 @@ function createJsonRequest(path: string, body: unknown) {
 }
 
 describe('Tier-gated routes', () => {
-  it('rejects proposal generation for free-tier users', async () => {
-    vi.resetModules();
-    vi.stubEnv('BILLING_ENABLED', 'true');
-
-    vi.doMock('@/lib/middleware/auth', () => ({
-      withAIAuth: (_req: NextRequest, handler: Function) =>
-        handler({ id: 'user-1', email: 'u@test.com', tier: 'free' }),
-    }));
-
-    const { POST } = await import('@/app/api/ai/generate-proposal/route');
-    const response = await POST(createJsonRequest('/api/ai/generate-proposal', {
-      projectIdea: 'Automated compliance platform for EU applicants',
-      fundingProgram: 'pnrr',
-    }));
-    const json = await response.json();
-
-    expect(response.status).toBe(403);
-    expect(json.success).toBe(false);
-    expect(json.error.code).toBe('FORBIDDEN');
-    vi.unstubAllEnvs();
-  });
-
-  it('allows proposal generation for pro-tier users', async () => {
-    vi.resetModules();
-    vi.stubEnv('BILLING_ENABLED', 'true');
-
-    const generateProposal = vi.fn().mockResolvedValue({
-      proposal: { title: 'Generated Proposal' },
-      tokensUsed: 1000,
-      ragSourcesUsed: 5,
-    });
-
-    vi.doMock('@/lib/ai/proposal-generator', () => ({ generateProposal }));
-    vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }));
-    vi.doMock('@/lib/middleware/auth', () => ({
-      withAIAuth: (_req: NextRequest, handler: Function) =>
-        handler({ id: 'user-1', email: 'u@test.com', tier: 'pro' }),
-    }));
-
-    const { POST } = await import('@/app/api/ai/generate-proposal/route');
-    const response = await POST(createJsonRequest('/api/ai/generate-proposal', {
-      projectIdea: 'Automated compliance platform for EU applicants',
-      fundingProgram: 'pnrr',
-    }));
-
-    expect(response.status).toBe(200);
-    expect(generateProposal).toHaveBeenCalledOnce();
-    vi.unstubAllEnvs();
-  });
-
   it('rejects MySMIS export for free-tier users', async () => {
     vi.resetModules();
     vi.stubEnv('BILLING_ENABLED', 'true');

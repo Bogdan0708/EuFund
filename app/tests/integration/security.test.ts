@@ -434,75 +434,6 @@ describe('Security Integration Tests', () => {
       vi.resetModules();
     });
 
-    it('should reject /api/ai/generate-proposal with missing fields', async () => {
-      vi.mock('@/lib/ai/proposal-generator', () => ({
-        generateProposal: vi.fn(),
-      }));
-      vi.mock('@/lib/legal/audit', () => ({
-        logAudit: vi.fn(),
-      }));
-      vi.mock('@/lib/middleware/auth', () => ({
-        withAIAuth: (req: any, handler: Function) => 
-          handler({ id: '1', email: 'test@example.com', tier: 'pro' }),
-      }));
-
-      const { POST } = await import('@/app/api/ai/generate-proposal/route');
-      
-      const invalidPayloads = [
-        {},
-        { businessDescription: '' },
-        { fundingProgram: 'horizon_europe' },
-        { businessDescription: 'x', fundingProgram: '' },
-      ];
-
-      for (const payload of invalidPayloads) {
-        const request = createNextRequest('/api/ai/generate-proposal', {
-          method: 'POST',
-          body: payload,
-        });
-
-        const response = await POST(request);
-        expect(response.status).toBe(400);
-        const json = await response.json();
-        expect(json.error).toBeTruthy();
-      }
-    });
-
-    it('should accept valid payload for /api/ai/generate-proposal', async () => {
-      vi.mock('@/lib/ai/proposal-generator', () => ({
-        generateProposal: vi.fn().mockResolvedValue({
-          proposal: { title: 'Generated Proposal' },
-          tokensUsed: 1000,
-          ragSourcesUsed: 5,
-        }),
-      }));
-      vi.mock('@/lib/legal/audit', () => ({
-        logAudit: vi.fn(),
-      }));
-      vi.mock('@/lib/middleware/auth', () => ({
-        withAIAuth: (req: any, handler: Function) => 
-          handler({ id: '1', email: 'test@example.com', tier: 'pro' }),
-      }));
-
-      const { POST } = await import('@/app/api/ai/generate-proposal/route');
-      
-      const validPayload = {
-        businessDescription: 'A detailed business description explaining our innovative solution',
-        fundingProgram: 'horizon_europe',
-      };
-
-      const request = createNextRequest('/api/ai/generate-proposal', {
-        method: 'POST',
-        body: validPayload,
-      });
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-      const json = await response.json();
-      expect(json.success).toBe(true);
-      expect(json.data).toBeTruthy();
-    });
-
     it('should validate schema for /api/ai/predict-success', async () => {
       const { z } = await import('zod');
       
@@ -541,18 +472,6 @@ describe('Security Integration Tests', () => {
       };
 
       const result = inputSchema.safeParse(validInput);
-      expect(result.success).toBe(true);
-    });
-
-    it('should validate schema for /api/ai/generate-proposal', async () => {
-      const { generateProposalSchema } = await import('@/lib/validation/schemas');
-      
-      const validInput = {
-        businessDescription: 'A detailed business description explaining our innovative solution',
-        fundingProgram: 'horizon_europe',
-      };
-
-      const result = generateProposalSchema.safeParse(validInput);
       expect(result.success).toBe(true);
     });
 

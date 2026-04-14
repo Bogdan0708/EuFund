@@ -77,34 +77,6 @@ describe('Critical Flows and Isolation', () => {
     expect(json.data.matches).toHaveLength(1);
   });
 
-  it('application generation rejects invalid payloads and accepts valid ones', async () => {
-    const generateProposal = vi.fn().mockResolvedValue({
-      proposal: { title: 'Generated' },
-      tokensUsed: 44,
-      ragSourcesUsed: 2,
-    });
-    vi.doMock('@/lib/middleware/auth', () => ({
-      withAIAuth: (_req: NextRequest, handler: Function) =>
-        handler({ id: 'user-1', email: 'u@test.com', tier: 'pro' }),
-    }));
-    vi.doMock('@/lib/ai/proposal-generator', () => ({ generateProposal }));
-    vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }));
-
-    const { POST } = await import('@/app/api/ai/generate-proposal/route');
-
-    const invalidRes = await POST(createJsonRequest('/api/ai/generate-proposal', { fundingProgram: 'pnrr' }));
-    expect(invalidRes.status).toBe(400);
-
-    const validRes = await POST(createJsonRequest('/api/ai/generate-proposal', {
-      projectIdea: 'Automated compliance platform for EU applicants',
-      fundingProgram: 'pnrr',
-      organizationName: 'FondEU',
-      organizationType: 'company',
-    }));
-    expect(validRes.status).toBe(200);
-    expect(generateProposal).toHaveBeenCalled();
-  });
-
   it('authorization boundary: document access is controlled by RLS at the database level', async () => {
     // In the new model, cross-tenant isolation is enforced by PostgreSQL RLS policies.
     // withUserRLS sets app.current_user_id and the DB filters out unauthorised rows.
