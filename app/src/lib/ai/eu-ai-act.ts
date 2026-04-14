@@ -38,12 +38,6 @@ export const AI_FEATURE_CLASSIFICATIONS: Record<string, AIFeatureClassification>
     rationale: 'Predictive analytics that may influence funding decisions',
     obligations: ['transparency_notice', 'human_oversight', 'decision_logging'],
   },
-  'match-grants': {
-    feature: 'Grant Matching',
-    riskLevel: AIRiskLevel.LIMITED,
-    rationale: 'Recommendation system that influences access to public funding',
-    obligations: ['transparency_notice', 'human_oversight', 'decision_logging', 'bias_monitoring'],
-  },
   'predict-success': {
     feature: 'Success Prediction',
     riskLevel: AIRiskLevel.HIGH,

@@ -5,7 +5,6 @@ export { aiGenerate, aiGenerateObject, aiEmbed, aiEmbedBatch, queryRomanianBert 
 
 export { AI_CONFIG } from './config';
 export { analyzeDocument, detectPII, type AnalysisInput, type AnalysisResult, type PIIDetection } from './document-analyzer';
-export { matchGrants, type MatchInput, type MatchResult, type FundingCall } from './grant-matcher';
 export { validateCompliance, type ComplianceInput, type ComplianceResult } from './compliance-validator';
 
 // Intelligence features (active)
