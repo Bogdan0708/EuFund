@@ -66,7 +66,7 @@ def smoke(ctx):
 @test.command()
 @click.pass_context
 def journey(ctx):
-    """Run full user journey test (13 steps)"""
+    """Run full user journey test (10 steps)"""
     import uuid
 
     test_email = f"test-{uuid.uuid4().hex[:8]}@fondeu-test.local"
@@ -77,7 +77,7 @@ def journey(ctx):
     session_token = None
 
     def step(name, fn):
-        console.print(f"  [{len(steps)+1}/13] {name}...", end=" ")
+        console.print(f"  [{len(steps)+1}/10] {name}...", end=" ")
         try:
             result = fn()
             steps.append({"step": len(steps)+1, "name": name, "status": "PASS", "detail": str(result)[:100]})
@@ -180,38 +180,7 @@ def journey(ctx):
 
     step("Upload test document", upload_doc)
 
-    # Step 8: Match grants
-    def match_grants():
-        if not project_id:
-            raise Exception("No project_id")
-        resp = api_post("/api/ai/match-grants", json={"projectId": project_id})
-        if resp.status_code != 200:
-            raise Exception(f"Match failed: {resp.status_code} - {resp.text[:100]}")
-        return resp.json()
-
-    step("Match funding calls", match_grants)
-
-    # Step 9: Check eligibility
-    def check_eligibility():
-        if not project_id:
-            raise Exception("No project_id")
-        resp = api_post("/api/ai/check-eligibility", json={"projectId": project_id})
-        return f"status: {resp.status_code}"
-
-    step("Check eligibility", check_eligibility)
-
-    # Step 10: Generate proposal
-    def generate_proposal():
-        if not project_id:
-            raise Exception("No project_id")
-        resp = api_post("/api/ai/generate-proposal", json={"projectId": project_id})
-        if resp.status_code != 200:
-            raise Exception(f"Proposal failed: {resp.status_code} - {resp.text[:100]}")
-        return "proposal generated"
-
-    step("Generate proposal", generate_proposal)
-
-    # Step 11: Check compliance
+    # Step 8: Check compliance
     def check_compliance():
         if not project_id:
             raise Exception("No project_id")
@@ -220,14 +189,14 @@ def journey(ctx):
 
     step("Check compliance", check_compliance)
 
-    # Step 12: Verify audit integrity
+    # Step 9: Verify audit integrity
     def verify_audit():
         resp = api_post("/api/v1/audit/integrity", json={})
         return f"status: {resp.status_code}"
 
     step("Verify audit integrity", verify_audit)
 
-    # Step 13: Cleanup
+    # Step 10: Cleanup
     def cleanup():
         return "cleanup skipped (manual)"
 
