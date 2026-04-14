@@ -601,6 +601,290 @@ EOF
 
 ---
 
+## Sub-step (b2): Rehome orchestrator runtime modules consumed by keeper surfaces
+
+> **Plan defect discovered during sub-step (e) execution (2026-04-14):** Sub-step (b) only rehomed the 4 type/helper groups listed in Track A (which were `types.ts` and `section-specs.ts` contents). But `lib/ai/orchestrator/` contains additional runtime modules consumed by keeper surfaces: `workspace.ts`, `section-versions.ts`, `gateway.ts` are imported by 7+ V1 API routes and `lib/discovery/pipeline.ts`. Sub-step (e) (folder deletion) cannot execute while those keepers live inside the orchestrator folder. This sub-step rehomes them to non-orchestrator paths so (e) can proceed.
+>
+> **Retrospective note for the bootstrap probe set:** probe 10 audited type-level imports of `orchestrator/types` and `orchestrator/section-specs` only. Future bootstraps should audit imports of EVERY orchestrator runtime module (module-path dependency probe per non-deleted file), not just the two named in Track A.
+
+**Sub-step scope:** Move three orchestrator runtime modules to their new canonical homes outside the `lib/ai/orchestrator/` folder. Update every importer via sed. Also drop the pass-through re-export block in `lib/ai/agent/types.ts` that was left in sub-step (b) pointing at non-moved orchestrator types, after confirming no external consumer depended on those re-exports.
+
+**Preconditions:** Sub-step (b) merged.
+
+**Rehoming targets:**
+
+| Module | Current | Target | Rationale |
+|--------|---------|--------|-----------|
+| `workspace.ts` | `@/lib/ai/orchestrator/workspace` | `@/lib/workspace` | Project-workspace layer; consumed by `/api/v1/workspace` + 6 `/api/v1/projects/[id]/sections/*` routes. Not AI-orchestration-specific. |
+| `section-versions.ts` | `@/lib/ai/orchestrator/section-versions` | `@/lib/section-versions` | Section-version persistence; consumed by V1 section routes. Not orchestrator-specific. |
+| `gateway.ts` | `@/lib/ai/orchestrator/gateway` | `@/lib/ai/gateway` | AI gateway client; peer of `lib/ai/client.ts`. Consumed by `lib/discovery/pipeline.ts` via dynamic import. |
+
+Flat-file moves; no subdirectory wrappers. Preserves the existing `lib/` convention (flat files alongside existing `lib/compliance/`, `lib/export/` subdirs).
+
+### Task b2_0: Worktree setup
+
+- [ ] **Step 1: Fetch master, create worktree**
+
+Run:
+```bash
+git -C /home/godja/Dev/EU-Funds fetch origin master
+git -C /home/godja/Dev/EU-Funds worktree add -b chore/decom-orchestrator-b2 /home/godja/Dev/EU-Funds-decom-orch-b2 origin/master
+cd /home/godja/Dev/EU-Funds-decom-orch-b2
+mkdir -p docs/superpowers/decom-artifacts/2026-04-14-orchestrator-retirement
+git status && git log --oneline -3
+```
+
+Verify sub-step (b) is on master:
+```bash
+rg -n "from ['\"]@/lib/ai/orchestrator/types" app/src/ app/tests/ 2>/dev/null | wc -l
+```
+Expected: `0` (sub-step (b) updated all importers).
+
+### Task b2_1: Enumerate importers per target
+
+Run:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2 && {
+  for mod in workspace section-versions gateway; do
+    echo "## @/lib/ai/orchestrator/$mod importers"
+    rg -n "from ['\"]@/lib/ai/orchestrator/$mod['\"]" app/src app/tests 2>/dev/null || echo "(none)"
+    echo
+    echo "## relative-path imports of ./$mod inside lib/ai/orchestrator/"
+    rg -n "from ['\"]\\./$mod['\"]" app/src/lib/ai/orchestrator/ 2>/dev/null || echo "(none)"
+    echo
+    echo "## dynamic import() of @/lib/ai/orchestrator/$mod"
+    rg -n "import\\(['\"]@/lib/ai/orchestrator/$mod['\"]" app/src app/tests 2>/dev/null || echo "(none)"
+    echo
+  done
+} > /tmp/orch-b2-importers.txt
+cat /tmp/orch-b2-importers.txt
+```
+
+Expected findings (per the sub-step (e) blocker report):
+- `workspace.ts`: 7 V1 route files (`/api/v1/workspace`, `/api/v1/projects/[id]/sections/*`, `/api/v1/projects/[id]/export`).
+- `section-versions.ts`: V1 section-state, section/[sectionId] routes.
+- `gateway.ts`: `lib/discovery/pipeline.ts:69` (dynamic import).
+
+Relative-path imports inside the orchestrator folder itself are expected (engine.ts, agents/, prompts/) — those retire with sub-step (e) so no edit needed here.
+
+### Task b2_2: Move each module
+
+One commit per module for reviewability.
+
+- [ ] **Step 1: Move `gateway.ts` → `lib/ai/gateway.ts`**
+
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2 && git mv app/src/lib/ai/orchestrator/gateway.ts app/src/lib/ai/gateway.ts
+```
+
+Update the dynamic importer in `lib/discovery/pipeline.ts`:
+```bash
+sed -i "s|import('@/lib/ai/orchestrator/gateway')|import('@/lib/ai/gateway')|g" app/src/lib/discovery/pipeline.ts
+sed -i 's|import("@/lib/ai/orchestrator/gateway")|import("@/lib/ai/gateway")|g' app/src/lib/discovery/pipeline.ts
+```
+
+Also update any static `from '@/lib/ai/orchestrator/gateway'` importers (sed):
+```bash
+rg -l "from ['\"]@/lib/ai/orchestrator/gateway['\"]" app/src/ app/tests/ | while read f; do
+  sed -i "s|from '@/lib/ai/orchestrator/gateway'|from '@/lib/ai/gateway'|g" "$f"
+  sed -i 's|from "@/lib/ai/orchestrator/gateway"|from "@/lib/ai/gateway"|g' "$f"
+done
+```
+
+Typecheck:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2/app && npm run typecheck 2>&1 | tail -15
+```
+Expected: zero errors.
+
+Commit:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2 && git add -A && git -c commit.gpgsign=false commit -m "refactor(ai): rehome gateway.ts from orchestrator to lib/ai root
+
+AI gateway client is infrastructure, peer of lib/ai/client.ts. Not orchestrator-
+specific. Consumed by lib/discovery/pipeline.ts via dynamic import."
+```
+
+- [ ] **Step 2: Move `workspace.ts` → `lib/workspace.ts`**
+
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2 && git mv app/src/lib/ai/orchestrator/workspace.ts app/src/lib/workspace.ts
+```
+
+Check for intra-file imports that need fixup — `workspace.ts` likely imports other orchestrator modules internally (section-versions, types). If so, update its imports to the new canonical paths:
+```bash
+head -30 app/src/lib/workspace.ts
+```
+
+Inspect imports; if any reference `./section-versions` (will move next step) or `./types` (shim; use agent/types), update appropriately. Also update the file's own internal imports from `./section-versions` → `./section-versions` (post-move, this becomes `@/lib/section-versions`).
+
+Update all importers of the old path:
+```bash
+rg -l "from ['\"]@/lib/ai/orchestrator/workspace['\"]" app/src/ app/tests/ | while read f; do
+  sed -i "s|from '@/lib/ai/orchestrator/workspace'|from '@/lib/workspace'|g" "$f"
+  sed -i 's|from "@/lib/ai/orchestrator/workspace"|from "@/lib/workspace"|g' "$f"
+done
+```
+
+Typecheck. If errors appear inside `workspace.ts` itself, they're from internal imports; fix by updating paths. Commit:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2 && git add -A && git -c commit.gpgsign=false commit -m "refactor(workspace): rehome workspace.ts from orchestrator to lib root
+
+Project-workspace layer; consumed by V1 project/section API routes.
+Not AI-orchestration-specific."
+```
+
+- [ ] **Step 3: Move `section-versions.ts` → `lib/section-versions.ts`**
+
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2 && git mv app/src/lib/ai/orchestrator/section-versions.ts app/src/lib/section-versions.ts
+```
+
+Update internal imports (if any) and all external importers:
+```bash
+rg -l "from ['\"]@/lib/ai/orchestrator/section-versions['\"]" app/src/ app/tests/ | while read f; do
+  sed -i "s|from '@/lib/ai/orchestrator/section-versions'|from '@/lib/section-versions'|g" "$f"
+  sed -i 's|from "@/lib/ai/orchestrator/section-versions"|from "@/lib/section-versions"|g' "$f"
+done
+```
+
+Typecheck. Commit:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2 && git add -A && git -c commit.gpgsign=false commit -m "refactor(sections): rehome section-versions.ts from orchestrator to lib root
+
+Section-version persistence; consumed by V1 section API routes.
+Not orchestrator-specific."
+```
+
+### Task b2_3: Clean up `agent/types.ts` re-export block
+
+Sub-step (b) added a re-export block in `lib/ai/agent/types.ts` that pulled in 17 non-moved orchestrator types (STEP_LABELS, WorkflowContext, EnhancedIdea, MatchedCall, etc.). Those types ONLY existed for orchestrator internal use; external consumers of `agent/types` don't need them.
+
+- [ ] **Step 1: Identify which re-exported identifiers have external consumers via `@/lib/ai/agent/types`**
+
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2 && {
+  # Read agent/types.ts to find the re-export block
+  head -60 app/src/lib/ai/agent/types.ts
+}
+```
+
+For each identifier re-exported from `@/lib/ai/orchestrator/types` (the block implementer (b) added — typically STEP_LABELS, WorkflowContext, EnhancedIdea, MatchedCall, ActionPlan, UploadedFile, QAResult, AgentResult, SSEEvent/Stream, GatewayClient, AgentFn, SectionVersion, FreshnessProvenance/Result, ProjectCompletionStatus, CheckpointData), grep for consumers importing the identifier via `@/lib/ai/agent/types`:
+
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2 && {
+  for sym in STEP_LABELS WorkflowContext EnhancedIdea MatchedCall ActionPlan UploadedFile QAResult AgentResult SSEEvent SSEStream GatewayClient AgentFn SectionVersion FreshnessProvenance FreshnessResult ProjectCompletionStatus CheckpointData; do
+    echo "### $sym consumers via @/lib/ai/agent/types"
+    rg -n "import .*\\b$sym\\b.* from ['\"]@/lib/ai/agent/types['\"]" app/src app/tests 2>/dev/null | head -5
+    echo "### $sym consumers via @/lib/ai/orchestrator/types (should all be gone per sub-step b)"
+    rg -n "import .*\\b$sym\\b.* from ['\"]@/lib/ai/orchestrator/types['\"]" app/src app/tests 2>/dev/null | head -5
+    echo
+  done
+} | tee /tmp/orch-b2-reexport-consumers.txt
+```
+
+- [ ] **Step 2: Decide per-identifier**
+
+For each re-exported identifier:
+- **Zero consumers via `@/lib/ai/agent/types`:** drop from the re-export block. Since orchestrator/types.ts retires with sub-step (e), the symbol retires too.
+- **Non-zero consumers:** KEEP consumers working. Either (a) move the identifier to agent-owned code now (rare; most are orchestrator-internal), or (b) add the identifier as a proper declaration inside `agent/types.ts` (copy from orchestrator/types.ts, remove from orchestrator side).
+
+Expected outcome: most or all 17 can drop from the re-export block because external consumers don't need them — they were only re-exported as a sed-redirect courtesy during sub-step (b).
+
+- [ ] **Step 3: Edit `lib/ai/agent/types.ts`**
+
+Remove the `// Re-exports of orchestrator-owned types still living in @/lib/ai/orchestrator/types` block (or scope it down to only the identifiers with active consumers). If any identifier needs to stay because it has consumers, leave only that subset.
+
+Typecheck:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2/app && npm run typecheck 2>&1 | tail -20
+```
+
+If errors, they identify files that were depending on a re-export you removed — either restore that specific re-export, or migrate the consumer.
+
+Commit:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2 && git add app/src/lib/ai/agent/types.ts && git -c commit.gpgsign=false commit -m "refactor(agent): drop pass-through re-exports of orchestrator-only types
+
+Sub-step (b) added these re-exports as a sed-redirect courtesy. External
+consumers via @/lib/ai/agent/types confirmed zero (per sweep in Task b2_3).
+Orchestrator-only types retire with the folder deletion in sub-step (e)."
+```
+
+### Task b2_4: Final probe + rubric evidence + build/test + PR
+
+Confirm zero external importers of any orchestrator module:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2 && {
+  echo "## External imports from @/lib/ai/orchestrator/*"
+  rg -n "from ['\"]@/lib/ai/orchestrator" app/src app/tests 2>/dev/null || echo "(none)"
+  echo
+  echo "## Dynamic imports from @/lib/ai/orchestrator/*"
+  rg -n "import\\(['\"]@/lib/ai/orchestrator" app/src app/tests 2>/dev/null || echo "(none)"
+}
+```
+
+Expected: both `(none)`. Folder is now deletion-ready for sub-step (e).
+
+Create `docs/superpowers/decom-artifacts/2026-04-14-orchestrator-retirement/sub-step-b2-rubric-evidence.md` with all 7 rubric sections. Key sections:
+
+1. **Ownership:** workspace → `lib/workspace`; section-versions → `lib/section-versions`; gateway → `lib/ai/gateway`. All three moved to non-orchestrator canonical paths.
+2. **Reference sweep:** probe output from Task b2_1 (pre) and the final probe above (post). Post-rehoming external imports: zero.
+3. **Build + typecheck + test:** actual results.
+4. **Flag/env:** N/A.
+5. **Test-surface cleanup:** any tests referencing the moved modules got mechanical sed updates. List files touched.
+6. **Migration diff:** three file moves, flat (no subdir wrappers). Cite target paths and rationale per the rehoming table.
+7. **Observability:** the moved files may carry their own logs/metrics — those travel with the files, no change.
+
+Fill every placeholder. Build/test:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2/app && test -d node_modules || npm ci
+cd /home/godja/Dev/EU-Funds-decom-orch-b2/app && npm run build 2>&1 | tail -15
+cd /home/godja/Dev/EU-Funds-decom-orch-b2/app && npm run typecheck 2>&1 | tail -10
+cd /home/godja/Dev/EU-Funds-decom-orch-b2/app && npm run test 2>&1 | tail -20
+```
+
+Commit evidence, push, PR:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-b2 && git add docs/superpowers/decom-artifacts/2026-04-14-orchestrator-retirement/sub-step-b2-rubric-evidence.md && git -c commit.gpgsign=false commit -m "chore(decom): sub-step (b2) rubric evidence"
+git push -u origin chore/decom-orchestrator-b2
+gh pr create --title "refactor(decom): rehome orchestrator keeper modules (workspace, section-versions, gateway)" --body "$(cat <<'PR_EOF'
+## Summary
+
+Sub-step (b2) of the orchestrator retirement program. Plan patch added 2026-04-14 after sub-step (e) execution found that sub-step (b) didn't fully prepare the orchestrator folder for deletion.
+
+Three orchestrator files contained keeper-surface code (consumed by V1 project/section API routes and the discovery pipeline). They are rehomed to non-orchestrator canonical paths so sub-step (e) can delete the orchestrator folder cleanly.
+
+Moves:
+- \`lib/ai/orchestrator/gateway.ts\` → \`lib/ai/gateway.ts\`
+- \`lib/ai/orchestrator/workspace.ts\` → \`lib/workspace.ts\`
+- \`lib/ai/orchestrator/section-versions.ts\` → \`lib/section-versions.ts\`
+
+Plus cleanup: drop the pass-through re-export block in \`lib/ai/agent/types.ts\` that sub-step (b) added as a sed-redirect courtesy for orchestrator-only types. Confirmed zero external consumers via the re-exports before removal.
+
+## Rubric evidence
+
+\`docs/superpowers/decom-artifacts/2026-04-14-orchestrator-retirement/sub-step-b2-rubric-evidence.md\`
+
+## Test plan
+
+- [ ] CI passes
+- [ ] \`next build\` + \`tsc --noEmit\` + \`npm run test\` pass locally
+- [ ] Grep confirms zero \`@/lib/ai/orchestrator/\` external importers in \`app/src/\` and \`app/tests/\`
+
+## Plan reference
+
+\`docs/superpowers/plans/2026-04-14-decom-orchestrator-retirement.md\` sub-step (b2).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+PR_EOF
+)"
+```
+
+Report PR URL + moves applied + importer counts.
+
+---
+
 ## Sub-step (c): Delete `useOrchestrator.ts` hook
 
 **Preconditions:** Sub-step (a) merged (only caller migrated).
@@ -822,7 +1106,7 @@ PR title: `feat(decom): delete /api/ai/orchestrator/* routes + section_versionin
 
 ## Sub-step (e): Delete `lib/ai/orchestrator/` folder
 
-**Preconditions:** Sub-steps (a), (b), (c), (d) all merged.
+**Preconditions:** Sub-steps (a), (b), (b2), (c), (d) all merged. Sub-step (b2) rehomes the keeper runtime modules (workspace, section-versions, gateway) that sub-step (b) did not address; without it, folder deletion breaks the build because V1 API routes and the discovery pipeline still import from `@/lib/ai/orchestrator/*`.
 
 **Scope:** Delete the entire `app/src/lib/ai/orchestrator/` subtree.
 
