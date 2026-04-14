@@ -47,7 +47,7 @@ v1 succeeds when all three fire:
 
 1. **Operational health.** Bypass rate < 5%, block rate < 10%, p95 consult latency < 7s, malformed-response rate < 2% (on adequate sample volume).
 2. **Behavioral evidence.** Either meaningful non-`proceed` share on mandatory gates, *or* human-rubric / downstream-churn evidence that a high `proceed` rate reflects correct validation rather than ceremony.
-3. **Outcome signal.** Human rubric passes the §8.3 bar **and** at least one §8.2 downstream signal shows directionally-positive effect on the triggered cohort vs. not-triggered cohort.
+3. **Outcome signal.** Human rubric passes the §8.3.3 bar **and** at least one §8.3.1 downstream signal shows directionally-positive effect on the triggered cohort vs. not-triggered cohort.
 
 Missing all three → disable, re-evaluate premise.
 Missing one or two → keep pilot, iterate.
@@ -207,7 +207,7 @@ Three of four gates are mutation pre-commit. **Gate 3 is a pre-narration gate** 
 
 **Consult payload:**
 - Tool result verbatim
-- Source excerpts by chunk ID (not full documents; Opus can `retrieve-evidence` if needed)
+- Inlined source excerpts (chunk text + chunk IDs, not full documents) selected by the payload builder *before* the consult. The advisor does **not** initiate follow-up tool calls — the v1 backend is a single `messages.create` with a structured tool-use response, not a multi-turn agent loop. If an advisor indicates missing evidence via `reasons`, that surfaces as a risk flag, not a re-entrant retrieval.
 - Project declared facts
 - Organization profile
 
@@ -574,12 +574,12 @@ Each PR is independently revertible. No partial-state branches merged.
 - Executor system prompt updated to respect advisor annotations without overwriting deterministic tool parts (§2.8)
 - Dashboard: threshold-attribution panel
 
-### PR 5 — Gate 4 + contradiction override + exit-criteria dashboards
+### PR 5 — Gate 4 + contradiction override + exit-criteria dashboard capstone
 
 - Section-recovery trigger conditions on `saveSectionDraft` (recovery paths only)
 - `rewriteStrategy` field and payload builder
 - Contradiction override invoked by validators (informational-only per §4.5)
-- Exit-criteria dashboard stack: operational + behavioral + outcome panels (§8)
+- **Dashboard capstone, not the only dashboards in the stack.** PRs 2–4 each land the per-gate verdict / trigger / downstream-signal panels relevant to their gate. PR 5 completes the exit-criteria stack by adding: the section-recovery panel, the override-rate panel, and the cross-gate exit-criteria rollup that evaluates §1 success criteria against live Tier 1 + Tier 2 + Tier 3 data. The rollup is the artifact the team reads to decide ship-default-on / keep-pilot / disable.
 
 Expected cadence: one PR per week if calibration is clean; longer if shadow-mode data surfaces prompt or threshold issues. No automatic gate activation — each mandatory gate flips shadow → enforcing via explicit config change, only after ≥1 week of shadow data review (§7.3).
 
