@@ -44,15 +44,23 @@ Each entry has:
 
 ## Temporary retention entries during active retirement
 
-### Orchestrator-owned shared types
+_(none currently — "Orchestrator-owned shared types" entry closed 2026-04-14; see "Closed entries" below.)_
 
-- **surface:** modules under `app/src/lib/ai/orchestrator/` re-exported as types/helpers (see `docs/superpowers/decom-artifacts/2026-04-14-probe-outputs/probe-10-reexport-type-dependency.md`)
+---
+
+## Closed entries
+
+Historical log of retention entries whose conversion triggers fired and surfaces were retired. Kept for auditability of the register's lifecycle.
+
+### Orchestrator-owned shared types — CLOSED 2026-04-14
+
+- **surface:** modules formerly under `app/src/lib/ai/orchestrator/`
 - **axis:** runtime
-- **category:** temporary-retention
-- **blocking_workstream:** internal — Plan 3 (`2026-04-14-decom-orchestrator-retirement.md`, deferred), sub-step (b) shared-type rehoming
-- **replacement_spec:** `docs/superpowers/specs/2026-04-11-legacy-decommissioning-design.md`
-- **conversion_trigger:** last external import of `@/lib/ai/orchestrator/types` and `@/lib/ai/orchestrator/section-specs` removed (probe 10 returns zero)
-- **last_verified:** 2026-04-14
+- **category:** temporary-retention (originally)
+- **blocking_workstream:** Plan 3 orchestrator retirement (`docs/superpowers/plans/2026-04-14-decom-orchestrator-retirement.md`)
+- **conversion_trigger:** last external import of `@/lib/ai/orchestrator/*` removed
+- **closed_reason:** sub-step (e) (PR #35) deleted the entire `lib/ai/orchestrator/` folder; sub-steps (a), (b), (b2), (c), (d) removed all external runtime and type dependencies. Final probe at PR #35 merge confirmed zero `@/lib/ai/orchestrator/*` imports anywhere in `app/src/` and `app/tests/`. Sub-step (f) (`client-v2.ts` sweep) was a no-op — the file had already been deleted by earlier work (commit log shows it gone pre-bootstrap).
+- **closed_at:** 2026-04-14
 
 ---
 
