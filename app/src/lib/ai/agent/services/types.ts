@@ -3,7 +3,7 @@
 // These are the shared vocabulary for service functions, V3 adapters,
 // and MCP handlers.
 
-import type { CallBlueprint } from '@/lib/ai/orchestrator/types'
+import type { CallBlueprint } from '@/lib/ai/agent/types'
 import type { SectionStatus } from '../types'
 import { AuthorizationError, ValidationError } from './errors'
 

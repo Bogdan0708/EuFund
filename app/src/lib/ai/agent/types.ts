@@ -19,9 +19,81 @@ export const CHECKPOINT_TYPES = [
 ] as const
 export type CheckpointType = (typeof CHECKPOINT_TYPES)[number]
 
-// ── Re-exports from V2 (kept domain types) ──────────────────────
+// ── Re-exports of orchestrator-owned types still living in @/lib/ai/orchestrator/types ──
+// These are re-exported so importers can use a single canonical path (@/lib/ai/agent/types).
+// The originals will be moved or retired in subsequent decom sub-steps.
+export type {
+  WorkflowContext,
+  EnhancedIdea,
+  MatchedCall,
+  SectionVersion,
+  FreshnessProvenance,
+  FreshnessResult,
+  ActionPlan,
+  UploadedFile,
+  QAResult,
+  ProjectCompletionStatus,
+  AgentResult,
+  CheckpointData,
+  SSEEvent,
+  SSEEventPayload,
+  SSEStream,
+  GatewayClient,
+  AgentFn,
+} from '@/lib/ai/orchestrator/types'
+export { STEP_LABELS } from '@/lib/ai/orchestrator/types'
 
-export type { CallBlueprint, SectionSpec } from '@/lib/ai/orchestrator/types'
+// ── Domain types (canonical home) ───────────────────────────────
+
+export interface CallBlueprint {
+  callId: string
+  program: string
+  isOpen: boolean
+  amendments: string[]
+  warnings: string[]
+  requiredSections: { title: string; description: string; evaluationWeight?: number }[]
+  mandatoryAnnexes: string[]
+  eligibilityCriteria: string[]
+  evaluationGrid: { criterion: string; maxPoints: number }[]
+  cofinancingRate: number
+  eligibilityResult: {
+    score: number
+    passCount: number
+    failCount: number
+    failures: string[]
+    warnings: string[]
+  }
+  sources: string[]
+  verifiedAt: string
+  raw: {
+    notebookLmResponse: string
+    perplexityResponse: string
+    retrievedAt: string
+  }
+  normalized: {
+    requiredSections: SectionSpec[]
+    mandatoryAnnexes: string[]
+    eligibilityCriteria: string[]
+    evaluationGrid: { criterion: string; maxPoints: number }[]
+    cofinancingRate: number
+  }
+  structureConfidence: number
+}
+
+export interface SectionSpec {
+  id: string
+  title: string
+  description: string
+  order: number
+  generationOrder: number
+  importance: 'critical' | 'standard' | 'supplementary'
+  expectedLength: 'short' | 'medium' | 'long'
+  dependsOn: string[]
+  modelHint: 'heavy' | 'light'
+  evaluationWeight?: number
+  mandatory: boolean
+  confidence: number
+}
 
 // ── Session & State ─────────────────────────────────────────────
 
@@ -62,9 +134,9 @@ export interface AgentSession {
   locale: 'ro' | 'en'
   selectedCallId: string | null
   currentPhase: Phase
-  blueprint: import('@/lib/ai/orchestrator/types').CallBlueprint | null
+  blueprint: CallBlueprint | null
   eligibility: EligibilityResult | null
-  outline: import('@/lib/ai/orchestrator/types').SectionSpec[] | null
+  outline: SectionSpec[] | null
   warnings: Warning[]
   planningArtifact: PlanningArtifact | null
   outlineFrozen: boolean
@@ -179,9 +251,9 @@ export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
 
 export type StateTransition =
   | { type: 'SET_SELECTED_CALL'; callId: string }
-  | { type: 'SET_BLUEPRINT'; blueprint: import('@/lib/ai/orchestrator/types').CallBlueprint }
+  | { type: 'SET_BLUEPRINT'; blueprint: CallBlueprint }
   | { type: 'SET_ELIGIBILITY'; result: EligibilityResult }
-  | { type: 'SET_OUTLINE'; outline: import('@/lib/ai/orchestrator/types').SectionSpec[] }
+  | { type: 'SET_OUTLINE'; outline: SectionSpec[] }
   | { type: 'FREEZE_OUTLINE' }
   | { type: 'SET_PHASE'; phase: Phase }
   | { type: 'SET_WARNINGS'; warnings: Warning[] }
@@ -213,7 +285,7 @@ export interface UIStateSnapshot {
   stateVersion: number
   warnings: Warning[]
   sections: { sectionKey: string; title: string; status: SectionStatus; documentOrder: number }[]
-  blueprint: import('@/lib/ai/orchestrator/types').CallBlueprint | null
+  blueprint: CallBlueprint | null
   eligibility: EligibilityResult | null
 }
 
@@ -238,4 +310,62 @@ export interface AgentRequest {
   requestId: string
   locale: 'ro' | 'en'
   stateVersion?: number
+}
+
+// ── SectionResult (canonical home) ──────────────────────────────
+
+export interface SectionResult {
+  id: string
+  title: string
+  content: string
+  order: number
+  source: 'generated' | 'edited' | 'failed'
+
+  // Phase 1: versioning + approval
+  state: 'draft' | 'reviewed' | 'approved'
+  currentVersion: number
+  versionCount: number
+  contentHash: string
+  lastStateChangeAt: string
+  lastStateChangeBy: string | null
+
+  metadata: {
+    model: string
+    provider: string
+    tokensIn: number
+    tokensOut: number
+    latencyMs: number
+    retryCount: number
+    fallbackUsed: boolean
+    generatedAt: string
+    checksum: string
+  }
+}
+
+// ── SubmissionDocument (canonical home) ─────────────────────────
+
+export interface SubmissionDocumentProvenance {
+  requirementSource: 'curated_list' | 'ai_classified'
+  contentSource: 'template' | 'none'
+  templateId?: string
+  templateVersion?: string
+  classifiedFrom?: string
+  confidence?: number
+  reviewRequired: boolean
+  generatedAt: string
+}
+
+export interface SubmissionDocument {
+  id: string
+  title: string
+  content: string
+  category: 'declaration' | 'certificate' | 'annex' | 'form'
+  scope: 'general' | 'call_specific'
+  order: number
+  availability: 'generated' | 'needs_fill' | 'external_required'
+  instructions: string
+  sourceAnnex: string
+  userStatus: 'not_started' | 'completed'
+  userStatusAt: string | null
+  provenance: SubmissionDocumentProvenance
 }

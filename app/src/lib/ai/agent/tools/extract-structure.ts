@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import { registerTool } from './registry'
 import type { ToolResult, ToolContext } from '../types'
-import type { SectionSpec } from '@/lib/ai/orchestrator/types'
+import type { SectionSpec } from '@/lib/ai/agent/types'
 import { generate } from '@/lib/ai/providers/router'
 import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { parseAIJson } from '../utils'

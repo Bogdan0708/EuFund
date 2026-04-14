@@ -7,7 +7,7 @@ import { Icon } from '@/components/ui/ds-icon';
 import { SectionStateBadge } from '@/components/ui/section-state-badge';
 import { SectionEditor } from '@/components/editor/section-editor';
 import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
-import type { SectionResult } from '@/lib/ai/orchestrator/types';
+import type { SectionResult } from '@/lib/ai/agent/types';
 
 type SectionsResponse = {
   sections: SectionResult[];

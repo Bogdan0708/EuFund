@@ -8,7 +8,7 @@ import type {
   SectionResult,
   SSEEvent,
   WorkflowContext,
-} from '@/lib/ai/orchestrator/types';
+} from '@/lib/ai/agent/types';
 
 // ─── Types ───────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { WorkflowContext, SSEStream, GatewayClient } from '@/lib/ai/orchestrator/types'
+import type { WorkflowContext, SSEStream, GatewayClient } from '@/lib/ai/agent/types'
 
 // Mock DB — no actual database calls
 vi.mock('@/lib/db', () => ({

@@ -44,83 +44,11 @@ export interface MatchedCall {
   freshness?: FreshnessResult
 }
 
-export interface CallBlueprint {
-  callId: string
-  program: string
-  isOpen: boolean
-  amendments: string[]
-  warnings: string[]
-  requiredSections: { title: string; description: string; evaluationWeight?: number }[]
-  mandatoryAnnexes: string[]
-  eligibilityCriteria: string[]
-  evaluationGrid: { criterion: string; maxPoints: number }[]
-  cofinancingRate: number
-  eligibilityResult: {
-    score: number
-    passCount: number
-    failCount: number
-    failures: string[]
-    warnings: string[]
-  }
-  sources: string[]
-  verifiedAt: string
-  raw: {
-    notebookLmResponse: string
-    perplexityResponse: string
-    retrievedAt: string
-  }
-  normalized: {
-    requiredSections: SectionSpec[]
-    mandatoryAnnexes: string[]
-    eligibilityCriteria: string[]
-    evaluationGrid: { criterion: string; maxPoints: number }[]
-    cofinancingRate: number
-  }
-  structureConfidence: number
-}
+export type { CallBlueprint, SectionSpec } from '@/lib/ai/agent/types'
+import type { CallBlueprint, SectionSpec } from '@/lib/ai/agent/types'
 
-export interface SectionSpec {
-  id: string
-  title: string
-  description: string
-  order: number
-  generationOrder: number
-  importance: 'critical' | 'standard' | 'supplementary'
-  expectedLength: 'short' | 'medium' | 'long'
-  dependsOn: string[]
-  modelHint: 'heavy' | 'light'
-  evaluationWeight?: number
-  mandatory: boolean
-  confidence: number
-}
-
-export interface SectionResult {
-  id: string
-  title: string
-  content: string
-  order: number
-  source: 'generated' | 'edited' | 'failed'
-
-  // Phase 1: versioning + approval
-  state: 'draft' | 'reviewed' | 'approved'
-  currentVersion: number
-  versionCount: number
-  contentHash: string
-  lastStateChangeAt: string
-  lastStateChangeBy: string | null
-
-  metadata: {
-    model: string
-    provider: string
-    tokensIn: number
-    tokensOut: number
-    latencyMs: number
-    retryCount: number
-    fallbackUsed: boolean
-    generatedAt: string
-    checksum: string
-  }
-}
+export type { SectionResult } from '@/lib/ai/agent/types'
+import type { SectionResult } from '@/lib/ai/agent/types'
 
 export interface SectionVersion {
   id: string
@@ -159,31 +87,8 @@ export interface FreshnessResult {
   provenance: FreshnessProvenance
 }
 
-export interface SubmissionDocumentProvenance {
-  requirementSource: 'curated_list' | 'ai_classified'
-  contentSource: 'template' | 'none'
-  templateId?: string
-  templateVersion?: string
-  classifiedFrom?: string
-  confidence?: number
-  reviewRequired: boolean
-  generatedAt: string
-}
-
-export interface SubmissionDocument {
-  id: string
-  title: string
-  content: string
-  category: 'declaration' | 'certificate' | 'annex' | 'form'
-  scope: 'general' | 'call_specific'
-  order: number
-  availability: 'generated' | 'needs_fill' | 'external_required'
-  instructions: string
-  sourceAnnex: string
-  userStatus: 'not_started' | 'completed'
-  userStatusAt: string | null
-  provenance: SubmissionDocumentProvenance
-}
+export type { SubmissionDocument, SubmissionDocumentProvenance } from '@/lib/ai/agent/types'
+import type { SubmissionDocument } from '@/lib/ai/agent/types'
 
 export interface ActionPlan {
   matchedCall: {

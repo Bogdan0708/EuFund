@@ -7,7 +7,7 @@ import { motion } from 'motion/react';
 import { Icon } from '@/components/ui/ds-icon';
 import { MarkdownRender } from '@/components/ui/markdown-render';
 import { SectionStateBadge } from '@/components/ui/section-state-badge';
-import type { SectionResult } from '@/lib/ai/orchestrator/types';
+import type { SectionResult } from '@/lib/ai/agent/types';
 
 interface SectionsResponse {
   sections: SectionResult[];

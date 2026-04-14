@@ -33,7 +33,7 @@ import { getVectorStore } from '@/lib/vectors/store'
 import { lookupBlueprint, saveCallBlueprint } from '@/lib/ai/agent/services/blueprint'
 import { ExternalDependencyError } from '@/lib/ai/agent/services/errors'
 import type { ServiceContext } from '@/lib/ai/agent/services/types'
-import type { CallBlueprint } from '@/lib/ai/orchestrator/types'
+import type { CallBlueprint } from '@/lib/ai/agent/types'
 
 // ── Helpers to configure mocks ────────────────────────────────────────────
 

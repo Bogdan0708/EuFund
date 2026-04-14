@@ -22,7 +22,7 @@ export async function GET(
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const sessionCtx = session.context as { projectSections?: import('@/lib/ai/orchestrator/types').SectionResult[] } | null;
+    const sessionCtx = session.context as { projectSections?: import('@/lib/ai/agent/types').SectionResult[] } | null;
     if (!sectionExistsInSession(sessionCtx?.projectSections, sectionId)) {
       return NextResponse.json({ error: 'Section not found' }, { status: 404 });
     }

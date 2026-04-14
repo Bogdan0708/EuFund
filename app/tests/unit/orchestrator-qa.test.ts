@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { runPostBuildQA } from '@/lib/ai/orchestrator/qa'
-import type { SectionResult, SectionSpec } from '@/lib/ai/orchestrator/types'
+import type { SectionResult, SectionSpec } from '@/lib/ai/agent/types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

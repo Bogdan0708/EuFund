@@ -1,5 +1,5 @@
 import type { AgentSession, AgentSection, Phase, EligibilityResult } from './types'
-import type { CallBlueprint } from '@/lib/ai/orchestrator/types'
+import type { CallBlueprint } from '@/lib/ai/agent/types'
 
 type SessionWithKnowledgeSummary = AgentSession & { _knowledgeSummary?: string }
 

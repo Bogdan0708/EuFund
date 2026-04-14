@@ -1,4 +1,4 @@
-import type { SubmissionDocument } from '@/lib/ai/orchestrator/types'
+import type { SubmissionDocument } from '@/lib/ai/agent/types'
 
 export interface FormTemplate {
   templateId: string

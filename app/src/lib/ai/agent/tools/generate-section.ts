@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import { registerTool } from './registry'
 import type { ToolResult, ToolContext } from '../types'
-import type { SectionSpec } from '@/lib/ai/orchestrator/types'
+import type { SectionSpec } from '@/lib/ai/agent/types'
 import { generate } from '@/lib/ai/providers/router'
 import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { compactPreviousSections } from '../section-specs'
@@ -13,7 +13,7 @@ import { logger } from '@/lib/logger'
 import { normalizeMarkdown } from '@/lib/markdown/proposal-markdown'
 import { findPatterns } from '@/lib/ai/knowledge/proposal-patterns'
 import { getSessionKnowledgeByKind } from '@/lib/ai/knowledge/session-knowledge'
-import type { CallBlueprint } from '@/lib/ai/orchestrator/types'
+import type { CallBlueprint } from '@/lib/ai/agent/types'
 
 const log = logger.child({ component: 'tool-generate-section' })
 

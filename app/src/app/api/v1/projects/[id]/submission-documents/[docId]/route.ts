@@ -5,7 +5,7 @@ import { db } from '@/lib/db'
 import { projects, projectDocuments } from '@/lib/db/schema'
 import { eq, desc, and, isNull } from 'drizzle-orm'
 import { Errors, FondEUError } from '@/lib/errors'
-import type { SubmissionDocument } from '@/lib/ai/orchestrator/types'
+import type { SubmissionDocument } from '@/lib/ai/agent/types'
 
 type Params = { params: { id: string; docId: string } }
 
