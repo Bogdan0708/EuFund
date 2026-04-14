@@ -33,28 +33,45 @@
 
 These are manual verification steps. Record the answers before touching any files.
 
-### Task 0.1: Verify whether red `e2e` actually blocks PR #11 merge
+### Task 0.1: Verify whether `e2e` is a required status check for master merges
 
 **Files:** none
 
-- [ ] **Step 1: Open PR #11 in the GitHub web UI**
+All three stack PRs (#11, #12, #13) are currently **drafts**. A draft PR's merge button is disabled regardless of required-check status — GitHub does not allow merging drafts. Therefore observing the merge button state on PR #11 in its current draft form tells you nothing about whether `e2e` is a required check. The diagnostic must work around this.
 
-Run: `gh pr view 11 --web`
+- [ ] **Step 1: Inspect branch protection rules via GitHub web UI**
 
-Or navigate manually to PR #11 in the browser.
+Navigate to: **GitHub repo → Settings → Branches → Branch protection rules → master** (or `main`).
 
-- [ ] **Step 2: Observe the merge button state**
+Look for the "Require status checks to pass before merging" section. If it exists, look at the list of required checks. One of two outcomes:
 
-Look at the merge button at the bottom of the PR page. One of two outcomes:
+- **Outcome A**: `e2e` is listed as a required status check. Change 1 (ci.yml `continue-on-error: true`) is needed. Proceed with Phase 1, Branch A.
+- **Outcome B**: `e2e` is **not** listed as a required status check (either the section doesn't exist, the section exists but `e2e` is not in the list, or there are no branch protection rules at all). Change 1 is unnecessary. Proceed with Phase 1, Branch B.
 
-- **Outcome A**: Merge button is **disabled** with a message like "Required status check 'e2e' is failing" or "Required checks have not succeeded." → `e2e` is a required status check. Change 1 (ci.yml edit) is needed. Proceed with Phase 1, Branch A.
-- **Outcome B**: Merge button is **enabled** despite the red `e2e` status (button may show "Squash and merge" or "Merge pull request" as clickable). → `e2e` is not a required status check. Change 1 is unnecessary. Proceed with Phase 1, Branch B.
+If the Settings page is inaccessible (e.g., insufficient permissions), fall back to Step 2.
 
-Record the outcome in a note you will reference in Task 1.0. Do not merge anything yet.
+- [ ] **Step 2 (fallback): Temporary ready-for-review probe on the rollback PR itself**
 
-- [ ] **Step 3: Record outcome**
+Only execute this step if Step 1 was inaccessible.
 
-Write down: "Task 0.1 outcome: A" or "Task 0.1 outcome: B".
+This fallback is designed to be used **during Phase 1**, not during Phase 0. The idea: when the rollback PR is created in Task 1A, it will be non-draft. After its CI finishes running (with `e2e` possibly red but `continue-on-error: true` in effect), the merge button state on the rollback PR itself will reveal whether branch protection requires `e2e`. This eliminates the draft-state masking problem because the rollback PR is never a draft.
+
+If Step 1 was inaccessible, record: "Task 0.1 outcome: DEFERRED — will verify on rollback PR during Phase 1." In this case, Phase 1 should proceed with Task 1A (the full ci.yml + CLAUDE.md rollback), because the rollback PR doubles as the diagnostic: if `continue-on-error: true` unblocks the merge button, `e2e` was required and the fix worked. If the merge button was already enabled, `e2e` was not required, but the `continue-on-error` addition is harmless.
+
+- [ ] **Step 3: Attempt programmatic check via `gh api`**
+
+Run: `gh api repos/{owner}/{repo}/branches/master/protection 2>&1 | head -40`
+
+If this succeeds, parse the JSON for `required_status_checks.contexts` or `required_status_checks.checks[].context` — look for `e2e` in the list. This may fail with a 403/404 on private repos without GitHub Pro/Team plan.
+
+This step supplements Step 1 — run it regardless of whether Step 1 succeeded to get a programmatic record of the branch protection state.
+
+- [ ] **Step 4: Record outcome**
+
+One of:
+- "Task 0.1 outcome: A — `e2e` is required" (from Step 1 or Step 3)
+- "Task 0.1 outcome: B — `e2e` is not required" (from Step 1 or Step 3)
+- "Task 0.1 outcome: DEFERRED — Settings inaccessible and API returned 403/404. Will verify on rollback PR itself during Phase 1. Proceeding with Task 1A (full rollback) as the safe default."
 
 ### Task 0.2: Confirm Phase 3a service-layer integration coverage exists
 
