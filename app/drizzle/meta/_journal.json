@@ -92,6 +92,55 @@
       "when": 1774051200000,
       "tag": "0012_auth_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1774137600000,
+      "tag": "0013_onboarding_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1775260800000,
+      "tag": "0014_agent_v3",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1775347200000,
+      "tag": "0015_agent_v3_feature_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1775952000000,
+      "tag": "0016_section_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1775952100000,
+      "tag": "0017_ai_model_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1776038400000,
+      "tag": "0018_stripe_webhook_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1776124800000,
+      "tag": "0019_agent_section_version_unique",
+      "breakpoints": true
     }
   ]
 }

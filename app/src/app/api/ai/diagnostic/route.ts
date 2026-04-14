@@ -3,6 +3,7 @@
 // Protected: requires platform admin or diagnostic token
 
 import { NextRequest, NextResponse } from 'next/server';
+import { constantTimeEquals } from '@/lib/security/constant-time';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
   const token = req.headers.get('x-diagnostic-token') || req.headers.get('authorization')?.replace('Bearer ', '');
   const expectedToken = process.env.HEALTHCHECK_AUTH_TOKEN || process.env.AI_GATEWAY_API_KEY;
 
-  if (!token || token !== expectedToken) {
+  if (!constantTimeEquals(token, expectedToken)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -147,32 +148,9 @@ export async function GET(req: NextRequest) {
     results.workflowTables = `FAIL: ${e instanceof Error ? e.message : String(e)}`;
   }
 
-  // Test 5b: Try creating and deleting a test session
-  try {
-    const { createSession } = await import('@/lib/ai/orchestrator/engine');
-    // Use a fake userId — just testing if the table accepts inserts
-    // Actually, we need a real user due to FK constraint. Skip insert test.
-    results.sessionCreate = 'SKIPPED (needs real userId)';
-  } catch (e) {
-    results.sessionCreate = `FAIL: ${e instanceof Error ? e.message : String(e)}`;
-  }
-
-  // Test 6: AI Orchestrator initialization
-  try {
-    const { getAIOrchestrator, createDefaultConfig } = await import('@/lib/ai/orchestrator');
-    const orchestrator = getAIOrchestrator(createDefaultConfig());
-    const health = await orchestrator.getHealthStatus();
-    results.aiOrchestrator = {
-      healthy: health.healthy,
-      providers: health.providers,
-    };
-  } catch (e) {
-    results.aiOrchestrator = `FAIL: ${e instanceof Error ? e.message : String(e)}`;
-  }
-
   // Test 6: Full aiGenerate call
   try {
-    const { aiGenerate } = await import('@/lib/ai/client-v2');
+    const { aiGenerate } = await import('@/lib/ai/client');
     const result = await aiGenerate({
       system: 'Reply with just the word OK',
       prompt: 'Test',
@@ -183,8 +161,6 @@ export async function GET(req: NextRequest) {
       status: 'OK',
       text: result.text,
       tokens: result.tokensUsed,
-      provider: result.provider,
-      model: result.model,
     };
   } catch (e) {
     results.aiGenerate = `FAIL: ${e instanceof Error ? e.message : String(e)}`;

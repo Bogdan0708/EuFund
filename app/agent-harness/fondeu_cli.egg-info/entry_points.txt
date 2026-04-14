@@ -1,0 +1,2 @@
+[console_scripts]
+fondeu = fondeu.cli:cli

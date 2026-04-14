@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Horizon-2024: Sustainable Urban Mobility | FondEU</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary": "#00637f",
+              "outline": "#717785",
+              "surface-container-high": "#e9e7ed",
+              "tertiary-fixed": "#bee9ff",
+              "on-surface-variant": "#414753",
+              "tertiary-container": "#007da1",
+              "surface-container-lowest": "#ffffff",
+              "primary-fixed-dim": "#abc7ff",
+              "surface-bright": "#faf8fe",
+              "tertiary-fixed-dim": "#68d3ff",
+              "surface-container": "#eeedf3",
+              "primary-fixed": "#d7e2ff",
+              "inverse-primary": "#abc7ff",
+              "inverse-surface": "#2f3034",
+              "on-error": "#ffffff",
+              "on-background": "#1a1b1f",
+              "surface-container-highest": "#e3e2e7",
+              "on-tertiary-container": "#f7fbff",
+              "on-primary": "#ffffff",
+              "secondary-fixed": "#e2dfff",
+              "on-tertiary-fixed-variant": "#004d64",
+              "secondary": "#4a47d2",
+              "primary": "#0059b5",
+              "background": "#faf8fe",
+              "on-surface": "#1a1b1f",
+              "on-primary-container": "#fcfbff",
+              "primary-container": "#0071e3",
+              "error-container": "#ffdad6",
+              "on-tertiary-fixed": "#001f2a",
+              "on-primary-fixed": "#001b3f",
+              "surface-tint": "#005cbb",
+              "on-secondary-fixed": "#0c006b",
+              "on-secondary-fixed-variant": "#332dbc",
+              "secondary-fixed-dim": "#c2c1ff",
+              "on-secondary": "#ffffff",
+              "surface-variant": "#e3e2e7",
+              "on-primary-fixed-variant": "#00458f",
+              "on-error-container": "#93000a",
+              "error": "#ba1a1a",
+              "surface-container-low": "#f4f3f8",
+              "on-tertiary": "#ffffff",
+              "inverse-on-surface": "#f1f0f5",
+              "on-secondary-container": "#fffbff",
+              "surface": "#faf8fe",
+              "surface-dim": "#dad9df",
+              "secondary-container": "#6462ec",
+              "outline-variant": "#c1c6d6"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .animate-entrance {
+            animation: fadeInTranslate 0.8s ease-out forwards;
+        }
+        @keyframes fadeInTranslate {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-[#F5F5F7] text-on-surface flex min-h-screen overflow-hidden">
+<!-- SideNavBar Component -->
+<aside class="h-screen border-r-0 w-[240px] transition-all duration-300 ease-out bg-[#F5F5F7] flex flex-col py-8 px-4 shrink-0">
+<div class="mb-10 px-4">
+<h1 class="text-xl font-bold tracking-tighter text-slate-900">FondEU</h1>
+<p class="text-[10px] text-on-surface-variant tracking-widest uppercase font-bold opacity-60">The Digital Curator</p>
+</div>
+<nav class="flex-1 space-y-2">
+<!-- Home -->
+<a class="flex items-center gap-3 text-[#414753] hover:text-slate-900 px-4 py-2 hover:bg-[#E3E2E7] transition-colors font-medium text-sm tracking-tight rounded-full" href="#">
+<span class="material-symbols-outlined">home</span>
+                Home
+            </a>
+<!-- Projects - Active -->
+<a class="flex items-center gap-3 bg-[#E3E2E7] text-[#0071E3] rounded-full px-4 py-2 font-medium text-sm tracking-tight" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">folder_open</span>
+                Projects
+            </a>
+<!-- Funding Calls -->
+<a class="flex items-center gap-3 text-[#414753] hover:text-slate-900 px-4 py-2 hover:bg-[#E3E2E7] transition-colors font-medium text-sm tracking-tight rounded-full" href="#">
+<span class="material-symbols-outlined">euro_symbol</span>
+                Funding Calls
+            </a>
+<!-- Files -->
+<a class="flex items-center gap-3 text-[#414753] hover:text-slate-900 px-4 py-2 hover:bg-[#E3E2E7] transition-colors font-medium text-sm tracking-tight rounded-full" href="#">
+<span class="material-symbols-outlined">description</span>
+                Files
+            </a>
+<!-- AI Assistant -->
+<a class="flex items-center gap-3 text-[#414753] hover:text-slate-900 px-4 py-2 hover:bg-[#E3E2E7] transition-colors font-medium text-sm tracking-tight rounded-full" href="#">
+<span class="material-symbols-outlined">smart_toy</span>
+                AI Assistant
+            </a>
+<!-- Settings -->
+<a class="flex items-center gap-3 text-[#414753] hover:text-slate-900 px-4 py-2 hover:bg-[#E3E2E7] transition-colors font-medium text-sm tracking-tight rounded-full" href="#">
+<span class="material-symbols-outlined">settings</span>
+                Settings
+            </a>
+</nav>
+<div class="mt-auto px-4 flex items-center gap-3 pt-6 border-t border-slate-200/50">
+<div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden">
+<img alt="User Profile Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBJHauy8RwGLkrX-iPSk5zJTDYKk9hSnnemB_WLn5ijEH1Sqcz0Q6TvHyMiZg54dyj6wEJQwiuX9XDCS3J57ck2FYQgTJEmHMQ6cCSTxTVTGCxlI7Ahqxf2faiuWKp-eErGW-ZdQzRlpazRwuBEmuauqLHCs-L7OhmP6ZbyfEC7uErxr6s4NPgPCfgU_y5dPNSlnB8640Zp35OPRT43RJRxBhwqZjFQkEhTCUmGYaArlDBixwe3YVWmLf3pQJ1fWe0wDunqC-UGUNLr"/>
+</div>
+<div class="flex flex-col">
+<span class="text-xs font-bold text-slate-900">Dr. Elena Rossi</span>
+<span class="text-[10px] text-slate-500 uppercase tracking-tighter">Chief Researcher</span>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 h-screen overflow-y-auto relative animate-entrance scroll-smooth">
+<!-- TopAppBar -->
+<header class="sticky top-0 w-full z-50 bg-white/72 backdrop-blur-xl flex justify-between items-center px-12 h-20">
+<div class="flex items-center gap-4">
+<span class="text-on-surface-variant font-medium text-sm">Projects / Horizon-2024</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative">
+<span class="material-symbols-outlined text-on-surface-variant hover:opacity-80 cursor-pointer">notifications</span>
+<span class="absolute top-0 right-0 w-2 h-2 bg-primary rounded-full border-2 border-white"></span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant hover:opacity-80 cursor-pointer">help_outline</span>
+<button class="bg-primary-container text-white px-6 py-2.5 rounded-full font-semibold text-sm hover:translate-y-[-1px] transition-transform ease-out duration-250">
+                    Submit Proposal
+                </button>
+</div>
+</header>
+<!-- Project Hero Section -->
+<div class="px-12 pt-16 pb-12 max-w-7xl mx-auto">
+<div class="flex flex-col md:flex-row justify-between items-start gap-8 mb-16">
+<div class="space-y-4 max-w-3xl">
+<div class="flex items-center gap-3">
+<span class="px-4 py-1.5 bg-[#0071E3]/10 text-[#0071E3] text-xs font-bold rounded-full uppercase tracking-wider">In Progress</span>
+<span class="text-on-surface-variant text-sm font-medium">ID: EU-H2024-MOB-082</span>
+</div>
+<h2 class="text-5xl font-bold tracking-tight text-on-surface leading-tight">
+                        Horizon-2024: Sustainable Urban Mobility
+                    </h2>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center gap-2 px-5 py-3 rounded-full border border-outline-variant/30 text-on-surface font-semibold text-sm hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-lg">share</span>
+                        Share
+                    </button>
+<button class="flex items-center gap-2 px-5 py-3 rounded-full bg-on-surface text-white font-semibold text-sm hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-lg">edit</span>
+                        Edit Project
+                    </button>
+</div>
+</div>
+<!-- Custom Tab Navigation -->
+<div class="flex gap-10 mb-12 border-b border-outline-variant/15">
+<button class="pb-4 text-lg font-bold text-primary border-b-2 border-primary">Overview</button>
+<button class="pb-4 text-lg font-medium text-on-surface-variant hover:text-on-surface transition-colors">Documents</button>
+<button class="pb-4 text-lg font-medium text-on-surface-variant hover:text-on-surface transition-colors">Tasks</button>
+<button class="pb-4 text-lg font-medium text-on-surface-variant hover:text-on-surface transition-colors">Timeline</button>
+</div>
+<!-- Bento Layout Content -->
+<div class="grid grid-cols-12 gap-8">
+<!-- Main Description Card -->
+<div class="col-span-12 lg:col-span-8 space-y-8">
+<div class="glass-card rounded-lg p-10 shadow-[0_20px_40px_rgba(0,0,0,0.04)]">
+<h3 class="text-2xl font-bold mb-6">Executive Summary</h3>
+<p class="text-on-surface-variant text-lg leading-relaxed mb-8">
+                            This project aims to redefine the infrastructure of European mid-sized cities through the integration of autonomous micro-mobility fleets and decentralized energy grids. Our focus remains on the reduction of carbon emissions by 45% within the first operational year through adaptive AI routing.
+                        </p>
+<div class="grid grid-cols-2 md:grid-cols-3 gap-8 pt-8 border-t border-outline-variant/10">
+<div>
+<p class="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">Grant Allocation</p>
+<p class="text-2xl font-bold text-on-surface">€2.4M</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">Duration</p>
+<p class="text-2xl font-bold text-on-surface">36 Months</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant opacity-60 mb-1">Consortium Size</p>
+<p class="text-2xl font-bold text-on-surface">12 Partners</p>
+</div>
+</div>
+</div>
+<!-- Team Members Row -->
+<div class="bg-surface-container-low rounded-lg p-10">
+<div class="flex justify-between items-center mb-8">
+<h3 class="text-xl font-bold">Project Team</h3>
+<button class="text-primary font-bold text-sm">Invite Member</button>
+</div>
+<div class="flex flex-wrap gap-12">
+<div class="flex flex-col items-center gap-3">
+<div class="w-16 h-16 rounded-full ring-4 ring-white shadow-sm overflow-hidden">
+<img alt="Lead Scientist Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDUOdUJa7d0kdxG6CFFP5tFUNGeATKEfMW5KEMm1731h3DgCoQWuOmdgG9nYsoX65OkHrwzFwvo9YDFHdV7taEa39_SVYuUkaBCwZ_F1HZTOnVq1oqYd9DNGxB-w9tuuUjNC49cckRil3Tppbwx5PRHIMqpWZkIai_wX3tyW7YGMeiNN1pCHnimktj8d_I0z_ZvyACF2KpaFzQNGT3A1lGwn3S3P_1phs-M8Pl_GKN6suFXs_0-tHXvFlTyKxTe2DNKMHFKnA8cX1iH"/>
+</div>
+<span class="text-sm font-bold">Dr. Rossi</span>
+</div>
+<div class="flex flex-col items-center gap-3">
+<div class="w-16 h-16 rounded-full ring-4 ring-white shadow-sm overflow-hidden">
+<img alt="Tech Lead Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDwy5ugPD5RN80zcYRSwp47IJwpqpBqNzDPCLoS6y_1zolcWwkYqvEe_jYBfBHforPZIBITuLJAaXf8SrWjiQgyN0DCTd0oBQvYMMYYsFcCVx8J4U2KOQyx5C-Iyvx8cn0HAJf6-G4TkNMSnHwo6xVPYPHGwbC8Q6KcGhvEBvG4CzrM1ZVfHWNEsYgVUv-026f7zCyT_z2V4PDjOLWoAh9i0-RKIdB_r9LM1-F-KLeeeivonPGIvFsBZRXAQpW-z1MVNzoIBKaIHXZ-"/>
+</div>
+<span class="text-sm font-bold">M. Chen</span>
+</div>
+<div class="flex flex-col items-center gap-3">
+<div class="w-16 h-16 rounded-full ring-4 ring-white shadow-sm overflow-hidden">
+<img alt="Project Manager Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDrW7ErAXh_MiLnNHM6_rI_VeHch__J_HbnEWBt9JvVeV0GpuswRqWmnGtNMxGxax3UianW6QqU9a3yiod9GwM-kzAl-8NOxVhbAm5J0YBfg162BEE0pHt1zfBDpVvPOT1ZoUGDPO1Kq9xmhNCDxNIfDL_hC5sAhBr6HcawoS0DYM2P5ih7ewYKx5XR6SMHF-08cOlF6B4-eF2mgerg39kW3u-6A_LS6tRz-sA7BGUkefNmVVilSIjC4tP_PRA16YtoF1RIqtWRm96x"/>
+</div>
+<span class="text-sm font-bold">A. Weber</span>
+</div>
+<div class="flex flex-col items-center gap-3">
+<div class="w-16 h-16 rounded-full ring-4 ring-white shadow-sm overflow-hidden">
+<img alt="Engineer Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA58y_AxD2M2JXV3GK5nSe2ShqyfC4pIcWp5q67eoE4Kg2qfHwNgFxcQ3iUKZYu8-tBF6V6P8zh_9nUqN0acnZvJe9rH7QuFt8Drk0mUcfgNS_sqMe8BP-y2GZDJeN4VNDQ9VMt9bxyFOEqDRbN9a-irGHRMBehA7C81kihOMc_ChIc6gIf8_SdQdHT_n27kLedCYvtxtYZV1WtaTnVKsWc6sBIi_8CiohCkCFe0mxriywBru0Azejvy6XW7qi64haTNHueeFQg-nqA"/>
+</div>
+<span class="text-sm font-bold">J. Doe</span>
+</div>
+<div class="w-16 h-16 rounded-full border-2 border-dashed border-outline-variant flex items-center justify-center text-outline-variant cursor-pointer hover:border-primary hover:text-primary transition-colors">
+<span class="material-symbols-outlined">add</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Sidebar Stats -->
+<div class="col-span-12 lg:col-span-4 space-y-8">
+<!-- Progress Ring Card -->
+<div class="bg-white rounded-lg p-10 shadow-sm flex flex-col items-center text-center">
+<div class="relative w-40 h-40 mb-8">
+<svg class="w-full h-full -rotate-90">
+<circle cx="80" cy="80" fill="none" r="70" stroke="#F4F3F8" stroke-width="12"></circle>
+<circle cx="80" cy="80" fill="none" r="70" stroke="#0071E3" stroke-dasharray="440" stroke-dashoffset="154" stroke-linecap="round" stroke-width="12"></circle>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center">
+<span class="text-4xl font-extrabold text-on-surface">65%</span>
+<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Complete</span>
+</div>
+</div>
+<h4 class="text-lg font-bold mb-2">Technical Reporting</h4>
+<p class="text-on-surface-variant text-sm mb-6">Deliverable D3.4 is due soon. High priority for the curator.</p>
+<div class="w-full bg-surface-container p-4 rounded-xl flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">event_upcoming</span>
+<span class="text-sm font-semibold">Deadline</span>
+</div>
+<span class="text-sm font-bold text-error">14 Days left</span>
+</div>
+</div>
+<!-- AI Assistant Contextual Bubble -->
+<div class="glass-card rounded-lg p-8 relative overflow-hidden">
+<!-- AI Halo Gradient -->
+<div class="absolute top-0 right-0 w-32 h-32 bg-secondary opacity-10 blur-3xl"></div>
+<div class="flex items-center gap-3 mb-6">
+<div class="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-white">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">smart_toy</span>
+</div>
+<span class="font-bold text-sm">Curator Insights</span>
+</div>
+<p class="text-sm text-on-surface-variant italic leading-relaxed mb-6">
+                            "Based on recent Horizon calls, I recommend updating the 'Mobility' section with references to the new EU Data Space regulation to increase compliance scoring by 15%."
+                        </p>
+<button class="w-full py-3 bg-secondary/10 text-secondary font-bold text-sm rounded-full hover:bg-secondary/20 transition-colors">
+                            Apply Suggestion
+                        </button>
+</div>
+</div>
+</div>
+<!-- Visual Asset Section -->
+<div class="mt-16 mb-24 rounded-lg overflow-hidden h-[400px] relative group">
+<img class="w-full h-full object-cover grayscale-[20%] group-hover:scale-105 transition-transform duration-700" data-alt="futuristic aerial view of a sustainable city with electric buses, green rooftops, and solar panels integrated into sleek modern architecture" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD0uP1rZlheMF6N_bwUq6buxesOItQ1KqMJy_2mKddHuIOZKMlNk9GNfFReygu0Rgy_EioFyNzbyz97zQeKfUTf-bhrJKclG2WA-hraj4aF__8iRQ7zAMc9JzhO0Q5uEByrXH3ar5aYmQXwdgsPPuUjY-MdpScmnm-YrNX33nV_Co--DuKGK610JAKrYFIUGZti89ox8r304N8jFLTKCAGd00wVrb7QauiHvmqY6t5biyetr43tj8kRVDBV_Pq6F4SbruQh9m7RymEN"/>
+<div class="absolute inset-0 bg-gradient-to-t from-on-surface/80 to-transparent flex flex-col justify-end p-12">
+<p class="text-white/60 text-xs font-bold uppercase tracking-[0.3em] mb-2">Project Vision</p>
+<h3 class="text-white text-3xl font-bold max-w-xl">Accelerating the transition to carbon-neutral urban mobility ecosystems.</h3>
+</div>
+</div>
+</div>
+</main>
+</body></html>

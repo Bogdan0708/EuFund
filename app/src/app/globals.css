@@ -1,70 +1,82 @@
-@import '../styles/glass-tokens.css';
-@import '../styles/design-tokens.css';
+@import '../styles/tokens.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Glass utility class */
-.glass {
-  background: var(--bg-glass);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--glass-radius);
-}
-
-/* Provisional (AI-generated, not yet approved) */
-.provisional {
-  opacity: 0.7;
-  transition: opacity var(--transition-slow);
-}
-
-.provisional.approved {
-  opacity: 1;
-}
-
 @layer base {
-  :root {
-    --background: 210 33% 98%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 211 82% 44%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 214 32% 93%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 214 32% 95%;
-    --muted-foreground: 215 16% 39%;
-    --accent: 38 92% 94%;
-    --accent-foreground: 31 81% 29%;
-    --destructive: 0 75% 47%;
-    --destructive-foreground: 210 40% 98%;
-    --success: 150 68% 35%;
-    --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 31 81% 18%;
-    --info: 206 90% 45%;
-    --info-foreground: 0 0% 100%;
-    --border: 214 23% 88%;
-    --input: 214 23% 88%;
-    --ring: 206 90% 45%;
-    --radius: 0.75rem;
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: rgb(var(--background));
+    color: rgb(var(--on-surface));
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
+  }
+
+  ::selection {
+    background-color: rgb(var(--primary-fixed));
+    color: rgb(var(--on-primary-fixed));
   }
 }
 
-body {
-  font-family: var(--font-geist-sans), "Segoe UI", "Noto Sans", sans-serif;
-  background:
-    radial-gradient(circle at 0% 0%, hsl(205 100% 97%), transparent 35%),
-    radial-gradient(circle at 100% 0%, hsl(44 100% 95%), transparent 32%),
-    hsl(var(--background));
-  color: hsl(var(--foreground));
-}
+@layer components {
+  /* Glass card — Stitch V2 canonical. True frosted look: low alpha + strong blur.
+     Border + shadow preserve card definition so black text stays readable. */
+  .glass {
+    background: rgba(255, 255, 255, 0.30);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+  }
 
-*:focus-visible {
-  outline: 2px solid hsl(var(--ring));
-  outline-offset: 2px;
+  /* Keep glass-card as alias for backwards compat during migration */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.30);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+  }
+
+  [data-theme="dark"] .glass,
+  [data-theme="dark"] .glass-card {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+
+  .mesh-gradient {
+    background-color: rgb(var(--surface));
+    background-image:
+      radial-gradient(at 0% 0%, rgba(0, 113, 227, 0.15) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(74, 71, 210, 0.15) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(0, 113, 227, 0.10) 0px, transparent 50%),
+      radial-gradient(at 0% 100%, rgba(74, 71, 210, 0.10) 0px, transparent 50%);
+  }
+
+  .ai-halo {
+    background: radial-gradient(circle at center, rgba(74, 71, 210, 0.08) 0%, transparent 70%);
+  }
+
+  /* Live background orb keyframes */
+  @keyframes float-orb-1 {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    25% { transform: translate3d(60px, 40px, 0); }
+    50% { transform: translate3d(30px, -30px, 0); }
+    75% { transform: translate3d(-40px, 20px, 0); }
+  }
+
+  @keyframes float-orb-2 {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    25% { transform: translate3d(-50px, -30px, 0); }
+    50% { transform: translate3d(40px, 20px, 0); }
+    75% { transform: translate3d(20px, -40px, 0); }
+  }
+
+  @keyframes float-orb-3 {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    33% { transform: translate3d(-30px, 50px, 0); }
+    66% { transform: translate3d(50px, -20px, 0); }
+  }
 }

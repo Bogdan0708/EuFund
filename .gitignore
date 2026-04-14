@@ -3,6 +3,7 @@ app/.next/
 app/.env.local
 app/.env*.local
 *.tsbuildinfo
+.superpowers/
 
 # Local documentation with sensitive data (API keys exposed)
 QUICK_START.md
@@ -51,3 +52,4 @@ today_changes.patch
 
 # Worktrees
 .worktrees/
+.gstack/

@@ -47,6 +47,7 @@ const PROGRAM_CODE_MAP: Record<string, string> = {
   'PR-NE': 'PR-NE', 'PR-NV': 'PR-NV', 'PR-VEST': 'PR-VEST',
   'PR-CENTRU': 'PR-CENTRU', 'PR-SE': 'PR-SE', 'PR-SM': 'PR-SM',
   'PR-SV': 'PR-SV', 'PR-BI': 'PR-BI',
+  'GENERAL': 'GENERAL',
 };
 
 // ─── Poisoning / Validation Patterns (from pipeline.ts) ─────────────
@@ -362,7 +363,12 @@ async function processFile(
           titleRo: file.titleRo || null,
           chunkIndex: chunk.index,
           totalChunks: rawChunks.length,
-          ingestedAt: new Date().toISOString(),
+          source_url: (file as unknown as Record<string, unknown>).sourceUrl as string
+            || (file as unknown as Record<string, unknown>).guideUrl as string
+            || '',
+          last_verified: new Date().toISOString(),
+          content_hash: createHash('sha256').update(chunk.content).digest('hex'),
+          ingested_at: new Date().toISOString(),
         },
       });
     }

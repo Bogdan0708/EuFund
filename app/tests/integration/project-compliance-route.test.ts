@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 describe('POST /api/v1/projects/[id]/compliance', () => {
   it('rejects free-tier users before running compliance analysis', async () => {
     vi.resetModules();
+    vi.stubEnv('BILLING_ENABLED', 'true');
 
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'u@test.com' }),
@@ -45,5 +46,6 @@ describe('POST /api/v1/projects/[id]/compliance', () => {
 
     expect(response.status).toBe(403);
     expect(json.error.code).toBe('FORBIDDEN');
+    vi.unstubAllEnvs();
   });
 });

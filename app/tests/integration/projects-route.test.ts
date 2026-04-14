@@ -80,16 +80,20 @@ describe('POST /api/v1/projects organization context', () => {
     expect(json.error.details.reason).toBe('PROJECT_ORG_REQUIRED');
   });
 
-  it('rejects project creation when the user has no org membership and orgId is omitted', async () => {
+  it('auto-creates a personal org when user has no membership and orgId is omitted', async () => {
     vi.resetModules();
 
+    const insertReturning = vi.fn()
+      .mockResolvedValueOnce([{ id: 'auto-org-1' }])        // org insert .returning()
+      .mockResolvedValueOnce([{ id: 'project-1', orgId: 'auto-org-1', title: 'Project Alpha' }]); // project insert .returning()
+    const insertValues = vi.fn().mockReturnValue({ returning: insertReturning });
     const tx = {
       query: {
         orgMembers: {
           findMany: vi.fn().mockResolvedValue([]),
         },
       },
-      insert: vi.fn(),
+      insert: vi.fn().mockReturnValue({ values: insertValues }),
     };
 
     vi.doMock('@/lib/auth/helpers', () => ({
@@ -110,10 +114,9 @@ describe('POST /api/v1/projects organization context', () => {
         callId: '11111111-1111-4111-8111-111111111111',
       }),
     }));
-    const json = await response.json();
 
-    expect(response.status).toBe(409);
-    expect(json.error.code).toBe('CONFLICT');
-    expect(json.error.details.reason).toBe('PROJECT_ORG_REQUIRED');
+    expect(response.status).toBe(201);
+    const json = await response.json();
+    expect(json.success).toBe(true);
   });
 });

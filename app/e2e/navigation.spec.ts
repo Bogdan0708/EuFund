@@ -1,88 +1,78 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Sidebar navigation smoke tests', () => {
+test.describe('Sidebar navigation', () => {
+  const sidebarLinks = [
+    { href: '/ro/panou', label: /Acasă/i },
+    { href: '/ro/proiecte', label: /Proiecte/i },
+    { href: '/ro/finantari', label: /Apeluri de finanțare/i },
+    { href: '/ro/documente', label: /Fișiere/i },
+    { href: '/ro/asistent-ai', label: /Asistent AI/i },
+    { href: '/ro/setari', label: /Setări/i },
+  ];
+
+  test('all 6 sidebar navigation links are visible on dashboard', async ({ page }) => {
+    await page.goto('/ro/panou');
+    await page.waitForLoadState('networkidle');
+
+    for (const link of sidebarLinks) {
+      const anchor = page.locator(`a[href="${link.href}"]`).first();
+      await expect(anchor).toBeVisible({ timeout: 10_000 });
+    }
+  });
+
   const routes = [
-    {
-      name: 'Panou de control (Dashboard)',
-      url: '/ro/panou',
-      heading: /panou|dashboard|control/i,
-    },
-    {
-      name: 'Asistent AI',
-      url: '/ro/asistent',
-      heading: /asistent/i,
-    },
-    {
-      name: 'Apeluri și aplicații (Funding calls)',
-      url: '/ro/finantari/live',
-      heading: /apeluri|finanțare|funding/i,
-    },
-    {
-      name: 'Proiecte',
-      url: '/ro/proiecte',
-      heading: /aplicații|proiecte|apeluri/i,
-    },
-    {
-      name: 'Asistent Proiect',
-      url: '/ro/proiecte/asistent-proiect',
-      heading: /asistent|proiect|wizard/i,
-    },
-    {
-      name: 'Documente',
-      url: '/ro/documente/incarca',
-      heading: /documente|dovezi|încarcă/i,
-    },
-    {
-      name: 'Jurnal audit',
-      url: '/ro/audit',
-      heading: /audit|jurnal/i,
-    },
-    {
-      name: 'Setări',
-      url: '/ro/setari',
-      heading: /setări|settings/i,
-    },
+    { href: '/ro/panou', heading: /Panou principal/i },
+    { href: '/ro/proiecte', heading: /Proiecte/i },
+    { href: '/ro/finantari', heading: /Oportunitate Strategică/i },
+    { href: '/ro/documente', heading: /Fișiere/i },
+    { href: '/ro/asistent-ai', heading: /Curator Strategie Granturi/i },
+    { href: '/ro/setari', heading: /Cont și Preferințe/i },
   ];
 
   for (const route of routes) {
-    test(`${route.name} — ${route.url} loads successfully`, async ({ page }) => {
-      await page.goto(route.url);
+    test(`sidebar link navigates to ${route.href} with correct heading`, async ({ page }) => {
+      // Start on dashboard
+      await page.goto('/ro/panou');
+      await page.waitForLoadState('networkidle');
 
-      // Should not be redirected to login
-      await expect(page).not.toHaveURL(/autentificare/, { timeout: 15000 });
+      // Click the sidebar link
+      await page.locator(`a[href="${route.href}"]`).first().click();
+      await page.waitForLoadState('networkidle');
 
-      // Main content area should be present
-      await expect(page.getByRole('main')).toBeVisible({ timeout: 15000 });
+      // Verify URL
+      await expect(page).toHaveURL(new RegExp(route.href));
 
-      // No unhandled error page (Next.js error overlay or generic error)
-      await expect(page.locator('text=Application error')).not.toBeVisible();
-      await expect(page.locator('text=500')).not.toBeVisible();
-
-      // Some pages (funding calls, projects) show a LoadingState initially with no heading.
-      // Wait for any loading states to disappear before checking for headings.
-      const loadingSpinner = page.locator('.animate-spin');
-      await loadingSpinner.first().waitFor({ state: 'hidden', timeout: 30000 }).catch(() => {});
-
-      // Page should contain a heading or meaningful content matching the route
-      const headingOrContent = page.getByRole('heading').first();
-      await expect(headingOrContent).toBeVisible({ timeout: 15000 });
+      // Verify heading
+      await expect(page.getByRole('heading', { name: route.heading })).toBeVisible({
+        timeout: 10_000,
+      });
     });
   }
 
-  test('sidebar navigation links are visible on dashboard', async ({ page }) => {
-    await page.goto('/ro/panou');
-    await expect(page.getByRole('main')).toBeVisible({ timeout: 15000 });
+  for (const route of routes) {
+    test(`${route.href} has <main> element and at least one heading`, async ({ page }) => {
+      await page.goto(route.href);
+      await page.waitForLoadState('networkidle');
 
-    const nav = page.getByRole('navigation', { name: 'Navigare principală' });
-    await expect(nav).toBeVisible();
+      await expect(page.locator('main')).toBeVisible({ timeout: 10_000 });
 
-    // Check key sidebar links are present
-    await expect(nav.getByRole('link', { name: /Panou de control/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /Asistent AI/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /Apeluri și aplicații/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /Proiecte/i }).first()).toBeVisible();
-    await expect(nav.getByRole('link', { name: /Documente/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /Jurnal audit/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /Setări/i })).toBeVisible();
+      const headings = page.getByRole('heading');
+      await expect(headings.first()).toBeVisible({ timeout: 10_000 });
+    });
+  }
+
+  test('404 page shows custom error content', async ({ page }) => {
+    const response = await page.goto('/ro/nonexistent');
+    expect(response?.status()).toBe(404);
+
+    await expect(page.getByRole('heading', { name: '404' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Pagina nu a fost găsită')).toBeVisible();
+  });
+
+  test('locale root /ro redirects to /ro/panou', async ({ page }) => {
+    await page.goto('/ro');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page).toHaveURL(/\/ro\/panou/, { timeout: 10_000 });
   });
 });

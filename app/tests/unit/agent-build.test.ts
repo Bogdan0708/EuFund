@@ -1,93 +1,82 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { WorkflowContext, SSEStream, GatewayClient, ActionPlan, ProjectSection } from '@/lib/ai/orchestrator/types'
-
-const mockActionPlan: ActionPlan = {
-  matchedCall: { title: 'PNRR 4.2', program: 'PNRR', deadline: '2026-06-30', budget: { min: 100000, max: 5000000, currency: 'RON' }, sourceUrl: 'https://example.com' },
-  steps: [{ order: 1, title: 'Gather documents', description: 'Collect all required docs', category: 'document', dependencies: [] }],
-  requiredDocuments: [],
-  estimatedTimeline: '8 weeks',
-}
-
-const mockSections: ProjectSection[] = [
-  { title: 'Rezumat', content: 'Project summary content', order: 1, source: 'generated' },
-  { title: 'Context și justificare', content: 'Context and justification content', order: 2, source: 'generated' },
-]
+import type { WorkflowContext, SSEStream, GatewayClient, SectionResult } from '@/lib/ai/orchestrator/types'
+import { DEFAULT_SECTIONS } from '@/lib/ai/orchestrator/section-specs'
 
 const baseCtx: WorkflowContext = {
-  sessionId: 'test', userId: 'user-1', locale: 'ro', tier: 'plus', step: 7,
-  enhancedIdea: { originalIdea: 'solar panels', refinedDescription: 'Install solar panels on rural schools', sector: 'Energy', region: 'Nord-Est', targetGroup: 'Schools', estimatedBudget: '500000', keyObjectives: ['reduce costs', 'green transition'] },
-  matchedCalls: [{ callId: 'call-1', title: 'PNRR 4.2', program: 'PNRR', score: 90, thematicFit: 90, eligibilityFit: 90, budgetFit: 90, deadline: '2026-06-30', sourceUrl: 'https://example.com', reasoning: 'test' }],
-  validationResults: null,
-  researchResults: { callId: 'call-1', requirements: ['Legal entity'], forms: [], certificates: [], deadlines: [], additionalSections: [], rawFindings: 'research' },
-  actionPlan: mockActionPlan, projectSections: null, uploadedFiles: [],
+  sessionId: 'test', userId: 'user-1', locale: 'ro', tier: 'free', step: 5,
+  enhancedIdea: { originalIdea: 'solar', refinedDescription: 'Solar panels on schools', sector: 'Energy', region: 'Nord-Est', targetGroup: 'Schools', estimatedBudget: '500000', keyObjectives: ['green'] },
+  matchedCalls: [{ callId: 'c1', title: 'PNRR', program: 'PNRR', score: 90, thematicFit: 90, eligibilityFit: 90, budgetFit: 90, deadline: '2026-06-30', sourceUrl: 'https://example.com', reasoning: 'test' }],
+  selectedCallId: 'c1',
+  callBlueprint: null,
+  actionPlan: {
+    matchedCall: { title: 'PNRR', program: 'PNRR', deadline: '2026-06-30', budget: { min: 100000, max: 5000000, currency: 'EUR' }, sourceUrl: '' },
+    steps: [{ order: 1, title: 'Write', description: 'Write it', category: 'writing', dependencies: [] }],
+    requiredDocuments: [], estimatedTimeline: '8 weeks',
+  },
+  projectSections: null, uploadedFiles: [],
 }
 
-describe('Build Agent', () => {
-  it('returns project sections and no checkpoint', async () => {
+describe('Build Agent V2', () => {
+  it('generates one section per call using default specs', async () => {
+    let callCount = 0
     const mockStream: SSEStream = { send: vi.fn(), close: vi.fn() }
     const mockGateway: GatewayClient = {
-      generate: vi.fn().mockResolvedValue({ content: JSON.stringify(mockSections), tokensUsed: 3000 }),
+      generate: vi.fn().mockImplementation(() => {
+        callCount++
+        return Promise.resolve({
+          content: JSON.stringify({ title: `Section ${callCount}`, content: 'x'.repeat(300), order: callCount }),
+          tokensUsed: 1000,
+        })
+      }),
       embed: vi.fn(),
     }
     const { buildAgent } = await import('@/lib/ai/orchestrator/agents/build')
     const result = await buildAgent(baseCtx, '', mockStream, mockGateway)
-    expect(result.data.projectSections).toBeDefined()
-    expect(result.checkpoint).toBeNull()
-    expect(result.tokensUsed).toBe(3000)
-    const sections = result.data.projectSections as ProjectSection[]
-    expect(sections).toHaveLength(2)
-    expect(sections[0].title).toBe('Rezumat')
+    const sections = result.data.projectSections as SectionResult[]
+    expect(sections.length).toBe(DEFAULT_SECTIONS.length)
+    expect(callCount).toBe(DEFAULT_SECTIONS.length)
+    expect(sections[0].metadata).toBeDefined()
   })
 
-  it('streams each section as an ai_chunk event', async () => {
+  it('routes heavy sections to opus and light to gpt', async () => {
+    const calls: { provider: string; model: string }[] = []
     const mockStream: SSEStream = { send: vi.fn(), close: vi.fn() }
     const mockGateway: GatewayClient = {
-      generate: vi.fn().mockResolvedValue({ content: JSON.stringify(mockSections), tokensUsed: 2000 }),
+      generate: vi.fn().mockImplementation((opts) => {
+        calls.push({ provider: opts.provider, model: opts.model })
+        return Promise.resolve({ content: JSON.stringify({ title: 'T', content: 'x'.repeat(300), order: 1 }), tokensUsed: 1000 })
+      }),
       embed: vi.fn(),
     }
     const { buildAgent } = await import('@/lib/ai/orchestrator/agents/build')
     await buildAgent(baseCtx, '', mockStream, mockGateway)
-    const aiChunkCalls = (mockStream.send as ReturnType<typeof vi.fn>).mock.calls.filter(
-      (call: unknown[]) => (call[0] as { type: string }).type === 'ai_chunk'
-    )
-    // One ai_chunk per section
-    expect(aiChunkCalls).toHaveLength(2)
-    expect(aiChunkCalls[0][0].content).toContain('Rezumat')
+    // Heavy sections → critical tier (opus), light → standard tier (sonnet)
+    expect(calls.some(c => c.model === 'claude-opus-4-6')).toBe(true)
+    expect(calls.some(c => c.model === 'claude-sonnet-4-6')).toBe(true)
   })
 
-  it('uses claude for pro tier users', async () => {
+  it('continues on section failure with placeholder', async () => {
+    // Section 3 (index 2): primary call fails, fallback also fails → section becomes 'failed'
+    // Calls 3 and 4 correspond to primary + fallback for section 3
+    let callCount = 0
     const mockStream: SSEStream = { send: vi.fn(), close: vi.fn() }
     const mockGateway: GatewayClient = {
-      generate: vi.fn().mockResolvedValue({ content: JSON.stringify(mockSections), tokensUsed: 2000 }),
+      generate: vi.fn().mockImplementation(() => {
+        callCount++
+        // Calls 3 and 4 are primary + fallback for section 3 — both fail
+        if (callCount === 3 || callCount === 4) throw new Error('Model failed')
+        return Promise.resolve({ content: JSON.stringify({ title: `S${callCount}`, content: 'x'.repeat(300), order: callCount }), tokensUsed: 1000 })
+      }),
       embed: vi.fn(),
     }
     const { buildAgent } = await import('@/lib/ai/orchestrator/agents/build')
-    await buildAgent({ ...baseCtx, tier: 'pro' }, '', mockStream, mockGateway)
-    expect(mockGateway.generate).toHaveBeenCalledWith(expect.objectContaining({ provider: 'claude', model: 'claude-sonnet-4-6' }))
+    const result = await buildAgent(baseCtx, '', mockStream, mockGateway)
+    const sections = result.data.projectSections as SectionResult[]
+    expect(sections.some(s => s.source === 'failed')).toBe(true)
+    expect(sections.length).toBe(DEFAULT_SECTIONS.length)
   })
 
-  it('uses gemini for free tier users', async () => {
-    const mockStream: SSEStream = { send: vi.fn(), close: vi.fn() }
-    const mockGateway: GatewayClient = {
-      generate: vi.fn().mockResolvedValue({ content: JSON.stringify(mockSections), tokensUsed: 1500 }),
-      embed: vi.fn(),
-    }
-    const { buildAgent } = await import('@/lib/ai/orchestrator/agents/build')
-    await buildAgent({ ...baseCtx, tier: 'free' }, '', mockStream, mockGateway)
-    expect(mockGateway.generate).toHaveBeenCalledWith(expect.objectContaining({ provider: 'gemini' }))
-  })
-
-  it('throws when AI response is not valid JSON', async () => {
-    const mockStream: SSEStream = { send: vi.fn(), close: vi.fn() }
-    const mockGateway: GatewayClient = {
-      generate: vi.fn().mockResolvedValue({ content: 'Not valid JSON', tokensUsed: 100 }),
-      embed: vi.fn(),
-    }
-    const { buildAgent } = await import('@/lib/ai/orchestrator/agents/build')
-    await expect(buildAgent(baseCtx, '', mockStream, mockGateway)).rejects.toThrow('Failed to parse project sections from AI response')
-  })
-
-  it('throws when actionPlan or enhancedIdea are missing', async () => {
+  it('throws when actionPlan or enhancedIdea missing', async () => {
     const mockStream: SSEStream = { send: vi.fn(), close: vi.fn() }
     const mockGateway: GatewayClient = { generate: vi.fn(), embed: vi.fn() }
     const { buildAgent } = await import('@/lib/ai/orchestrator/agents/build')
