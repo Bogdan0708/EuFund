@@ -12,6 +12,18 @@
 
 **Prerequisite:** Managed Agents Phase 3 work merged to master before this PR opens (per spec §10.7). Do not parallelize.
 
+## Plan revisions
+
+**2026-04-14 audit fixes (commit pending):**
+- **Fix 1 (RLS execution path):** RLS `ALTER TABLE` + `CREATE POLICY` statements now live inside `0025_senior_review_audit.sql` (the only SQL executed by `migrate.ts`). The `rls.sql` edit is kept as a developer-reference mirror, clearly labelled as non-executed.
+- **Fix 2 (RLS-aware DB access):** `audit.ts` and `budget.ts` now take a `userId` argument and wrap all queries in `withUserRLS(userId, ...)` so the new RLS policies see the tenant. Callers (service, gate helpers, tests) pass `userId` through.
+- **Fix 3 (flag targeting context):** `requestSeniorReview()` accepts `userId` and optional `tier`; both are forwarded to every `isFeatureEnabled()` call so percentage rollout and tier targeting actually resolve instead of silently returning false.
+- **Fix 4 (provider field):** Backend call includes `provider: 'anthropic'` as required by `GenerateRequest`.
+- **Fix 5 (metrics circular import + format):** `senior-review/metrics.ts` self-registers on module load; no reverse import into `monitoring/metrics.ts`. Eager bootstrap is via a side-effect import in `instrumentation.ts` (if present). Histogram assertion loosened to match the existing registry's non-standard output format.
+- **Fix 6 (auditRef nullability):** `SeniorReview.auditRef` is now `string | null`. Returned as `null` when no review row was persisted (flag-disabled path). Callers must not persist null as a FK — documented in the type.
+
+All fixes land as edits to the tasks below, not a separate patch task. Any engineer executing the plan reads the current task bodies, which already reflect the fixes.
+
 ---
 
 ## File Map
@@ -96,8 +108,10 @@ Expected: FAIL — `agentSeniorReviews is not exported from '@/lib/db/schema'`.
 Create `app/drizzle/0025_senior_review_audit.sql`:
 
 ```sql
--- PR 1: Senior Review primitive — audit tables
+-- PR 1: Senior Review primitive — audit tables + RLS policies.
 -- One logical review row per consult event; one attempt row per backend call.
+-- RLS must be applied here (drizzle migrations are the only SQL the app runs).
+-- app/src/lib/db/rls.sql is a design reference, not an execution artifact.
 CREATE TABLE IF NOT EXISTS "agent_senior_reviews" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "session_id" uuid NOT NULL REFERENCES "agent_sessions"("id") ON DELETE CASCADE,
@@ -132,6 +146,26 @@ CREATE INDEX IF NOT EXISTS "idx_senior_reviews_session" ON "agent_senior_reviews
 CREATE INDEX IF NOT EXISTS "idx_senior_reviews_stage_status" ON "agent_senior_reviews"("stage", "status");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_senior_review_attempts_review" ON "agent_senior_review_attempts"("review_id");
+--> statement-breakpoint
+
+-- RLS: tenant isolation via agent_sessions.user_id (same pattern as existing agent_* tables).
+ALTER TABLE "agent_senior_reviews" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+CREATE POLICY "senior_reviews_tenant_isolation" ON "agent_senior_reviews"
+  USING ("session_id" IN (
+    SELECT "id" FROM "agent_sessions"
+    WHERE "user_id" = current_setting('app.current_user_id', true)::uuid
+  ));
+--> statement-breakpoint
+
+ALTER TABLE "agent_senior_review_attempts" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+CREATE POLICY "senior_review_attempts_tenant_isolation" ON "agent_senior_review_attempts"
+  USING ("review_id" IN (
+    SELECT r."id" FROM "agent_senior_reviews" r
+    JOIN "agent_sessions" s ON s."id" = r."session_id"
+    WHERE s."user_id" = current_setting('app.current_user_id', true)::uuid
+  ));
 ```
 
 - [ ] **Step 4: Register the migration in the journal**
@@ -190,27 +224,9 @@ export const agentSeniorReviewAttempts = pgTable('agent_senior_review_attempts',
 
 If `jsonb`, `integer`, `text`, or `index` imports are missing at the top of `schema.ts`, add them to the existing `drizzle-orm/pg-core` import list.
 
-- [ ] **Step 6: Add RLS policies**
+- [ ] **Step 6: Mirror RLS policies into `rls.sql` design reference**
 
-Append to `app/src/lib/db/rls.sql`:
-
-```sql
--- Senior Review tables: tenant isolation via agent_sessions.user_id
-ALTER TABLE agent_senior_reviews ENABLE ROW LEVEL SECURITY;
-CREATE POLICY senior_reviews_tenant_isolation ON agent_senior_reviews
-  USING (session_id IN (
-    SELECT id FROM agent_sessions
-    WHERE user_id = current_setting('app.current_user_id', true)::uuid
-  ));
-
-ALTER TABLE agent_senior_review_attempts ENABLE ROW LEVEL SECURITY;
-CREATE POLICY senior_review_attempts_tenant_isolation ON agent_senior_review_attempts
-  USING (review_id IN (
-    SELECT r.id FROM agent_senior_reviews r
-    JOIN agent_sessions s ON s.id = r.session_id
-    WHERE s.user_id = current_setting('app.current_user_id', true)::uuid
-  ));
-```
+Keep `app/src/lib/db/rls.sql` in sync with the migration for developer reference. Append the same `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` + `CREATE POLICY` blocks you just added to the migration. This file is not executed — the drizzle migration is authoritative — but keeping it in sync prevents it from becoming misleading.
 
 - [ ] **Step 7: Run schema smoke test to verify pass**
 
@@ -356,7 +372,10 @@ export interface SeniorReview<M = unknown> {
   modifiedInput?: M;
   advisoryNarrative?: BilingualReason;
   rewriteStrategy?: 'tighten' | 'restructure' | 'evidence_repair' | 'scope_reduce';
-  auditRef: string;
+  // Logical review id (joins to agent_senior_reviews.id + agent_senior_review_attempts.review_id).
+  // null when no row was persisted — i.e. feature disabled, or unreachable disabled path.
+  // Callers must treat null as "no audit linkage" and must not persist it as a FK.
+  auditRef: string | null;
   schemaVersion: string;
   shadowMode?: boolean;
 }
@@ -1046,6 +1065,7 @@ export async function consultOpus(req: ConsultRequest): Promise<SeniorReviewResp
   try {
     const result = await Promise.race([
       anthropicProvider.generate({
+        provider: 'anthropic',
         model: req.modelId,
         system: buildSystemPrompt(),
         messages: [{ role: 'user', content: buildStageTurn(req.stage, req.payload) }],
@@ -1130,34 +1150,29 @@ Create `app/tests/unit/senior-review/audit.test.ts`:
 ```typescript
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const insertReviewMock = vi.fn();
-const insertAttemptMock = vi.fn();
-const updateReviewMock = vi.fn();
+const withUserRLSMock = vi.fn(async (_userId: string, fn: (tx: unknown) => unknown) => fn({
+  insert: vi.fn(() => ({ values: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: 'review-id' }]) })) })),
+  update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
+}));
 
 vi.mock('@/lib/db', () => ({
-  db: {
-    insert: vi.fn((table) => {
-      const isReviews = (table as { _?: { name?: string } })._?.name?.includes('reviews_');
-      return { values: (v: unknown) => ({
-        returning: vi.fn().mockResolvedValue([{ id: isReviews ? 'attempt-id' : 'review-id' }]),
-      }) };
-    }),
-    update: vi.fn(() => ({ set: vi.fn(() => ({ where: updateReviewMock.mockResolvedValue(undefined) })) })),
-  },
+  withUserRLS: (...args: unknown[]) => withUserRLSMock(...(args as [string, (tx: unknown) => unknown])),
+  db: {},
 }));
 
 import { createReview, recordAttempt, finalizeReview } from '@/lib/ai/agent/senior-review/audit';
 
-describe('senior-review audit persistence', () => {
-  beforeEach(() => {
-    insertReviewMock.mockReset();
-    insertAttemptMock.mockReset();
-    updateReviewMock.mockReset();
-  });
+const USER_ID = '33333333-3333-4333-8333-333333333333';
+const SESSION_ID = '11111111-1111-4111-8111-111111111111';
+const REVIEW_ID = '22222222-2222-4222-8222-222222222222';
 
-  it('createReview inserts a review row with initial status suppressed_budget if budget suppresses', async () => {
+describe('senior-review audit persistence', () => {
+  beforeEach(() => { withUserRLSMock.mockClear(); });
+
+  it('createReview wraps insert in withUserRLS with userId', async () => {
     const id = await createReview({
-      sessionId: '11111111-1111-4111-8111-111111111111',
+      userId: USER_ID,
+      sessionId: SESSION_ID,
       stage: 'section_recovery',
       policyType: 'conditional',
       invokingMutation: 'saveSectionDraft',
@@ -1167,11 +1182,13 @@ describe('senior-review audit persistence', () => {
       initialStatus: 'suppressed_budget',
     });
     expect(id).toBeTruthy();
+    expect(withUserRLSMock).toHaveBeenCalledWith(USER_ID, expect.any(Function));
   });
 
   it('createReview returns the newly-created review id', async () => {
     const id = await createReview({
-      sessionId: '11111111-1111-4111-8111-111111111111',
+      userId: USER_ID,
+      sessionId: SESSION_ID,
       stage: 'call_selection',
       policyType: 'mandatory',
       invokingMutation: 'setSelectedCall',
@@ -1183,19 +1200,21 @@ describe('senior-review audit persistence', () => {
     expect(typeof id).toBe('string');
   });
 
-  it('recordAttempt inserts attempt row with index and outcome', async () => {
+  it('recordAttempt wraps insert in withUserRLS with userId', async () => {
     await recordAttempt({
-      reviewId: '22222222-2222-4222-8222-222222222222',
+      userId: USER_ID,
+      reviewId: REVIEW_ID,
       attemptIndex: 0,
       latencyMs: 1234,
       outcome: 'success',
     });
-    // Persistence verified via mock; no throw == pass.
+    expect(withUserRLSMock).toHaveBeenCalledWith(USER_ID, expect.any(Function));
   });
 
-  it('finalizeReview updates status, verdict, totals, and summary', async () => {
+  it('finalizeReview wraps update in withUserRLS with userId', async () => {
     await finalizeReview({
-      reviewId: '22222222-2222-4222-8222-222222222222',
+      userId: USER_ID,
+      reviewId: REVIEW_ID,
       status: 'completed',
       verdict: 'proceed',
       failureReason: null,
@@ -1203,6 +1222,7 @@ describe('senior-review audit persistence', () => {
       totalLatencyMs: 1234,
       reviewSummary: 'all good',
     });
+    expect(withUserRLSMock).toHaveBeenCalledWith(USER_ID, expect.any(Function));
   });
 });
 ```
@@ -1221,9 +1241,10 @@ Create `app/src/lib/ai/agent/senior-review/audit.ts`:
 ```typescript
 // Senior Review audit persistence. Two-level identity: one review row per
 // logical consult event, one attempt row per backend call.
+// All writes go through withUserRLS so the new RLS policies see the tenant.
 // See spec §5.7, §9.
 
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { agentSeniorReviews, agentSeniorReviewAttempts } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import type {
@@ -1231,6 +1252,7 @@ import type {
 } from './types';
 
 export interface CreateReviewArgs {
+  userId: string;
   sessionId: string;
   stage: Stage;
   policyType: PolicyType;
@@ -1242,25 +1264,28 @@ export interface CreateReviewArgs {
 }
 
 export async function createReview(args: CreateReviewArgs): Promise<string> {
-  const [row] = await db
-    .insert(agentSeniorReviews)
-    .values({
-      sessionId: args.sessionId,
-      stage: args.stage,
-      policyType: args.policyType,
-      invokingMutation: args.invokingMutation,
-      invokingToolResult: args.invokingToolResult,
-      triggeredBy: args.triggeredBy,
-      status: args.initialStatus,
-      schemaVersion: args.schemaVersion,
-      totalAttempts: 0,
-      totalLatencyMs: 0,
-    })
-    .returning({ id: agentSeniorReviews.id });
-  return row.id;
+  return withUserRLS(args.userId, async (tx) => {
+    const [row] = await tx
+      .insert(agentSeniorReviews)
+      .values({
+        sessionId: args.sessionId,
+        stage: args.stage,
+        policyType: args.policyType,
+        invokingMutation: args.invokingMutation,
+        invokingToolResult: args.invokingToolResult,
+        triggeredBy: args.triggeredBy,
+        status: args.initialStatus,
+        schemaVersion: args.schemaVersion,
+        totalAttempts: 0,
+        totalLatencyMs: 0,
+      })
+      .returning({ id: agentSeniorReviews.id });
+    return row.id;
+  });
 }
 
 export interface RecordAttemptArgs {
+  userId: string;
   reviewId: string;
   attemptIndex: number;
   latencyMs: number;
@@ -1268,15 +1293,18 @@ export interface RecordAttemptArgs {
 }
 
 export async function recordAttempt(args: RecordAttemptArgs): Promise<void> {
-  await db.insert(agentSeniorReviewAttempts).values({
-    reviewId: args.reviewId,
-    attemptIndex: args.attemptIndex,
-    latencyMs: args.latencyMs,
-    outcome: args.outcome,
+  await withUserRLS(args.userId, async (tx) => {
+    await tx.insert(agentSeniorReviewAttempts).values({
+      reviewId: args.reviewId,
+      attemptIndex: args.attemptIndex,
+      latencyMs: args.latencyMs,
+      outcome: args.outcome,
+    });
   });
 }
 
 export interface FinalizeReviewArgs {
+  userId: string;
   reviewId: string;
   status: ConsultStatus;
   verdict: ReviewVerdict | null;
@@ -1287,17 +1315,19 @@ export interface FinalizeReviewArgs {
 }
 
 export async function finalizeReview(args: FinalizeReviewArgs): Promise<void> {
-  await db
-    .update(agentSeniorReviews)
-    .set({
-      status: args.status,
-      verdict: args.verdict,
-      failureReason: args.failureReason,
-      totalAttempts: args.totalAttempts,
-      totalLatencyMs: args.totalLatencyMs,
-      reviewSummary: args.reviewSummary,
-    })
-    .where(eq(agentSeniorReviews.id, args.reviewId));
+  await withUserRLS(args.userId, async (tx) => {
+    await tx
+      .update(agentSeniorReviews)
+      .set({
+        status: args.status,
+        verdict: args.verdict,
+        failureReason: args.failureReason,
+        totalAttempts: args.totalAttempts,
+        totalLatencyMs: args.totalLatencyMs,
+        reviewSummary: args.reviewSummary,
+      })
+      .where(eq(agentSeniorReviews.id, args.reviewId));
+  });
 }
 ```
 
@@ -1331,46 +1361,46 @@ Create `app/tests/unit/senior-review/budget.test.ts`:
 ```typescript
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const countFn = vi.fn();
+let currentCount = 0;
+const withUserRLSMock = vi.fn(async (_userId: string, fn: (tx: unknown) => unknown) => fn({
+  select: () => ({ from: () => ({ where: () => Promise.resolve([{ count: currentCount }]) }) }),
+}));
+
 vi.mock('@/lib/db', () => ({
-  db: {
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          then: (cb: (rows: unknown[]) => unknown) => cb([{ count: countFn() }]),
-        }),
-      }),
-    }),
-  },
+  withUserRLS: (...args: unknown[]) => withUserRLSMock(...(args as [string, (tx: unknown) => unknown])),
+  db: {},
 }));
 
 import { checkConditionalBudget } from '@/lib/ai/agent/senior-review/budget';
 import { BUDGET_CONFIG } from '@/lib/ai/agent/senior-review/config';
 
+const USER_ID = '33333333-3333-4333-8333-333333333333';
+
 describe('checkConditionalBudget', () => {
-  beforeEach(() => { countFn.mockReset(); });
+  beforeEach(() => { withUserRLSMock.mockClear(); });
 
   it('returns ok when count < soft cap', async () => {
-    countFn.mockReturnValue(3);
-    const r = await checkConditionalBudget({ sessionId: 'sid' });
+    currentCount = 3;
+    const r = await checkConditionalBudget({ userId: USER_ID, sessionId: 'sid' });
     expect(r).toEqual({ status: 'ok', currentCount: 3 });
+    expect(withUserRLSMock).toHaveBeenCalledWith(USER_ID, expect.any(Function));
   });
 
   it('returns warning when count at soft cap boundary', async () => {
-    countFn.mockReturnValue(BUDGET_CONFIG.conditionalSoftCap);
-    const r = await checkConditionalBudget({ sessionId: 'sid' });
+    currentCount = BUDGET_CONFIG.conditionalSoftCap;
+    const r = await checkConditionalBudget({ userId: USER_ID, sessionId: 'sid' });
     expect(r.status).toBe('warning');
   });
 
   it('returns warning when count between soft and hard caps', async () => {
-    countFn.mockReturnValue(BUDGET_CONFIG.conditionalSoftCap + 1);
-    const r = await checkConditionalBudget({ sessionId: 'sid' });
+    currentCount = BUDGET_CONFIG.conditionalSoftCap + 1;
+    const r = await checkConditionalBudget({ userId: USER_ID, sessionId: 'sid' });
     expect(r.status).toBe('warning');
   });
 
   it('returns suppressed when count reaches hard cap', async () => {
-    countFn.mockReturnValue(BUDGET_CONFIG.conditionalHardCap);
-    const r = await checkConditionalBudget({ sessionId: 'sid' });
+    currentCount = BUDGET_CONFIG.conditionalHardCap;
+    const r = await checkConditionalBudget({ userId: USER_ID, sessionId: 'sid' });
     expect(r.status).toBe('suppressed');
   });
 });
@@ -1391,9 +1421,10 @@ Create `app/src/lib/ai/agent/senior-review/budget.ts`:
 // Senior Review per-session budget accounting. Mandatory gates are not
 // budgeted (they fire at most once per session each). Conditional gates
 // respect soft (warn) and hard (suppress) caps.
+// Reads go through withUserRLS so the new RLS policies see the tenant.
 // See spec §5.5.
 
-import { db } from '@/lib/db';
+import { withUserRLS } from '@/lib/db';
 import { agentSeniorReviews } from '@/lib/db/schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { BUDGET_CONFIG } from './config';
@@ -1401,6 +1432,7 @@ import { BUDGET_CONFIG } from './config';
 export type BudgetStatus = 'ok' | 'warning' | 'suppressed';
 
 export interface CheckBudgetArgs {
+  userId: string;
   sessionId: string;
 }
 
@@ -1412,16 +1444,18 @@ export interface BudgetCheckResult {
 const CONDITIONAL_STAGES = ['eligibility_verdict', 'section_recovery', 'contradiction_override'] as const;
 
 export async function checkConditionalBudget(args: CheckBudgetArgs): Promise<BudgetCheckResult> {
-  const rows = (await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(agentSeniorReviews)
-    .where(and(
-      eq(agentSeniorReviews.sessionId, args.sessionId),
-      eq(agentSeniorReviews.policyType, 'conditional'),
-      inArray(agentSeniorReviews.stage, CONDITIONAL_STAGES as unknown as string[]),
-    ))) as Array<{ count: number }>;
+  const currentCount = await withUserRLS(args.userId, async (tx) => {
+    const rows = (await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(agentSeniorReviews)
+      .where(and(
+        eq(agentSeniorReviews.sessionId, args.sessionId),
+        eq(agentSeniorReviews.policyType, 'conditional'),
+        inArray(agentSeniorReviews.stage, CONDITIONAL_STAGES as unknown as string[]),
+      ))) as Array<{ count: number }>;
+    return rows[0]?.count ?? 0;
+  });
 
-  const currentCount = rows[0]?.count ?? 0;
   if (currentCount >= BUDGET_CONFIG.conditionalHardCap) return { status: 'suppressed', currentCount };
   if (currentCount >= BUDGET_CONFIG.conditionalSoftCap) return { status: 'warning', currentCount };
   return { status: 'ok', currentCount };
@@ -1484,10 +1518,15 @@ describe('senior-review metrics', () => {
     expect(out).toMatch(/senior_review_consults_total\{[^}]*stage="call_selection"[^}]*\} 1/);
   });
 
-  it('observeConsultLatency records a histogram sample', () => {
+  it('observeConsultLatency records into the histogram', () => {
+    // The existing registry uses non-standard output format for histograms
+    // (appends _count/_sum to the labels, not the metric name). We assert
+    // only that the metric line contains stage label and some sample body —
+    // exact output format is a Prometheus-library concern, not our spec.
     observeConsultLatency('outline_freeze', 2300);
     const out = metrics.toPrometheus();
-    expect(out).toMatch(/senior_review_consult_duration_ms_count\{stage="outline_freeze"\} \d+/);
+    expect(out).toContain('senior_review_consult_duration_ms');
+    expect(out).toContain('stage="outline_freeze"');
   });
 
   it('trackDecisionChanged emits expected change_type label', () => {
@@ -1589,17 +1628,26 @@ export function trackDecisionChanged(stage: Stage, changeType: DecisionChangeTyp
 export function setActiveConsults(count: number): void {
   metrics.set('senior_review_active_consults', {}, count);
 }
-```
 
-- [ ] **Step 4: Wire registration into `monitoring/metrics.ts`**
-
-Add to the bottom of `app/src/lib/monitoring/metrics.ts`:
-
-```typescript
-// ─── Senior Review metrics (registered eagerly at module load) ─────
-import { registerSeniorReviewMetrics } from '@/lib/ai/agent/senior-review/metrics';
+// Self-register on module load. Any import of this file guarantees metrics
+// exist before scraping. Avoids a circular import that would otherwise go
+// monitoring/metrics → senior-review/metrics → monitoring/metrics.
 registerSeniorReviewMetrics();
 ```
+
+Do **not** add a reverse import into `app/src/lib/monitoring/metrics.ts`. Registration fires whenever any senior-review source module is imported (which happens at the first call to `requestSeniorReview`, via `service.ts` → `metrics.ts`). For belt-and-braces eager registration during app boot, add the import to the existing instrumentation bootstrap — see Step 4.
+
+- [ ] **Step 4: Add eager registration at app bootstrap**
+
+Add to the top of `app/src/instrumentation.ts` (if present; otherwise skip — lazy registration via service import is sufficient):
+
+```typescript
+// Eagerly register Senior Review metrics so Prometheus scraping sees the
+// zero-valued series before the first consult fires.
+import '@/lib/ai/agent/senior-review/metrics';
+```
+
+This is a side-effect import. The module's self-registration runs once at bootstrap.
 
 - [ ] **Step 5: Run metrics test to verify pass**
 
@@ -1612,9 +1660,10 @@ Expected: PASS.
 
 ```bash
 git add app/src/lib/ai/agent/senior-review/metrics.ts \
-        app/src/lib/monitoring/metrics.ts \
         app/tests/unit/senior-review/metrics.test.ts
-git commit -m "feat(senior-review): Prometheus metrics registration (PR 1 task 9)"
+# Only include instrumentation.ts if it exists and you added the import there:
+# git add app/src/instrumentation.ts
+git commit -m "feat(senior-review): Prometheus metrics self-registration (PR 1 task 9)"
 ```
 
 ---
@@ -1709,8 +1758,18 @@ import { createMockBackend } from './fixtures/mock-backend';
 import { TimeoutError, RateLimitError, MalformedResponseError } from '@/lib/ai/agent/senior-review/types';
 
 const SESSION_ID = '11111111-1111-4111-8111-111111111111';
+const USER_ID = '33333333-3333-4333-8333-333333333333';
+const BASE_ARGS = {
+  sessionId: SESSION_ID,
+  userId: USER_ID,
+  tier: 'pro' as const,
+  invokingMutation: null as string | null,
+  invokingToolResult: null as string | null,
+  triggeredBy: null as string[] | null,
+};
 
 function defaultFlags() {
+  // Default: enabled flag on, shadow off. Tests override as needed.
   flagCheckMock.mockImplementation(async (key: string) => key === 'senior_review_enabled');
 }
 
@@ -1724,15 +1783,26 @@ describe('requestSeniorReview', () => {
     defaultFlags();
   });
 
+  it('passes userId and tier into isFeatureEnabled for targeting', async () => {
+    const backend = createMockBackend();
+    backend.queueSuccess({ verdict: 'proceed', reasons: [], riskFlags: [], schemaVersion: 'v1' });
+    await requestSeniorReview({
+      ...BASE_ARGS, stage: 'contradiction_override', payload: {},
+    }, { backend });
+    expect(flagCheckMock).toHaveBeenCalledWith(
+      'senior_review_enabled',
+      { userId: USER_ID, tier: 'pro' },
+    );
+  });
+
   it('returns proceed verdict with auditRef on first-try success', async () => {
     const backend = createMockBackend();
     backend.queueSuccess({ verdict: 'proceed', reasons: [], riskFlags: [], schemaVersion: 'v1' });
 
     const review = await requestSeniorReview({
+      ...BASE_ARGS,
       stage: 'contradiction_override',
-      sessionId: SESSION_ID,
       payload: { foo: 'bar' },
-      invokingMutation: null,
       invokingToolResult: 'run-eligibility',
       triggeredBy: ['test'],
     }, { backend });
@@ -1740,7 +1810,9 @@ describe('requestSeniorReview', () => {
     expect(review.verdict).toBe('proceed');
     expect(review.auditRef).toBe('review-id');
     expect(backend.callCount).toBe(1);
-    expect(finalizeReviewMock).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
+    expect(finalizeReviewMock).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'completed', userId: USER_ID,
+    }));
   });
 
   it('retries once after a TimeoutError then succeeds on second attempt', async () => {
@@ -1749,8 +1821,7 @@ describe('requestSeniorReview', () => {
     backend.queueSuccess({ verdict: 'proceed', reasons: [], riskFlags: [], schemaVersion: 'v1' });
 
     const review = await requestSeniorReview({
-      stage: 'contradiction_override', sessionId: SESSION_ID, payload: {},
-      invokingMutation: null, invokingToolResult: null, triggeredBy: null,
+      ...BASE_ARGS, stage: 'contradiction_override', payload: {},
     }, { backend });
 
     expect(review.verdict).toBe('proceed');
@@ -1764,8 +1835,8 @@ describe('requestSeniorReview', () => {
     backend.queueError(new TimeoutError('t3'));
 
     const review = await requestSeniorReview({
-      stage: 'call_selection', sessionId: SESSION_ID, payload: {},
-      invokingMutation: 'setSelectedCall', invokingToolResult: null, triggeredBy: null,
+      ...BASE_ARGS, stage: 'call_selection', payload: {},
+      invokingMutation: 'setSelectedCall',
     }, { backend });
 
     expect(review.verdict).toBe('block');
@@ -1782,8 +1853,8 @@ describe('requestSeniorReview', () => {
     backend.queueError(new RateLimitError('r3'));
 
     const review = await requestSeniorReview({
-      stage: 'section_recovery', sessionId: SESSION_ID, payload: {},
-      invokingMutation: 'saveSectionDraft', invokingToolResult: null, triggeredBy: ['repeated_failure'],
+      ...BASE_ARGS, stage: 'section_recovery', payload: {},
+      invokingMutation: 'saveSectionDraft', triggeredBy: ['repeated_failure'],
     }, { backend });
 
     expect(review.verdict).toBe('proceed');
@@ -1797,8 +1868,8 @@ describe('requestSeniorReview', () => {
     backend.queueError(new MalformedResponseError('bad'));
 
     const review = await requestSeniorReview({
-      stage: 'call_selection', sessionId: SESSION_ID, payload: {},
-      invokingMutation: 'setSelectedCall', invokingToolResult: null, triggeredBy: null,
+      ...BASE_ARGS, stage: 'call_selection', payload: {},
+      invokingMutation: 'setSelectedCall',
     }, { backend });
 
     expect(review.verdict).toBe('block');
@@ -1813,8 +1884,8 @@ describe('requestSeniorReview', () => {
     const backend = createMockBackend();
 
     const review = await requestSeniorReview({
-      stage: 'section_recovery', sessionId: SESSION_ID, payload: {},
-      invokingMutation: 'saveSectionDraft', invokingToolResult: null, triggeredBy: null,
+      ...BASE_ARGS, stage: 'section_recovery', payload: {},
+      invokingMutation: 'saveSectionDraft',
     }, { backend });
 
     expect(review.verdict).toBe('proceed');
@@ -1835,8 +1906,8 @@ describe('requestSeniorReview', () => {
     });
 
     const review = await requestSeniorReview({
-      stage: 'call_selection', sessionId: SESSION_ID, payload: {},
-      invokingMutation: 'setSelectedCall', invokingToolResult: null, triggeredBy: null,
+      ...BASE_ARGS, stage: 'call_selection', payload: {},
+      invokingMutation: 'setSelectedCall',
     }, { backend });
 
     expect(review.verdict).toBe('proceed');
@@ -1844,16 +1915,17 @@ describe('requestSeniorReview', () => {
     expect(backend.callCount).toBe(1);
   });
 
-  it('disabled flag: skips consult entirely and returns proceed', async () => {
+  it('disabled flag: skips consult entirely and returns proceed with null auditRef', async () => {
     flagCheckMock.mockResolvedValue(false);
     const backend = createMockBackend();
 
     const review = await requestSeniorReview({
-      stage: 'call_selection', sessionId: SESSION_ID, payload: {},
-      invokingMutation: 'setSelectedCall', invokingToolResult: null, triggeredBy: null,
+      ...BASE_ARGS, stage: 'call_selection', payload: {},
+      invokingMutation: 'setSelectedCall',
     }, { backend });
 
     expect(review.verdict).toBe('proceed');
+    expect(review.auditRef).toBeNull();
     expect(backend.callCount).toBe(0);
     expect(createReviewMock).not.toHaveBeenCalled();
   });
@@ -1905,6 +1977,8 @@ const defaultBackend: SeniorReviewBackend = { consult: consultOpus };
 export interface RequestSeniorReviewArgs {
   stage: Stage;
   sessionId: string;
+  userId: string;
+  tier?: string;
   payload: unknown;
   invokingMutation: string | null;
   invokingToolResult: string | null;
@@ -1922,7 +1996,7 @@ function shadowProceed(auditRef: string): SeniorReview {
   };
 }
 
-function plainProceed(auditRef: string): SeniorReview {
+function plainProceed(auditRef: string | null): SeniorReview {
   return {
     verdict: 'proceed', reasons: [], riskFlags: [],
     auditRef, schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -1952,24 +2026,27 @@ export async function requestSeniorReview(
   const backend = options.backend ?? defaultBackend;
   const gate = GATE_CONFIG[args.stage];
   const policyType: PolicyType = gate.policyType;
+  const flagCtx = { userId: args.userId, tier: args.tier };
 
   const [enabledOn, shadowOn] = await Promise.all([
-    isFeatureEnabled(FEATURE_FLAG_KEYS.enabled),
-    isFeatureEnabled(FEATURE_FLAG_KEYS.shadowMode),
+    isFeatureEnabled(FEATURE_FLAG_KEYS.enabled, flagCtx),
+    isFeatureEnabled(FEATURE_FLAG_KEYS.shadowMode, flagCtx),
   ]);
 
-  // Disabled entirely.
+  // Disabled entirely. Return auditRef=null — no row was persisted.
+  // Callers must treat null as "no audit linkage" (never persist as a FK).
   if (!enabledOn && !shadowOn) {
-    return plainProceed('none');
+    return plainProceed(null);
   }
 
   // Conditional gate budget check (mandatory gates are not budgeted per spec §5.5).
   if (policyType === 'conditional') {
-    const budget = await checkConditionalBudget({ sessionId: args.sessionId });
+    const budget = await checkConditionalBudget({ userId: args.userId, sessionId: args.sessionId });
     if (budget.status === 'warning') trackBudgetEvent(args.stage, 'warning');
     if (budget.status === 'suppressed') {
       trackBudgetEvent(args.stage, 'suppressed');
       const reviewId = await createReview({
+        userId: args.userId,
         sessionId: args.sessionId, stage: args.stage, policyType,
         invokingMutation: args.invokingMutation,
         invokingToolResult: args.invokingToolResult,
@@ -1978,6 +2055,7 @@ export async function requestSeniorReview(
         initialStatus: 'suppressed_budget',
       });
       await finalizeReview({
+        userId: args.userId,
         reviewId, status: 'suppressed_budget', verdict: null, failureReason: null,
         totalAttempts: 0, totalLatencyMs: 0, reviewSummary: null,
       });
@@ -1988,6 +2066,7 @@ export async function requestSeniorReview(
 
   // Create the review row in in-flight state before attempts.
   const reviewId = await createReview({
+    userId: args.userId,
     sessionId: args.sessionId, stage: args.stage, policyType,
     invokingMutation: args.invokingMutation,
     invokingToolResult: args.invokingToolResult,
@@ -2020,7 +2099,7 @@ export async function requestSeniorReview(
     }
     const latency = Date.now() - start;
     totalLatency += latency;
-    await recordAttempt({ reviewId, attemptIndex: attempt, latencyMs: latency, outcome });
+    await recordAttempt({ userId: args.userId, reviewId, attemptIndex: attempt, latencyMs: latency, outcome });
     trackRetryAttempt(args.stage, outcome);
 
     if (outcome === 'success') break;
@@ -2037,6 +2116,7 @@ export async function requestSeniorReview(
   if (response) {
     const actualVerdict: ReviewVerdict = response.verdict;
     await finalizeReview({
+      userId: args.userId,
       reviewId, status: 'completed', verdict: actualVerdict, failureReason: null,
       totalAttempts: attemptsUsed, totalLatencyMs: totalLatency,
       reviewSummary: summariseResponse(response),
@@ -2062,6 +2142,7 @@ export async function requestSeniorReview(
   const failureReason: FailureReason = (lastError?.outcome ?? 'network') as FailureReason;
   const status: ConsultStatus = policyType === 'mandatory' ? 'failed_blocked' : 'failed_bypassed';
   await finalizeReview({
+    userId: args.userId,
     reviewId, status, verdict: null, failureReason,
     totalAttempts: attemptsUsed, totalLatencyMs: totalLatency,
     reviewSummary: null,
@@ -2125,8 +2206,36 @@ import { withSeniorReviewMutation, withSeniorReviewToolResult } from '@/lib/ai/a
 
 const modifySchema = z.object({ selectedCallId: z.string(), confidenceClass: z.enum(['high', 'med', 'low']) });
 
+const USER_ID = '33333333-3333-4333-8333-333333333333';
+const BASE_MUTATION = {
+  sessionId: 'sid',
+  userId: USER_ID,
+  tier: 'pro' as const,
+  invokingMutation: 'setSelectedCall',
+};
+const BASE_TOOL = {
+  sessionId: 'sid',
+  userId: USER_ID,
+  tier: 'pro' as const,
+  invokingToolResult: 'run-eligibility',
+};
+
 describe('withSeniorReviewMutation', () => {
   beforeEach(() => requestMock.mockReset());
+
+  it('forwards userId and tier to requestSeniorReview', async () => {
+    requestMock.mockResolvedValue({
+      verdict: 'proceed', reasons: [], riskFlags: [], auditRef: 'r1', schemaVersion: 'v1',
+    });
+    await withSeniorReviewMutation({
+      ...BASE_MUTATION, stage: 'call_selection',
+      candidate: { selectedCallId: 'c1', confidenceClass: 'high' as const },
+      buildPayload: () => ({}), modifySchema,
+    });
+    expect(requestMock).toHaveBeenCalledWith(expect.objectContaining({
+      userId: USER_ID, tier: 'pro',
+    }));
+  });
 
   it('returns finalInput unchanged on proceed verdict', async () => {
     requestMock.mockResolvedValue({
@@ -2134,12 +2243,8 @@ describe('withSeniorReviewMutation', () => {
     });
     const input = { selectedCallId: 'c1', confidenceClass: 'high' as const };
     const result = await withSeniorReviewMutation({
-      stage: 'call_selection',
-      sessionId: 'sid',
-      candidate: input,
-      buildPayload: () => ({ x: 1 }),
-      modifySchema,
-      invokingMutation: 'setSelectedCall',
+      ...BASE_MUTATION, stage: 'call_selection',
+      candidate: input, buildPayload: () => ({ x: 1 }), modifySchema,
     });
     expect(result.finalInput).toEqual(input);
     expect(result.auditRef).toBe('r1');
@@ -2152,9 +2257,9 @@ describe('withSeniorReviewMutation', () => {
       reasons: [{ ro: 'x', en: 'x' }], riskFlags: [], auditRef: 'r1', schemaVersion: 'v1',
     });
     const result = await withSeniorReviewMutation({
-      stage: 'call_selection', sessionId: 'sid',
+      ...BASE_MUTATION, stage: 'call_selection',
       candidate: { selectedCallId: 'c1', confidenceClass: 'high' as const },
-      buildPayload: () => ({}), modifySchema, invokingMutation: 'setSelectedCall',
+      buildPayload: () => ({}), modifySchema,
     });
     expect(result.finalInput).toEqual({ selectedCallId: 'c2', confidenceClass: 'med' });
   });
@@ -2165,9 +2270,9 @@ describe('withSeniorReviewMutation', () => {
       reasons: [], riskFlags: [], auditRef: 'r1', schemaVersion: 'v1',
     });
     await expect(withSeniorReviewMutation({
-      stage: 'call_selection', sessionId: 'sid',
+      ...BASE_MUTATION, stage: 'call_selection',
       candidate: { selectedCallId: 'c1', confidenceClass: 'high' as const },
-      buildPayload: () => ({}), modifySchema, invokingMutation: 'setSelectedCall',
+      buildPayload: () => ({}), modifySchema,
     })).rejects.toThrow(/stage schema/i);
   });
 
@@ -2178,9 +2283,9 @@ describe('withSeniorReviewMutation', () => {
       riskFlags: [], auditRef: 'r1', schemaVersion: 'v1',
     });
     await expect(withSeniorReviewMutation({
-      stage: 'call_selection', sessionId: 'sid',
+      ...BASE_MUTATION, stage: 'call_selection',
       candidate: { selectedCallId: 'c1', confidenceClass: 'high' as const },
-      buildPayload: () => ({}), modifySchema, invokingMutation: 'setSelectedCall',
+      buildPayload: () => ({}), modifySchema,
     })).rejects.toThrow(/senior review blocked/i);
   });
 });
@@ -2196,11 +2301,9 @@ describe('withSeniorReviewToolResult', () => {
       auditRef: 'r1', schemaVersion: 'v1',
     });
     const result = await withSeniorReviewToolResult({
-      stage: 'eligibility_verdict',
-      sessionId: 'sid',
+      ...BASE_TOOL, stage: 'eligibility_verdict',
       toolResult: { eligible: 'ambiguous' },
       buildPayload: () => ({}),
-      invokingToolResult: 'run-eligibility',
       triggeredBy: ['ambiguous_criterion'],
     });
     expect(result.annotatedResult.eligible).toBe('ambiguous');
@@ -2213,9 +2316,9 @@ describe('withSeniorReviewToolResult', () => {
       riskFlags: [], auditRef: 'r1', schemaVersion: 'v1',
     });
     const result = await withSeniorReviewToolResult({
-      stage: 'eligibility_verdict', sessionId: 'sid',
+      ...BASE_TOOL, stage: 'eligibility_verdict',
       toolResult: { eligible: false }, buildPayload: () => ({}),
-      invokingToolResult: 'run-eligibility', triggeredBy: null,
+      triggeredBy: null,
     });
     expect(result.annotatedResult).toBeDefined();
   });
@@ -2247,7 +2350,7 @@ import { requestSeniorReview } from './service';
 import type { Stage, SeniorReview } from './types';
 
 export class SeniorReviewBlockedError extends Error {
-  constructor(public readonly reasons: { ro: string; en: string }[], public readonly auditRef: string) {
+  constructor(public readonly reasons: { ro: string; en: string }[], public readonly auditRef: string | null) {
     super(`senior review blocked: ${reasons.map((r) => r.en).join('; ')}`);
   }
 }
@@ -2259,6 +2362,8 @@ export class SeniorReviewModifyInvalidError extends Error {
 export interface MutationGateArgs<Input, Modify extends Input = Input> {
   stage: Exclude<Stage, 'contradiction_override' | 'eligibility_verdict'>;
   sessionId: string;
+  userId: string;
+  tier?: string;
   candidate: Input;
   buildPayload: (input: Input) => unknown;
   modifySchema: ZodSchema<Modify>;
@@ -2268,7 +2373,7 @@ export interface MutationGateArgs<Input, Modify extends Input = Input> {
 
 export interface MutationGateResult<Input> {
   finalInput: Input;
-  auditRef: string;
+  auditRef: string | null;
   review: SeniorReview;
 }
 
@@ -2278,6 +2383,8 @@ export async function withSeniorReviewMutation<Input, Modify extends Input = Inp
   const review = await requestSeniorReview({
     stage: args.stage,
     sessionId: args.sessionId,
+    userId: args.userId,
+    tier: args.tier,
     payload: args.buildPayload(args.candidate),
     invokingMutation: args.invokingMutation,
     invokingToolResult: null,
@@ -2302,6 +2409,8 @@ export async function withSeniorReviewMutation<Input, Modify extends Input = Inp
 export interface ToolResultGateArgs<T extends object> {
   stage: Extract<Stage, 'eligibility_verdict'>;
   sessionId: string;
+  userId: string;
+  tier?: string;
   toolResult: T;
   buildPayload: (result: T) => unknown;
   invokingToolResult: string;
@@ -2310,7 +2419,7 @@ export interface ToolResultGateArgs<T extends object> {
 
 export interface ToolResultGateResult<T extends object> {
   annotatedResult: T & { advisoryNarrative?: { ro: string; en: string } };
-  auditRef: string;
+  auditRef: string | null;
   review: SeniorReview;
 }
 
@@ -2320,6 +2429,8 @@ export async function withSeniorReviewToolResult<T extends object>(
   const review = await requestSeniorReview({
     stage: args.stage,
     sessionId: args.sessionId,
+    userId: args.userId,
+    tier: args.tier,
     payload: args.buildPayload(args.toolResult),
     invokingMutation: null,
     invokingToolResult: args.invokingToolResult,
