@@ -1,6 +1,8 @@
 # `(app)/` English Route Layer Deletion — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status (2026-04-14): SUPERSEDED BY CASCADE.** The `app/src/app/[locale]/(app)/` subtree was already deleted on master by the PR #11 → #18 → #19 cascade landing before this plan was executed. Task 0 Step 4 of this plan would exit with "directory absent." This file is retained as a design-time record of the work that was planned against pre-cascade master — it documents the rubric shape and the leaf-safety audit pattern that later deletion plans reuse. **Do not execute.**
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. (Not applicable — see Status above.)
 
 **Goal:** Delete the legacy English-named `app/src/app/[locale]/(app)/` route layer (Axis 1 delete legacy per spec Section 1) in a single PR carrying the full Section 3 7-check rubric evidence. Replacement is the Romanian-named `(dashboard)/` route layer that landed with the cascade.
 
