@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import type { GatewayClient } from './types'
+import type { GatewayClient } from './orchestrator/types'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'gateway' })
