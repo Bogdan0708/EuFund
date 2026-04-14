@@ -151,6 +151,7 @@ describe('Agent Session Lifecycle', () => {
       latencyMs: null,
       tokenUsage: null,
       errorClass: null,
+      rejectionReason: null,
       updatedAt: new Date(),
     }]
 

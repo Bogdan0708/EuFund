@@ -9,7 +9,7 @@ export const SESSION_STATUSES = ['active', 'paused', 'completed', 'abandoned', '
 export type SessionStatus = (typeof SESSION_STATUSES)[number]
 
 export const SECTION_STATUSES = [
-  'pending', 'generating', 'draft', 'accepted', 'stale', 'invalidated', 'needs_review', 'failed',
+  'pending', 'generating', 'draft', 'accepted', 'stale', 'invalidated', 'needs_review', 'failed', 'rejected',
 ] as const
 export type SectionStatus = (typeof SECTION_STATUSES)[number]
 
@@ -91,6 +91,7 @@ export interface AgentSection {
   latencyMs: number | null
   tokenUsage: { input: number; output: number } | null
   errorClass: string | null
+  rejectionReason: string | null  // NEW — Phase 3a
   updatedAt: Date
 }
 
@@ -98,10 +99,11 @@ export interface AgentSectionVersion {
   id: string
   sectionId: string
   versionNumber: number
-  kind: 'draft' | 'accepted' | 'regenerated' | 'system_rewrite'
+  kind: 'draft' | 'accepted' | 'regenerated' | 'system_rewrite' | 'rollback'
   content: string
   modelUsed: string | null
   sourcesUsed: string[] | null
+  rolledBackFromVersion: number | null  // Phase 3a; populated only when kind='rollback'
   createdAt: Date
 }
 

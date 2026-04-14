@@ -4,6 +4,7 @@
 // and MCP handlers.
 
 import type { CallBlueprint } from '@/lib/ai/orchestrator/types'
+import type { SectionStatus } from '../types'
 import { AuthorizationError, ValidationError } from './errors'
 
 export type { CallBlueprint }
@@ -128,7 +129,7 @@ export interface SectionListItem {
   title: string
   documentOrder: number
   generationOrder: number
-  status: string
+  status: SectionStatus
   retryCount: number
   updatedAt: Date
 }
@@ -142,6 +143,7 @@ export interface SectionDetail extends SectionListItem {
   latencyMs: number | null
   tokenUsage: { input: number; output: number } | null
   errorClass: string | null
+  rejectionReason: string | null
 }
 
 // Write result shapes — single source of truth. Service implementations

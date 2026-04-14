@@ -387,6 +387,7 @@ function mapSectionRow(row: Record<string, unknown>): AgentSection {
     latencyMs: row.latencyMs as number | null,
     tokenUsage: row.tokenUsage as AgentSection['tokenUsage'],
     errorClass: row.errorClass as string | null,
+    rejectionReason: row.rejectionReason as string | null,
     updatedAt: row.updatedAt as Date,
   }
 }

@@ -95,7 +95,7 @@ describe('Agent Runtime', () => {
       sectionKey: 'rezumat', title: 'Rezumat', documentOrder: 0, generationOrder: 11,
       status: 'needs_review', content: 'Draft content', acceptedContent: null,
       modelUsed: null, retryCount: 0, sourcesUsed: null, promptVersion: null,
-      latencyMs: null, tokenUsage: null, errorClass: null, updatedAt: new Date(),
+      latencyMs: null, tokenUsage: null, errorClass: null, rejectionReason: null, updatedAt: new Date(),
     }]
 
     const result = await runAgentTurn({
@@ -129,7 +129,7 @@ describe('Agent Runtime', () => {
       sectionKey: 'rezumat', title: 'Rezumat', documentOrder: 0, generationOrder: 11,
       status: 'needs_review', content: 'Draft content', acceptedContent: null,
       modelUsed: null, retryCount: 0, sourcesUsed: null, promptVersion: null,
-      latencyMs: null, tokenUsage: null, errorClass: null, updatedAt: new Date(),
+      latencyMs: null, tokenUsage: null, errorClass: null, rejectionReason: null, updatedAt: new Date(),
     }]
 
     const result = await runAgentTurn({
@@ -181,6 +181,7 @@ describe('Agent Runtime', () => {
       latencyMs: null,
       tokenUsage: null,
       errorClass: null,
+      rejectionReason: null,
       updatedAt: new Date(),
     }]
 

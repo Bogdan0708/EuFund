@@ -43,6 +43,7 @@ function makeSection(overrides: Partial<AgentSection> = {}): AgentSection {
     latencyMs: null,
     tokenUsage: null,
     errorClass: null,
+    rejectionReason: null,
     updatedAt: new Date(),
     ...overrides,
   }

@@ -9,8 +9,12 @@
 import { db } from '@/lib/db'
 import { agentSessions, agentSections, agentSectionVersions } from '@/lib/db/schema'
 import { eq, and, max } from 'drizzle-orm'
-import { NotFoundError, ConcurrencyError } from './errors'
+import { NotFoundError, ConcurrencyError, ValidationError } from './errors'
+import { verifySessionOwnership } from './context-helpers'
 import { logAudit } from '@/lib/legal/audit'
+import { assertPolicy } from '../policy/enforce'
+import { POLICY_MATRIX } from '../policy/matrix'
+import type { AgentSession } from '../types'
 import type {
   ServiceContext,
   SectionListItem,
@@ -69,23 +73,6 @@ async function assertSessionOwnership(
   if (!rows[0]) {
     throw new NotFoundError('session', sessionId)
   }
-}
-
-async function verifySessionOwnership(
-  ctx: ServiceContext,
-  sessionId: string,
-): Promise<typeof agentSessions.$inferSelect> {
-  const rows = await db
-    .select()
-    .from(agentSessions)
-    .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, ctx.userId)))
-    .limit(1)
-
-  if (!rows[0]) {
-    throw new NotFoundError('session', sessionId)
-  }
-
-  return rows[0]
 }
 
 // ── listSections ───────────────────────────────────────────────────────────
@@ -171,6 +158,7 @@ export async function getSection(
       ? (row.tokenUsage as { input: number; output: number })
       : null,
     errorClass: row.errorClass ?? null,
+    rejectionReason: row.rejectionReason ?? null,
   }
 }
 
@@ -299,6 +287,9 @@ export async function saveSectionDraft(
     throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
   }
 
+  // 3. Enforce policy gates (Phase 3a defense-in-depth; managed runtime relies on this in 3b)
+  assertPolicy(POLICY_MATRIX.saveSectionDraft, session as unknown as AgentSession)
+
   const newStateVersion = session.stateVersion + 1
 
   // 3. Persist mutation within a transaction
@@ -351,11 +342,23 @@ export async function saveSectionDraft(
       content: input.content,
     })
 
-    // Increment stateVersion on session
-    await tx
+    // Increment stateVersion on session (atomic CAS: only applies if stateVersion
+    // matches expected — guards against two concurrent writers both passing the
+    // fail-fast check above and racing to commit the same version).
+    const casSave = await tx
       .update(agentSessions)
       .set({ stateVersion: newStateVersion, updatedAt: new Date() })
-      .where(eq(agentSessions.id, input.sessionId))
+      .where(and(
+        eq(agentSessions.id, input.sessionId),
+        eq(agentSessions.stateVersion, input.expectedStateVersion),
+      ))
+      .returning({ id: agentSessions.id })
+
+    if (casSave.length === 0) {
+      // Another writer committed between our pre-read and this UPDATE.
+      // Throwing here rolls back the entire transaction automatically.
+      throw new ConcurrencyError(input.expectedStateVersion, -1)
+    }
   })
 
   // 4. Emit audit log
@@ -412,10 +415,29 @@ export async function approveSection(
     throw new NotFoundError('section', `${input.sessionId}:${input.sectionKey}`)
   }
 
-  // Idempotent: if already accepted, return current stateVersion (no mutation)
+  // ── Service contract: idempotent no-op ordering ──────────────────────
+  // Per the Phase 3 policy matrix and idempotent no-op rule:
+  //
+  //   1. Idempotent no-op checks run BEFORE assertPolicy.
+  //   2. If the mutation would be a no-op (here: section already accepted),
+  //      return the current state unchanged — no stateVersion bump, no
+  //      updatedAt change, no audit event, AND no policy error.
+  //   3. Only non-idempotent paths run assertPolicy. The section state
+  //      allowlist `['draft', 'needs_review']` intentionally excludes
+  //      'accepted' because the idempotent short-circuit already handles
+  //      that case above.
+  //
+  // This ordering is a deliberate design choice, not a bug.
+  // ─────────────────────────────────────────────────────────────────────
+
+  // Idempotent no-op FIRST
   if (section.status === 'accepted') {
     return { newStateVersion: session.stateVersion }
   }
+
+  // Policy gates (outline frozen + section state allowlist).
+  // Only runs for paths that will actually mutate.
+  assertPolicy(POLICY_MATRIX.approveSection, session as unknown as AgentSession, { sectionState: section.status })
 
   const newStateVersion = session.stateVersion + 1
 
@@ -426,10 +448,19 @@ export async function approveSection(
       .set({ status: 'accepted', acceptedContent: section.content, updatedAt: new Date() })
       .where(eq(agentSections.id, section.id))
 
-    await tx
+    // Atomic CAS on stateVersion — rolls back tx if another writer committed.
+    const casApprove = await tx
       .update(agentSessions)
       .set({ stateVersion: newStateVersion, updatedAt: new Date() })
-      .where(eq(agentSessions.id, input.sessionId))
+      .where(and(
+        eq(agentSessions.id, input.sessionId),
+        eq(agentSessions.stateVersion, input.expectedStateVersion),
+      ))
+      .returning({ id: agentSessions.id })
+
+    if (casApprove.length === 0) {
+      throw new ConcurrencyError(input.expectedStateVersion, -1)
+    }
   })
 
   // 4. Emit audit log
@@ -475,6 +506,9 @@ export async function rollbackSection(
     throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
   }
 
+  // 3. Enforce policy gates — outline must be frozen
+  assertPolicy(POLICY_MATRIX.rollbackSection, session as unknown as AgentSession)
+
   // Load the section
   const sectionRows = await db
     .select()
@@ -502,17 +536,65 @@ export async function rollbackSection(
   const newStateVersion = session.stateVersion + 1
   const restoredContent = targetVersionRow.content
 
-  // 3. Persist mutation
+  // 3. Persist mutation — version-number allocation happens INSIDE the transaction
+  // under a FOR UPDATE lock on the parent section row. Without the lock, two
+  // concurrent rollbacks on the same section can both read the same
+  // max(version_number) from their MVCC snapshot, compute the same
+  // newVersionNumber, and collide on the (section_id, version_number) unique
+  // constraint with a raw DB error instead of a clean ConcurrencyError.
   await db.transaction(async (tx) => {
+    // Lock the parent section row to serialize concurrent version-number
+    // allocation. The second concurrent rollback blocks here until the first
+    // commits, then reads a fresh max and computes a correct new version number.
+    // The subsequent stateVersion CAS still fires and rejects the loser cleanly.
+    const lockedSection = await tx
+      .select({ id: agentSections.id })
+      .from(agentSections)
+      .where(eq(agentSections.id, section.id))
+      .for('update')
+      .limit(1)
+
+    if (!lockedSection[0]) {
+      // Section was deleted between our pre-read and the lock attempt.
+      throw new NotFoundError('section', `${input.sessionId}:${input.sectionKey}`)
+    }
+
+    // Under the row lock, read the current max version number.
+    const maxVersionRow = await tx
+      .select({ maxVersion: max(agentSectionVersions.versionNumber) })
+      .from(agentSectionVersions)
+      .where(eq(agentSectionVersions.sectionId, section.id))
+
+    const newVersionNumber = (maxVersionRow[0]?.maxVersion ?? 0) + 1
+
     await tx
       .update(agentSections)
       .set({ content: restoredContent, status: 'draft', updatedAt: new Date() })
       .where(eq(agentSections.id, section.id))
 
-    await tx
+    // Tag the restored snapshot as kind='rollback' and record the source version.
+    // This makes rollbacks explicit in the audit trail rather than opaque content swaps.
+    await tx.insert(agentSectionVersions).values({
+      sectionId: section.id,
+      versionNumber: newVersionNumber,
+      kind: 'rollback',
+      content: restoredContent,
+      rolledBackFromVersion: input.targetVersion,
+    })
+
+    // Atomic CAS on stateVersion — rolls back tx if another writer committed.
+    const casRollback = await tx
       .update(agentSessions)
       .set({ stateVersion: newStateVersion, updatedAt: new Date() })
-      .where(eq(agentSessions.id, input.sessionId))
+      .where(and(
+        eq(agentSessions.id, input.sessionId),
+        eq(agentSessions.stateVersion, input.expectedStateVersion),
+      ))
+      .returning({ id: agentSessions.id })
+
+    if (casRollback.length === 0) {
+      throw new ConcurrencyError(input.expectedStateVersion, -1)
+    }
   })
 
   // 4. Emit audit log
@@ -526,4 +608,191 @@ export async function rollbackSection(
 
   // 5. Return canonical result
   return { content: restoredContent, restoredVersion: input.targetVersion, newStateVersion }
+}
+
+// ── rejectSection ──────────────────────────────────────────────────────────
+
+/**
+ * Set a section status to 'rejected' and record the rejection reason.
+ *
+ * Partial idempotency rules:
+ *   - Same reason on an already-rejected section → no-op (returns current
+ *     stateVersion, no DB write, no audit event).
+ *   - Different reason on an already-rejected section → throws
+ *     POLICY_SECTION_WRONG_STATE so rejection cannot become a stealth
+ *     metadata-edit path.
+ *
+ * Write contract:
+ *   1. Verify session ownership
+ *   2. Enforce expectedStateVersion
+ *   3. Idempotent no-op check (same reason)
+ *   4. Reject different-reason re-reject
+ *   5. Policy gate (outline frozen + allowed section state)
+ *   6. Update section + increment stateVersion
+ *   7. Emit audit log
+ *   8. Return { newStateVersion }
+ */
+export async function rejectSection(
+  ctx: ServiceContext,
+  input: { sessionId: string; sectionKey: string; reason: string; expectedStateVersion: number },
+): Promise<{ newStateVersion: number }> {
+  const session = await verifySessionOwnership(ctx, input.sessionId)
+
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  const sectionRows = await db
+    .select()
+    .from(agentSections)
+    .where(and(eq(agentSections.sessionId, input.sessionId), eq(agentSections.sectionKey, input.sectionKey)))
+    .limit(1)
+
+  const section = sectionRows[0]
+  if (!section) {
+    throw new NotFoundError('section', `${input.sessionId}:${input.sectionKey}`)
+  }
+
+  // Partial idempotency: already-rejected with same reason → no-op;
+  // different reason → POLICY_SECTION_WRONG_STATE (rejection is not
+  // a metadata-edit path).
+  if (section.status === 'rejected') {
+    if (section.rejectionReason === input.reason) {
+      return { newStateVersion: session.stateVersion }
+    }
+    throw new ValidationError(
+      'reason',
+      'Section already rejected with a different reason; cannot edit rejection metadata',
+      'POLICY_SECTION_WRONG_STATE',
+    )
+  }
+
+  // Policy gate — outline frozen + allowed section state
+  assertPolicy(POLICY_MATRIX.rejectSection, session as unknown as AgentSession, { sectionState: section.status })
+
+  const newStateVersion = session.stateVersion + 1
+
+  await db.transaction(async (tx) => {
+    await tx.update(agentSections).set({
+      status: 'rejected',
+      rejectionReason: input.reason,
+      updatedAt: new Date(),
+    }).where(eq(agentSections.id, section.id))
+
+    // Atomic CAS on stateVersion — rolls back tx if another writer committed.
+    const casReject = await tx.update(agentSessions).set({
+      stateVersion: newStateVersion,
+      updatedAt: new Date(),
+    })
+      .where(and(
+        eq(agentSessions.id, input.sessionId),
+        eq(agentSessions.stateVersion, input.expectedStateVersion),
+      ))
+      .returning({ id: agentSessions.id })
+
+    if (casReject.length === 0) {
+      throw new ConcurrencyError(input.expectedStateVersion, -1)
+    }
+  })
+
+  await logAudit({
+    userId: ctx.userId,
+    action: POLICY_MATRIX.rejectSection.auditAction,
+    resourceType: 'agent_section',
+    resourceId: section.id,
+    metadata: {
+      sessionId: input.sessionId,
+      sectionKey: input.sectionKey,
+      reason: input.reason,
+      previousStatus: section.status,
+      requestId: ctx.requestId,
+    },
+  })
+
+  return { newStateVersion }
+}
+
+/**
+ * Transitions a section to 'stale' status.
+ *
+ * - Idempotent: no-op if section is already stale (returns current stateVersion).
+ * - Clears `acceptedContent` when demoting from 'accepted'.
+ * - Requires the outline to be frozen (POLICY_MATRIX.markSectionStale).
+ * - Allowed source states: draft, needs_review, accepted.
+ *
+ * @throws ConcurrencyError when expectedStateVersion does not match
+ * @throws NotFoundError when the section does not exist
+ * @throws ValidationError(POLICY_SECTION_WRONG_STATE) when section is in a disallowed state
+ */
+export async function markSectionStale(
+  ctx: ServiceContext,
+  input: { sessionId: string; sectionKey: string; expectedStateVersion: number },
+): Promise<{ newStateVersion: number }> {
+  const session = await verifySessionOwnership(ctx, input.sessionId)
+
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  const sectionRows = await db
+    .select()
+    .from(agentSections)
+    .where(and(eq(agentSections.sessionId, input.sessionId), eq(agentSections.sectionKey, input.sectionKey)))
+    .limit(1)
+
+  const section = sectionRows[0]
+  if (!section) {
+    throw new NotFoundError('section', `${input.sessionId}:${input.sectionKey}`)
+  }
+
+  // Idempotent no-op: already stale — return current version without touching DB
+  if (section.status === 'stale') {
+    return { newStateVersion: session.stateVersion }
+  }
+
+  // Policy gate — requires outline frozen + allowed section state
+  assertPolicy(POLICY_MATRIX.markSectionStale, session as unknown as AgentSession, { sectionState: section.status })
+
+  const newStateVersion = session.stateVersion + 1
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(agentSections)
+      .set({
+        status: 'stale',
+        acceptedContent: null, // clear the accepted snapshot on demotion
+        updatedAt: new Date(),
+      })
+      .where(eq(agentSections.id, section.id))
+
+    // Atomic CAS on stateVersion — rolls back tx if another writer committed.
+    const casStale = await tx
+      .update(agentSessions)
+      .set({ stateVersion: newStateVersion, updatedAt: new Date() })
+      .where(and(
+        eq(agentSessions.id, input.sessionId),
+        eq(agentSessions.stateVersion, input.expectedStateVersion),
+      ))
+      .returning({ id: agentSessions.id })
+
+    if (casStale.length === 0) {
+      throw new ConcurrencyError(input.expectedStateVersion, -1)
+    }
+  })
+
+  await logAudit({
+    userId: ctx.userId,
+    action: POLICY_MATRIX.markSectionStale.auditAction,
+    resourceType: 'agent_section',
+    resourceId: section.id,
+    metadata: {
+      sessionId: input.sessionId,
+      sectionKey: input.sectionKey,
+      previousStatus: section.status,
+      demotedFromAccepted: section.status === 'accepted',
+      requestId: ctx.requestId,
+    },
+  })
+
+  return { newStateVersion }
 }

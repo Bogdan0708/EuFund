@@ -9,8 +9,12 @@
 import { db } from '@/lib/db'
 import { agentSessions, agentSections } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
-import { NotFoundError, ConcurrencyError } from './errors'
+import { NotFoundError, ConcurrencyError, ValidationError } from './errors'
+import { verifySessionOwnership } from './context-helpers'
 import { logAudit } from '@/lib/legal/audit'
+import { assertPolicy } from '../policy/enforce'
+import { POLICY_MATRIX } from '../policy/matrix'
+import type { AgentSession } from '../types'
 import type {
   ServiceContext,
   ApplicationState,
@@ -419,18 +423,47 @@ export async function setApplicationStatus(
     throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
   }
 
-  // Idempotent: same status → no-op, return current stateVersion
+  // Idempotent: same status → no-op, return current stateVersion (no policy check, no audit)
   if (session.status === input.status) {
     return { newStateVersion: session.stateVersion }
   }
 
+  // Policy gate
+  assertPolicy(POLICY_MATRIX.setApplicationStatus, session as unknown as AgentSession)
+
+  // Completed-specific gate: validate_application must pass
+  if (input.status === 'completed') {
+    const validationResult = await validateApplication(ctx, input.sessionId)
+    if (!validationResult.passed) {
+      throw new ValidationError(
+        'validation',
+        'Application cannot be marked complete: validate_application did not pass',
+        'POLICY_VALIDATION_NOT_PASSED',
+      )
+    }
+  }
+
   const newStateVersion = session.stateVersion + 1
 
-  // 3. Persist mutation
-  await db
+  // 3. Persist mutation (atomic CAS: WHERE includes stateVersion guard)
+  const casStatus = await db
     .update(agentSessions)
     .set({ status: input.status, stateVersion: newStateVersion, updatedAt: new Date() })
-    .where(eq(agentSessions.id, input.sessionId))
+    .where(and(
+      eq(agentSessions.id, input.sessionId),
+      eq(agentSessions.stateVersion, input.expectedStateVersion),
+    ))
+    .returning({ id: agentSessions.id })
+
+  if (casStatus.length === 0) {
+    // Another writer committed between our pre-read and this UPDATE.
+    const [current] = await db
+      .select({ stateVersion: agentSessions.stateVersion })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, input.sessionId))
+      .limit(1)
+    throw new ConcurrencyError(input.expectedStateVersion, current?.stateVersion ?? -1)
+  }
 
   // 4. Emit audit log
   await logAudit({
@@ -517,4 +550,138 @@ export async function createExportSnapshot(
     downloadUrl,
     expiresAt,
   }
+}
+
+// ── setSelectedCall ────────────────────────────────────────────────────────
+
+/**
+ * Sets the selected call on an agent session.
+ *
+ * Idempotent: if the session already has the same callId, returns current
+ * stateVersion without bumping it, running the policy check, or emitting audit.
+ *
+ * Write contract:
+ *   1. Verify session ownership (canonical helper)
+ *   2. Enforce expectedStateVersion (concurrency guard)
+ *   3. Idempotent no-op if same callId
+ *   4. Policy gate — POLICY_OUTLINE_ALREADY_FROZEN
+ *   5. Persist mutation + bump stateVersion
+ *   6. Emit audit log as session.call_selected
+ *   7. Return { newStateVersion }
+ */
+export async function setSelectedCall(
+  ctx: ServiceContext,
+  input: { sessionId: string; callId: string; expectedStateVersion: number },
+): Promise<{ newStateVersion: number }> {
+  // 1. Verify ownership (canonical helper)
+  const session = await verifySessionOwnership(ctx, input.sessionId)
+
+  // 2. Concurrency check
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  // 3. Idempotent no-op: same callId → return current state unchanged
+  if (session.selectedCallId === input.callId) {
+    return { newStateVersion: session.stateVersion }
+  }
+
+  // 4. Policy gate — cannot reselect once outline is frozen
+  assertPolicy(POLICY_MATRIX.setSelectedCall, session as unknown as AgentSession)
+
+  // 5. Mutate (atomic CAS: WHERE includes stateVersion guard)
+  const newStateVersion = session.stateVersion + 1
+  const casCall = await db
+    .update(agentSessions)
+    .set({
+      selectedCallId: input.callId,
+      stateVersion: newStateVersion,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(agentSessions.id, input.sessionId),
+      eq(agentSessions.stateVersion, input.expectedStateVersion),
+    ))
+    .returning({ id: agentSessions.id })
+
+  if (casCall.length === 0) {
+    // Another writer committed between our pre-read and this UPDATE.
+    const [current] = await db
+      .select({ stateVersion: agentSessions.stateVersion })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, input.sessionId))
+      .limit(1)
+    throw new ConcurrencyError(input.expectedStateVersion, current?.stateVersion ?? -1)
+  }
+
+  // 6. Audit
+  await logAudit({
+    userId: ctx.userId,
+    action: POLICY_MATRIX.setSelectedCall.auditAction,
+    resourceType: 'agent_session',
+    resourceId: input.sessionId,
+    metadata: { callId: input.callId, previousCallId: session.selectedCallId, requestId: ctx.requestId },
+  })
+
+  return { newStateVersion }
+}
+
+export async function freezeOutline(
+  ctx: ServiceContext,
+  input: { sessionId: string; expectedStateVersion: number },
+): Promise<{ newStateVersion: number }> {
+  // 1. Verify ownership
+  const session = await verifySessionOwnership(ctx, input.sessionId)
+
+  // 2. Concurrency check
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  // 3. Idempotent no-op: already frozen
+  //    (no stateVersion bump, no updatedAt change, no audit event)
+  if (session.outlineFrozen) {
+    return { newStateVersion: session.stateVersion }
+  }
+
+  // 4. Policy gate
+  assertPolicy(POLICY_MATRIX.freezeOutline, session as unknown as AgentSession)
+
+  // 5. Mutate: set outlineFrozen=true and advance phase to drafting
+  // Atomic CAS: WHERE includes stateVersion guard to prevent double-freeze races.
+  const newStateVersion = session.stateVersion + 1
+  const casFreeze = await db
+    .update(agentSessions)
+    .set({
+      outlineFrozen: true,
+      currentPhase: 'drafting',
+      stateVersion: newStateVersion,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(agentSessions.id, input.sessionId),
+      eq(agentSessions.stateVersion, input.expectedStateVersion),
+    ))
+    .returning({ id: agentSessions.id })
+
+  if (casFreeze.length === 0) {
+    // Another writer committed between our pre-read and this UPDATE.
+    const [current] = await db
+      .select({ stateVersion: agentSessions.stateVersion })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, input.sessionId))
+      .limit(1)
+    throw new ConcurrencyError(input.expectedStateVersion, current?.stateVersion ?? -1)
+  }
+
+  // 6. Audit
+  await logAudit({
+    userId: ctx.userId,
+    action: POLICY_MATRIX.freezeOutline.auditAction,
+    resourceType: 'agent_session',
+    resourceId: input.sessionId,
+    metadata: { previousPhase: session.currentPhase, requestId: ctx.requestId },
+  })
+
+  return { newStateVersion }
 }

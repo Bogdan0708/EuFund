@@ -57,6 +57,9 @@ function makeSessionRow(overrides: Record<string, unknown> = {}) {
     userId: USER_ID,
     status: 'active',
     stateVersion: 5,
+    selectedCallId: 'call-1',
+    outlineFrozen: true,
+    eligibility: { results: [], score: 100, passCount: 1, failCount: 0, warningCount: 0 },
     updatedAt: new Date(),
     ...overrides,
   }
@@ -184,9 +187,10 @@ describe('saveSectionDraft', () => {
         }
       })
 
-      // tx.update: session stateVersion increment
+      // tx.update: session stateVersion increment (CAS returns affected row)
       tx.update.mockImplementation(() => {
-        const where = vi.fn().mockResolvedValue([])
+        const returning = vi.fn().mockResolvedValue([{ id: SESSION_ID }])
+        const where = vi.fn().mockReturnValue({ returning })
         const set = vi.fn().mockReturnValue({ where })
         return { set } as any
       })
@@ -233,7 +237,8 @@ describe('saveSectionDraft', () => {
         }
       })
       tx.update.mockImplementation(() => {
-        const where = vi.fn().mockResolvedValue([])
+        const returning = vi.fn().mockResolvedValue([{ id: SESSION_ID }])
+        const where = vi.fn().mockReturnValue({ returning })
         const set = vi.fn().mockReturnValue({ where })
         return { set } as any
       })
@@ -287,7 +292,8 @@ describe('approveSection', () => {
     ;(db.transaction as any).mockImplementation(async (fn: (tx: any) => Promise<void>) => {
       const tx = {
         update: vi.fn().mockImplementation(() => {
-          const where = vi.fn().mockResolvedValue([])
+          const returning = vi.fn().mockResolvedValue([{ id: SESSION_ID }])
+          const where = vi.fn().mockReturnValue({ returning })
           const set = vi.fn().mockReturnValue({ where })
           return { set } as any
         }),
@@ -356,7 +362,22 @@ describe('rollbackSection', () => {
     let callCount = 0
     vi.mocked(db.select).mockImplementation(() => {
       callCount++
-      const data = callCount === 1 ? [sessionRow] : callCount === 2 ? sectionRows : versionRows
+      // call 1 = session ownership check
+      // call 2 = section lookup
+      // call 3 = target version lookup
+      // call 4 = max version query (added when version insert was introduced)
+      let data: unknown[]
+      if (callCount === 1) {
+        data = [sessionRow]
+      } else if (callCount === 2) {
+        data = sectionRows
+      } else if (callCount === 3) {
+        data = versionRows
+      } else {
+        // maxVersion query — returns a row without limit() chain
+        const mockWhere = vi.fn().mockResolvedValue([{ maxVersion: 2 }])
+        return { from: vi.fn().mockReturnValue({ where: mockWhere }) } as any
+      }
       const mockLimit = vi.fn().mockResolvedValue(data)
       const mockWhere = vi.fn().mockReturnValue({ limit: mockLimit })
       return { from: vi.fn().mockReturnValue({ where: mockWhere }) } as any
@@ -366,11 +387,36 @@ describe('rollbackSection', () => {
   function setupTransaction() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(db.transaction as any).mockImplementation(async (fn: (tx: any) => Promise<void>) => {
+      let selectCallCount = 0
       const tx = {
+        // tx.select is called twice inside the transaction:
+        //   1st call: FOR UPDATE lock on agentSections → returns locked row
+        //   2nd call: max(version_number) from agentSectionVersions → returns {maxVersion: 2}
+        select: vi.fn().mockImplementation(() => {
+          selectCallCount++
+          const callIndex = selectCallCount
+          const limit = vi.fn().mockResolvedValue([{ id: SECTION_ID }])
+          const forUpdate = vi.fn().mockReturnValue({ limit })
+          const whereForSelect = vi.fn().mockImplementation(() => {
+            if (callIndex === 1) {
+              // FOR UPDATE lock call
+              return { for: forUpdate }
+            }
+            // max(version_number) call
+            return Promise.resolve([{ maxVersion: 2 }])
+          })
+          const from = vi.fn().mockReturnValue({ where: whereForSelect })
+          return { from } as any
+        }),
         update: vi.fn().mockImplementation(() => {
-          const where = vi.fn().mockResolvedValue([])
+          const returning = vi.fn().mockResolvedValue([{ id: SESSION_ID }])
+          const where = vi.fn().mockReturnValue({ returning })
           const set = vi.fn().mockReturnValue({ where })
           return { set } as any
+        }),
+        insert: vi.fn().mockImplementation(() => {
+          const values = vi.fn().mockResolvedValue([])
+          return { values } as any
         }),
       }
       await fn(tx)

@@ -901,7 +901,7 @@ export const agentSessions = pgTable('agent_sessions', {
 }))
 
 export const agentSectionStatusEnum = pgEnum('agent_section_status', [
-  'pending', 'generating', 'draft', 'accepted', 'stale', 'invalidated', 'needs_review', 'failed',
+  'pending', 'generating', 'draft', 'accepted', 'stale', 'invalidated', 'needs_review', 'failed', 'rejected',
 ])
 
 export const agentSections = pgTable('agent_sections', {
@@ -921,6 +921,7 @@ export const agentSections = pgTable('agent_sections', {
   latencyMs: integer('latency_ms'),
   tokenUsage: jsonb('token_usage'),
   errorClass: varchar('error_class', { length: 100 }),
+  rejectionReason: text('rejection_reason'),  // NEW — Phase 3a
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   uniqSessionSection: uniqueIndex('uniq_agent_section_session_key').on(table.sessionId, table.sectionKey),
@@ -929,7 +930,7 @@ export const agentSections = pgTable('agent_sections', {
 }))
 
 export const agentSectionVersionKindEnum = pgEnum('agent_section_version_kind', [
-  'draft', 'accepted', 'regenerated', 'system_rewrite',
+  'draft', 'accepted', 'regenerated', 'system_rewrite', 'rollback',
 ])
 
 export const agentSectionVersions = pgTable('agent_section_versions', {
@@ -940,6 +941,7 @@ export const agentSectionVersions = pgTable('agent_section_versions', {
   content: text('content').notNull(),
   modelUsed: varchar('model_used', { length: 100 }),
   sourcesUsed: jsonb('sources_used'),
+  rolledBackFromVersion: integer('rolled_back_from_version'),  // Phase 3a; populated only when kind='rollback'
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   uniqSectionVersion: uniqueIndex('uniq_agent_section_version_number').on(table.sectionId, table.versionNumber),
