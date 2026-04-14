@@ -4,7 +4,7 @@ import { withUserRLS } from '@/lib/db';
 import { sectionVersions, workflowSessions, auditLog } from '@/lib/db/schema';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
-import type { SectionResult, SectionVersion } from './types';
+import type { SectionResult, SectionVersion } from './ai/orchestrator/types';
 
 const log = logger.child({ component: 'section-versions' });
 

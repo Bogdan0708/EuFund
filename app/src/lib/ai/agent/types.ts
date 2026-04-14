@@ -19,30 +19,6 @@ export const CHECKPOINT_TYPES = [
 ] as const
 export type CheckpointType = (typeof CHECKPOINT_TYPES)[number]
 
-// ── Re-exports of orchestrator-owned types still living in @/lib/ai/orchestrator/types ──
-// These are re-exported so importers can use a single canonical path (@/lib/ai/agent/types).
-// The originals will be moved or retired in subsequent decom sub-steps.
-export type {
-  WorkflowContext,
-  EnhancedIdea,
-  MatchedCall,
-  SectionVersion,
-  FreshnessProvenance,
-  FreshnessResult,
-  ActionPlan,
-  UploadedFile,
-  QAResult,
-  ProjectCompletionStatus,
-  AgentResult,
-  CheckpointData,
-  SSEEvent,
-  SSEEventPayload,
-  SSEStream,
-  GatewayClient,
-  AgentFn,
-} from '@/lib/ai/orchestrator/types'
-export { STEP_LABELS } from '@/lib/ai/orchestrator/types'
-
 // ── Domain types (canonical home) ───────────────────────────────
 
 export interface CallBlueprint {

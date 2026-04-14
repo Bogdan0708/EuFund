@@ -103,7 +103,7 @@ describe('processMessage persistSectionChanges integration', () => {
       async (opts: { newSections: unknown[] }) => opts.newSections,
     )
 
-    vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
+    vi.doMock('@/lib/section-versions', () => ({
       persistSectionChanges: persistSpy,
     }))
     vi.doMock('@/lib/feature-flags', () => ({
@@ -246,7 +246,7 @@ describe('processMessage persistSectionChanges integration', () => {
       async (opts: { newSections: unknown[] }) => opts.newSections,
     )
 
-    vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
+    vi.doMock('@/lib/section-versions', () => ({
       persistSectionChanges: persistSpy,
     }))
     vi.doMock('@/lib/feature-flags', () => ({

@@ -10,7 +10,7 @@ vi.mock('@/lib/db', () => ({
     values: vi.fn().mockResolvedValue([]),
   },
 }))
-vi.mock('@/lib/ai/orchestrator/gateway', () => ({
+vi.mock('@/lib/ai/gateway', () => ({
   createGatewayClient: vi.fn(() => ({
     generate: vi.fn().mockResolvedValue({ content: '[]', tokensUsed: 100 }),
   })),

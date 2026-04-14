@@ -15,7 +15,7 @@ vi.mock('openai', () => ({ default: MockOpenAI }))
 
 describe('Gateway Client V2', () => {
   it('routes GPT-5.4 through OpenAI provider', async () => {
-    const { createGatewayClient } = await import('@/lib/ai/orchestrator/gateway')
+    const { createGatewayClient } = await import('@/lib/ai/gateway')
     const client = createGatewayClient('fondeu')
     const result = await client.generate({
       provider: 'openai',
@@ -32,7 +32,7 @@ describe('Gateway Client V2', () => {
 
   it('sends max_completion_tokens (not max_tokens) to all providers', async () => {
     mockCreate.mockClear()
-    const { createGatewayClient } = await import('@/lib/ai/orchestrator/gateway')
+    const { createGatewayClient } = await import('@/lib/ai/gateway')
     const client = createGatewayClient('fondeu')
     await client.generate({
       provider: 'openai',
@@ -47,7 +47,7 @@ describe('Gateway Client V2', () => {
   })
 
   it('applies model-specific timeouts', async () => {
-    const { getTimeout } = await import('@/lib/ai/orchestrator/gateway')
+    const { getTimeout } = await import('@/lib/ai/gateway')
     expect(getTimeout('claude-opus-4-6')).toBe(300_000)
     expect(getTimeout('gpt-5.4')).toBe(180_000)
     expect(getTimeout('gemini-3.1-pro')).toBe(180_000)

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/helpers';
-import { resolveProjectWorkspace } from '@/lib/ai/orchestrator/workspace';
+import { resolveProjectWorkspace } from '@/lib/workspace';
 import { Errors, FondEUError } from '@/lib/errors';
 import { UUID_RE } from '@/lib/validators/patterns';
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/helpers';
-import { resolveProjectWorkspace, editProjectSection } from '@/lib/ai/orchestrator/workspace';
-import { SectionVersionError } from '@/lib/ai/orchestrator/section-versions';
+import { resolveProjectWorkspace, editProjectSection } from '@/lib/workspace';
+import { SectionVersionError } from '@/lib/section-versions';
 import { editSectionContentSchema } from '@/lib/validators';
 import { enforceRateLimit } from '@/lib/middleware/rate-limit';
 import { Errors, FondEUError } from '@/lib/errors';

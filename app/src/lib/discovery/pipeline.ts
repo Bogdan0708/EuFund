@@ -66,7 +66,7 @@ interface Finding {
 
 async function perplexitySweep(): Promise<Finding[]> {
   try {
-    const { createGatewayClient } = await import('@/lib/ai/orchestrator/gateway')
+    const { createGatewayClient } = await import('@/lib/ai/gateway')
     const gateway = createGatewayClient('fondeu-discovery')
 
     const result = await gateway.generate({
