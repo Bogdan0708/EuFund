@@ -6,8 +6,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const locales = ['ro', 'en'];
   const pages = [
     '',
-    '/finantari',
-    '/finantari/live',
     '/preturi',
     '/autentificare',
   ];
