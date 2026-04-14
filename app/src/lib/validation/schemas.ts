@@ -25,15 +25,6 @@ export const forecastLifecycleSchema = z.object({
   }),
 });
 
-export const companyProfileSchema = z.object({
-  companyName: z.string().min(1),
-  companyType: z.enum(['startup', 'sme', 'large_enterprise', 'ngo', 'public_body']),
-  country: z.string().min(2),
-  sector: z.string().min(1),
-  employeeCount: z.number().int().nonnegative(),
-  annualRevenue: z.number().nonnegative(),
-});
-
 export const predictSuccessSchema = z.object({
   applicationId: z.string().min(1),
 });

@@ -15,7 +15,6 @@ export enum TaskType {
   // Analysis Tasks  
   DOCUMENT_ANALYSIS = 'document_analysis',
   COMPLIANCE_CHECK = 'compliance_check',
-  GRANT_MATCHING = 'grant_matching',
   RISK_ASSESSMENT = 'risk_assessment',
   BUDGET_ANALYSIS = 'budget_analysis',
 
