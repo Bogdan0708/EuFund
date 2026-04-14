@@ -14,4 +14,3 @@ export { analyzeDeadlines, quickRiskCheck, type DeadlineAnalysis, type WorkPacka
 export { assessRisk, type RiskAssessment, type RiskAssessmentInput, type PartnerInfo } from './risk-assessment';
 export { analyzeCompliance, type ComplianceAnalysis, type ComplianceCheckInput } from './compliance-engine';
 export { EU_PROGRAMS, getProgramInfo, getEvaluationCriteria, getBudgetCategories, getProposalSections, getRomanianAdvantages, findBestProgram, type EUProgramKey } from './eu-knowledge-base';
-export { generateKnowledgeRecommendations, quickQualityCheck, type KnowledgeRecommendations, type KnowledgeEngineInput, type ProposalEnhancement, type BestPractice, type LessonLearned, type SuccessPattern, type PitfallWarning, type ExpertRecommendation } from './knowledge-engine';
