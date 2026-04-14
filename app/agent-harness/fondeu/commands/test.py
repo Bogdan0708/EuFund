@@ -25,7 +25,6 @@ def smoke(ctx):
         ("GET", "/api/auth/session"),
         ("GET", "/api/v1/projects?limit=1"),
         ("GET", "/api/v1/calls?limit=1"),
-        ("POST", "/api/ai/diagnostic"),
     ]
 
     results = []

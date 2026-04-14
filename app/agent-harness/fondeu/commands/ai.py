@@ -69,15 +69,3 @@ def eligibility(ctx, project_id):
     else:
         console.print(f"[red]Eligibility check failed: {resp.status_code}[/red]")
         console.print(resp.text[:300])
-
-
-@ai.command()
-@click.pass_context
-def diagnose(ctx):
-    """Check AI provider status (POST /api/ai/diagnostic)"""
-    resp = api_post("/api/ai/diagnostic", json={})
-    if resp.status_code == 200:
-        print_json(resp.json(), as_json=ctx.obj.get("json", False))
-    else:
-        console.print(f"[red]Diagnostic failed: {resp.status_code}[/red]")
-        console.print(resp.text[:300])
