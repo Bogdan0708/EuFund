@@ -191,3 +191,7 @@ This project is part of a cross-project knowledge system:
 - Qdrant must have `QDRANT_API_KEY` set in production — unauthenticated Qdrant is a read/write security risk
 - `direct-ingest-guides.ts` is emergency-only — it bypasses API auth, audit logging, and review. Never use as a normal ingestion path
 - Vector store `MemoryVectorStore` treats filter as key-value equality; `QdrantVectorStore` passes filter raw to Qdrant API — not interchangeable for filtered searches
+
+## CI gate policy
+
+New required CI checks must include a commit of record demonstrating them passing on master before being marked required in branch protection. A red required check is worse than no check — it normalizes override culture and stops protecting anything. This rule is the recurrence prevention for the April 2026 e2e-gate rollback.
