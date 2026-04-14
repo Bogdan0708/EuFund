@@ -6,7 +6,7 @@ import { STEP_LABELS } from './types'
 import { logger } from '@/lib/logger'
 import { runPostBuildQA } from './qa'
 import { buildSectionSpecs } from './section-specs'
-import { persistSectionChanges } from './section-versions'
+import { persistSectionChanges } from '@/lib/section-versions'
 
 const log = logger.child({ component: 'orchestrator-engine' })
 

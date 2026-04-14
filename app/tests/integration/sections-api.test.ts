@@ -204,7 +204,7 @@ describe('POST /api/v1/projects/:id/sections/:sectionId/state', () => {
       }),
       syncProjectDocumentSnapshot: vi.fn(),
     }));
-    vi.doMock('@/lib/ai/orchestrator/section-versions', () => ({
+    vi.doMock('@/lib/section-versions', () => ({
       transitionSectionState: vi.fn(),
       SectionVersionError: class SectionVersionError extends Error { code: string; constructor(code: string, msg: string) { super(msg); this.code = code; } },
     }));

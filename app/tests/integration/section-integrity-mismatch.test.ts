@@ -43,7 +43,7 @@ describe('verifySectionIntegrity', () => {
     ]));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), fatal: vi.fn() }) } }));
 
-    const { verifySectionIntegrity, SectionVersionError } = await import('@/lib/ai/orchestrator/section-versions');
+    const { verifySectionIntegrity, SectionVersionError } = await import('@/lib/section-versions');
 
     await expect(verifySectionIntegrity(SESSION_ID, driftedSection as any, USER_ID))
       .rejects.toSatisfy((err: unknown) => err instanceof SectionVersionError && (err as InstanceType<typeof SectionVersionError>).code === 'VersionIntegrityMismatch');
@@ -64,7 +64,7 @@ describe('verifySectionIntegrity', () => {
     ]));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), fatal: vi.fn() }) } }));
 
-    const { verifySectionIntegrity } = await import('@/lib/ai/orchestrator/section-versions');
+    const { verifySectionIntegrity } = await import('@/lib/section-versions');
 
     await expect(verifySectionIntegrity(SESSION_ID, okSection as any, USER_ID)).resolves.toBeUndefined();
   });
@@ -82,7 +82,7 @@ describe('verifySectionIntegrity', () => {
     vi.doMock('@/lib/db', () => makeDbMock([])); // no rows
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), fatal: vi.fn() }) } }));
 
-    const { verifySectionIntegrity } = await import('@/lib/ai/orchestrator/section-versions');
+    const { verifySectionIntegrity } = await import('@/lib/section-versions');
 
     await expect(verifySectionIntegrity(SESSION_ID, legacySection as any, USER_ID)).resolves.toBeUndefined();
   });

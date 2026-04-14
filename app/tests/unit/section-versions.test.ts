@@ -42,7 +42,7 @@ describe('persistSectionChanges', () => {
       logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
     }));
 
-    const { persistSectionChanges } = await import('@/lib/ai/orchestrator/section-versions');
+    const { persistSectionChanges } = await import('@/lib/section-versions');
 
     const newSections = [
       {
@@ -111,7 +111,7 @@ describe('persistSectionChanges', () => {
       logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
     }));
 
-    const { persistSectionChanges } = await import('@/lib/ai/orchestrator/section-versions');
+    const { persistSectionChanges } = await import('@/lib/section-versions');
 
     const previous = [
       {
@@ -194,7 +194,7 @@ describe('persistSectionChanges', () => {
       logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
     }));
 
-    const { persistSectionChanges } = await import('@/lib/ai/orchestrator/section-versions');
+    const { persistSectionChanges } = await import('@/lib/section-versions');
 
     const previous = [{
       id: 'context', title: 'Old title', content: 'Same text', order: 1,
@@ -237,7 +237,7 @@ describe('persistSectionChanges', () => {
       logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
     }));
 
-    const { persistSectionChanges } = await import('@/lib/ai/orchestrator/section-versions');
+    const { persistSectionChanges } = await import('@/lib/section-versions');
 
     const previous = [{
       id: 'context', title: 'Context', content: 'Same text', order: 1,
@@ -311,7 +311,7 @@ describe('transitionSectionState', () => {
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
 
-    const { transitionSectionState } = await import('@/lib/ai/orchestrator/section-versions');
+    const { transitionSectionState } = await import('@/lib/section-versions');
 
     const result = await transitionSectionState({
       sessionId: SESSION_ID,
@@ -344,7 +344,7 @@ describe('transitionSectionState', () => {
     }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
 
-    const { transitionSectionState } = await import('@/lib/ai/orchestrator/section-versions');
+    const { transitionSectionState } = await import('@/lib/section-versions');
 
     await transitionSectionState({
       sessionId: SESSION_ID,
@@ -376,7 +376,7 @@ describe('transitionSectionState', () => {
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
 
-    const { transitionSectionState, SectionVersionError } = await import('@/lib/ai/orchestrator/section-versions');
+    const { transitionSectionState, SectionVersionError } = await import('@/lib/section-versions');
 
     await expect(transitionSectionState({
       sessionId: SESSION_ID,
@@ -404,7 +404,7 @@ describe('transitionSectionState', () => {
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
 
-    const { transitionSectionState, SectionVersionError } = await import('@/lib/ai/orchestrator/section-versions');
+    const { transitionSectionState, SectionVersionError } = await import('@/lib/section-versions');
 
     await expect(transitionSectionState({
       sessionId: SESSION_ID,
@@ -431,7 +431,7 @@ describe('transitionSectionState', () => {
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
 
-    const { transitionSectionState, SectionVersionError } = await import('@/lib/ai/orchestrator/section-versions');
+    const { transitionSectionState, SectionVersionError } = await import('@/lib/section-versions');
 
     await expect(transitionSectionState({
       sessionId: SESSION_ID,
@@ -488,7 +488,7 @@ describe('rollbackSection', () => {
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
 
-    const { rollbackSection } = await import('@/lib/ai/orchestrator/section-versions');
+    const { rollbackSection } = await import('@/lib/section-versions');
 
     const result = await rollbackSection({
       sessionId: SESSION_ID,
@@ -542,7 +542,7 @@ describe('rollbackSection', () => {
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: auditLogSpy }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
 
-    const { rollbackSection } = await import('@/lib/ai/orchestrator/section-versions');
+    const { rollbackSection } = await import('@/lib/section-versions');
 
     const result = await rollbackSection({
       sessionId: SESSION_ID,
@@ -605,7 +605,7 @@ describe('getVersionHistory', () => {
     }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
 
-    const { getVersionHistory } = await import('@/lib/ai/orchestrator/section-versions');
+    const { getVersionHistory } = await import('@/lib/section-versions');
 
     const result = await getVersionHistory(SESSION_ID, 'context', USER_ID);
 
@@ -656,7 +656,7 @@ describe('persistSectionChanges legacy backfill', () => {
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
     vi.doMock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
 
-    const { persistSectionChanges } = await import('@/lib/ai/orchestrator/section-versions');
+    const { persistSectionChanges } = await import('@/lib/section-versions');
 
     // Legacy section: has defaults from in-memory backfill but no version row in DB
     const legacySection = {

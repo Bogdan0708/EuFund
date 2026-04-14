@@ -7,7 +7,7 @@ import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
 
 import { persistAndPublishSectionUpdatedEvent } from './pubsub';
-import { hashContent, SectionVersionError } from './section-versions';
+import { hashContent, SectionVersionError } from '@/lib/section-versions';
 import type { SectionResult } from './types';
 
 type DbTransaction = Parameters<Parameters<Database['transaction']>[0]>[0];
