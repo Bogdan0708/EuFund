@@ -47,33 +47,8 @@ export interface MatchedCall {
 export type { CallBlueprint, SectionSpec } from '@/lib/ai/agent/types'
 import type { CallBlueprint, SectionSpec } from '@/lib/ai/agent/types'
 
-export interface SectionResult {
-  id: string
-  title: string
-  content: string
-  order: number
-  source: 'generated' | 'edited' | 'failed'
-
-  // Phase 1: versioning + approval
-  state: 'draft' | 'reviewed' | 'approved'
-  currentVersion: number
-  versionCount: number
-  contentHash: string
-  lastStateChangeAt: string
-  lastStateChangeBy: string | null
-
-  metadata: {
-    model: string
-    provider: string
-    tokensIn: number
-    tokensOut: number
-    latencyMs: number
-    retryCount: number
-    fallbackUsed: boolean
-    generatedAt: string
-    checksum: string
-  }
-}
+export type { SectionResult } from '@/lib/ai/agent/types'
+import type { SectionResult } from '@/lib/ai/agent/types'
 
 export interface SectionVersion {
   id: string

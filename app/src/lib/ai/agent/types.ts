@@ -287,3 +287,33 @@ export interface AgentRequest {
   locale: 'ro' | 'en'
   stateVersion?: number
 }
+
+// ── SectionResult (canonical home) ──────────────────────────────
+
+export interface SectionResult {
+  id: string
+  title: string
+  content: string
+  order: number
+  source: 'generated' | 'edited' | 'failed'
+
+  // Phase 1: versioning + approval
+  state: 'draft' | 'reviewed' | 'approved'
+  currentVersion: number
+  versionCount: number
+  contentHash: string
+  lastStateChangeAt: string
+  lastStateChangeBy: string | null
+
+  metadata: {
+    model: string
+    provider: string
+    tokensIn: number
+    tokensOut: number
+    latencyMs: number
+    retryCount: number
+    fallbackUsed: boolean
+    generatedAt: string
+    checksum: string
+  }
+}
