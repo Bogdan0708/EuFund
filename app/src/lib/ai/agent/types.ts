@@ -19,9 +19,57 @@ export const CHECKPOINT_TYPES = [
 ] as const
 export type CheckpointType = (typeof CHECKPOINT_TYPES)[number]
 
-// ── Re-exports from V2 (kept domain types) ──────────────────────
+// ── Domain types (canonical home) ───────────────────────────────
 
-export type { CallBlueprint, SectionSpec } from '@/lib/ai/orchestrator/types'
+export interface CallBlueprint {
+  callId: string
+  program: string
+  isOpen: boolean
+  amendments: string[]
+  warnings: string[]
+  requiredSections: { title: string; description: string; evaluationWeight?: number }[]
+  mandatoryAnnexes: string[]
+  eligibilityCriteria: string[]
+  evaluationGrid: { criterion: string; maxPoints: number }[]
+  cofinancingRate: number
+  eligibilityResult: {
+    score: number
+    passCount: number
+    failCount: number
+    failures: string[]
+    warnings: string[]
+  }
+  sources: string[]
+  verifiedAt: string
+  raw: {
+    notebookLmResponse: string
+    perplexityResponse: string
+    retrievedAt: string
+  }
+  normalized: {
+    requiredSections: SectionSpec[]
+    mandatoryAnnexes: string[]
+    eligibilityCriteria: string[]
+    evaluationGrid: { criterion: string; maxPoints: number }[]
+    cofinancingRate: number
+  }
+  structureConfidence: number
+}
+
+export interface SectionSpec {
+  id: string
+  title: string
+  description: string
+  order: number
+  generationOrder: number
+  importance: 'critical' | 'standard' | 'supplementary'
+  expectedLength: 'short' | 'medium' | 'long'
+  dependsOn: string[]
+  modelHint: 'heavy' | 'light'
+  evaluationWeight?: number
+  mandatory: boolean
+  confidence: number
+}
 
 // ── Session & State ─────────────────────────────────────────────
 
