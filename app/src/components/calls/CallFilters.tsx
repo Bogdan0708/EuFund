@@ -1,6 +1,5 @@
 'use client'
-import { DsInput } from '@/components/ui/ds-input'
-import { DsChip } from '@/components/ui/ds-chip'
+import { GlassInput, GlassChip } from '@/components/glass'
 import { useTranslations } from 'next-intl'
 
 interface CallFiltersProps {
@@ -16,7 +15,7 @@ export function CallFilters({ search, onSearchChange, status, onStatusChange }: 
   const t = useTranslations('calls')
   return (
     <div className="flex flex-col md:flex-row gap-3">
-      <DsInput
+      <GlassInput
         value={search}
         onChange={e => onSearchChange(e.target.value)}
         placeholder={t('searchPlaceholder')}
@@ -24,9 +23,9 @@ export function CallFilters({ search, onSearchChange, status, onStatusChange }: 
       />
       <div className="flex gap-2 flex-wrap">
         {STATUSES.map(s => (
-          <DsChip key={s} variant={status === s ? 'selected' : 'default'} onClick={() => onStatusChange(s)}>
+          <GlassChip key={s} active={status === s} onClick={() => onStatusChange(s)}>
             {t(`status.${s}`)}
-          </DsChip>
+          </GlassChip>
         ))}
       </div>
     </div>

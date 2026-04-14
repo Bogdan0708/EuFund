@@ -1,8 +1,8 @@
 'use client'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
-import { DsCard } from '@/components/ui/ds-card'
-import { Icon } from '@/components/ui/ds-icon'
+import { GlassCard } from '@/components/glass'
+import { Play } from 'lucide-react'
 
 interface ContinueBannerProps {
   session: {
@@ -28,20 +28,20 @@ export function ContinueBanner({ session }: ContinueBannerProps) {
 
   return (
     <Link href={`/${locale}/ai?session=${session.id}`}>
-      <DsCard className="p-4 flex items-center gap-4 border border-primary/20 hover:shadow-lg transition-shadow cursor-pointer">
-        <div className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center shrink-0">
-          <Icon name="play_arrow" size="md" className="text-primary" />
+      <GlassCard accent className="p-4 flex items-center gap-4">
+        <div className="w-10 h-10 rounded-full bg-[var(--accent-soft)] flex items-center justify-center shrink-0">
+          <Play size={18} className="text-[var(--accent)]" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-on-surface font-medium truncate">
+          <p className="text-[var(--text-primary)] font-medium truncate">
             {t('continue')}: {label}
           </p>
-          <p className="text-on-surface-variant text-sm">
+          <p className="text-[var(--text-secondary)] text-sm">
             {t('step')} {session.currentStep}/7 — {stepLabel}
           </p>
         </div>
-        <span className="text-outline text-xs shrink-0">{timeAgo}</span>
-      </DsCard>
+        <span className="text-[var(--text-tertiary)] text-xs shrink-0">{timeAgo}</span>
+      </GlassCard>
     </Link>
   )
 }

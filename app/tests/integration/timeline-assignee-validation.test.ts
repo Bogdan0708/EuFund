@@ -45,10 +45,7 @@ describe('Timeline assignee org validation', () => {
       },
     }));
     vi.doMock('@/lib/logger', () => ({
-      logger: {
-        error: vi.fn(),
-        child: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
-      },
+      logger: { error: vi.fn() },
     }));
 
     const { POST } = await import('@/app/api/v1/projects/[id]/timeline/route');
@@ -116,10 +113,7 @@ describe('Timeline assignee org validation', () => {
       },
     }));
     vi.doMock('@/lib/logger', () => ({
-      logger: {
-        error: vi.fn(),
-        child: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
-      },
+      logger: { error: vi.fn() },
     }));
 
     const { PUT } = await import('@/app/api/v1/projects/[id]/timeline/[itemId]/route');

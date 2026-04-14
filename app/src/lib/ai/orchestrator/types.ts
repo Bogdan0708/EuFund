@@ -1,5 +1,3 @@
-// ─── Orchestrator V2 Types ──────────────────────────────────────
-
 export interface WorkflowContext {
   sessionId: string
   userId: string
@@ -8,16 +6,11 @@ export interface WorkflowContext {
   step: number
   enhancedIdea: EnhancedIdea | null
   matchedCalls: MatchedCall[] | null
-  selectedCallId: string | null
-  callBlueprint: CallBlueprint | null
+  validationResults: ValidationResult[] | null
+  researchResults: ResearchResult | null
   actionPlan: ActionPlan | null
-  projectSections: SectionResult[] | null
+  projectSections: ProjectSection[] | null
   uploadedFiles: UploadedFile[]
-  submissionDocuments?: SubmissionDocument[] | null
-  /** User preference for generation length/tone. Loaded from user_preferences at session creation. */
-  responseStyle?: 'concise' | 'detailed' | 'technical'
-  /** Pre-loaded model routing context (preferences + feature flags). */
-  routingCtx?: import('../model-routing').ModelRoutingContext
 }
 
 export interface EnhancedIdea {
@@ -41,148 +34,24 @@ export interface MatchedCall {
   deadline: string
   sourceUrl: string
   reasoning: string
-  freshness?: FreshnessResult
 }
 
-export interface CallBlueprint {
+export interface ValidationResult {
   callId: string
-  program: string
   isOpen: boolean
-  amendments: string[]
+  lastVerified: string
+  updates: string[]
   warnings: string[]
-  requiredSections: { title: string; description: string; evaluationWeight?: number }[]
-  mandatoryAnnexes: string[]
-  eligibilityCriteria: string[]
-  evaluationGrid: { criterion: string; maxPoints: number }[]
-  cofinancingRate: number
-  eligibilityResult: {
-    score: number
-    passCount: number
-    failCount: number
-    failures: string[]
-    warnings: string[]
-  }
-  sources: string[]
-  verifiedAt: string
-  raw: {
-    notebookLmResponse: string
-    perplexityResponse: string
-    retrievedAt: string
-  }
-  normalized: {
-    requiredSections: SectionSpec[]
-    mandatoryAnnexes: string[]
-    eligibilityCriteria: string[]
-    evaluationGrid: { criterion: string; maxPoints: number }[]
-    cofinancingRate: number
-  }
-  structureConfidence: number
 }
 
-export interface SectionSpec {
-  id: string
-  title: string
-  description: string
-  order: number
-  generationOrder: number
-  importance: 'critical' | 'standard' | 'supplementary'
-  expectedLength: 'short' | 'medium' | 'long'
-  dependsOn: string[]
-  modelHint: 'heavy' | 'light'
-  evaluationWeight?: number
-  mandatory: boolean
-  confidence: number
-}
-
-export interface SectionResult {
-  id: string
-  title: string
-  content: string
-  order: number
-  source: 'generated' | 'edited' | 'failed'
-
-  // Phase 1: versioning + approval
-  state: 'draft' | 'reviewed' | 'approved'
-  currentVersion: number
-  versionCount: number
-  contentHash: string
-  lastStateChangeAt: string
-  lastStateChangeBy: string | null
-
-  metadata: {
-    model: string
-    provider: string
-    tokensIn: number
-    tokensOut: number
-    latencyMs: number
-    retryCount: number
-    fallbackUsed: boolean
-    generatedAt: string
-    checksum: string
-  }
-}
-
-export interface SectionVersion {
-  id: string
-  version: number
-  content: string
-  contentHash: string
-  title: string
-  metadata: {
-    model: string
-    provider: string
-    tokensIn: number
-    tokensOut: number
-    latencyMs: number
-    fallbackUsed: boolean
-    generatedAt: string
-  }
-  reason: string
-  createdAt: string
-  createdBy: string
-}
-
-// ─── Phase 2: Trust Workbench ────────────────────────────────────
-
-export interface FreshnessProvenance {
-  provider: string
-  model: string
-  sourceUrl: string
-  evidence: string
-}
-
-export interface FreshnessResult {
-  status: 'verified' | 'stale' | 'unknown'
-  checkedAt: string
-  currentDeadline?: string
-  warnings: string[]
-  provenance: FreshnessProvenance
-}
-
-export interface SubmissionDocumentProvenance {
-  requirementSource: 'curated_list' | 'ai_classified'
-  contentSource: 'template' | 'none'
-  templateId?: string
-  templateVersion?: string
-  classifiedFrom?: string
-  confidence?: number
-  reviewRequired: boolean
-  generatedAt: string
-}
-
-export interface SubmissionDocument {
-  id: string
-  title: string
-  content: string
-  category: 'declaration' | 'certificate' | 'annex' | 'form'
-  scope: 'general' | 'call_specific'
-  order: number
-  availability: 'generated' | 'needs_fill' | 'external_required'
-  instructions: string
-  sourceAnnex: string
-  userStatus: 'not_started' | 'completed'
-  userStatusAt: string | null
-  provenance: SubmissionDocumentProvenance
+export interface ResearchResult {
+  callId: string
+  requirements: string[]
+  forms: { name: string; url?: string; description: string }[]
+  certificates: { name: string; source: string; estimatedTime: string }[]
+  deadlines: { item: string; date: string }[]
+  additionalSections: string[]
+  rawFindings: string
 }
 
 export interface ActionPlan {
@@ -211,25 +80,19 @@ export interface ActionPlan {
   estimatedTimeline: string
 }
 
+export interface ProjectSection {
+  title: string
+  content: string
+  order: number
+  source: 'generated' | 'edited'
+}
+
 export interface UploadedFile {
   fileId: string
   filename: string
   mimeType: string
   extractedText?: string
 }
-
-export interface QAResult {
-  passed: boolean
-  missingSections: string[]
-  failedSections: string[]
-  placeholderSections: string[]
-  truncatedSections: string[]
-  duplicateSections: string[]
-  budgetConsistent: boolean | null
-  warnings: string[]
-}
-
-export type ProjectCompletionStatus = 'complete' | 'complete_with_gaps' | 'needs_review' | 'blocked'
 
 export interface AgentResult {
   data: Record<string, unknown>
@@ -249,15 +112,16 @@ export type SSEEvent = {
   | { type: 'step_start'; step: number; label: string }
   | { type: 'step_progress'; step: number; message: string }
   | { type: 'ai_chunk'; step: number; content: string }
-  | { type: 'checkpoint'; step: number; data: CheckpointData; context?: Partial<WorkflowContext>; autoApprove?: boolean }
-  | { type: 'step_complete'; step: number; summary: string; context?: Partial<WorkflowContext> }
+  | { type: 'checkpoint'; step: number; data: CheckpointData }
+  | { type: 'step_complete'; step: number; summary: string }
   | { type: 'discovery'; items: unknown[] }
   | { type: 'error'; step: number; message: string; retryable: boolean }
-  | { type: 'done'; projectId?: string; completionStatus?: ProjectCompletionStatus }
-  | { type: 'section_updated'; sectionId: string; section: SectionResult }
+  | { type: 'done'; projectId?: string }
 )
 
+// Distributive Omit that preserves union discrimination
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never
+
 export type SSEEventPayload = DistributiveOmit<SSEEvent, 'eventId'>
 
 export interface SSEStream {
@@ -288,7 +152,9 @@ export type AgentFn = (
 export const STEP_LABELS: Record<number, string> = {
   1: 'Enhancing your idea...',
   2: 'Matching with funding calls...',
-  3: 'Researching call requirements...',
-  4: 'Creating action plan...',
-  5: 'Building your project...',
+  3: 'Validating funding call status...',
+  4: 'Researching requirements...',
+  5: 'Updating knowledge base...',
+  6: 'Creating action plan...',
+  7: 'Building your project...',
 }

@@ -287,8 +287,7 @@ const checkDeadline: Rule = (ctx) => {
   }
 
   const deadline = new Date(call.submissionEnd);
-  // Use Romania timezone — EU funding calls use CET/EEST deadlines
-  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Bucharest' }));
+  const now = new Date();
   const daysLeft = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
   if (daysLeft < 0) {

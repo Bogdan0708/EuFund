@@ -1,10 +1,9 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { DsInput } from '@/components/ui/ds-input'
-import { DsButton } from '@/components/ui/ds-button'
+import { GlassInput, GlassButton } from '@/components/glass'
 import { MessageBubble } from './MessageBubble'
 import { CheckpointInteraction } from './CheckpointInteraction'
-import { Icon } from '@/components/ui/ds-icon'
+import { Send } from 'lucide-react'
 
 interface ChatMessage {
   id: string; role: 'user' | 'assistant'; content: string;
@@ -44,8 +43,8 @@ export function ChatPanel({ messages, onSend, isStreaming, status }: ChatPanelPr
           }
           if (msg.eventType === 'error') {
             return (
-              <div key={msg.id} className="bg-error-container/40 border border-error/20 p-3 rounded-[1rem] my-2">
-                <p className="text-error text-sm">{msg.content}</p>
+              <div key={msg.id} className="glass border-[var(--danger)] bg-[rgba(239,68,68,0.08)] p-3 rounded-[var(--glass-radius)] my-2">
+                <p className="text-[var(--danger)] text-sm">{msg.content}</p>
               </div>
             )
           }
@@ -53,22 +52,22 @@ export function ChatPanel({ messages, onSend, isStreaming, status }: ChatPanelPr
         })}
         {status === 'connecting' && (
           <div className="flex justify-start mb-4">
-            <div className="bg-surface-container p-4 rounded-[1rem]">
+            <div className="glass px-4 py-3 rounded-[var(--glass-radius)]">
               <div className="flex gap-1">
-                <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
+                <div className="w-2 h-2 rounded-full bg-[var(--accent)] animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-2 h-2 rounded-full bg-[var(--accent)] animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-2 h-2 rounded-full bg-[var(--accent)] animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
             </div>
           </div>
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="border-t border-outline-variant p-4 flex gap-3">
-        <DsInput value={input} onChange={e => setInput(e.target.value)} placeholder="Scrie mesajul tau..." disabled={isStreaming} className="flex-1" />
-        <DsButton variant="primary" size="md" type="submit" disabled={isStreaming || !input.trim()}>
-          <Icon name="send" size="sm" />
-        </DsButton>
+      <form onSubmit={handleSubmit} className="border-t border-[var(--border-subtle)] p-4 flex gap-3">
+        <GlassInput value={input} onChange={e => setInput(e.target.value)} placeholder="Scrie mesajul tău..." disabled={isStreaming} className="flex-1" />
+        <GlassButton type="submit" disabled={isStreaming || !input.trim()}>
+          <Send size={18} />
+        </GlassButton>
       </form>
     </div>
   )

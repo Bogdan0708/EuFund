@@ -47,9 +47,7 @@ export async function GET(req: NextRequest) {
       .where(eq(workflowMessages.sessionId, sessionId))
       .orderBy(asc(workflowMessages.createdAt))
 
-    const transformedMessages = messages
-      .filter((msg) => msg.role !== 'system' && msg.eventType !== 'section_updated')
-      .map(msg => ({
+    const transformedMessages = messages.map(msg => ({
       ...msg,
       content: msg.role === 'assistant' ? tryParseContent(msg.content) : msg.content,
       checkpoint: msg.eventType === 'checkpoint' && msg.metadata ? msg.metadata : undefined,

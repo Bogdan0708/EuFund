@@ -1,23 +1,14 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { WorkflowContext, SSEStream, GatewayClient, ActionPlan, CallBlueprint } from '@/lib/ai/orchestrator/types'
+import type { WorkflowContext, SSEStream, GatewayClient, ResearchResult, ActionPlan } from '@/lib/ai/orchestrator/types'
 
-const mockBlueprint: CallBlueprint = {
+const mockResearch: ResearchResult = {
   callId: 'call-1',
-  program: 'PNRR',
-  isOpen: true,
-  amendments: [],
-  warnings: [],
-  requiredSections: [{ title: 'Summary', description: 'Project summary' }],
-  mandatoryAnnexes: [],
-  eligibilityCriteria: ['Legal entity'],
-  evaluationGrid: [],
-  cofinancingRate: 0.85,
-  eligibilityResult: { score: 90, passCount: 3, failCount: 0, failures: [], warnings: [] },
-  sources: [],
-  verifiedAt: '2026-04-02T00:00:00Z',
-  raw: { notebookLmResponse: '', perplexityResponse: '', retrievedAt: '2026-04-02T00:00:00Z' },
-  normalized: { requiredSections: [], mandatoryAnnexes: [], eligibilityCriteria: [], evaluationGrid: [], cofinancingRate: 0.85 },
-  structureConfidence: 0.9,
+  requirements: ['Legal entity'],
+  forms: [{ name: 'F1', description: 'Main form' }],
+  certificates: [],
+  deadlines: [{ item: 'Submission', date: '2026-06-30' }],
+  additionalSections: [],
+  rawFindings: 'Research findings.',
 }
 
 const mockActionPlan: ActionPlan = {
@@ -34,7 +25,7 @@ const baseCtx: WorkflowContext = {
   sessionId: 'test', userId: 'user-1', locale: 'ro', tier: 'plus', step: 6,
   enhancedIdea: { originalIdea: 'test', refinedDescription: 'Install solar panels', sector: 'Energy', region: 'Nord-Est', targetGroup: 'Schools', estimatedBudget: '500000', keyObjectives: ['reduce costs'] },
   matchedCalls: [{ callId: 'call-1', title: 'PNRR 4.2', program: 'PNRR', score: 90, thematicFit: 90, eligibilityFit: 90, budgetFit: 90, deadline: '2026-06-30', sourceUrl: 'https://example.com', reasoning: 'test' }],
-  selectedCallId: null, callBlueprint: mockBlueprint, actionPlan: null, projectSections: null, uploadedFiles: [],
+  validationResults: null, researchResults: mockResearch, actionPlan: null, projectSections: null, uploadedFiles: [],
 }
 
 describe('Plan Agent', () => {
@@ -74,25 +65,21 @@ describe('Plan Agent', () => {
     expect(result.checkpoint?.question).toContain('Do you agree')
   })
 
-  it('wraps invalid JSON as a fallback plan', async () => {
+  it('throws when AI response is not valid JSON', async () => {
     const mockStream: SSEStream = { send: vi.fn(), close: vi.fn() }
     const mockGateway: GatewayClient = {
       generate: vi.fn().mockResolvedValue({ content: 'Invalid JSON response', tokensUsed: 100 }),
       embed: vi.fn(),
     }
     const { planAgent } = await import('@/lib/ai/orchestrator/agents/plan')
-    const result = await planAgent(baseCtx, '', mockStream, mockGateway)
-    expect(result.data.actionPlan).toBeDefined()
-    const plan = result.data.actionPlan as { steps: { title: string }[] }
-    expect(plan.steps).toHaveLength(1)
-    expect(plan.steps[0].title).toBe('Review AI-generated plan')
+    await expect(planAgent(baseCtx, '', mockStream, mockGateway)).rejects.toThrow('Failed to parse action plan from AI response')
   })
 
-  it('throws when matchedCalls or callBlueprint are missing', async () => {
+  it('throws when matchedCalls or researchResults are missing', async () => {
     const mockStream: SSEStream = { send: vi.fn(), close: vi.fn() }
     const mockGateway: GatewayClient = { generate: vi.fn(), embed: vi.fn() }
     const { planAgent } = await import('@/lib/ai/orchestrator/agents/plan')
     await expect(planAgent({ ...baseCtx, matchedCalls: null }, '', mockStream, mockGateway)).rejects.toThrow()
-    await expect(planAgent({ ...baseCtx, callBlueprint: null }, '', mockStream, mockGateway)).rejects.toThrow()
+    await expect(planAgent({ ...baseCtx, researchResults: null }, '', mockStream, mockGateway)).rejects.toThrow()
   })
 })

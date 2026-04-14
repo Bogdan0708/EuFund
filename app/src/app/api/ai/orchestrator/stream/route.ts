@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { requireAuth } from '@/lib/auth/helpers'
 import { db } from '@/lib/db'
 import { workflowSessions, workflowMessages } from '@/lib/db/schema'
-import { eq, and, asc, gt } from 'drizzle-orm'
+import { eq, and, asc } from 'drizzle-orm'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     return new Response('Session not found', { status: 404 })
   }
 
-  const lastEventId = req.headers.get('Last-Event-ID') ?? req.nextUrl.searchParams.get('lastEventId')
+  const lastEventId = req.headers.get('Last-Event-ID')
 
   const stream = new ReadableStream({
     start(controller) {
@@ -39,36 +39,21 @@ export async function GET(req: NextRequest) {
       if (lastEventId) {
         ;(async () => {
           try {
-            const parsedId = parseInt(lastEventId, 10)
             const replayMessages = await db
               .select()
               .from(workflowMessages)
-              .where(and(
-                eq(workflowMessages.sessionId, sessionId),
-                gt(workflowMessages.eventId, isNaN(parsedId) ? 0 : parsedId)
-              ))
+              .where(eq(workflowMessages.sessionId, sessionId))
               .orderBy(asc(workflowMessages.createdAt))
 
             for (const msg of replayMessages) {
-              if (msg.eventId !== null) {
-                try {
-                  const replayEvent = JSON.parse(msg.content)
-                  controller.enqueue(encoder.encode(`id: ${msg.eventId}\ndata: ${JSON.stringify(replayEvent)}\n\n`))
-                  continue
-                } catch {
-                  // Fall through to best-effort legacy replay payload below.
-                }
-              }
-
               const replayEvent = {
                 type: msg.role === 'user' ? 'replay_user' : 'replay_assistant',
-                eventId: msg.eventId,
                 content: msg.content,
                 step: msg.step,
                 eventType: msg.eventType,
                 metadata: msg.metadata,
               }
-              controller.enqueue(encoder.encode(`id: ${msg.eventId ?? ''}\ndata: ${JSON.stringify(replayEvent)}\n\n`))
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(replayEvent)}\n\n`))
             }
           } catch { /* replay is best-effort */ }
         })()
@@ -98,7 +83,7 @@ export async function GET(req: NextRequest) {
               const event = JSON.parse(message)
               controller.enqueue(encoder.encode(`id: ${event.eventId}\ndata: ${message}\n\n`))
 
-              if (event.type === 'error') {
+              if (event.type === 'done' || event.type === 'error') {
                 subscribed = false
                 sub.unsubscribe(channel)
                 sub.disconnect()

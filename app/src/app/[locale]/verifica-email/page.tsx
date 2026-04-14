@@ -3,8 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { DsCard } from '@/components/ui/ds-card';
-import { DsButton } from '@/components/ui/ds-button';
+import { GlassCard } from '@/components/glass/GlassCard';
 
 type Status = 'loading' | 'success' | 'error';
 
@@ -31,11 +30,11 @@ export default function VerifyEmailPage() {
 
     return {
       title: 'Verificare email',
-      loading: 'Verificam adresa ta de email...',
+      loading: 'Verificăm adresa ta de email...',
       success: 'Email verificat!',
-      successDesc: 'Adresa ta de email a fost confirmata. Poti acum sa te autentifici.',
+      successDesc: 'Adresa ta de email a fost confirmată. Poți acum să te autentifici.',
       error: 'Link expirat sau invalid',
-      errorDesc: 'Link-ul de verificare a expirat sau este invalid. Solicita unul nou.',
+      errorDesc: 'Link-ul de verificare a expirat sau este invalid. Solicită unul nou.',
       login: 'Mergi la autentificare',
     };
   }, [locale]);
@@ -69,46 +68,49 @@ export default function VerifyEmailPage() {
   }, [token]);
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <DsCard
+    <main className="min-h-screen flex items-center justify-center p-4 bg-[var(--bg-base)]">
+      <GlassCard
+        hover={false}
         className="w-full max-w-md p-10 flex flex-col items-center gap-4 text-center"
       >
-        <h1 className="text-2xl font-semibold text-on-surface tracking-tight">
+        <h1 className="text-2xl font-semibold text-[var(--text-primary)] tracking-tight">
           {content.title}
         </h1>
 
         {status === 'loading' && (
-          <p className="text-sm text-on-surface-variant">{content.loading}</p>
+          <p className="text-sm text-[var(--text-secondary)]">{content.loading}</p>
         )}
 
         {status === 'success' && (
           <>
-            <div className="px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm w-full">
+            <div className="px-4 py-3 rounded-[var(--input-radius)] bg-[rgba(34,197,94,0.1)] border border-[rgba(34,197,94,0.25)] text-[var(--success)] text-sm w-full">
               {content.success}
             </div>
-            <p className="text-sm text-on-surface-variant">{content.successDesc}</p>
-            <DsButton variant="primary" size="md" asChild className="mt-2">
-              <Link href={`/${locale}/autentificare`}>
-                {content.login}
-              </Link>
-            </DsButton>
+            <p className="text-sm text-[var(--text-secondary)]">{content.successDesc}</p>
+            <Link
+              href={`/${locale}/autentificare`}
+              className="inline-flex items-center justify-center font-medium rounded-[var(--btn-radius)] transition-all duration-[var(--transition-fast)] bg-[var(--accent)] text-white hover:brightness-110 px-6 py-2.5 text-[15px] mt-2"
+            >
+              {content.login}
+            </Link>
           </>
         )}
 
         {status === 'error' && (
           <>
-            <div className="px-4 py-3 rounded-xl bg-error-container text-on-error-container text-sm w-full">
+            <div className="px-4 py-3 rounded-[var(--input-radius)] bg-[rgba(239,68,68,0.12)] border border-[rgba(239,68,68,0.25)] text-[var(--danger)] text-sm w-full">
               {content.error}
             </div>
-            <p className="text-sm text-on-surface-variant">{content.errorDesc}</p>
-            <DsButton variant="primary" size="md" asChild className="mt-2">
-              <Link href={`/${locale}/autentificare`}>
-                {content.login}
-              </Link>
-            </DsButton>
+            <p className="text-sm text-[var(--text-secondary)]">{content.errorDesc}</p>
+            <Link
+              href={`/${locale}/autentificare`}
+              className="inline-flex items-center justify-center font-medium rounded-[var(--btn-radius)] transition-all duration-[var(--transition-fast)] bg-[var(--accent)] text-white hover:brightness-110 px-6 py-2.5 text-[15px] mt-2"
+            >
+              {content.login}
+            </Link>
           </>
         )}
-      </DsCard>
+      </GlassCard>
     </main>
   );
 }

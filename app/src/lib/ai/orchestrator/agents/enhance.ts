@@ -1,15 +1,13 @@
 import type { AgentFn, EnhancedIdea } from '../types'
 import { getEnhancePrompt } from '../prompts/enhance'
 import { parseAIJson } from '../utils'
-import { resolveAgentModel } from '@/lib/ai/model-routing'
 
 export const enhanceAgent: AgentFn = async (ctx, input, stream, gateway) => {
   stream.send({ type: 'step_progress', step: 1, message: 'Analyzing your project idea...' })
 
-  const { provider, model } = resolveAgentModel({ task: 'enhancement', ctx: ctx.routingCtx })
   const result = await gateway.generate({
-    provider,
-    model,
+    provider: 'gemini',
+    model: 'gemini-2.5-flash-preview',
     system: getEnhancePrompt(ctx),
     messages: [{ role: 'user', content: input }],
     temperature: 0.3,

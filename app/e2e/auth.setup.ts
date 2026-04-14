@@ -1,60 +1,35 @@
 import { test as setup, expect } from '@playwright/test';
-import { dismissCookieBanner, submitDevLogin } from './test-config';
 
 const AUTH_FILE = 'e2e/.auth/user.json';
 
-setup('authenticate as admin via dev login', async ({ page }) => {
-  setup.setTimeout(120_000);
+setup('authenticate', async ({ page, request }) => {
+  setup.setTimeout(120_000); // Allow up to 2 minutes for rate limit retry
 
-  // Navigate to login and dismiss cookie banner
+  // Check if we're rate limited before attempting browser login
+  const checkResponse = await request.post('/api/auth/callback/credentials', {
+    form: { email: 'godjabogdan@gmail.com', password: 'Bogdangvb0708.,' },
+  }).catch(() => null);
+
+  if (checkResponse && checkResponse.status() === 429) {
+    // Parse retry-after from response body
+    const body = await checkResponse.json().catch(() => ({}));
+    const retryMs = body?.error?.details?.retryAfterMs || 60_000;
+    const waitSec = Math.min(Math.ceil(retryMs / 1000), 90); // Cap at 90s
+    console.log(`Rate limited — waiting ${waitSec}s before login attempt`);
+    await page.waitForTimeout(waitSec * 1000);
+  }
+
   await page.goto('/ro/autentificare');
-  await dismissCookieBanner(page);
 
-  // Submit dev login and wait for the credentials callback
-  const emailInput = page.locator('input[placeholder="Email"]');
-  await expect(emailInput).toBeVisible({ timeout: 5_000 });
+  // Fill in the login form
+  await page.getByLabel('Adresă de email').fill('godjabogdan@gmail.com');
+  await page.getByLabel('Parolă').fill('Bogdangvb0708.,');
+  await page.getByRole('button', { name: 'Autentificare' }).click();
 
-  const callbackRes = await submitDevLogin(page);
+  // Wait for redirect to dashboard after successful login
+  await page.waitForURL('**/ro/panou**', { timeout: 30000 });
+  await expect(page).toHaveURL(/\/ro\/panou/);
 
-  if (callbackRes?.status() === 429) {
-    // Read the server's Retry-After header (seconds until the rate limit window resets)
-    const retryAfter = parseInt(callbackRes.headers()['retry-after'] || '0', 10);
-    const waitMs = Math.min((retryAfter + 2) * 1_000, 90_000); // cap at 90s, add 2s buffer
-    console.log(`Rate limited — Retry-After: ${retryAfter}s, waiting ${waitMs / 1000}s...`);
-    await page.waitForTimeout(waitMs);
-
-    // Retry login after the window expires
-    await page.reload();
-    await page.waitForLoadState('networkidle');
-    const retryRes = await submitDevLogin(page);
-
-    if (retryRes?.status() === 429) {
-      throw new Error(
-        'Still rate limited after waiting for Retry-After window. ' +
-        'Flush Redis before running tests: docker exec eu-funds-redis-1 redis-cli FLUSHDB'
-      );
-    }
-  }
-
-  // Wait for client-side redirect after successful auth callback
-  await page.waitForURL(/\/(ro|en)\/(panou|bun-venit|interese)/, { timeout: 15_000 }).catch(() => {});
-
-  // If still on login page, check for error
-  if (page.url().includes('/autentificare')) {
-    const errorVisible = await page.locator('text=Invalid email or password').isVisible().catch(() => false);
-    if (errorVisible) {
-      throw new Error('Login failed: Invalid email or password');
-    }
-    // Last attempt — wait for redirect
-    await page.waitForURL(/\/(ro|en)\/(panou|bun-venit|interese)/, { timeout: 10_000 });
-  }
-
-  // If redirected to onboarding, navigate to dashboard (session is valid)
-  if (page.url().includes('/bun-venit') || page.url().includes('/interese')) {
-    await page.goto('/ro/panou');
-    await page.waitForLoadState('networkidle');
-  }
-
-  await expect(page).not.toHaveURL(/autentificare/, { timeout: 5_000 });
+  // Save signed-in state
   await page.context().storageState({ path: AUTH_FILE });
 });

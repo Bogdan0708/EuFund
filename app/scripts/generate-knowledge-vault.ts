@@ -389,56 +389,9 @@ function generateNotebookLMGuide(
   return lines.join('\n');
 }
 
-// ─── Knowledge Layer Export ──────────────────────────────────────────
-
-async function exportSessionKnowledge(vaultRoot: string): Promise<void> {
-  const { db } = await import('../src/lib/db')
-  const { sessionKnowledge } = await import('../src/lib/db/schema')
-
-  const rows = await db.select().from(sessionKnowledge)
-  const dir = path.join(vaultRoot, 'wiki', 'projects')
-  fs.mkdirSync(dir, { recursive: true })
-
-  const bySession = new Map<string, typeof rows>()
-  for (const row of rows) {
-    const list = bySession.get(row.sessionId) ?? []
-    list.push(row)
-    bySession.set(row.sessionId, list)
-  }
-
-  for (const [sessionId, pages] of bySession) {
-    const sessionDir = path.join(dir, sessionId.slice(0, 8))
-    fs.mkdirSync(sessionDir, { recursive: true })
-    for (const page of pages) {
-      const fm = { ...(page.frontmatter as Record<string, unknown>), kind: page.kind, sessionId, exportedAt: new Date().toISOString() }
-      const content = `---\n${Object.entries(fm).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('\n')}\n---\n\n# ${page.title}\n\n${page.contentMd}`
-      fs.writeFileSync(path.join(sessionDir, `${page.slug}.md`), content)
-    }
-  }
-  console.log(`  Exported ${rows.length} session knowledge pages`)
-}
-
-async function exportProposalPatterns(vaultRoot: string): Promise<void> {
-  const { db } = await import('../src/lib/db')
-  const { proposalPatterns } = await import('../src/lib/db/schema')
-
-  const rows = await db.select().from(proposalPatterns)
-  const dir = path.join(vaultRoot, 'wiki', 'patterns')
-  fs.mkdirSync(dir, { recursive: true })
-
-  for (const row of rows) {
-    const rate = row.timesUsed > 0 ? Math.round((row.timesAccepted / row.timesUsed) * 100) : 0
-    const fm = { program: row.program, sectionType: row.sectionType, timesUsed: row.timesUsed, acceptRate: `${rate}%`, exportedAt: new Date().toISOString() }
-    const slug = `${row.program}-${row.sectionType}-${row.id.slice(0, 8)}`.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-    const content = `---\n${Object.entries(fm).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('\n')}\n---\n\n# ${row.title}\n\n${row.contentMd}`
-    fs.writeFileSync(path.join(dir, `${slug}.md`), content)
-  }
-  console.log(`  Exported ${rows.length} proposal patterns`)
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
+function main(): void {
   console.log('Loading classification results...');
   const allFiles: ClassifiedFile[] = JSON.parse(fs.readFileSync(RESULTS_PATH, 'utf8'));
 
@@ -545,20 +498,6 @@ async function main(): Promise<void> {
   console.log(`\n  Upload guides created: ${guidesCreated}`);
   console.log(`  Location: ${NOTEBOOKLM_DIR}/`);
 
-  // ─── 3. Export Knowledge Layer (if DATABASE_URL is set) ────────────
-
-  if (process.env.DATABASE_URL) {
-    console.log('\n═══ Exporting Knowledge Layer ═══\n');
-    try {
-      await exportSessionKnowledge(VAULT_ROOT);
-      await exportProposalPatterns(VAULT_ROOT);
-    } catch (err) {
-      console.error('  Knowledge layer export failed (skipping):', err instanceof Error ? err.message : String(err));
-    }
-  } else {
-    console.log('\n  Skipping knowledge layer export (no DATABASE_URL)');
-  }
-
   // ─── Summary ──────────────────────────────────────────────────────
 
   console.log('\n═══ Done ═══');
@@ -572,4 +511,4 @@ async function main(): Promise<void> {
   console.log(`  4. After creating notebooks, register them: /research register-notebook FondEU-<PROGRAM>`);
 }
 
-main().catch(err => { console.error('Fatal:', err); process.exit(1) });
+main();

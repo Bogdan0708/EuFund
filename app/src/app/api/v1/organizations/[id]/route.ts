@@ -8,7 +8,7 @@ import { db } from '@/lib/db';
 import { organizations, orgMembers } from '@/lib/db/schema';
 import { organizationSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireOrgMembership } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { logAudit, sanitizeForAudit } from '@/lib/legal/audit';
 import { eq, and, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
@@ -17,8 +17,8 @@ type Params = { params: { id: string } };
 
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
+    await requireAuth();
     const { id } = params;
-    await requireOrgMembership(id);
 
 
     const org = await db.query.organizations.findFirst({
@@ -55,8 +55,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
+    const user = await requireAuth();
     const { id } = params;
-    const { user } = await requireOrgMembership(id, 'org_admin');
+
 
     const body = await req.json();
     const parsed = organizationSchema.partial().safeParse(body);
@@ -104,8 +105,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
+    const user = await requireAuth();
     const { id } = params;
-    const { user } = await requireOrgMembership(id, 'admin');
+
 
     const existing = await db.query.organizations.findFirst({
       where: and(eq(organizations.id, id), isNull(organizations.deletedAt)),

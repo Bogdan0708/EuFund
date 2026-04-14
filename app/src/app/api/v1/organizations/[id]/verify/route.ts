@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { organizations } from '@/lib/db/schema';
 import { Errors, FondEUError } from '@/lib/errors';
-import { requireOrgMembership } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
 import { lookupCompany } from '@/lib/integrations/romanian/onrc';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -15,8 +15,9 @@ type Params = { params: { id: string } };
 
 export async function POST(_req: NextRequest, { params }: Params) {
   try {
+    const user = await requireAuth();
     const { id } = params;
-    const { user } = await requireOrgMembership(id, 'org_admin');
+
 
     const org = await db.query.organizations.findFirst({
       where: and(eq(organizations.id, id), isNull(organizations.deletedAt)),

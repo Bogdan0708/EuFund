@@ -1,7 +1,5 @@
 import PizZip from 'pizzip'
-import type { SectionResult } from '@/lib/ai/orchestrator/types'
-import { parseMarkdownBlocks } from '@/lib/markdown/proposal-markdown'
-import { blocksToOoxml, escapeXml, STYLES_XML, NUMBERING_XML } from './markdown-to-ooxml'
+import type { ProjectSection } from '@/lib/ai/orchestrator/types'
 
 interface ExportOptions {
   projectTitle: string
@@ -10,22 +8,14 @@ interface ExportOptions {
   date?: string
 }
 
-const FOOTER_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:p>
-    <w:pPr><w:jc w:val="center"/></w:pPr>
-    <w:r><w:fldChar w:fldCharType="begin"/></w:r>
-    <w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>
-    <w:r><w:fldChar w:fldCharType="separate"/></w:r>
-    <w:r><w:t>1</w:t></w:r>
-    <w:r><w:fldChar w:fldCharType="end"/></w:r>
-  </w:p>
-</w:ftr>`
-
 export async function generateDocx(
-  sections: SectionResult[],
+  sections: ProjectSection[],
   options: ExportOptions
 ): Promise<Buffer> {
+  // Build a simple DOCX from scratch using PizZip with XML content
+  const content = buildDocxContent(sections, options)
+
+  // Create a minimal DOCX template programmatically
   const zip = new PizZip()
 
   // [Content_Types].xml
@@ -34,9 +24,6 @@ export async function generateDocx(
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
-  <Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>
-  <Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
 </Types>`)
 
   // _rels/.rels
@@ -45,52 +32,44 @@ export async function generateDocx(
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>`)
 
-  // Build document body
-  const body = buildDocumentBody(sections, options)
+  // word/document.xml
+  zip.folder('word')!.file('document.xml', content)
 
-  const wordFolder = zip.folder('word')!
-  wordFolder.file('document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720"/><w:footerReference w:type="default" r:id="rId3"/></w:sectPr></w:body>
-</w:document>`)
-
-  wordFolder.file('styles.xml', STYLES_XML)
-  wordFolder.file('numbering.xml', NUMBERING_XML)
-  wordFolder.file('footer1.xml', FOOTER_XML)
-
-  wordFolder.folder('_rels')!.file('document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  // word/_rels/document.xml.rels
+  zip.folder('word')!.folder('_rels')!.file('document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>
-  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
 </Relationships>`)
 
-  return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' })
+  const buffer = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' })
+  return buffer
 }
 
-function buildDocumentBody(sections: SectionResult[], options: ExportOptions): string {
-  const title = options.projectTitle.trim()
-    ? escapeXml(options.projectTitle)
-    : 'Cerere de finan\u021bare'
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function buildDocxContent(sections: ProjectSection[], options: ExportOptions): string {
+  const title = escapeXml(options.projectTitle)
+  const program = options.program ? escapeXml(options.program) : ''
   const date = options.date || new Date().toISOString().split('T')[0]
 
   let body = ''
 
-  // Cover page — title
-  body += `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="4000"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="64"/><w:szCs w:val="64"/></w:rPr><w:t>${title}</w:t></w:r></w:p>`
+  // Title
+  body += `<w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:b/><w:sz w:val="48"/></w:rPr></w:pPr>
+    <w:r><w:rPr><w:b/><w:sz w:val="48"/></w:rPr><w:t>${title}</w:t></w:r></w:p>`
 
-  // Cover page — program (only if provided)
-  if (options.program) {
-    body += `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr><w:t>Program: ${escapeXml(options.program)}</w:t></w:r></w:p>`
+  // Program and date
+  if (program) {
+    body += `<w:p><w:pPr><w:jc w:val="center"/></w:pPr>
+      <w:r><w:t>Program: ${program}</w:t></w:r></w:p>`
   }
-
-  // Cover page — applicant (only if provided)
-  if (options.applicant) {
-    body += `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:t>${escapeXml(options.applicant)}</w:t></w:r></w:p>`
-  }
-
-  // Cover page — date
-  body += `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>${date}</w:t></w:r></w:p>`
+  body += `<w:p><w:pPr><w:jc w:val="center"/></w:pPr>
+    <w:r><w:t>Data: ${date}</w:t></w:r></w:p>`
 
   // Page break after cover
   body += `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`
@@ -98,16 +77,22 @@ function buildDocumentBody(sections: SectionResult[], options: ExportOptions): s
   // Sections
   const sorted = [...sections].sort((a, b) => a.order - b.order)
   for (const section of sorted) {
-    // Section heading as Heading1
-    body += `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>${section.order}. ${escapeXml(section.title)}</w:t></w:r></w:p>`
+    // Section heading
+    body += `<w:p><w:pPr><w:pStyle w:val="Heading1"/><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:b/><w:sz w:val="28"/></w:rPr><w:t>${section.order}. ${escapeXml(section.title)}</w:t></w:r></w:p>`
 
-    // Parse markdown content and convert to OOXML
-    const blocks = parseMarkdownBlocks(section.content)
-    body += blocksToOoxml(blocks)
+    // Section content — split by newlines into paragraphs
+    const paragraphs = section.content.split('\n').filter(p => p.trim())
+    for (const para of paragraphs) {
+      body += `<w:p><w:r><w:t xml:space="preserve">${escapeXml(para)}</w:t></w:r></w:p>`
+    }
 
     // Spacing after section
     body += `<w:p/>`
   }
 
-  return body
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>${body}</w:body>
+</w:document>`
 }

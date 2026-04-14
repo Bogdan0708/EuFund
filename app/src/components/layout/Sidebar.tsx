@@ -1,9 +1,9 @@
 'use client'
-
 import { usePathname } from 'next/navigation'
 import { useTranslations, useLocale } from 'next-intl'
-import { Icon } from '@/components/ui/ds-icon'
+import { Home, FolderOpen, Search, Paperclip, Sparkles, Settings, Menu } from 'lucide-react'
 import { SidebarItem } from './SidebarItem'
+import { signOut } from 'next-auth/react'
 
 interface SidebarProps {
   userName?: string
@@ -12,22 +12,22 @@ interface SidebarProps {
   onToggle: () => void
 }
 
-const NAV_ITEMS = [
-  { route: '', icon: 'home', labelKey: 'home' },
-  { route: '/proiecte', icon: 'folder_open', labelKey: 'projects' },
-  { route: '/documente', icon: 'description', labelKey: 'files' },
-  { route: '/asistent-ai', icon: 'smart_toy', labelKey: 'aiAssistant' },
-] as const
-
-export function Sidebar({ userName, userInitials, collapsed }: SidebarProps) {
+export function Sidebar({ userName, userInitials, collapsed, onToggle }: SidebarProps) {
   const t = useTranslations('nav')
   const locale = useLocale()
   const pathname = usePathname()
   const prefix = `/${locale}`
 
-  const isActive = (route: string) => {
-    const href = `${prefix}${route}`
-    if (route === '') return pathname === prefix || pathname === `${prefix}/` || pathname === `${prefix}/panou`
+  const navItems = [
+    { href: prefix, icon: Home, labelKey: 'home' as const },
+    { href: `${prefix}/projects`, icon: FolderOpen, labelKey: 'projects' as const },
+    { href: `${prefix}/calls`, icon: Search, labelKey: 'calls' as const },
+    { href: `${prefix}/files`, icon: Paperclip, labelKey: 'files' as const },
+    { href: `${prefix}/ai`, icon: Sparkles, labelKey: 'ai' as const },
+  ]
+
+  const isActive = (href: string) => {
+    if (href === prefix) return pathname === prefix || pathname === `${prefix}/`
     return pathname.startsWith(href)
   }
 
@@ -35,67 +35,55 @@ export function Sidebar({ userName, userInitials, collapsed }: SidebarProps) {
     <aside
       className={`
         fixed top-0 left-0 h-screen flex flex-col
-        bg-[#F5F5F7] border-r-0
-        transition-[width] duration-300 ease-out z-40
-        py-8 px-4
-        ${collapsed ? 'w-[60px]' : 'w-[240px]'}
+        bg-[var(--bg-base)] border-r border-[var(--border-subtle)]
+        transition-[width] duration-200 ease-in-out z-40
+        ${collapsed ? 'w-[var(--sidebar-collapsed)]' : 'w-[var(--sidebar-width)]'}
       `}
     >
-      {/* Logo — matches Stitch: auto_awesome icon + FondEU + THE DIGITAL CURATOR */}
-      <div className="flex items-center gap-3 px-4 mb-12">
-        <div className="w-8 h-8 rounded-lg bg-primary-container flex items-center justify-center text-white shrink-0">
-          <Icon name="auto_awesome" filled size="sm" />
-        </div>
-        {!collapsed && (
-          <div className="flex flex-col min-w-0">
-            <h1 className="text-xl font-bold tracking-tighter text-slate-900">FondEU</h1>
-            <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">
-              The Digital Curator
-            </p>
-          </div>
-        )}
+      <div className="flex items-center gap-3 px-3 py-4">
+        <button onClick={onToggle} className="p-1.5 rounded-[var(--btn-radius)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-secondary)]">
+          <Menu size={20} />
+        </button>
+        {!collapsed && <span className="text-[var(--text-primary)] font-semibold text-base">FondEU</span>}
       </div>
 
-      {/* Navigation — 4 items (funding calls removed) */}
-      <nav className="flex-1 space-y-2">
-        {NAV_ITEMS.map(item => {
-          const href = item.route === '' ? `${prefix}/panou` : `${prefix}${item.route}`
-          return (
-            <SidebarItem
-              key={item.route}
-              href={href}
-              icon={item.icon}
-              label={t(item.labelKey)}
-              active={isActive(item.route)}
-              collapsed={collapsed}
-            />
-          )
-        })}
+      <nav className="flex-1 flex flex-col gap-1 px-2 py-2">
+        {navItems.map(item => (
+          <SidebarItem
+            key={item.href}
+            href={item.href}
+            icon={item.icon}
+            label={t(item.labelKey)}
+            active={isActive(item.href)}
+            collapsed={collapsed}
+          />
+        ))}
       </nav>
 
-      {/* Bottom section */}
-      <div className="mt-auto pt-8 px-4">
-        {/* Settings */}
+      <div className="flex flex-col gap-1 px-2 py-3 border-t border-[var(--border-subtle)]">
         <SidebarItem
-          href={`${prefix}/setari`}
-          icon="settings"
+          href={`${prefix}/settings`}
+          icon={Settings}
           label={t('settings')}
-          active={isActive('/setari')}
+          active={isActive(`${prefix}/settings`)}
           collapsed={collapsed}
         />
-
-        {/* User profile — matches Stitch: avatar + name + role */}
-        {!collapsed && (
-          <div className="mt-6 flex items-center gap-3 p-2 bg-surface-container-low rounded-xl">
-            <div className="w-10 h-10 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-sm font-bold shrink-0">
-              {userInitials || '?'}
-            </div>
-            <div className="overflow-hidden">
-              <p className="text-xs font-bold truncate">{userName || '—'}</p>
-              <p className="text-[10px] text-on-surface-variant truncate">Premium Curator</p>
-            </div>
+        <div className="flex items-center gap-3 px-3 py-2">
+          <div className="w-8 h-8 rounded-full bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center text-sm font-medium shrink-0">
+            {userInitials || '?'}
           </div>
-        )}
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-[var(--text-primary)] truncate">{userName}</p>
+              <button
+                onClick={() => signOut({ callbackUrl: `/${locale}/autentificare` })}
+                className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+              >
+                {t('signOut')}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </aside>
   )

@@ -1,0 +1,50 @@
+/* app/src/styles/glass-tokens.css */
+:root {
+  /* Base surfaces */
+  --bg-base: #06060A;
+  --bg-surface: rgba(255,255,255,0.04);
+  --bg-surface-hover: rgba(255,255,255,0.07);
+  --bg-glass: rgba(255,255,255,0.06);
+
+  /* Borders */
+  --border-subtle: rgba(255,255,255,0.08);
+  --border-focus: rgba(59,130,246,0.5);
+
+  /* Text */
+  --text-primary: #F0F0F3;
+  --text-secondary: rgba(255,255,255,0.55);
+  --text-tertiary: rgba(255,255,255,0.35);
+
+  /* Accent */
+  --accent: #3B82F6;
+  --accent-soft: rgba(59,130,246,0.12);
+
+  /* Semantic */
+  --success: #22C55E;
+  --warning: #F59E0B;
+  --danger: #EF4444;
+
+  /* Glass effect */
+  --glass-blur: blur(16px);
+  --glass-radius: 16px;
+  --btn-radius: 12px;
+  --input-radius: 10px;
+  --badge-radius: 6px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Sidebar */
+  --sidebar-width: 240px;
+  --sidebar-collapsed: 60px;
+
+  /* Animation */
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease-out;
+  --transition-slow: 300ms ease-out;
+}

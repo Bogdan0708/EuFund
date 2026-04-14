@@ -1,8 +1,7 @@
 'use client'
 import { useTranslations } from 'next-intl'
-import { DsCard } from '@/components/ui/ds-card'
-import { DsButton } from '@/components/ui/ds-button'
-import { Icon } from '@/components/ui/ds-icon'
+import { GlassCard, GlassButton } from '@/components/glass'
+import { Shield } from 'lucide-react'
 
 export function PrivacyCard() {
   const t = useTranslations('settings')
@@ -21,22 +20,22 @@ export function PrivacyCard() {
   }
 
   return (
-    <DsCard className="p-6">
+    <GlassCard hover={false} className="p-6">
       <div className="flex items-center gap-4 mb-4">
-        <Icon name="shield" size="md" className="text-primary" />
-        <h2 className="text-lg font-semibold text-on-surface">{t('privacy')}</h2>
+        <Shield size={20} className="text-[var(--accent)]" />
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">{t('privacy')}</h2>
       </div>
       <div className="space-y-3">
-        <DsButton variant="ghost" size="sm" onClick={() => { window.location.href = '/api/auth/consent' }}>
+        <GlassButton variant="ghost" onClick={() => { window.location.href = '/api/auth/consent' }}>
           {t('manageConsent')}
-        </DsButton>
-        <DsButton variant="ghost" size="sm" onClick={handleExportData}>
+        </GlassButton>
+        <GlassButton variant="ghost" onClick={handleExportData}>
           {t('exportData')}
-        </DsButton>
-        <DsButton variant="secondary" size="sm" className="text-error">
+        </GlassButton>
+        <GlassButton variant="danger">
           {t('deleteAccount')}
-        </DsButton>
+        </GlassButton>
       </div>
-    </DsCard>
+    </GlassCard>
   )
 }

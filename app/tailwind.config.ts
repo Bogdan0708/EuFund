@@ -1,90 +1,83 @@
 import type { Config } from 'tailwindcss';
 import tailwindcssAnimate from 'tailwindcss-animate';
 
-/** Helper: wrap CSS var as rgb() with alpha support */
-const c = (v: string) => `rgb(var(--${v}) / <alpha-value>)`;
-
 const config: Config = {
-  darkMode: ['variant', '[data-theme="dark"] &'],
+  darkMode: ["class"],
   content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
   theme: {
     extend: {
       colors: {
-        surface: {
-          DEFAULT: c('surface'),
-          dim: c('surface-dim'),
-          bright: c('surface-bright'),
-          'container-lowest': c('surface-container-lowest'),
-          'container-low': c('surface-container-low'),
-          container: c('surface-container'),
-          'container-high': c('surface-container-high'),
-          'container-highest': c('surface-container-highest'),
-          variant: c('surface-variant'),
-          tint: c('surface-tint'),
-        },
-        background: c('background'),
-        'on-surface': {
-          DEFAULT: c('on-surface'),
-          variant: c('on-surface-variant'),
-        },
-        'on-background': c('on-background'),
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
         primary: {
-          DEFAULT: c('primary'),
-          container: c('primary-container'),
-          fixed: c('primary-fixed'),
-          'fixed-dim': c('primary-fixed-dim'),
-        },
-        'on-primary': {
-          DEFAULT: c('on-primary'),
-          container: c('on-primary-container'),
-          fixed: c('on-primary-fixed'),
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
         },
         secondary: {
-          DEFAULT: c('secondary'),
-          container: c('secondary-container'),
-          fixed: c('secondary-fixed'),
-          'fixed-dim': c('secondary-fixed-dim'),
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
         },
-        'on-secondary': {
-          DEFAULT: c('on-secondary'),
-          container: c('on-secondary-container'),
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
         },
-        tertiary: {
-          DEFAULT: c('tertiary'),
-          container: c('tertiary-container'),
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
         },
-        'on-tertiary': c('on-tertiary'),
-        error: {
-          DEFAULT: c('error'),
-          container: c('error-container'),
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
         },
-        'on-error': {
-          DEFAULT: c('on-error'),
-          container: c('on-error-container'),
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
         },
-        outline: {
-          DEFAULT: c('outline'),
-          variant: c('outline-variant'),
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
         },
-        'inverse-surface': c('inverse-surface'),
-        'inverse-on-surface': c('inverse-on-surface'),
-        'inverse-primary': c('inverse-primary'),
+        brand: {
+          50: '#eff6ff',
+          100: '#dbeafe',
+          500: '#003399',
+          600: '#002b80',
+          700: '#002266',
+        },
+        success: '#16a34a',
+        warning: '#ea580c',
+        danger: '#dc2626',
+        'g-surface': 'var(--bg-surface)',
+        'g-surface-hover': 'var(--bg-surface-hover)',
+        'g-glass': 'var(--bg-glass)',
+        'g-border': 'var(--border-subtle)',
+        'g-border-focus': 'var(--border-focus)',
+        'g-text': 'var(--text-primary)',
+        'g-text-secondary': 'var(--text-secondary)',
+        'g-text-tertiary': 'var(--text-tertiary)',
+        'g-accent': 'var(--accent)',
+        'g-accent-soft': 'var(--accent-soft)',
+        'g-success': 'var(--success)',
+        'g-warning': 'var(--warning)',
+        'g-danger': 'var(--danger)',
       },
-      fontFamily: {
-        headline: ['Inter', 'system-ui', 'sans-serif'],
-        body: ['Inter', 'system-ui', 'sans-serif'],
-        label: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
+      backdropBlur: {
+        glass: '16px',
       },
       borderRadius: {
-        DEFAULT: '1rem',
-        lg: '2rem',
-        xl: '3rem',
-        full: '9999px',
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
+        glass: '16px',
+        btn: '12px',
+        input: '10px',
+        badge: '6px',
       },
     },
   },
   plugins: [tailwindcssAnimate],
 };
-
 export default config;

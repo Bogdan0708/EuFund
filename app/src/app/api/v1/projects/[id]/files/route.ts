@@ -49,7 +49,6 @@ export async function GET(
         filename: projectFiles.filename,
         mimeType: projectFiles.mimeType,
         sizeBytes: projectFiles.sizeBytes,
-        storagePath: projectFiles.storagePath,
         category: projectFiles.category,
         description: projectFiles.description,
         createdAt: projectFiles.createdAt,

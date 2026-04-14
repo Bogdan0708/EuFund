@@ -25,9 +25,9 @@ function buildCSP(nonce: string, isDev: boolean): string {
     isDev
       ? `script-src 'self' 'unsafe-eval' 'nonce-${nonce}' 'strict-dynamic'`
       : `script-src 'nonce-${nonce}' 'strict-dynamic'`,
-    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
+    `style-src 'self' 'unsafe-inline'`,
     "img-src 'self' data: https:",
-    "font-src 'self' data: https://fonts.gstatic.com",
+    "font-src 'self' data:",
     "connect-src 'self' https://api.anthropic.com https://*.googleapis.com https://eurlex.europa.eu",
     "object-src 'none'",
     "media-src 'self'",
@@ -53,10 +53,10 @@ const publicPaths = [
   '/api/ai/diagnostic', // AI diagnostic (token-protected)
   '/ro/autentificare',
   '/en/autentificare',
-  '/ro/bun-venit',
-  '/en/bun-venit',
-  '/ro/interese',
-  '/en/interese',
+  '/ro/inregistrare',
+  '/en/inregistrare',
+  '/ro/resetare-parola',
+  '/en/resetare-parola',
   '/ro/preturi',
   '/en/pricing',
   '/pricing',
@@ -65,12 +65,12 @@ const publicPaths = [
   '/robots.txt',
   '/manifest.json',
   '/manifest.webmanifest',
-  '/sitemap.xml',
-  '/ro/inregistrare',
-  '/en/inregistrare',
-  '/ro/resetare-parola',
-  '/en/resetare-parola',
+  '/sitemap.xml'
 ];
+
+if (process.env.NODE_ENV === 'development') {
+  publicPaths.push('/api/test-ai'); // Testing endpoint
+}
 
 // CSRF validation helper — double-submit cookie pattern
 function validateCSRF(req: NextRequest): boolean {
@@ -97,37 +97,22 @@ export default auth(async (req) => {
   const pathname = req.nextUrl.pathname;
 
   // ═══════════════════════════════════════════════════════════════════
-  // 0. ROUTE REDIRECTS (English → Romanian canonical paths, root → /panou)
+  // 0. PERMANENT REDIRECTS (old dashboard paths → new routes)
   // ═══════════════════════════════════════════════════════════════════
-  // Redirect bare locale root to /panou (dashboard)
-  const localeMatch = pathname.match(/^\/(ro|en)\/?$/);
-  if (localeMatch) {
-    return NextResponse.redirect(new URL(`/${localeMatch[1]}/panou`, req.url), 302);
-  }
-
-  // Redirect old English route names to Romanian canonical paths
-  const routeRedirects: Record<string, string> = {
-    '/projects': '/proiecte',
-    '/calls': '/asistent-ai',
-    '/files': '/documente',
-    '/ai': '/asistent-ai',
-    '/settings': '/setari',
+  const redirects: Record<string, string> = {
+    '/ro/panou': '/ro',
+    '/en/panou': '/en',
+    '/ro/proiecte': '/ro/projects',
+    '/en/proiecte': '/en/projects',
+    '/ro/finantari': '/ro/calls',
+    '/en/finantari': '/en/calls',
+    '/ro/billing': '/ro/settings',
+    '/en/billing': '/en/settings',
   };
 
-  for (const [englishPath, romanianPath] of Object.entries(routeRedirects)) {
-    const locales = ['ro', 'en'];
-    for (const loc of locales) {
-      if (pathname === `/${loc}${englishPath}` || pathname.startsWith(`/${loc}${englishPath}/`)) {
-        const newPath = pathname.replace(`/${loc}${englishPath}`, `/${loc}${romanianPath}`);
-        return NextResponse.redirect(new URL(newPath, req.url), 301);
-      }
-    }
-  }
-
-  // Redirect removed funding calls page to AI assistant
-  if (pathname.match(/^\/(ro|en)\/finantari/)) {
-    const locale = pathname.startsWith('/en') ? 'en' : 'ro'
-    return NextResponse.redirect(new URL(`/${locale}/asistent-ai`, req.url))
+  const redirectTo = redirects[pathname];
+  if (redirectTo) {
+    return NextResponse.redirect(new URL(redirectTo, req.url), 301);
   }
 
   const isPublic = publicPaths.some(path => pathname.startsWith(path));
@@ -206,35 +191,20 @@ export default auth(async (req) => {
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // 2c. ONBOARDING ENFORCEMENT
-  // ═══════════════════════════════════════════════════════════════════
-  const locale = pathname.startsWith('/en') ? 'en' : 'ro';
-  const isApiRoute = pathname.startsWith('/api/');
-  const onboardingPaths = ['/bun-venit', '/interese'];
-  const isOnboardingPage = onboardingPaths.some(p => pathname.endsWith(p));
-  if (req.auth?.user && !req.auth.user.onboardingCompleted && !isOnboardingPage && !isPublic && !isApiRoute) {
-    const response = NextResponse.redirect(new URL(`/${locale}/bun-venit`, req.url));
-    response.headers.set('x-request-id', requestId);
-    return finalizeResponse(response);
-  }
-
-  // ═══════════════════════════════════════════════════════════════════
   // 3. CSRF PROTECTION (state-changing operations)
   // ═══════════════════════════════════════════════════════════════════
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
     const csrfExemptPaths = [
-      '/api/auth/callback', // NextAuth requires this
-      '/api/auth/session',  // read-only session check
-      '/api/webhooks',      // external webhooks use signature verification
-      '/api/health',        // read-only health check
-      '/api/ready',         // read-only readiness probe
-      '/api/csp-report',    // browser-initiated CSP violation reports
-      '/api/metrics',       // read-only Prometheus scrape
+      '/api/auth/callback',
+      '/api/auth/session',
+      '/api/webhooks',
+      '/api/health',
+      '/api/csp-report',
     ];
 
     const isExempt = csrfExemptPaths.some(p => pathname.startsWith(p));
 
-    if (!isExempt && pathname.startsWith('/api/')) {
+    if (!isExempt && !isPublic && pathname.startsWith('/api/')) {
       if (!validateCSRF(req)) {
         log.warn({ ip, path: pathname }, '[middleware] CSRF validation failed');
         const response = NextResponse.json(

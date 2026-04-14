@@ -7,17 +7,9 @@ describe('POST /api/v1/organizations/[id]/approvals', () => {
     const updateSet = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
 
     vi.doMock('@/lib/auth/helpers', () => ({
-      requireOrgMembership: vi.fn().mockResolvedValue({
-        user: {
-          id: '123e4567-e89b-42d3-a456-426614174000',
-          email: 'admin@test.com',
-        },
-        membership: {
-          id: '123e4567-e89b-42d3-a456-426614174099',
-          orgId: '123e4567-e89b-42d3-a456-426614174001',
-          userId: '123e4567-e89b-42d3-a456-426614174000',
-          role: 'org_admin',
-        },
+      requireAuth: vi.fn().mockResolvedValue({
+        id: '123e4567-e89b-42d3-a456-426614174000',
+        email: 'admin@test.com',
       }),
       getPaginationParams: vi.fn(),
     }));
@@ -68,17 +60,9 @@ describe('POST /api/v1/organizations/[id]/approvals', () => {
     const updateSet = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
 
     vi.doMock('@/lib/auth/helpers', () => ({
-      requireOrgMembership: vi.fn().mockResolvedValue({
-        user: {
-          id: '123e4567-e89b-42d3-a456-426614174000',
-          email: 'admin@test.com',
-        },
-        membership: {
-          id: '123e4567-e89b-42d3-a456-426614174099',
-          orgId: '123e4567-e89b-42d3-a456-426614174001',
-          userId: '123e4567-e89b-42d3-a456-426614174000',
-          role: 'org_admin',
-        },
+      requireAuth: vi.fn().mockResolvedValue({
+        id: '123e4567-e89b-42d3-a456-426614174000',
+        email: 'admin@test.com',
       }),
       getPaginationParams: vi.fn(),
     }));
