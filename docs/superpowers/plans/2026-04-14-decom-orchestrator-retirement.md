@@ -589,25 +589,43 @@ Same pattern as previous sub-steps.
 
 ### Task d1: Pre-delete reference sweep
 
-- [ ] **Step 1: Sweep each route URL**
+- [ ] **Step 1: Sweep each of the 7 route URLs**
+
+Must cover all 7 route files listed in Task d2 — including the parameterized rollback/state/versions endpoints. For parameterized routes, sweep the static path prefix plus the distinguishing suffix so parameterized callers (`/api/ai/orchestrator/sessions/<uuid>/sections/<uuid>/rollback`) are caught regardless of the literal UUID.
 
 Run:
 ```bash
 cd /home/godja/Dev/EU-Funds-decom-orch-d && {
+  # Non-parameterized routes
   for route in \
     /api/ai/orchestrator/message \
     /api/ai/orchestrator/messages \
-    /api/ai/orchestrator/sessions \
     /api/ai/orchestrator/stream; do
     echo "## $route"
     rg -n "['\"\\\`]$route" app/src/ app/tests/ 2>/dev/null || echo "(none)"
     echo
   done
+
+  # Sessions listing (static path, but matches the parameterized prefix too — disambiguate by grepping the exact literal with a boundary)
+  echo "## /api/ai/orchestrator/sessions (listing, not parameterized)"
+  rg -n "['\"\\\`]/api/ai/orchestrator/sessions['\"\\\`]" app/src/ app/tests/ 2>/dev/null || echo "(none)"
+  echo
+
+  # Parameterized routes — sweep by distinguishing suffix inside the orchestrator/sessions path
+  for suffix in rollback state versions; do
+    echo "## /api/ai/orchestrator/sessions/<sessionId>/sections/<sectionId>/$suffix"
+    rg -n "/api/ai/orchestrator/sessions/[^'\"\\\`]*/sections/[^'\"\\\`]*/$suffix" app/src/ app/tests/ 2>/dev/null || echo "(none)"
+    echo
+  done
+
+  # Bulk-path check — any orchestrator-namespaced fetch we missed above
+  echo "## Any other /api/ai/orchestrator/* string references"
+  rg -n "/api/ai/orchestrator/" app/src/ app/tests/ 2>/dev/null || echo "(none)"
 } > /tmp/orch-d-refs.txt
 cat /tmp/orch-d-refs.txt
 ```
 
-Expected: 0 frontend refs per route per Track A. 3 test refs for `/api/ai/orchestrator/sessions` — tests to delete in this PR.
+Expected: 0 frontend refs per route per Track A. The `sessions` listing shows 3 test refs — those tests are deleted in Task d3. Parameterized-route sweeps should show zero matches (the V3-analogue routes were already removed in an earlier cascade commit per the spec). The bulk check at the end catches any orchestrator-namespaced call missed by the explicit patterns above; any hit must be classified (migrated or deleted) before Task d2 proceeds.
 
 - [ ] **Step 2: Flag sweep**
 
