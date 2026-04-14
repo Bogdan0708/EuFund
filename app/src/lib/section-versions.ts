@@ -4,7 +4,29 @@ import { withUserRLS } from '@/lib/db';
 import { sectionVersions, workflowSessions, auditLog } from '@/lib/db/schema';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
-import type { SectionResult, SectionVersion } from './ai/orchestrator/types';
+import type { SectionResult } from './ai/agent/types';
+
+// Inlined from the retired lib/ai/orchestrator/types.ts — SectionVersion
+// is only referenced inside this module and its API response shape.
+export interface SectionVersion {
+  id: string;
+  version: number;
+  content: string;
+  contentHash: string;
+  title: string;
+  metadata: {
+    model: string;
+    provider: string;
+    tokensIn: number;
+    tokensOut: number;
+    latencyMs: number;
+    fallbackUsed: boolean;
+    generatedAt: string;
+  };
+  reason: string;
+  createdAt: string;
+  createdBy: string;
+}
 
 const log = logger.child({ component: 'section-versions' });
 
