@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 describe('normalizeSections', () => {
   it('fills missing versioning fields with defaults', async () => {
-    const { normalizeSections } = await import('@/lib/ai/orchestrator/workspace');
+    const { normalizeSections } = await import('@/lib/workspace');
 
     const raw = [
       { id: 'sec-1', title: 'Context', content: 'Hello', order: 1, source: 'generated', metadata: {} },
@@ -19,7 +19,7 @@ describe('normalizeSections', () => {
   });
 
   it('preserves already-complete sections unchanged', async () => {
-    const { normalizeSections } = await import('@/lib/ai/orchestrator/workspace');
+    const { normalizeSections } = await import('@/lib/workspace');
 
     const complete = [{
       id: 'sec-1', title: 'Context', content: 'Hello', order: 1,
@@ -36,12 +36,12 @@ describe('normalizeSections', () => {
     expect(result[0].contentHash).toBe('abc123');
   });
   it('returns empty array for empty input', async () => {
-    const { normalizeSections } = await import('@/lib/ai/orchestrator/workspace');
+    const { normalizeSections } = await import('@/lib/workspace');
     expect(normalizeSections([], '2026-01-01T00:00:00Z')).toEqual([]);
   });
 
   it('handles completely empty objects with safe defaults', async () => {
-    const { normalizeSections } = await import('@/lib/ai/orchestrator/workspace');
+    const { normalizeSections } = await import('@/lib/workspace');
     const result = normalizeSections([{}], '2026-01-01T00:00:00Z');
     expect(result[0].id).toBe('');
     expect(result[0].title).toBe('');
@@ -54,7 +54,7 @@ describe('normalizeSections', () => {
   });
 
   it('computes consistent contentHash from content', async () => {
-    const { normalizeSections } = await import('@/lib/ai/orchestrator/workspace');
+    const { normalizeSections } = await import('@/lib/workspace');
     const a = normalizeSections([{ content: 'same' }], '2026-01-01T00:00:00Z');
     const b = normalizeSections([{ content: 'same' }], '2026-06-01T00:00:00Z');
     expect(a[0].contentHash).toBe(b[0].contentHash);
@@ -64,7 +64,7 @@ describe('normalizeSections', () => {
   });
 
   it('merges partial metadata with defaults', async () => {
-    const { normalizeSections } = await import('@/lib/ai/orchestrator/workspace');
+    const { normalizeSections } = await import('@/lib/workspace');
     const result = normalizeSections([{
       id: 'x', content: 'text',
       metadata: { model: 'gpt-4', provider: 'openai' },
@@ -132,7 +132,7 @@ describe('resolveProjectWorkspace', () => {
       logger: { child: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) },
     }));
 
-    const { resolveProjectWorkspace } = await import('@/lib/ai/orchestrator/workspace');
+    const { resolveProjectWorkspace } = await import('@/lib/workspace');
     const result = await resolveProjectWorkspace(PROJECT_ID, USER_ID);
     expect(result).toBeNull();
   });
@@ -203,7 +203,7 @@ describe('resolveProjectWorkspace', () => {
       logger: { child: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) },
     }));
 
-    const { resolveProjectWorkspace } = await import('@/lib/ai/orchestrator/workspace');
+    const { resolveProjectWorkspace } = await import('@/lib/workspace');
     const result = await resolveProjectWorkspace(PROJECT_ID, USER_ID);
 
     expect(result).not.toBeNull();
@@ -264,7 +264,7 @@ describe('editProjectSection', () => {
       logger: { child: () => new Proxy({}, { get: () => vi.fn() }) },
     }));
 
-    const { editProjectSection } = await import('@/lib/ai/orchestrator/workspace');
+    const { editProjectSection } = await import('@/lib/workspace');
 
     await expect(editProjectSection({
       sessionId: SESSION_ID,
@@ -315,7 +315,7 @@ describe('editProjectSection', () => {
       logger: { child: () => new Proxy({}, { get: () => vi.fn() }) },
     }));
 
-    const { editProjectSection } = await import('@/lib/ai/orchestrator/workspace');
+    const { editProjectSection } = await import('@/lib/workspace');
 
     const result = await editProjectSection({
       sessionId: SESSION_ID,

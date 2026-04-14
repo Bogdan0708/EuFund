@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/helpers';
-import { resolveProjectWorkspace, syncProjectDocumentSnapshot } from '@/lib/ai/orchestrator/workspace';
+import { resolveProjectWorkspace, syncProjectDocumentSnapshot } from '@/lib/workspace';
 import { transitionSectionState, SectionVersionError } from '@/lib/section-versions';
 import { transitionSectionStateSchema } from '@/lib/validators';
 import { enforceRateLimit } from '@/lib/middleware/rate-limit';

@@ -12,7 +12,7 @@ describe('GET /api/v1/projects/:id/sections', () => {
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: USER_ID }),
     }));
-    vi.doMock('@/lib/ai/orchestrator/workspace', () => ({
+    vi.doMock('@/lib/workspace', () => ({
       resolveProjectWorkspace: vi.fn().mockResolvedValue({
         project: { id: PROJECT_ID },
         session: { id: SESSION_ID },
@@ -40,7 +40,7 @@ describe('GET /api/v1/projects/:id/sections', () => {
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: USER_ID }),
     }));
-    vi.doMock('@/lib/ai/orchestrator/workspace', () => ({
+    vi.doMock('@/lib/workspace', () => ({
       resolveProjectWorkspace: vi.fn().mockResolvedValue({
         project: { id: PROJECT_ID },
         session: null,
@@ -65,7 +65,7 @@ describe('GET /api/v1/projects/:id/sections', () => {
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: USER_ID }),
     }));
-    vi.doMock('@/lib/ai/orchestrator/workspace', () => ({
+    vi.doMock('@/lib/workspace', () => ({
       resolveProjectWorkspace: vi.fn().mockResolvedValue(null),
     }));
 
@@ -84,7 +84,7 @@ describe('PATCH /api/v1/projects/:id/sections/:sectionId', () => {
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: USER_ID }),
     }));
-    vi.doMock('@/lib/ai/orchestrator/workspace', () => ({
+    vi.doMock('@/lib/workspace', () => ({
       resolveProjectWorkspace: vi.fn().mockResolvedValue({
         project: { id: PROJECT_ID },
         session: null,
@@ -109,7 +109,7 @@ describe('PATCH /api/v1/projects/:id/sections/:sectionId', () => {
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: USER_ID }),
     }));
-    vi.doMock('@/lib/ai/orchestrator/workspace', () => ({
+    vi.doMock('@/lib/workspace', () => ({
       resolveProjectWorkspace: vi.fn().mockResolvedValue({
         project: { id: PROJECT_ID },
         session: { id: SESSION_ID, status: 'completed' },
@@ -137,7 +137,7 @@ describe('PATCH /api/v1/projects/:id/sections/:sectionId', () => {
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: OTHER_USER }),
     }));
-    vi.doMock('@/lib/ai/orchestrator/workspace', () => ({
+    vi.doMock('@/lib/workspace', () => ({
       resolveProjectWorkspace: vi.fn().mockResolvedValue(null),
       editProjectSection: vi.fn(),
     }));
@@ -163,7 +163,7 @@ describe('PATCH /api/v1/projects/:id/sections/:sectionId', () => {
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: USER_ID }),
     }));
-    vi.doMock('@/lib/ai/orchestrator/workspace', () => ({
+    vi.doMock('@/lib/workspace', () => ({
       resolveProjectWorkspace: vi.fn().mockResolvedValue({
         project: { id: PROJECT_ID },
         session: { id: SESSION_ID, status: 'active' },
@@ -195,7 +195,7 @@ describe('POST /api/v1/projects/:id/sections/:sectionId/state', () => {
     vi.doMock('@/lib/auth/helpers', () => ({
       requireAuth: vi.fn().mockResolvedValue({ id: USER_ID }),
     }));
-    vi.doMock('@/lib/ai/orchestrator/workspace', () => ({
+    vi.doMock('@/lib/workspace', () => ({
       resolveProjectWorkspace: vi.fn().mockResolvedValue({
         project: { id: PROJECT_ID },
         session: { id: SESSION_ID, status: 'completed' },

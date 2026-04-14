@@ -4,7 +4,7 @@ import { withUserRLS } from '@/lib/db';
 import { projects, workflowSessions, projectDocuments, projectFiles } from '@/lib/db/schema';
 import { eq, and, inArray, isNull, desc, count } from 'drizzle-orm';
 import { Errors, FondEUError } from '@/lib/errors';
-import { normalizeSections } from '@/lib/ai/orchestrator/workspace';
+import { normalizeSections } from '@/lib/workspace';
 import type { SectionResult } from '@/lib/ai/agent/types';
 
 export async function GET() {
