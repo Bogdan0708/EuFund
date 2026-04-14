@@ -38,7 +38,7 @@ describe('AI feature daily rate limits', () => {
     }));
 
     const { withAIAuth } = await import('@/lib/middleware/auth');
-    const req = new NextRequest('http://localhost:3000/api/ai/generate-proposal', {
+    const req = new NextRequest('http://localhost:3000/api/ai/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
     });
@@ -86,7 +86,7 @@ describe('AI feature daily rate limits', () => {
     }));
 
     const { withAIAuth } = await import('@/lib/middleware/auth');
-    const req = new NextRequest('http://localhost:3000/api/ai/generate-proposal', {
+    const req = new NextRequest('http://localhost:3000/api/ai/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
     });
@@ -161,7 +161,7 @@ describe('AI feature daily rate limits', () => {
     }));
 
     const { withAIAuth } = await import('@/lib/middleware/auth');
-    const req = new NextRequest('http://localhost:3000/api/ai/generate-proposal', {
+    const req = new NextRequest('http://localhost:3000/api/ai/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
     });
