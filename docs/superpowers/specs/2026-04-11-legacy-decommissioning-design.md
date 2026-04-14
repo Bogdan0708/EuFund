@@ -228,8 +228,9 @@ This section defines the **policy**. The live **register** lives outside the spe
 
 - `surface` — short name and reference (e.g., `V3 runtime`, file glob or module path).
 - `axis` — one of: route / visual / runtime / capability (from Section 1).
-- `blocking_workstream` — the replacement program this retention is waiting on. If none, the entry is invalid.
-- `replacement_spec` — URL or path to the spec scoping the blocking workstream, when one exists. Absence is permitted while the spec has not been written, but must be noted.
+- `category` — one of `bridge-legacy` (surface waiting on an external replacement workstream), `temporary-retention` (blocker internal to an active retirement track, retires when the track closes), or `operational-retention` (surface kept because deploy/ops infrastructure consumes it, no product-side replacement planned).
+- `blocking_workstream` — the replacement program this retention is waiting on. `none` is permitted only for `operational-retention` entries where the retention rationale cites an operational consumer instead; other categories require a named workstream or the entry is invalid.
+- `replacement_spec` — URL or path to the spec scoping the blocking workstream, when one exists. Absence is permitted while the spec has not been written, but must be noted. Not applicable for `operational-retention`.
 - `conversion_trigger` — the concrete, observable event that converts the surface from bridge to delete candidate.
 - `last_verified` — ISO date of the last time the entry was reviewed and found still accurate.
 
