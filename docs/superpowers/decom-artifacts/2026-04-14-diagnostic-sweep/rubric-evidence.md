@@ -4,7 +4,7 @@
 **Spec:** `docs/superpowers/specs/2026-04-11-legacy-decommissioning-design.md` Section 3.
 **Date:** 2026-04-14
 **Branch:** `chore/decom-diagnostic-sweep`
-**Decision:** DELETE — zero frontend refs, zero test refs, zero operational consumers (no deploy probe, no monitoring alert, no runbook, no committed CLI).
+**Decision:** DELETE — zero frontend refs, zero test refs, zero working operational consumers (no deploy probe, no monitoring alert, no runbook, no working CLI). An orphan `fondeu ai diagnose` Click command and harness smoke-probe entry in `app/agent-harness/` POSTed to the GET-only route (always 405, dead code); removed in this PR.
 
 ## 1. Runtime ownership declaration
 
@@ -17,7 +17,7 @@ See `operational-usage-check.md` for the full raw output. Summary:
 - Section A (code `/api/ai/diagnostic` in TS/TSX/JS/YAML/JSON/TOML/SH/TF/MD outside docs): **0 hits**.
 - Section B (`Dockerfile`, `app/Dockerfile`, `cloudbuild*.yaml`, `app/cloudbuild*.yaml`, `.github/`): **0 hits**.
 - Section C (production health/probe config): Cloud Build hits `/api/health` and the AI Gateway's `/health`+`/ready`; zero references to `/api/ai/diagnostic`.
-- Section D (docs): Only decom-program artifacts (this sweep's own plan, probe-04, probe-11, track-candidates, the parent spec) plus a defunct `fondeu ai diagnose` CLI proposal in `docs/superpowers/plans/2026-03-29-local-production-readiness.md` that was never implemented (grep for `fondeu ai diagnose` returns no code hits; the CLI proposed POST while the handler is GET-only).
+- Section D (docs): Only decom-program artifacts (this sweep's own plan, probe-04, probe-11, track-candidates, the parent spec) plus a `fondeu ai diagnose` CLI proposal in `docs/superpowers/plans/2026-03-29-local-production-readiness.md`. **Correction (post-review):** the original sweep was scoped to `app/src/` and `scripts/` and missed `app/agent-harness/`, where the CLI was implemented as orphan dead code — it POSTed to the GET-only route (returned 405). The orphan `diagnose` command and the matching entry in the harness smoke-probe list have been removed in this PR; DELETE decision is unchanged. See `operational-usage-check.md` for details.
 
 Also: probe-04 shows 0 frontend + 0 test refs; probe-11 listed the `middleware.ts` publicPaths entry (now removed).
 
@@ -34,7 +34,7 @@ No flags or env vars scoped exclusively to this route (probe 07, probe 08). The 
 
 ## 5. Test-surface cleanup
 
-Probe 04 reported 0 test references. Confirmed: no tests import or exercise this route (section A of the usage sweep returned no hits in `tests/` either). Nothing to clean up.
+Probe 04 reported 0 test references in `app/tests/`. Confirmed: no Vitest/Playwright tests import or exercise this route. **Correction (post-review):** the Python smoke-probe CLI in `app/agent-harness/fondeu/commands/test.py` did list `("POST", "/api/ai/diagnostic")` in its endpoints array — the original sweep missed it because it was scoped to `app/src/` and `app/tests/`. That probe entry always returned 405 (POST against GET-only route) and has been removed in this PR.
 
 ## 6. Migration diff
 
