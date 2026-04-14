@@ -51,13 +51,19 @@ These retire with whichever sub-step's PR is the last to touch their owning surf
 
 ---
 
-## Sub-step (a): Migrate `asistent-ai/page.tsx` from `useOrchestrator` to `useAgent`
+## Sub-step (a): Rewrite `asistent-ai` to the V3 AgentWorkspace UX
 
-**Sub-step scope:** Single page migration. Preserves the conversational experience but on the V3 runtime.
+> **Product decision (2026-04-14):** The orchestrator wizard UX — 5-step progress bar, interactive checkpoint cards (select/confirm/freetext), multi-tab canvas (calls/plan/proposal), and auto-approve timer — is **retired**. The V3 agent runtime was intentionally designed for a different UX (AgentConversation + AgentWorkspace) and is not API-compatible with `useOrchestrator`. Forcing an adapter would preserve the very legacy contract the program is retiring and would make later deletion harder. Sub-step (a) therefore rewrites the `asistent-ai` page against the V3 UX directly and retires the wizard-era child components.
 
-**Input evidence:** Track A sub-step (a) — one file, one hook swap. Probe 03 confirmed this is the sole remaining `useOrchestrator` caller in app code.
+**Sub-step scope:** Rewrite `app/src/app/[locale]/(dashboard)/asistent-ai/page.tsx` to use `useAgent` with the `AgentConversation` + `AgentWorkspace` component pattern already proven by `proiecte/nou/page.tsx`. Delete the wizard-era child components under `asistent-ai/components/` that are coupled to orchestrator-shaped data (`CheckpointRenderers`, `CanvasTabs`, `ProposalTab`, `StepProgressBar`). Generic components in that folder (`MarkdownPreview`, `StreamingDots`) are candidates for retention or retirement based on whether the rewritten page uses them.
 
-**Preconditions:** None (this is the first sub-step).
+**Input evidence:**
+- Track A sub-step (a) — sole remaining `useOrchestrator` caller.
+- Reference pattern: `app/src/app/[locale]/(dashboard)/proiecte/nou/page.tsx` using `useAgent` + `AgentConversation` + `AgentWorkspace` from `@/components/agent/`.
+
+**Preconditions:** None (this is the first sub-step). This reframe is itself a precondition that has been satisfied by the patch that produced this plan revision.
+
+**URL contract:** `/[locale]/asistent-ai` stays; this is the target route layer per spec Section 1 Axis 1. No URL change visible to users or bookmarks.
 
 ### Task a0: Worktree setup
 
@@ -84,83 +90,158 @@ Run:
 mkdir -p /home/godja/Dev/EU-Funds-decom-orch-a/docs/superpowers/decom-artifacts/2026-04-14-orchestrator-retirement
 ```
 
-### Task a1: Read the current page to understand what it imports
+### Task a1: Audit the rewrite scope
 
-- [ ] **Step 1: Read the page**
+The purpose of this task is not to produce a migration table (that was the failed framing). The purpose is to enumerate exactly which files are being rewritten or deleted, and which V3 components are the rewrite target.
+
+- [ ] **Step 1: Read the current asistent-ai page and its components folder**
 
 Run:
 ```bash
 cat /home/godja/Dev/EU-Funds-decom-orch-a/app/src/app/[locale]/\(dashboard\)/asistent-ai/page.tsx
+ls /home/godja/Dev/EU-Funds-decom-orch-a/app/src/app/[locale]/\(dashboard\)/asistent-ai/components/
 ```
-Expected: prints current implementation. Note: (1) the `useOrchestrator` import line, (2) the destructured return values used elsewhere in the component, (3) any child components that receive those values as props.
+Expected: prints current (orchestrator-based) implementation and its component folder. Folder should include `CanvasTabs.tsx`, `CheckpointRenderers.tsx`, `ProposalTab.tsx`, `StepProgressBar.tsx` (wizard-era), plus `MarkdownPreview.tsx`, `StreamingDots.tsx` (possibly generic).
 
-- [ ] **Step 2: Read the `useAgent` hook to understand its return shape**
+- [ ] **Step 2: Read the reference page pattern**
 
 Run:
 ```bash
-cat /home/godja/Dev/EU-Funds-decom-orch-a/app/src/hooks/useAgent.ts | head -80
+cat /home/godja/Dev/EU-Funds-decom-orch-a/app/src/app/[locale]/\(dashboard\)/proiecte/nou/page.tsx
+ls /home/godja/Dev/EU-Funds-decom-orch-a/app/src/components/agent/
 ```
-Expected: hook signature is `useAgent(locale: 'ro' | 'en', initialSessionId?: string)`. Note the return-object field names — they will be compared against what the page currently destructures from `useOrchestrator`.
+Expected: prints `proiecte/nou/page.tsx` — the pattern the rewrite models itself on — and the agent component directory (should include `AgentConversation`, `AgentWorkspace`, `SectionCard`, `OutlineView`, `ValidationSummary`, `WarningsBar`).
 
-- [ ] **Step 3: Read the `useOrchestrator` hook for comparison**
+- [ ] **Step 3: Verify wizard-era components are only consumed by `asistent-ai/page.tsx`**
 
 Run:
 ```bash
-cat /home/godja/Dev/EU-Funds-decom-orch-a/app/src/hooks/useOrchestrator.ts | head -80
+cd /home/godja/Dev/EU-Funds-decom-orch-a && {
+  for comp in CanvasTabs CheckpointRenderers ProposalTab StepProgressBar; do
+    echo "## $comp consumers"
+    rg -n "$comp" app/src/ 2>/dev/null | rg -v "app/src/app/\[locale\]/\(dashboard\)/asistent-ai/components/$comp\.tsx" || echo "(no external consumers)"
+    echo
+  done
+}
 ```
-Expected: prints hook signature. Identify the return-object field shape.
+Expected: each should show only the `asistent-ai/page.tsx` import line and no other consumers. If any component is consumed elsewhere, pause and escalate — it becomes shared surface rather than `asistent-ai`-local.
 
-- [ ] **Step 4: Compare the two return shapes and identify the field-name mapping**
-
-Open both files side-by-side. Produce a table of mappings, for example:
-
-| `useOrchestrator` return field | `useAgent` equivalent | Notes |
-|-------------------------------|------------------------|-------|
-| `messages` | `messages` | Same shape |
-| `sendMessage` | `sendAction` | Different name — migration must rename callsite |
-| `status` | `status` | Compare enum values |
-| (other field) | (equivalent) | ... |
-
-Document the mapping inline in the rubric evidence file (Task a3).
-
-### Task a2: Perform the migration edit
-
-- [ ] **Step 1: Replace the import and hook invocation**
-
-Edit `/home/godja/Dev/EU-Funds-decom-orch-a/app/src/app/[locale]/(dashboard)/asistent-ai/page.tsx`:
-
-- Replace `import { useOrchestrator } from '@/hooks/useOrchestrator';` with `import { useAgent } from '@/hooks/useAgent';`.
-- Replace the hook invocation `useOrchestrator(locale)` with `useAgent(locale as 'ro' | 'en')`.
-- Rename each destructured field per the mapping table from Task a1 Step 4. Example: `sendMessage` → `sendAction`, or whatever the actual mapping shows.
-- Update downstream callsites within the file that used renamed fields.
-
-- [ ] **Step 2: Verify the import is gone**
+- [ ] **Step 4: Check `MarkdownPreview` and `StreamingDots` for external consumers**
 
 Run:
 ```bash
-cd /home/godja/Dev/EU-Funds-decom-orch-a && rg -n "useOrchestrator" app/src/app/[locale]/\(dashboard\)/asistent-ai/page.tsx 2>/dev/null
+cd /home/godja/Dev/EU-Funds-decom-orch-a && {
+  for comp in MarkdownPreview StreamingDots; do
+    echo "## $comp consumers"
+    rg -n "$comp" app/src/ 2>/dev/null | rg -v "app/src/app/\[locale\]/\(dashboard\)/asistent-ai/components/$comp\.tsx" || echo "(no external consumers)"
+    echo
+  done
+}
 ```
-Expected: no matches.
+If external consumers exist: KEEP the component, its retirement belongs to a different workstream. If no external consumers AND the rewritten page (Task a3) doesn't use it: delete along with the wizard-era components. If no external consumers BUT the rewritten page does use it: keep.
 
-- [ ] **Step 3: Typecheck to catch any missed rename**
+- [ ] **Step 5: Document the scope decision for the rubric evidence (Task a4)**
+
+Capture in notes for Task a4:
+- Files being rewritten (just `asistent-ai/page.tsx`).
+- Files being deleted (the wizard-era component list from Step 3, plus any from Step 4 that fail the "keep" criteria).
+- Files being kept (any generic components the rewrite ends up using).
+- V3 components the rewrite imports (from `@/components/agent/`).
+
+### Task a2: Delete wizard-era child components
+
+- [ ] **Step 1: Delete the four known wizard-era components**
 
 Run:
 ```bash
-cd /home/godja/Dev/EU-Funds-decom-orch-a/app && npm run typecheck 2>&1 | tee /tmp/orch-a-typecheck.log | tail -20
+cd /home/godja/Dev/EU-Funds-decom-orch-a && git rm \
+  app/src/app/[locale]/\(dashboard\)/asistent-ai/components/CanvasTabs.tsx \
+  app/src/app/[locale]/\(dashboard\)/asistent-ai/components/CheckpointRenderers.tsx \
+  app/src/app/[locale]/\(dashboard\)/asistent-ai/components/ProposalTab.tsx \
+  app/src/app/[locale]/\(dashboard\)/asistent-ai/components/StepProgressBar.tsx
 ```
-Expected: zero errors in `asistent-ai/page.tsx`. Any remaining TS error in that file means a field was missed in the rename — fix inline, re-run.
+Expected: four files shown as `rm`.
 
-- [ ] **Step 4: Commit the migration**
+- [ ] **Step 2: Delete generic components if Task a1 Step 4 classified them as delete**
+
+Only if the task a1 Step 4 audit returned zero external consumers AND the rewritten page in Task a3 will not use the component, run:
+
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-a && git rm app/src/app/[locale]/\(dashboard\)/asistent-ai/components/<component>.tsx
+```
+
+Otherwise skip.
+
+- [ ] **Step 3: If the `components/` directory becomes empty after deletions, remove it**
 
 Run:
 ```bash
-cd /home/godja/Dev/EU-Funds-decom-orch-a && git add app/src/app/[locale]/\(dashboard\)/asistent-ai/page.tsx && git -c commit.gpgsign=false commit -m "feat(agent): migrate asistent-ai page from useOrchestrator to useAgent
-
-Last remaining useOrchestrator caller. Enables downstream hook/route/folder
-retirement in subsequent sub-steps of plan 2026-04-14-decom-orchestrator-retirement.md."
+cd /home/godja/Dev/EU-Funds-decom-orch-a && find app/src/app/[locale]/\(dashboard\)/asistent-ai/components -type d -empty -delete
 ```
 
-### Task a3: Rubric evidence file
+- [ ] **Step 4: Commit the component deletions**
+
+Run:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-a && git -c commit.gpgsign=false commit -m "feat(decom): delete wizard-era asistent-ai child components
+
+Part of Plan 3 sub-step (a) — the V2 orchestrator wizard UX is retired
+(product decision 2026-04-14). These components were coupled to orchestrator-
+shaped data (5-step progress, checkpoint select/confirm/freetext, multi-tab
+canvas, proposal tab) and have no V3 equivalent. The asistent-ai page is
+rewritten in the next commit to use the V3 AgentWorkspace UX pattern."
+```
+
+### Task a3: Rewrite `asistent-ai/page.tsx` to the V3 AgentWorkspace pattern
+
+- [ ] **Step 1: Replace the page implementation**
+
+Overwrite `app/src/app/[locale]/(dashboard)/asistent-ai/page.tsx` with a V3-based implementation modeled after `proiecte/nou/page.tsx`. The rewrite must:
+
+- Use `useAgent(locale as 'ro' | 'en', initialSessionId)` — if the page historically supported `?session=<id>` URL params (check the old page for `useSearchParams` usage), preserve that behavior.
+- Use `AgentConversation` from `@/components/agent/AgentConversation` for the chat surface.
+- Use `AgentWorkspace` from `@/components/agent/AgentWorkspace` for the right-hand panel (outline, sections, validation).
+- Import `useTranslations` from `next-intl` and use the existing `asistentAi` namespace keys (or whatever the translation file currently provides — verify by reading `app/src/messages/ro.json` and `en.json`).
+- Preserve any page-level features that are still meaningful in V3: page title, locale-aware metadata if present.
+- DO NOT import any of the deleted wizard-era components.
+- DO NOT re-create checkpoint rendering, step progress, or canvas-tab scaffolding — those are retired.
+
+Reference the structure of `proiecte/nou/page.tsx` exactly where applicable; adapt only for page-specific differences (the asistent-ai route might not be scoped to a specific project, so `useAgent` is called with no project context).
+
+- [ ] **Step 2: Verify no wizard references remain**
+
+Run:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-a && {
+  echo "## Still-present wizard references in the rewritten page"
+  rg -n "useOrchestrator|CheckpointRenderers|CanvasTabs|ProposalTab|StepProgressBar|currentStep|canvasState" app/src/app/[locale]/\(dashboard\)/asistent-ai/page.tsx 2>/dev/null || echo "(clean)"
+}
+```
+Expected: `(clean)`.
+
+- [ ] **Step 3: Typecheck the rewritten page**
+
+Run:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-a/app && npm run typecheck 2>&1 | tee /tmp/orch-a-typecheck.log | tail -30
+```
+Expected: zero errors. If errors appear in the page, iterate until clean. If errors appear in OTHER files, investigate — those files may have depended on the wizard-era components, which is a signal that Task a1 Step 3's audit missed a consumer; in that case escalate.
+
+- [ ] **Step 4: Commit the rewrite**
+
+Run:
+```bash
+cd /home/godja/Dev/EU-Funds-decom-orch-a && git add app/src/app/[locale]/\(dashboard\)/asistent-ai/page.tsx && git -c commit.gpgsign=false commit -m "feat(agent): rewrite asistent-ai page against V3 AgentWorkspace UX
+
+Replaces the orchestrator wizard UX (5-step progress + checkpoint cards + multi-tab
+canvas + auto-approve timer) with the V3 pattern used by proiecte/nou/page.tsx:
+useAgent hook + AgentConversation + AgentWorkspace. Product decision 2026-04-14.
+
+Last remaining useOrchestrator caller removed, unblocking sub-steps (c) through (f)
+of plan 2026-04-14-decom-orchestrator-retirement.md."
+```
+
+### Task a4: Rubric evidence file
 
 - [ ] **Step 1: Create the evidence file**
 
@@ -171,69 +252,70 @@ Create `/home/godja/Dev/EU-Funds-decom-orch-a/docs/superpowers/decom-artifacts/2
 
 **Plan:** `docs/superpowers/plans/2026-04-14-decom-orchestrator-retirement.md`
 **Spec:** `docs/superpowers/specs/2026-04-11-legacy-decommissioning-design.md` Section 3.
-**Sub-step:** (a) — migrate `asistent-ai/page.tsx` from `useOrchestrator` to `useAgent`.
+**Sub-step:** (a) — rewrite `asistent-ai` to the V3 AgentWorkspace UX (not a hook swap; full product-decision-backed UX rewrite).
 **Branch:** `chore/decom-orchestrator-a`.
 
 ## 1. Runtime ownership declaration
 
-Retiring caller: `app/src/app/[locale]/(dashboard)/asistent-ai/page.tsx` importing `useOrchestrator`.
-Replacement: `useAgent` hook + `/api/ai/agent/*` runtime (V3 agent runtime — Axis 3 keeper in target).
+Retiring caller: `app/src/app/[locale]/(dashboard)/asistent-ai/page.tsx` (orchestrator wizard UX).
+Replacement: V3 agent runtime — `useAgent` hook + `AgentConversation` + `AgentWorkspace` components from `@/components/agent/`. Same pattern as `proiecte/nou/page.tsx`.
+Product decision cited in plan: the orchestrator wizard UX (5-step progress bar, checkpoint cards, multi-tab canvas, auto-approve timer) is retired.
 
 ## 2. Reference sweep
 
-\`\`\`bash
-rg -n "useOrchestrator" app/src/app/[locale]/(dashboard)/asistent-ai/page.tsx
-\`\`\`
+<command A: verify wizard references gone from rewritten page>
+<output A: should be clean>
 
-Post-edit: zero matches.
-
-\`\`\`bash
-rg -n "useOrchestrator" app/src/ | rg -v "app/src/hooks/useOrchestrator"
-\`\`\`
-
-Post-edit: <paste current count — must be zero or the only remaining matches are inside the hook's own definition file, which is sub-step (c)'s target>.
+<command B: verify useOrchestrator no longer has callers in app code>
+<output B: zero matches outside the hook definition file (which retires with sub-step c)>
 
 ## 3. Build and route-surface verification
 
-- `next build`: <PASS / FAIL>
+- `next build`: <PASS / FAIL with any notes>
 - `tsc --noEmit`: <PASS / FAIL>
 - Route surface unchanged (page URL is the same `/[locale]/asistent-ai`).
 
 ## 4. Feature flag / env var sweep
 
-N/A for this sub-step — no flag or env var exclusively gates `useOrchestrator`. Sub-step (d) handles the `section_versioning` flag that gates orchestrator routes.
+N/A for this sub-step — no flag or env var exclusively gates `useOrchestrator` or the wizard-era components. Sub-step (d) handles the `section_versioning` flag that gates orchestrator routes.
 
 ## 5. Test-surface cleanup
 
-Check: any test importing `useOrchestrator` via this page?
-
-\`\`\`bash
-rg -ln "useOrchestrator" app/tests/ app/e2e/
-\`\`\`
+<run `rg -ln "useOrchestrator\|CheckpointRenderers\|CanvasTabs\|ProposalTab\|StepProgressBar" app/tests/` and classify any matches>
 
 - If zero: no test cleanup in this sub-step.
-- If non-zero: each such test is either migrated to `useAgent` in the same PR or deleted if only exercising retired behaviour.
+- If non-zero: each such test is either retargeted to the V3 surface in the same PR, or deleted if only exercising retired behaviour.
 
 ## 6. Migration diff
 
-Field-name mapping applied to the page:
+This is a UX rewrite, not a field-name migration. Document:
 
-| useOrchestrator field | useAgent field |
-|-----------------------|-----------------|
-| <fill with the actual mapping from Task a1 Step 4> | <...> |
+- **Files rewritten:** `app/src/app/[locale]/(dashboard)/asistent-ai/page.tsx` (complete rewrite against `useAgent` + `AgentConversation` + `AgentWorkspace`).
+- **Files deleted:** `CanvasTabs.tsx`, `CheckpointRenderers.tsx`, `ProposalTab.tsx`, `StepProgressBar.tsx` (wizard-era, no V3 equivalent).
+- **Files retained:** <list of generic components retained, e.g., MarkdownPreview or StreamingDots if still used by the rewritten page>.
+- **UX behavior changes:**
+  - 5-step progress bar → V3 phase display via `AgentWorkspace`.
+  - Interactive checkpoint select/confirm/freetext cards → V3 conversational prompts handled by `AgentConversation`.
+  - Multi-tab canvas (calls/plan/proposal) → `AgentWorkspace` outline + section cards + validation summary.
+  - Auto-approve timer → removed (no V3 equivalent; V3 requires explicit user action).
+  - Two-arg `sendMessage(id, label)` for checkpoint option → removed (V3 checkpoints are informational).
+  - `startNewSession()` imperative → removed (V3 session lifecycle is managed differently).
+  - `resumeSession(sessionId)` via `useEffect` → replaced by `initialSessionId` param on `useAgent` hook init.
 
 ## 7. Observability sweep
 
-No dedicated logs, metrics, or Sentry tags are scoped to the page-level `useOrchestrator` invocation. The hook itself may have telemetry — that retires with sub-step (c) or (d).
+Wizard-specific logs/metrics/Sentry tags (if any existed on the deleted components or page): list here. The deleted components contained no custom telemetry beyond what their consumers emitted. Route-level logging (if any) is preserved because the route URL is unchanged.
 ```
 
-- [ ] **Step 2: Fill in the `<PASS / FAIL>` results and zero-count confirmations using the outputs from Tasks a1 and a2**
+- [ ] **Step 2: Fill in every `<...>` placeholder with actual data**
+
+Replace each angle-bracket placeholder with the concrete output from Tasks a1, a2, a3, and the upcoming Task a5 build/test results. The "files retained" list comes from Task a1 Step 4 decisions and Task a2 Step 2 actions.
 
 - [ ] **Step 3: Verify no placeholders remain**
 
 Run:
 ```bash
-cd /home/godja/Dev/EU-Funds-decom-orch-a && grep -c "<PASS\|<fill\|<paste" docs/superpowers/decom-artifacts/2026-04-14-orchestrator-retirement/sub-step-a-rubric-evidence.md
+cd /home/godja/Dev/EU-Funds-decom-orch-a && grep -c "<PASS\|<fill\|<paste\|<command\|<output\|<run\|<list" docs/superpowers/decom-artifacts/2026-04-14-orchestrator-retirement/sub-step-a-rubric-evidence.md
 ```
 Expected: `0`.
 
@@ -244,7 +326,7 @@ Run:
 cd /home/godja/Dev/EU-Funds-decom-orch-a && git add docs/superpowers/decom-artifacts/2026-04-14-orchestrator-retirement/sub-step-a-rubric-evidence.md && git -c commit.gpgsign=false commit -m "chore(decom): sub-step (a) rubric evidence"
 ```
 
-### Task a4: Build, test, push, PR
+### Task a5: Build, test, push, PR
 
 - [ ] **Step 1: Run build, typecheck, test**
 
@@ -265,10 +347,18 @@ cd /home/godja/Dev/EU-Funds-decom-orch-a && git push -u origin chore/decom-orche
 
 Run:
 ```bash
-cd /home/godja/Dev/EU-Funds-decom-orch-a && gh pr create --title "feat(agent): migrate asistent-ai from useOrchestrator to useAgent" --body "$(cat <<'EOF'
+cd /home/godja/Dev/EU-Funds-decom-orch-a && gh pr create --title "feat(agent): rewrite asistent-ai page to V3 AgentWorkspace UX" --body "$(cat <<'EOF'
 ## Summary
 
-Sub-step (a) of the orchestrator retirement program. Migrates the last remaining \`useOrchestrator\` caller (\`app/src/app/[locale]/(dashboard)/asistent-ai/page.tsx\`) to the V3 \`useAgent\` hook. This unblocks sub-steps (b)-(f) — rehoming shared types, deleting the hook, routes, and folder.
+Sub-step (a) of the orchestrator retirement program, reframed per 2026-04-14 product decision: the V2 orchestrator wizard UX is retired, not migrated. The V3 agent runtime's \`useAgent\` hook is intentionally not API-compatible with \`useOrchestrator\`, and forcing an adapter would preserve the legacy contract the program is retiring.
+
+This PR:
+
+- Deletes wizard-era child components (\`CanvasTabs\`, \`CheckpointRenderers\`, \`ProposalTab\`, \`StepProgressBar\`) that were coupled to orchestrator-shaped data.
+- Rewrites \`app/src/app/[locale]/(dashboard)/asistent-ai/page.tsx\` against the V3 UX pattern (\`useAgent\` + \`AgentConversation\` + \`AgentWorkspace\`) already proven by \`proiecte/nou/page.tsx\`.
+- Preserves the \`/[locale]/asistent-ai\` URL so bookmarks are unaffected.
+
+Last remaining \`useOrchestrator\` caller removed — unblocks sub-steps (b)-(f) of the plan.
 
 ## Rubric evidence
 
@@ -277,11 +367,12 @@ Sub-step (a) of the orchestrator retirement program. Migrates the last remaining
 ## Test plan
 
 - [ ] CI passes under current gating policy
-- [ ] Manual smoke: \`/ro/asistent-ai\` loads, conversational flow works identically on the V3 runtime
+- [ ] Manual smoke: \`/ro/asistent-ai\` loads and renders the V3 AgentConversation + AgentWorkspace layout
+- [ ] No references to wizard-era components remain in the codebase (covered in rubric Section 2)
 
 ## Plan reference
 
-\`docs/superpowers/plans/2026-04-14-decom-orchestrator-retirement.md\`
+\`docs/superpowers/plans/2026-04-14-decom-orchestrator-retirement.md\` sub-step (a) (reframed).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
