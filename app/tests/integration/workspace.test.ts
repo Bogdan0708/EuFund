@@ -259,7 +259,7 @@ describe('editProjectSection', () => {
       eq: vi.fn(), and: vi.fn(), desc: vi.fn(),
     }));
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
+    vi.doMock('@/lib/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
     vi.doMock('@/lib/logger', () => ({
       logger: { child: () => new Proxy({}, { get: () => vi.fn() }) },
     }));
@@ -310,7 +310,7 @@ describe('editProjectSection', () => {
       eq: vi.fn(), and: vi.fn(), desc: vi.fn(),
     }));
     vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }));
-    vi.doMock('@/lib/ai/orchestrator/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
+    vi.doMock('@/lib/pubsub', () => ({ persistAndPublishSectionUpdatedEvent: vi.fn() }));
     vi.doMock('@/lib/logger', () => ({
       logger: { child: () => new Proxy({}, { get: () => vi.fn() }) },
     }));

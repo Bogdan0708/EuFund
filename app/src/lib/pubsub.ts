@@ -1,7 +1,45 @@
 import { desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { workflowMessages, workflowSessions } from '@/lib/db/schema'
-import type { SectionResult, SSEEvent, SSEEventPayload, SSEStream } from './types'
+import type { SectionResult } from '@/lib/ai/agent/types'
+
+// ─── Inlined SSE types ──────────────────────────────────────────
+// Originally lived in lib/ai/orchestrator/types.ts. Inlined here so
+// pubsub.ts stands alone after the orchestrator folder is deleted.
+// The rich variants reference orchestrator-era shapes (CheckpointData,
+// WorkflowContext, ProjectCompletionStatus); kept structurally as
+// loose objects since the only keeper consumer (lib/workspace.ts) only
+// publishes 'section_updated' events.
+
+export interface CheckpointData {
+  question: string
+  options?: { id: string; label: string; description?: string }[]
+  type: 'select' | 'confirm' | 'freetext'
+}
+
+export type ProjectCompletionStatus = 'complete' | 'complete_with_gaps' | 'needs_review' | 'blocked'
+
+export type SSEEvent = {
+  eventId: number
+} & (
+  | { type: 'step_start'; step: number; label: string }
+  | { type: 'step_progress'; step: number; message: string }
+  | { type: 'ai_chunk'; step: number; content: string }
+  | { type: 'checkpoint'; step: number; data: CheckpointData; context?: Record<string, unknown>; autoApprove?: boolean }
+  | { type: 'step_complete'; step: number; summary: string; context?: Record<string, unknown> }
+  | { type: 'discovery'; items: unknown[] }
+  | { type: 'error'; step: number; message: string; retryable: boolean }
+  | { type: 'done'; projectId?: string; completionStatus?: ProjectCompletionStatus }
+  | { type: 'section_updated'; sectionId: string; section: SectionResult }
+)
+
+type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never
+export type SSEEventPayload = DistributiveOmit<SSEEvent, 'eventId'>
+
+export interface SSEStream {
+  send(event: SSEEventPayload): void
+  close(): void
+}
 
 export function getChannelName(sessionId: string): string {
   return `orchestrator:${sessionId}`

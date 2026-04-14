@@ -1,6 +1,20 @@
 import OpenAI from 'openai'
-import type { GatewayClient } from './orchestrator/types'
 import { logger } from '@/lib/logger'
+
+// Inlined from the retired lib/ai/orchestrator/types.ts — GatewayClient
+// is only referenced as the return type of createGatewayClient below.
+export interface GatewayClient {
+  generate(opts: {
+    provider: string
+    model: string
+    system: string
+    messages: { role: string; content: string }[]
+    maxTokens?: number
+    temperature?: number
+    stream?: boolean
+  }): Promise<{ content: string; tokensUsed: number }>
+  embed(text: string): Promise<number[]>
+}
 
 const log = logger.child({ component: 'gateway' })
 

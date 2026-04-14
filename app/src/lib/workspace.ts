@@ -6,9 +6,9 @@ import { projects, workflowSessions, projectDocuments, sectionVersions } from '@
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
 
-import { persistAndPublishSectionUpdatedEvent } from '@/lib/ai/orchestrator/pubsub';
+import { persistAndPublishSectionUpdatedEvent } from '@/lib/pubsub';
 import { hashContent, SectionVersionError } from '@/lib/section-versions';
-import type { SectionResult } from '@/lib/ai/orchestrator/types';
+import type { SectionResult } from '@/lib/ai/agent/types';
 
 type DbTransaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
