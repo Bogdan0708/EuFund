@@ -1,6 +1,6 @@
 # Decommissioning Probe Outputs — 2026-04-14
 
-**Validity:** snapshot of `master` at commit `<filled in at Task 16>`, run on 2026-04-14.
+**Validity:** snapshot of `master` at commit `8b588b9`, run on 2026-04-14.
 **Plan reference:** `docs/superpowers/plans/2026-04-14-decom-program-bootstrap.md`.
 **Spec reference:** `docs/superpowers/specs/2026-04-11-legacy-decommissioning-design.md` Section 2.
 
@@ -38,3 +38,11 @@ cd <path>
 ## Validity windows
 
 Per spec Section 6, retention register entries older than 60 days without a `last_verified` update become presumptively invalid. These probe outputs follow the same convention: if more than 60 days elapse before plans 3, 4, 5 are written, re-run this plan whole rather than consuming stale outputs.
+
+## Downstream contract paths (locked)
+
+Plans 3, 4, 5 consume the artifacts at these exact paths. Path drift between this commit and the deferred-plan writing session breaks the contract — re-run this plan whole rather than rebasing artifact paths.
+
+- `docs/superpowers/decom-artifacts/2026-04-14-probe-outputs/probe-NN-*.md` — 11 probe artifacts
+- `docs/superpowers/decom-artifacts/2026-04-14-probe-outputs/track-candidates.md` — synthesized per-track candidate lists
+- `docs/superpowers/legacy-retention-register.md` — retention register
