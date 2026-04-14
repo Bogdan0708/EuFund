@@ -34,10 +34,6 @@ export const companyProfileSchema = z.object({
   annualRevenue: z.number().nonnegative(),
 });
 
-export const matchGrantsSchema = z.object({
-  companyProfile: companyProfileSchema,
-});
-
 export const predictSuccessSchema = z.object({
   applicationId: z.string().min(1),
 });
@@ -77,6 +73,5 @@ export type EnhanceIdeaInput = z.infer<typeof enhanceIdeaSchema>;
 
 export type AnalyzeDocumentInput = z.infer<typeof analyzeDocumentSchema>;
 export type ForecastLifecycleInput = z.infer<typeof forecastLifecycleSchema>;
-export type MatchGrantsInput = z.infer<typeof matchGrantsSchema>;
 export type PredictSuccessInput = z.infer<typeof predictSuccessSchema>;
 export type ValidateComplianceInput = z.infer<typeof validateComplianceSchema>;

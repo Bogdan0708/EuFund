@@ -14,69 +14,6 @@ describe('Critical Flows and Isolation', () => {
     vi.resetModules();
   });
 
-  it('grant matching flow returns matches for authenticated users', async () => {
-    vi.doMock('@/lib/middleware/auth', () => ({
-      withAIAuth: (_req: NextRequest, handler: Function) =>
-        handler({ id: 'user-1', email: 'u@test.com', tier: 'pro' }),
-    }));
-    vi.doMock('@/lib/db', () => ({
-      db: {
-        select: vi.fn(() => ({
-          from: vi.fn(() => ({
-            innerJoin: vi.fn(() => ({
-              where: vi.fn(() => ({
-                limit: vi.fn().mockResolvedValue([
-                  {
-                    id: 'call-1',
-                    callCode: 'POCIDIF-001',
-                    titleRo: 'Digitalizare IMM',
-                    descriptionRo: 'Call description',
-                    programName: 'POCIDIF',
-                    eligibleTypes: ['sme'],
-                    eligibleRegions: ['RO'],
-                    eligibleCaen: ['6201'],
-                    budgetMin: '100000',
-                    budgetMax: '500000',
-                    cofinancingRate: '10',
-                    durationMin: 6,
-                    durationMax: 24,
-                    submissionEnd: new Date('2026-12-31T00:00:00Z'),
-                    status: 'deschis',
-                  },
-                ]),
-              })),
-            })),
-          })),
-        })),
-      },
-    }));
-    vi.doMock('@/lib/ai/grant-matcher', () => ({
-      matchGrants: vi.fn().mockResolvedValue({
-        matches: [{ call: { id: 'call-1' }, overallScore: 91 }],
-        tokensUsed: 123,
-      }),
-    }));
-    vi.doMock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }));
-
-    const { POST } = await import('@/app/api/ai/match-grants/route');
-    const req = createJsonRequest('/api/ai/match-grants', {
-      companyProfile: {
-        companyName: 'Acme',
-        companyType: 'sme',
-        country: 'RO',
-        sector: 'ICT',
-        employeeCount: 12,
-        annualRevenue: 2000000,
-      },
-    });
-
-    const res = await POST(req);
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.success).toBe(true);
-    expect(json.data.matches).toHaveLength(1);
-  });
-
   it('authorization boundary: document access is controlled by RLS at the database level', async () => {
     // In the new model, cross-tenant isolation is enforced by PostgreSQL RLS policies.
     // withUserRLS sets app.current_user_id and the DB filters out unauthorised rows.

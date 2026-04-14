@@ -419,7 +419,7 @@ describe('Security Integration Tests', () => {
 
       const { default: middlewareFunc } = await import('@/middleware');
       
-      const request = createNextRequest('/api/ai/match-grants', {
+      const request = createNextRequest('/api/ai/chat', {
         method: 'GET',
       });
 

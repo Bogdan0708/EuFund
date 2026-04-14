@@ -47,7 +47,7 @@ app/src/
 │   │   └── layout.tsx      # Root locale layout (NextIntlClientProvider, CSP nonce)
 │   └── api/
 │       ├── auth/           # NextAuth + register, verify-email, forgot/reset-password
-│       ├── ai/             # AI endpoints (match-grants, chat, agent)
+│       ├── ai/             # AI endpoints (chat, agent)
 │       ├── billing/        # Stripe (checkout, portal, pricing, info)
 │       ├── v1/             # REST resources (organizations, projects, work-packages, admin)
 │       ├── integrations/   # External APIs (eurlex, cordis, eurostat, onrc, qes)
@@ -103,7 +103,7 @@ Tests live in `app/tests/` (not `src/`). Path alias: `@/*` maps to `app/src/*`.
 
 **Redis rate limiting**: Fail-closed for AI endpoints (503 if Redis unavailable), preventing unmetered AI usage.
 
-**Validation**: Zod for all request schemas, defined in `@/lib/validation/schemas.ts`. Key schemas: `extractedCallSchema`, `matchGrantsSchema`, `wizardMatchCallsSchema`. Types are inferred from schemas.
+**Validation**: Zod for all request schemas, defined in `@/lib/validation/schemas.ts`. Key schemas: `extractedCallSchema`, `wizardMatchCallsSchema`. Types are inferred from schemas.
 
 **Knowledge ingestion pipeline**: `lib/ai/knowledge/` — three-stage pipeline: `parser.ts` (PDF/Word → text) → `extractor.ts` (AI-powered structured extraction) → `ingestor.ts` (vector store/RAG ingestion). Triggered via `/api/admin/ingest-call` (multipart upload, 15MB max, PDF/DOCX/XLSX/TXT).
 
