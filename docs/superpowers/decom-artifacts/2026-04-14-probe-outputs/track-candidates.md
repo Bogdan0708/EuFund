@@ -67,6 +67,8 @@ Source: probe 01 part A.
 
 ## Track B — Orphaned AI modules (consumed by Plan 4)
 
+**Status: CLOSED 2026-04-14.** Plan 4 retired all 8 routes + 6 helpers below via PRs #29, #37, #38, #39, #40, #41 on master. Final self-review probes confirm zero `app/src`/`app/tests` references to the retired routes and all 6 retired helper files deleted. Keepers (`compliance-engine`, `compliance-validator`, `deadline-intelligence`, `document-analyzer`, `eu-ai-act`, `risk-assessment`, `sanitize`, `client`) remain on master per original classification. Historical tables below preserved for provenance.
+
 Source: probes 04 and 05.
 
 ### Confirmed delete candidates (zero external refs)
