@@ -1,6 +1,6 @@
 import { createHash } from 'crypto'
 import { describe, it, expect, vi } from 'vitest'
-import type { WorkflowContext, SSEStream, GatewayClient } from '@/lib/ai/orchestrator/types'
+import type { WorkflowContext, SSEStream, GatewayClient } from '@/lib/ai/agent/types'
 
 describe('Edit Agent', () => {
   it('regenerates a single section when requested', async () => {

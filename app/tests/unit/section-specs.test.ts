@@ -3,8 +3,8 @@ import {
   DEFAULT_SECTIONS,
   buildSectionSpecs,
   compactPreviousSections,
-} from '@/lib/ai/orchestrator/section-specs'
-import type { CallBlueprint, SectionResult, SectionSpec } from '@/lib/ai/orchestrator/types'
+} from '@/lib/ai/agent/section-specs'
+import type { CallBlueprint, SectionResult, SectionSpec } from '@/lib/ai/agent/types'
 
 // Minimal CallBlueprint factory
 function makeBlueprint(requiredSections: SectionSpec[] = []): CallBlueprint {

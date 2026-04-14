@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { WorkflowContext, SSEStream, GatewayClient, ActionPlan, CallBlueprint } from '@/lib/ai/orchestrator/types'
+import type { WorkflowContext, SSEStream, GatewayClient, ActionPlan, CallBlueprint } from '@/lib/ai/agent/types'
 
 const mockBlueprint: CallBlueprint = {
   callId: 'call-1',

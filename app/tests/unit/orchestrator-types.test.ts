@@ -11,7 +11,7 @@ import type {
   ProjectCompletionStatus,
   SubmissionDocument,
   MatchedCall,
-} from '@/lib/ai/orchestrator/types'
+} from '@/lib/ai/agent/types'
 
 describe('Orchestrator V2 types', () => {
   it('WorkflowContext has required V2 fields', () => {

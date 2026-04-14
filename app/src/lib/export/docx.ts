@@ -1,5 +1,5 @@
 import PizZip from 'pizzip'
-import type { SectionResult } from '@/lib/ai/orchestrator/types'
+import type { SectionResult } from '@/lib/ai/agent/types'
 import { parseMarkdownBlocks } from '@/lib/markdown/proposal-markdown'
 import { blocksToOoxml, escapeXml, STYLES_XML, NUMBERING_XML } from './markdown-to-ooxml'
 

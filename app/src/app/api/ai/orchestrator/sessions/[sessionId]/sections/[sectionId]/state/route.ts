@@ -3,7 +3,7 @@ import { FondEUError } from '@/lib/errors';
 import { requireOwnedSession } from '@/lib/ai/orchestrator/require-owned-session';
 import { transitionSectionState, verifySectionIntegrity, SectionVersionError } from '@/lib/ai/orchestrator/section-versions';
 import { persistAndPublishSectionUpdatedEvent } from '@/lib/ai/orchestrator/pubsub';
-import type { SectionResult } from '@/lib/ai/orchestrator/types';
+import type { SectionResult } from '@/lib/ai/agent/types';
 import { logger } from '@/lib/logger';
 
 const log = logger.child({ route: 'section-state' });

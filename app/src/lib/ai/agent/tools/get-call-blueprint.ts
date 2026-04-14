@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { registerTool } from './registry'
 import type { ToolResult } from '../types'
-import type { CallBlueprint, SectionSpec } from '@/lib/ai/orchestrator/types'
+import type { CallBlueprint, SectionSpec } from '@/lib/ai/agent/types'
 import { db } from '@/lib/db'
 import { callKnowledge } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'

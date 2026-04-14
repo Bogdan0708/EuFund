@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { WorkflowContext, SSEStream, GatewayClient, SectionResult } from '@/lib/ai/orchestrator/types'
-import { DEFAULT_SECTIONS } from '@/lib/ai/orchestrator/section-specs'
+import type { WorkflowContext, SSEStream, GatewayClient, SectionResult } from '@/lib/ai/agent/types'
+import { DEFAULT_SECTIONS } from '@/lib/ai/agent/section-specs'
 
 const baseCtx: WorkflowContext = {
   sessionId: 'test', userId: 'user-1', locale: 'ro', tier: 'free', step: 5,

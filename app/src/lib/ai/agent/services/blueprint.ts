@@ -17,7 +17,7 @@ import { getVectorStore } from '@/lib/vectors/store'
 import { logger } from '@/lib/logger'
 import { ExternalDependencyError } from './errors'
 import type { ServiceContext } from './types'
-import type { CallBlueprint, SectionSpec } from '@/lib/ai/orchestrator/types'
+import type { CallBlueprint, SectionSpec } from '@/lib/ai/agent/types'
 import type { BlueprintLookupResult, BlueprintSaveResult, EvidenceChunk } from './types'
 
 const log = logger.child({ component: 'service-blueprint' })

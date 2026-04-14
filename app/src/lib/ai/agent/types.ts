@@ -19,6 +19,30 @@ export const CHECKPOINT_TYPES = [
 ] as const
 export type CheckpointType = (typeof CHECKPOINT_TYPES)[number]
 
+// ── Re-exports of orchestrator-owned types still living in @/lib/ai/orchestrator/types ──
+// These are re-exported so importers can use a single canonical path (@/lib/ai/agent/types).
+// The originals will be moved or retired in subsequent decom sub-steps.
+export type {
+  WorkflowContext,
+  EnhancedIdea,
+  MatchedCall,
+  SectionVersion,
+  FreshnessProvenance,
+  FreshnessResult,
+  ActionPlan,
+  UploadedFile,
+  QAResult,
+  ProjectCompletionStatus,
+  AgentResult,
+  CheckpointData,
+  SSEEvent,
+  SSEEventPayload,
+  SSEStream,
+  GatewayClient,
+  AgentFn,
+} from '@/lib/ai/orchestrator/types'
+export { STEP_LABELS } from '@/lib/ai/orchestrator/types'
+
 // ── Domain types (canonical home) ───────────────────────────────
 
 export interface CallBlueprint {
@@ -110,9 +134,9 @@ export interface AgentSession {
   locale: 'ro' | 'en'
   selectedCallId: string | null
   currentPhase: Phase
-  blueprint: import('@/lib/ai/orchestrator/types').CallBlueprint | null
+  blueprint: CallBlueprint | null
   eligibility: EligibilityResult | null
-  outline: import('@/lib/ai/orchestrator/types').SectionSpec[] | null
+  outline: SectionSpec[] | null
   warnings: Warning[]
   planningArtifact: PlanningArtifact | null
   outlineFrozen: boolean
@@ -227,9 +251,9 @@ export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
 
 export type StateTransition =
   | { type: 'SET_SELECTED_CALL'; callId: string }
-  | { type: 'SET_BLUEPRINT'; blueprint: import('@/lib/ai/orchestrator/types').CallBlueprint }
+  | { type: 'SET_BLUEPRINT'; blueprint: CallBlueprint }
   | { type: 'SET_ELIGIBILITY'; result: EligibilityResult }
-  | { type: 'SET_OUTLINE'; outline: import('@/lib/ai/orchestrator/types').SectionSpec[] }
+  | { type: 'SET_OUTLINE'; outline: SectionSpec[] }
   | { type: 'FREEZE_OUTLINE' }
   | { type: 'SET_PHASE'; phase: Phase }
   | { type: 'SET_WARNINGS'; warnings: Warning[] }
@@ -261,7 +285,7 @@ export interface UIStateSnapshot {
   stateVersion: number
   warnings: Warning[]
   sections: { sectionKey: string; title: string; status: SectionStatus; documentOrder: number }[]
-  blueprint: import('@/lib/ai/orchestrator/types').CallBlueprint | null
+  blueprint: CallBlueprint | null
   eligibility: EligibilityResult | null
 }
 

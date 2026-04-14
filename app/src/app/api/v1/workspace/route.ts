@@ -5,7 +5,7 @@ import { projects, workflowSessions, projectDocuments, projectFiles } from '@/li
 import { eq, and, inArray, isNull, desc, count } from 'drizzle-orm';
 import { Errors, FondEUError } from '@/lib/errors';
 import { normalizeSections } from '@/lib/ai/orchestrator/workspace';
-import type { SectionResult } from '@/lib/ai/orchestrator/types';
+import type { SectionResult } from '@/lib/ai/agent/types';
 
 export async function GET() {
   try {

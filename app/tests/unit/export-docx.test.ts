@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { SectionResult } from '@/lib/ai/orchestrator/types'
+import type { SectionResult } from '@/lib/ai/agent/types'
 
 const makeSection = (id: string, title: string, content: string, order: number): SectionResult => ({
   id,

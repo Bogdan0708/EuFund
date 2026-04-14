@@ -9,7 +9,7 @@ import { Icon } from '@/components/ui/ds-icon';
 import { pageVariants, pageTransition } from '@/lib/motion';
 import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
 import { relativeTime } from '@/lib/utils';
-import type { SubmissionDocument } from '@/lib/ai/orchestrator/types';
+import type { SubmissionDocument } from '@/lib/ai/agent/types';
 import { SectionsTabContent } from './components/SectionsTabContent';
 
 /* ---------- types ---------- */
