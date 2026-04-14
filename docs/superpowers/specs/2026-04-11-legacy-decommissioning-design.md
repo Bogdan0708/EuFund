@@ -131,6 +131,19 @@ Every retirement PR presents evidence against all seven checks in its descriptio
 
 ## Section 4 — Retirement sequence
 
+### Post-cascade addendum (2026-04-14)
+
+The PR #11 → #12 → #13 stack landed on master on 2026-04-14 (per the companion e2e-rollback spec). PR numbers shifted during the cascade due to a branch-point error and subsequent revert: the final landing PRs are #11 (MCP extraction + Managed Phase 2), #18 (Phase 3a hardening, replacing closed #12), and #19 (V3 mutation guards, replacing closed #13). The CI gate policy addendum landed as PR #17.
+
+Consequences for this section:
+
+- **Phase 0** is closed. The stack protection window no longer applies. Decommissioning work may now touch any surface, subject to the Section 3 rubric.
+- **Phase 1** is moot. The `(app)/` English route layer carve-out was designed to start before the cascade landed, under the Rule 2 dual-branch sweep guard. With the cascade landed, `(app)/*` deletion folds into Phase 2 as a normal track — no carve-out construct, no dual-branch sweep needed (single sweep against current master suffices), no leaf-safety negotiation against an unmerged stack tip. Rule 2 itself is retained as standing policy for any future early-start carve-out, but has no active subject in this program.
+- **Phase 2** is now the active phase. Three tracks (orchestrator retirement, orphaned AI module audit + deletion, independent operational-endpoint sweep) plus the absorbed `(app)/` route deletion run in parallel on separate branches.
+- **Phase 3** unchanged. Still blocked on V2 visual completion and Managed Phase 3.
+
+The phase descriptions below stand as the design-time record. The implementation plan derived from this spec adapts to the post-cascade reality without re-litigating the design.
+
 ### Phase 0 — Stack protection window
 
 Active until the cascade (PR #11 → #12 → #13) lands on master per the companion e2e-rollback spec.
