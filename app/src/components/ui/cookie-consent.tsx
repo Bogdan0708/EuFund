@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 
 type ConsentStatus = 'granted' | 'withdrawn';
@@ -44,6 +44,12 @@ const i18n = {
 
 const CONSENT_VERSION = process.env.NEXT_PUBLIC_CONSENT_POLICY_VERSION || 'v1';
 const STORAGE_KEY = `eufund:cookie-consent-dismissed:${CONSENT_VERSION}`;
+/**
+ * Settings page writes this flag to force the banner to re-open even if
+ * backend consent records already exist. Cleared when the user makes a
+ * new choice via the banner.
+ */
+export const FORCE_SHOW_KEY = 'eufund:cookie-consent-force-show';
 
 function hasAuthSessionCookie(): boolean {
   if (typeof document === 'undefined') return false;
@@ -71,10 +77,7 @@ export function CookieConsentBanner() {
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
   const [marketingEnabled, setMarketingEnabled] = useState(false);
 
-  const hasOptionalConsent = useMemo(
-    () => analyticsEnabled || marketingEnabled,
-    [analyticsEnabled, marketingEnabled],
-  );
+  const hasOptionalConsent = analyticsEnabled || marketingEnabled;
 
   useEffect(() => {
     setMounted(true);
@@ -85,7 +88,13 @@ export function CookieConsentBanner() {
     let cancelled = false;
 
     async function loadConsent() {
-      if (typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY) === '1') {
+      // Force-show flag (set from settings' "Manage cookies") wins over
+      // stored dismissal AND backend consent records. Users can re-visit
+      // their choice without us deleting their existing consent audit trail.
+      const forceShow =
+        typeof window !== 'undefined' && localStorage.getItem(FORCE_SHOW_KEY) === '1';
+
+      if (!forceShow && typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY) === '1') {
         if (!cancelled) {
           setVisible(false);
           setLoading(false);
@@ -127,7 +136,8 @@ export function CookieConsentBanner() {
         if (!cancelled) {
           setAnalyticsEnabled(analytics?.status === 'granted');
           setMarketingEnabled(marketing?.status === 'granted');
-          setVisible(!analytics && !marketing);
+          // Force-show overrides "has records" check
+          setVisible(forceShow || (!analytics && !marketing));
           setLoading(false);
         }
       } catch {
@@ -173,6 +183,8 @@ export function CookieConsentBanner() {
       setVisible(false);
       if (typeof window !== 'undefined') {
         localStorage.setItem(STORAGE_KEY, '1');
+        // User has made a fresh choice — clear the force-show flag
+        localStorage.removeItem(FORCE_SHOW_KEY);
       }
     } finally {
       setSaving(false);
@@ -184,11 +196,11 @@ export function CookieConsentBanner() {
   const t = locale === 'en' ? i18n.en : i18n.ro;
 
   return (
-    <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-3xl rounded-xl border bg-white p-4 shadow-xl">
+    <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-3xl rounded-xl glass-card p-4 shadow-xl">
       <div className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold">{t.title}</h2>
-          <p className="text-xs text-muted-foreground">
+          <h2 className="text-sm font-semibold text-black">{t.title}</h2>
+          <p className="text-xs text-on-surface">
             {t.description}
             {' '}
             <a
@@ -203,13 +215,13 @@ export function CookieConsentBanner() {
         <div className="grid gap-2 text-sm sm:grid-cols-3">
           <div className="rounded-md border p-2">
             <p className="font-medium">{t.essential}</p>
-            <p className="text-xs text-muted-foreground">{t.essentialDesc}</p>
+            <p className="text-xs text-on-surface">{t.essentialDesc}</p>
           </div>
           <label className="rounded-md border p-2">
             <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="font-medium">Analytics</p>
-                <p className="text-xs text-muted-foreground">{t.analyticsDesc}</p>
+                <p className="text-xs text-on-surface">{t.analyticsDesc}</p>
               </div>
               <input
                 type="checkbox"
@@ -223,7 +235,7 @@ export function CookieConsentBanner() {
             <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="font-medium">Marketing</p>
-                <p className="text-xs text-muted-foreground">{t.marketingDesc}</p>
+                <p className="text-xs text-on-surface">{t.marketingDesc}</p>
               </div>
               <input
                 type="checkbox"
@@ -245,7 +257,7 @@ export function CookieConsentBanner() {
           <Button size="sm" onClick={() => persistConsent(true, true)} disabled={saving}>
             {t.acceptAll}
           </Button>
-          <span className="self-center text-xs text-muted-foreground">
+          <span className="self-center text-xs text-on-surface">
             {hasOptionalConsent ? t.hasConsent : t.noConsent}
           </span>
         </div>

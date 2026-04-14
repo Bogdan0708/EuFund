@@ -1,12 +1,9 @@
-import { eq } from 'drizzle-orm';
-import { db } from '@/lib/db';
-import { users } from '@/lib/db/schema';
 import { Errors } from '@/lib/errors';
-import { resolveBillingTrialState } from '@/lib/billing/trial';
+import { isBillingEnabled } from '@/lib/billing/config';
 
 export type BillingTier = 'free' | 'plus' | 'pro' | 'enterprise' | 'ultra';
 
-const TIER_RANK: Record<BillingTier, number> = {
+const BILLING_TIER_ORDER: Record<BillingTier, number> = {
   free: 0,
   plus: 1,
   pro: 2,
@@ -15,18 +12,30 @@ const TIER_RANK: Record<BillingTier, number> = {
 };
 
 export function hasRequiredTier(currentTier: BillingTier, minTier: BillingTier): boolean {
-  return TIER_RANK[currentTier] >= TIER_RANK[minTier];
+  if (!isBillingEnabled()) {
+    return true;
+  }
+
+  return BILLING_TIER_ORDER[currentTier] >= BILLING_TIER_ORDER[minTier];
 }
 
 export function assertTier(currentTier: BillingTier, minTier: BillingTier): BillingTier {
   if (!hasRequiredTier(currentTier, minTier)) {
     throw Errors.forbidden();
   }
+
   return currentTier;
 }
 
-async function getUserTier(userId: string): Promise<BillingTier> {
-  const row = await db
+async function resolveUserTier(userId: string): Promise<BillingTier> {
+  const [{ db }, { users }, { eq }, { resolveBillingTrialState }] = await Promise.all([
+    import('@/lib/db'),
+    import('@/lib/db/schema'),
+    import('drizzle-orm'),
+    import('@/lib/billing/trial'),
+  ]);
+
+  const [row] = await db
     .select({
       tier: users.tier,
       subscriptionStatus: users.subscriptionStatus,
@@ -37,21 +46,35 @@ async function getUserTier(userId: string): Promise<BillingTier> {
     .where(eq(users.id, userId))
     .limit(1);
 
-  return resolveBillingTrialState(row[0] || {}).effectiveTier;
+  if (!row) {
+    throw Errors.notFound('user', userId);
+  }
+
+  const trialState = resolveBillingTrialState({
+    tier: row.tier as BillingTier | null,
+    subscriptionStatus: row.subscriptionStatus,
+    stripeSubscriptionId: row.stripeSubscriptionId,
+    createdAt: row.createdAt,
+  });
+
+  return trialState.effectiveTier;
 }
 
 export function requireTier(minTier: BillingTier) {
   return async (userId: string): Promise<BillingTier> => {
-    const currentTier = await getUserTier(userId);
-    return assertTier(currentTier, minTier);
+    if (!isBillingEnabled()) {
+      return 'pro';
+    }
+
+    const currentTier = await resolveUserTier(userId);
+    assertTier(currentTier, minTier);
+    return currentTier;
   };
 }
 
 export async function requireTierFromSession(minTier: BillingTier): Promise<{ userId: string; tier: BillingTier }> {
   const { requireAuth } = await import('@/lib/auth/helpers');
   const user = await requireAuth();
-  const ensureTier = requireTier(minTier);
-  const tier = await ensureTier(user.id);
-
+  const tier = await requireTier(minTier)(user.id);
   return { userId: user.id, tier };
 }

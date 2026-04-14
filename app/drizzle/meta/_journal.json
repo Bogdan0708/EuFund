@@ -92,6 +92,76 @@
       "when": 1774051200000,
       "tag": "0012_auth_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1774137600000,
+      "tag": "0013_onboarding_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1775260800000,
+      "tag": "0014_agent_v3",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1775347200000,
+      "tag": "0015_agent_v3_feature_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1775952000000,
+      "tag": "0016_section_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1775952100000,
+      "tag": "0017_ai_model_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1776038400000,
+      "tag": "0018_stripe_webhook_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1776124800000,
+      "tag": "0019_agent_section_version_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1776211200000,
+      "tag": "0020_runtime_mode_and_app_agent_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1776297600000,
+      "tag": "0021_agent_messages_observability",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1776384000000,
+      "tag": "0022_managed_agent_enabled_flag",
+      "breakpoints": true
     }
   ]
 }

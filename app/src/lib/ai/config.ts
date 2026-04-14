@@ -7,14 +7,14 @@ export const AI_CONFIG = {
     provider: 'openai' as const,
     model: process.env.AI_GENERATION_MODEL || 'gpt-4o',
     temperature: 0.7,
-    maxTokens: 4096,
+    maxTokens: 20_000,
   },
   // Model for analysis/classification
   analysis: {
     provider: 'openai' as const,
     model: process.env.AI_ANALYSIS_MODEL || 'gpt-4o',
     temperature: 0.3,
-    maxTokens: 2048,
+    maxTokens: 8_000,
   },
   // Embedding model
   embedding: {

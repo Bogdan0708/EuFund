@@ -8,6 +8,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import type { WorkPackage } from '@/types/work-packages';
+import { formatCurrency } from '@/lib/utils';
 
 interface WorkPackageTableProps {
   workPackages: WorkPackage[];
@@ -25,10 +26,6 @@ const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'destructive' | 
   planned: 'outline', active: 'default', completed: 'secondary',
   delayed: 'destructive', cancelled: 'outline',
 };
-
-function formatCurrency(n: number): string {
-  return new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
-}
 
 function getProgress(wp: WorkPackage): number {
   if (!wp.milestones?.length) return wp.status === 'completed' ? 100 : 0;

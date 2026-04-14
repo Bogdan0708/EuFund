@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { Errors } from '@/lib/errors';
 
 describe('POST /api/v1/admin/billing/trial-notifications', () => {
   it('runs the lifecycle notification job for platform admins', async () => {
@@ -64,6 +63,9 @@ describe('POST /api/v1/admin/billing/trial-notifications', () => {
   it('rejects the request when no session or valid token is provided', async () => {
     vi.resetModules();
     vi.stubEnv('TRIAL_NOTIFICATIONS_AUTH_TOKEN', 'secret-scheduler-token');
+
+    // Import Errors after resetModules so instanceof matches the route's FondEUError
+    const { Errors } = await import('@/lib/errors');
 
     vi.doMock('@/lib/auth/helpers', () => ({
       requirePlatformAdmin: vi.fn().mockRejectedValue(Errors.forbidden()),

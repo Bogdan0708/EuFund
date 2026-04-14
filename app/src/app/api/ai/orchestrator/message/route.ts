@@ -1,15 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/helpers'
 import { db } from '@/lib/db'
-import { users, workflowSessions } from '@/lib/db/schema'
+import { workflowSessions, userPreferences } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { processMessage, createSession } from '@/lib/ai/orchestrator/engine'
-import { checkWorkflowLimit, incrementWorkflowCount } from '@/lib/billing/usage'
 import { createGatewayClient } from '@/lib/ai/orchestrator/gateway'
 import { createPubSubStream } from '@/lib/ai/orchestrator/pubsub'
 import { logger } from '@/lib/logger'
+import { getRedis } from '@/lib/redis/client'
+import { getAIModelRoutingContext } from '@/lib/ai/model-routing'
+
+interface UserAIPrefs {
+  modelPreference?: string
+  responseStyle?: 'concise' | 'detailed' | 'technical'
+  autoApprove?: boolean
+}
+
+async function getUserAIPreferences(userId: string): Promise<UserAIPrefs> {
+  try {
+    const [prefs] = await db
+      .select({
+        defaultModel: userPreferences.defaultModel,
+        responseStyle: userPreferences.responseStyle,
+        autoApprove: userPreferences.autoApprove,
+      })
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, userId))
+      .limit(1)
+    if (!prefs) return {}
+    return {
+      modelPreference: prefs.defaultModel,
+      responseStyle: prefs.responseStyle as 'concise' | 'detailed' | 'technical' | undefined,
+      autoApprove: prefs.autoApprove,
+    }
+  } catch {
+    return {}
+  }
+}
 
 const log = logger.child({ component: 'orchestrator-message' })
+
+const LOCK_TTL_SECONDS = 300 // 5 minutes
+
+async function acquireLock(sessionId: string): Promise<'acquired' | 'busy' | 'unavailable'> {
+  try {
+    const redis = getRedis()
+    if (!redis) return 'unavailable'
+    const result = await redis.set(`orchestrator:lock:${sessionId}`, '1', 'EX', LOCK_TTL_SECONDS, 'NX')
+    return result === 'OK' ? 'acquired' : 'busy'
+  } catch {
+    return 'unavailable'
+  }
+}
+
+async function releaseLock(sessionId: string): Promise<void> {
+  try {
+    const redis = getRedis()
+    if (!redis) return
+    await redis.del(`orchestrator:lock:${sessionId}`)
+  } catch {
+    // Best-effort release — TTL handles cleanup
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,24 +73,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'message or sessionId required' }, { status: 400 })
     }
 
-    // Get user tier
-    const [dbUser] = await db.select({ tier: users.tier }).from(users).where(eq(users.id, user.id)).limit(1)
-    const tier = dbUser?.tier || 'free'
+    // Load user's AI preferences and routing context once per request
+    const aiPrefs = await getUserAIPreferences(user.id)
+    const { modelPreference, responseStyle, autoApprove } = aiPrefs
+    const routingCtx = await getAIModelRoutingContext(user.id)
 
     if (!sessionId) {
-      // Create new session
-      const limitCheck = await checkWorkflowLimit(user.id, tier)
-      if (!limitCheck.allowed) {
-        return NextResponse.json({ error: limitCheck.message }, { status: 429 })
-      }
-      await incrementWorkflowCount(user.id)
-      const session = await createSession(user.id, locale || 'ro', tier)
+      // Create new session (no billing gates — single-user dev mode)
+      const session = await createSession(user.id, locale || 'ro', 'free', responseStyle)
 
       // Process first message asynchronously
       const stream = createPubSubStream(session.id)
       const gateway = createGatewayClient('fondeu')
-      log.info({ sessionId: session.id, userId: user.id }, 'New session created, processing message')
-      processMessage(session.id, message, stream, gateway).catch((err) => {
+      log.info({ sessionId: session.id, userId: user.id, modelPreference, responseStyle, autoApprove }, 'New session created, processing message')
+      const lockStatus = await acquireLock(session.id)
+      if (lockStatus === 'unavailable') {
+        return NextResponse.json({ error: 'Service temporarily unavailable' }, { status: 503 })
+      }
+      processMessage(session.id, message, stream, gateway, false, { responseStyle, autoApprove, routingCtx }).then(() => {
+        releaseLock(session.id)
+      }).catch((err) => {
+        releaseLock(session.id)
         log.error({ error: err instanceof Error ? err.message : String(err), sessionId: session.id }, 'processMessage failed')
       })
 
@@ -56,14 +111,26 @@ export async function POST(req: NextRequest) {
       .limit(1)
 
     if (!session) {
+      await releaseLock(sessionId)
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+    }
+
+    const lockStatus = await acquireLock(sessionId)
+    if (lockStatus === 'unavailable') {
+      return NextResponse.json({ error: 'Service temporarily unavailable' }, { status: 503 })
+    }
+    if (lockStatus === 'busy') {
+      return NextResponse.json({ error: 'Session is already processing a message. Please wait.' }, { status: 409 })
     }
 
     // Process message asynchronously
     const sseStream = createPubSubStream(sessionId)
     const gateway = createGatewayClient('fondeu')
-    log.info({ sessionId, userId: user.id }, 'Resuming session, processing message')
-    processMessage(sessionId, message, sseStream, gateway).catch((err) => {
+    log.info({ sessionId, userId: user.id, modelPreference, responseStyle, autoApprove }, 'Resuming session, processing message')
+    processMessage(sessionId, message, sseStream, gateway, false, { responseStyle, autoApprove, routingCtx }).then(() => {
+      releaseLock(sessionId)
+    }).catch((err) => {
+      releaseLock(sessionId)
       log.error({ error: err instanceof Error ? err.message : String(err), sessionId }, 'processMessage failed')
     })
 

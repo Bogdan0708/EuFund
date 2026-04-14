@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>FondEU | Onboarding - Step 2</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-secondary-fixed": "#0c006b",
+              "on-error-container": "#93000a",
+              "surface": "#faf8fe",
+              "on-secondary-fixed-variant": "#332dbc",
+              "tertiary": "#00637f",
+              "surface-container-highest": "#e3e2e7",
+              "on-tertiary-container": "#f7fbff",
+              "on-surface-variant": "#414753",
+              "on-primary": "#ffffff",
+              "primary": "#0059b5",
+              "surface-container-high": "#e9e7ed",
+              "surface-tint": "#005cbb",
+              "on-background": "#1a1b1f",
+              "tertiary-container": "#007da1",
+              "outline-variant": "#c1c6d6",
+              "primary-fixed-dim": "#abc7ff",
+              "on-error": "#ffffff",
+              "surface-container-low": "#f4f3f8",
+              "on-primary-fixed-variant": "#00458f",
+              "surface-dim": "#dad9df",
+              "secondary-fixed-dim": "#c2c1ff",
+              "primary-fixed": "#d7e2ff",
+              "surface-variant": "#e3e2e7",
+              "background": "#faf8fe",
+              "secondary-fixed": "#e2dfff",
+              "secondary": "#4a47d2",
+              "inverse-primary": "#abc7ff",
+              "on-surface": "#1a1b1f",
+              "outline": "#717785",
+              "on-secondary-container": "#fffbff",
+              "on-secondary": "#ffffff",
+              "tertiary-fixed-dim": "#68d3ff",
+              "tertiary-fixed": "#bee9ff",
+              "surface-bright": "#faf8fe",
+              "inverse-surface": "#2f3034",
+              "surface-container-lowest": "#ffffff",
+              "error-container": "#ffdad6",
+              "on-primary-fixed": "#001b3f",
+              "primary-container": "#0071e3",
+              "on-tertiary": "#ffffff",
+              "error": "#ba1a1a",
+              "surface-container": "#eeedf3",
+              "secondary-container": "#6462ec",
+              "inverse-on-surface": "#f1f0f5",
+              "on-primary-container": "#fcfbff",
+              "on-tertiary-fixed-variant": "#004d64",
+              "on-tertiary-fixed": "#001f2a"
+            },
+            fontFamily: {
+              "headline": ["Inter", "sans-serif"],
+              "body": ["Inter", "sans-serif"],
+              "label": ["Inter", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .hero-gradient {
+            background: radial-gradient(circle at top left, rgba(0, 113, 227, 0.05), transparent),
+                        radial-gradient(circle at bottom right, rgba(74, 71, 210, 0.05), transparent);
+        }
+    </style>
+</head>
+<body class="bg-[#F5F5F7] font-body text-on-surface antialiased min-h-screen hero-gradient">
+<!-- Suppression of Navigation Shell (Transactional Rule) -->
+<main class="flex flex-col items-center justify-center min-h-screen px-6 py-20">
+<!-- Logo Branding Anchor -->
+<div class="mb-16">
+<h1 class="text-2xl font-black tracking-tighter text-on-surface">FondEU</h1>
+</div>
+<!-- Onboarding Progress Indicator -->
+<div class="mb-10 text-center">
+<span class="text-xs font-bold uppercase tracking-widest text-primary mb-3 block">Step 2 of 2</span>
+<div class="flex gap-2 justify-center">
+<div class="h-1 w-12 rounded-full bg-surface-container-highest"></div>
+<div class="h-1 w-12 rounded-full bg-primary-container"></div>
+</div>
+</div>
+<!-- Main Onboarding Card (Glassmorphism) -->
+<div class="max-w-2xl w-full glass-card p-12 md:p-16 rounded-lg shadow-[0_20px_40px_rgba(0,0,0,0.04)] relative overflow-hidden">
+<!-- Contextual Halo for AI Intelligence -->
+<div class="absolute -top-24 -right-24 w-64 h-64 bg-secondary/5 rounded-full blur-3xl"></div>
+<header class="mb-12 relative z-10">
+<h2 class="text-4xl md:text-5xl font-bold tracking-tight text-on-surface mb-4 leading-tight">
+                    What topics interest you?
+                </h2>
+<p class="text-lg text-on-surface-variant max-w-md">
+                    We'll match you with relevant funding calls.
+                </p>
+</header>
+<!-- Interests Selection (Asymmetric Grid) -->
+<div class="flex flex-wrap gap-3 mb-16 relative z-10">
+<!-- Interest Chip - Active State Logic Applied to first few for visual feedback -->
+<button class="px-6 py-3 rounded-full bg-primary-container text-on-primary font-medium transition-all duration-250 hover:translate-y-[-1px] flex items-center gap-2">
+                    Digitalization
+                    <span class="material-symbols-outlined text-sm" data-icon="check">check</span>
+</button>
+<button class="px-6 py-3 rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all duration-250 hover:translate-y-[-1px] font-medium border border-transparent">
+                    Green Energy
+                </button>
+<button class="px-6 py-3 rounded-full bg-primary-container text-on-primary font-medium transition-all duration-250 hover:translate-y-[-1px] flex items-center gap-2">
+                    Innovation
+                    <span class="material-symbols-outlined text-sm" data-icon="check">check</span>
+</button>
+<button class="px-6 py-3 rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all duration-250 hover:translate-y-[-1px] font-medium">
+                    Agriculture
+                </button>
+<button class="px-6 py-3 rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all duration-250 hover:translate-y-[-1px] font-medium">
+                    Transport
+                </button>
+<button class="px-6 py-3 rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all duration-250 hover:translate-y-[-1px] font-medium">
+                    Health
+                </button>
+<button class="px-6 py-3 rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all duration-250 hover:translate-y-[-1px] font-medium">
+                    Education
+                </button>
+<button class="px-6 py-3 rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all duration-250 hover:translate-y-[-1px] font-medium">
+                    Smart Cities
+                </button>
+</div>
+<!-- Primary CTA -->
+<div class="flex flex-col items-center gap-6 relative z-10">
+<button class="w-full md:w-auto min-w-[240px] py-4 px-10 bg-primary-container text-on-primary text-lg font-semibold rounded-lg transition-all duration-250 hover:translate-y-[-1px] active:scale-[0.99] shadow-lg shadow-primary/10">
+                    Start Exploring
+                </button>
+<button class="text-on-surface-variant hover:text-on-surface transition-colors font-medium">
+                    Skip for now
+                </button>
+</div>
+</div>
+<!-- Editorial Footnote (Brussels Minimal Aesthetic) -->
+<div class="mt-16 text-center max-w-md">
+<p class="text-sm text-outline font-medium leading-relaxed">
+                By selecting these topics, our <span class="text-secondary font-bold">Digital Curator AI</span> will prioritize opportunities within the European Commission's 2024-2027 strategic framework.
+            </p>
+</div>
+<!-- Ambient Visual Background Elements -->
+<div class="fixed bottom-0 left-0 -z-10 opacity-50">
+<div class="w-96 h-96 bg-primary/5 rounded-full blur-[100px] transform -translate-x-1/2 translate-y-1/2"></div>
+</div>
+</main>
+<!-- Contextual AI Assistant (Glassmorphism Overlay) -->
+<div class="fixed bottom-12 right-12 hidden lg:flex items-center gap-4 group cursor-pointer">
+<div class="glass-card py-3 px-5 rounded-full shadow-sm border border-outline-variant/10 group-hover:shadow-md transition-all duration-250">
+<p class="text-sm font-medium text-on-surface-variant">Need help defining your sector?</p>
+</div>
+<div class="w-14 h-14 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary shadow-lg">
+<span class="material-symbols-outlined" data-icon="auto_awesome" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+</div>
+</div>
+</body></html>

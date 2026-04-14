@@ -20,9 +20,9 @@ interface WorkspaceLayoutProps {
 export function WorkspaceLayout({ messages, currentStep, status, isStreaming, onSend }: WorkspaceLayoutProps) {
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
-      {currentStep > 0 && <StepProgressBar currentStep={currentStep} className="border-b border-[var(--border-subtle)]" />}
+      {currentStep > 0 && <StepProgressBar currentStep={currentStep} className="border-b border-outline-variant" />}
       <div className="flex-1 flex min-h-0">
-        <div className="flex-1 min-w-0 border-r border-[var(--border-subtle)]">
+        <div className="flex-1 min-w-0 border-r border-outline-variant">
           <ChatPanel messages={messages} onSend={onSend} isStreaming={isStreaming} status={status} />
         </div>
         <div className="hidden lg:flex w-[400px] shrink-0">

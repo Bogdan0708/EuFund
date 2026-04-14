@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-secondary-fixed": "#0c006b",
+              "on-error-container": "#93000a",
+              "surface": "#faf8fe",
+              "on-secondary-fixed-variant": "#332dbc",
+              "tertiary": "#00637f",
+              "surface-container-highest": "#e3e2e7",
+              "on-tertiary-container": "#f7fbff",
+              "on-surface-variant": "#414753",
+              "on-primary": "#ffffff",
+              "primary": "#0059b5",
+              "surface-container-high": "#e9e7ed",
+              "surface-tint": "#005cbb",
+              "on-background": "#1a1b1f",
+              "tertiary-container": "#007da1",
+              "outline-variant": "#c1c6d6",
+              "primary-fixed-dim": "#abc7ff",
+              "on-error": "#ffffff",
+              "surface-container-low": "#f4f3f8",
+              "on-primary-fixed-variant": "#00458f",
+              "surface-dim": "#dad9df",
+              "secondary-fixed-dim": "#c2c1ff",
+              "primary-fixed": "#d7e2ff",
+              "surface-variant": "#e3e2e7",
+              "background": "#faf8fe",
+              "secondary-fixed": "#e2dfff",
+              "secondary": "#4a47d2",
+              "inverse-primary": "#abc7ff",
+              "on-surface": "#1a1b1f",
+              "outline": "#717785",
+              "on-secondary-container": "#fffbff",
+              "on-secondary": "#ffffff",
+              "tertiary-fixed-dim": "#68d3ff",
+              "tertiary-fixed": "#bee9ff",
+              "surface-bright": "#faf8fe",
+              "inverse-surface": "#2f3034",
+              "surface-container-lowest": "#ffffff",
+              "error-container": "#ffdad6",
+              "on-primary-fixed": "#001b3f",
+              "primary-container": "#0071e3",
+              "on-tertiary": "#ffffff",
+              "error": "#ba1a1a",
+              "surface-container": "#eeedf3",
+              "secondary-container": "#6462ec",
+              "inverse-on-surface": "#f1f0f5",
+              "on-primary-container": "#fcfbff",
+              "on-tertiary-fixed-variant": "#004d64",
+              "on-tertiary-fixed": "#001f2a"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .glass-card {
+        background: rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+      }
+      body {
+        font-family: 'Inter', sans-serif;
+      }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen overflow-hidden">
+<!-- TopNavBar Implementation from JSON -->
+<header class="fixed top-0 w-full z-40 bg-white/72 dark:bg-slate-900/72 backdrop-blur-xl shadow-sm font-['Inter'] antialiased tracking-tight">
+<div class="flex items-center justify-between px-6 py-3 max-w-full mx-auto relative">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold tracking-tighter text-slate-900 dark:text-slate-50">FondEU</span>
+<nav class="hidden md:flex items-center gap-6">
+<a class="text-slate-500 hover:text-slate-900 transition-colors duration-200" href="#">Grants</a>
+<a class="text-slate-500 hover:text-slate-900 transition-colors duration-200" href="#">Analytics</a>
+<a class="text-slate-500 hover:text-slate-900 transition-colors duration-200" href="#">Compliance</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative">
+<button class="p-2 rounded-full hover:bg-slate-50 transition-colors duration-200 relative">
+<span class="material-symbols-outlined text-slate-900" data-icon="notifications">notifications</span>
+<!-- Notification Badge -->
+<span class="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full border-2 border-white"></span>
+</button>
+<!-- THE NOTIFICATION DROPDOWN PANEL -->
+<div class="absolute right-0 mt-3 w-[360px] glass-card rounded-lg border border-outline-variant/15 shadow-[0_20px_40px_rgba(0,0,0,0.04)] overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-300">
+<!-- Header -->
+<div class="px-5 py-4 flex items-center justify-between border-b border-outline-variant/10">
+<h2 class="text-on-surface font-bold text-lg tracking-tight">Notifications</h2>
+<button class="text-primary text-xs font-semibold hover:underline">Mark all read</button>
+</div>
+<!-- Notification List -->
+<div class="max-h-[480px] overflow-y-auto">
+<!-- Item 1: Unread -->
+<div class="px-5 py-4 bg-primary/5 border-l-4 border-primary hover:bg-primary/10 transition-colors duration-200 cursor-pointer">
+<div class="flex gap-4">
+<div class="mt-1 flex-shrink-0">
+<div class="w-2 h-2 bg-primary rounded-full mt-2"></div>
+</div>
+<div class="flex-1">
+<h3 class="text-sm font-bold text-on-surface leading-snug">New funding call matches your profile</h3>
+<p class="text-xs text-on-surface-variant mt-1 leading-relaxed">A new Green Energy grant has been published that aligns with your active projects.</p>
+<span class="text-[10px] font-medium text-outline mt-2 block uppercase tracking-wider">2h ago</span>
+</div>
+</div>
+</div>
+<!-- Item 2: Status Update -->
+<div class="px-5 py-4 hover:bg-surface-container-low transition-colors duration-200 cursor-pointer border-b border-outline-variant/5">
+<div class="flex gap-4">
+<div class="mt-1 flex-shrink-0 text-emerald-500">
+<span class="material-symbols-outlined text-xl" data-icon="check_circle">check_circle</span>
+</div>
+<div class="flex-1">
+<h3 class="text-sm font-semibold text-on-surface leading-snug">Project 'Digitalizăm Smart' updated to In Progress</h3>
+<p class="text-xs text-on-surface-variant mt-1 leading-relaxed">The administrative review is complete. Your application is now under technical evaluation.</p>
+<span class="text-[10px] font-medium text-outline mt-2 block uppercase tracking-wider">Yesterday</span>
+</div>
+</div>
+</div>
+<!-- Item 3: AI Analysis -->
+<div class="px-5 py-4 hover:bg-surface-container-low transition-colors duration-200 cursor-pointer border-b border-outline-variant/5">
+<div class="flex gap-4">
+<div class="mt-1 flex-shrink-0 text-secondary">
+<span class="material-symbols-outlined text-xl" data-icon="auto_awesome">auto_awesome</span>
+</div>
+<div class="flex-1">
+<h3 class="text-sm font-semibold text-on-surface leading-snug">AI analysis complete for Horizon-2024</h3>
+<p class="text-xs text-on-surface-variant mt-1 leading-relaxed">Our curator AI has finished scanning the 200-page tender documentation for risks.</p>
+<span class="text-[10px] font-medium text-outline mt-2 block uppercase tracking-wider">2 days ago</span>
+</div>
+</div>
+</div>
+<!-- Item 4: Warning -->
+<div class="px-5 py-4 hover:bg-surface-container-low transition-colors duration-200 cursor-pointer border-b border-outline-variant/5">
+<div class="flex gap-4">
+<div class="mt-1 flex-shrink-0 text-amber-500">
+<span class="material-symbols-outlined text-xl" data-icon="warning">warning</span>
+</div>
+<div class="flex-1">
+<h3 class="text-sm font-semibold text-on-surface leading-snug">Deadline reminder: PNRR call closes in 5 days</h3>
+<p class="text-xs text-on-surface-variant mt-1 leading-relaxed">Final submission for the infrastructure modernization grant is due by Friday EOD.</p>
+<span class="text-[10px] font-medium text-outline mt-2 block uppercase tracking-wider">3 days ago</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer -->
+<div class="px-5 py-3 text-center border-t border-outline-variant/10">
+<a class="text-primary text-xs font-bold hover:underline" href="#">View all notifications</a>
+</div>
+</div>
+</div>
+<button class="flex items-center gap-2 p-1 pr-3 rounded-full hover:bg-slate-50 transition-colors duration-200">
+<img alt="User" class="w-8 h-8 rounded-full object-cover" data-alt="professional headshot of a mature businessman in a sharp navy suit against a clean studio background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBo0PF0DcAQCzqqDsGnUQetRc5BX-q5jb5tz9ThKNP90y6Warpq2QXVd95K9qX-Dcwzaa1EB-QeVILbvOnz5zUVFCHv2anNENP3iOEBJQcX45yObBJ4AQCY8OgKUXaXfO_4-fqqmgwi6fO8cmlqU0KlbYxnHIVn47PtxfBnHY2Z902Z09qa4AS6iWgJ2At7nBkEpd7MRp56DejCLJpTT6P7Tw9toIEZ1XcwCApb7hKl_Tjiq0DgyCDmhIFQbMlQLND0AsgzNdrGpMfp"/>
+<span class="material-symbols-outlined text-slate-400" data-icon="account_circle">account_circle</span>
+</button>
+</div>
+<div class="bg-slate-100/50 h-[1px] w-full absolute bottom-0 left-0"></div>
+</div>
+</header>
+<div class="flex pt-[60px]">
+<!-- SideNavBar Implementation from JSON -->
+<aside class="hidden md:flex flex-col h-screen w-64 p-4 fixed left-0 top-0 z-50 bg-slate-50 font-['Inter'] text-sm font-medium pt-20">
+<div class="text-lg font-black text-slate-900 mb-8 px-4 flex items-center gap-2">
+<div class="w-8 h-8 bg-primary rounded-md flex items-center justify-center text-white">
+<span class="material-symbols-outlined text-sm" data-icon="account_balance">account_balance</span>
+</div>
+                EU Curator
+            </div>
+<nav class="flex-1 space-y-2">
+<a class="bg-white text-blue-600 shadow-sm rounded-xl py-3 px-4 flex items-center gap-3 transition-all duration-250" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+                    Dashboard
+                </a>
+<a class="text-slate-500 hover:bg-slate-200/50 py-3 px-4 rounded-xl flex items-center gap-3 transition-all duration-250" href="#">
+<span class="material-symbols-outlined" data-icon="search_insights">search_insights</span>
+                    Grant Finder
+                </a>
+<a class="text-slate-500 hover:bg-slate-200/50 py-3 px-4 rounded-xl flex items-center gap-3 transition-all duration-250" href="#">
+<span class="material-symbols-outlined" data-icon="folder_special">folder_special</span>
+                    My Portfolio
+                </a>
+<a class="text-slate-500 hover:bg-slate-200/50 py-3 px-4 rounded-xl flex items-center gap-3 transition-all duration-250" href="#">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+                    Documents
+                </a>
+<a class="text-slate-500 hover:bg-slate-200/50 py-3 px-4 rounded-xl flex items-center gap-3 transition-all duration-250" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+                    Settings
+                </a>
+</nav>
+<button class="mt-6 bg-primary text-white font-bold py-3 px-4 rounded-xl hover:translate-y-[-1px] transition-all duration-250 shadow-md">
+                New Application
+            </button>
+<div class="mt-auto space-y-2 pb-4">
+<a class="text-slate-500 hover:bg-slate-200/50 py-3 px-4 rounded-xl flex items-center gap-3 transition-all duration-250" href="#">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+                    Help Center
+                </a>
+<a class="text-slate-500 hover:bg-slate-200/50 py-3 px-4 rounded-xl flex items-center gap-3 transition-all duration-250" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+                    Logout
+                </a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 ml-0 md:ml-64 p-8 bg-surface overflow-y-auto min-h-[calc(100vh-60px)]">
+<div class="max-w-6xl mx-auto space-y-12 animate-in fade-in duration-700">
+<!-- Dashboard Header -->
+<section>
+<span class="text-primary font-bold tracking-widest uppercase text-xs">Curator Intelligence</span>
+<h1 class="text-5xl md:text-6xl font-bold tracking-tight text-on-surface mt-2 mb-8">Good morning, <br/><span class="text-secondary">Adrian</span></h1>
+<!-- Bento Grid Dashboard Preview -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<!-- Glass Card 1 -->
+<div class="col-span-1 md:col-span-2 glass-card p-8 rounded-lg shadow-[0_20px_40px_rgba(0,0,0,0.04)] relative overflow-hidden group">
+<div class="relative z-10">
+<h3 class="text-2xl font-bold mb-2">Funding Matches</h3>
+<p class="text-on-surface-variant max-w-md">Our AI found 14 new grants matching your R&amp;D profile since your last visit.</p>
+<div class="mt-12 flex gap-4">
+<button class="bg-primary text-white px-6 py-3 rounded-full font-bold hover:translate-y-[-1px] transition-transform">Explore Matches</button>
+<button class="text-primary px-6 py-3 rounded-full font-bold">Refine Filters</button>
+</div>
+</div>
+<!-- Background Decoration -->
+<div class="absolute -right-20 -bottom-20 w-64 h-64 bg-secondary/10 rounded-full blur-3xl group-hover:bg-secondary/20 transition-colors duration-500"></div>
+</div>
+<!-- Glass Card 2 -->
+<div class="col-span-1 glass-card p-8 rounded-lg shadow-[0_20px_40px_rgba(0,0,0,0.04)] flex flex-col justify-between">
+<div>
+<span class="material-symbols-outlined text-3xl text-primary" data-icon="trending_up">trending_up</span>
+<h3 class="text-xl font-bold mt-4">Success Rate</h3>
+<p class="text-4xl font-black mt-2 text-on-surface">82%</p>
+</div>
+<p class="text-xs text-on-surface-variant mt-4">+5% higher than platform average</p>
+</div>
+</div>
+</section>
+<!-- Status Section (Asymmetric) -->
+<section class="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+<div class="md:col-span-8 space-y-6">
+<h2 class="text-2xl font-bold px-4">Active Portfolios</h2>
+<div class="space-y-4">
+<!-- Active Project Card -->
+<div class="bg-surface-container-lowest p-6 rounded-lg flex items-center justify-between border border-outline-variant/5">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
+<span class="material-symbols-outlined" data-icon="solar_power">solar_power</span>
+</div>
+<div>
+<h4 class="font-bold text-on-surface">Digitalizăm Smart</h4>
+<p class="text-xs text-on-surface-variant">PNRR · Infrastructure Pillar</p>
+</div>
+</div>
+<div class="text-right">
+<span class="px-3 py-1 bg-emerald-50 text-emerald-600 text-[10px] font-bold rounded-full uppercase tracking-widest">In Progress</span>
+<p class="text-xs text-outline mt-1">Reviewing Annex 4</p>
+</div>
+</div>
+<!-- Active Project Card -->
+<div class="bg-surface-container-lowest p-6 rounded-lg flex items-center justify-between border border-outline-variant/5">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+<span class="material-symbols-outlined" data-icon="biotech">biotech</span>
+</div>
+<div>
+<h4 class="font-bold text-on-surface">Genomic Research Phase II</h4>
+<p class="text-xs text-on-surface-variant">Horizon 2024 · Life Sciences</p>
+</div>
+</div>
+<div class="text-right">
+<span class="px-3 py-1 bg-surface-container-high text-on-surface-variant text-[10px] font-bold rounded-full uppercase tracking-widest">Drafting</span>
+<p class="text-xs text-outline mt-1">Due in 14 days</p>
+</div>
+</div>
+</div>
+</div>
+<!-- AI Assistant Floating Panel (Asymmetric Sidebar) -->
+<div class="md:col-span-4 mt-12 md:mt-0">
+<div class="glass-card p-6 rounded-lg shadow-xl relative overflow-hidden border border-white/40">
+<!-- AI Halo -->
+<div class="absolute -top-24 -right-24 w-48 h-48 bg-secondary/20 rounded-full blur-3xl"></div>
+<div class="relative z-10">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-secondary" data-icon="bolt">bolt</span>
+<span class="font-bold text-sm tracking-tight">AI CURATOR ADVISORY</span>
+</div>
+<p class="text-sm leading-relaxed text-on-surface mb-6">
+                                    "I've identified a compliance risk in your Horizon-2024 draft regarding the 'Impact' section. The current wording doesn't fully meet the new sustainability criteria."
+                                </p>
+<button class="w-full bg-secondary text-white py-3 rounded-xl font-bold text-xs hover:opacity-90 transition-opacity">
+                                    Fix with AI Suggestion
+                                </button>
+<button class="w-full mt-2 text-on-surface-variant py-2 rounded-xl text-xs font-semibold">
+                                    Dismiss
+                                </button>
+</div>
+</div>
+</div>
+</section>
+</div>
+</main>
+</div>
+<!-- Overlay for when dropdown is active (simulated) -->
+<div class="fixed inset-0 bg-on-background/5 pointer-events-none z-30"></div>
+</body></html>

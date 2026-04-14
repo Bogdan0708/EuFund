@@ -1,31 +1,43 @@
 'use client'
+
 import Link from 'next/link'
-import { type LucideIcon } from 'lucide-react'
+import { motion } from 'motion/react'
+import { Icon } from '@/components/ui/ds-icon'
 
 interface SidebarItemProps {
   href: string
-  icon: LucideIcon
+  icon: string
   label: string
   active?: boolean
   collapsed?: boolean
 }
 
-export function SidebarItem({ href, icon: Icon, label, active = false, collapsed = false }: SidebarItemProps) {
+export function SidebarItem({ href, icon, label, active = false, collapsed = false }: SidebarItemProps) {
   return (
     <Link
       href={href}
       className={`
-        flex items-center gap-3 px-3 py-2 rounded-[var(--btn-radius)]
-        text-[15px] transition-all duration-[var(--transition-fast)]
+        relative flex items-center gap-3 px-4 py-2 font-medium text-sm tracking-tight
+        rounded-full transition-all duration-300 hover:translate-y-[-1px]
         ${active
-          ? 'bg-[var(--accent-soft)] text-[var(--accent)] border-l-2 border-[var(--accent)]'
-          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]'
+          ? 'text-[#0071E3]'
+          : 'text-black hover:text-black hover:bg-[#E3E2E7]'
         }
       `}
-      title={collapsed ? label : undefined}
     >
-      <Icon size={20} className="shrink-0" />
-      {!collapsed && <span className="truncate">{label}</span>}
+      {active && (
+        <motion.div
+          layoutId="sidebar-active"
+          className="absolute inset-0 bg-[#E3E2E7] rounded-full"
+          transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+        />
+      )}
+      <span className="relative z-10">
+        <Icon name={icon} filled={active} size="md" className="shrink-0" />
+      </span>
+      {!collapsed && (
+        <span className="relative z-10 truncate">{label}</span>
+      )}
     </Link>
   )
 }
