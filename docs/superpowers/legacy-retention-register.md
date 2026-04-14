@@ -10,7 +10,7 @@ Each entry has:
 
 - `surface` — short name and reference (file glob, module path, or token-set name)
 - `axis` — one of: route / visual / runtime / capability
-- `category` — `bridge-legacy` (waiting on external workstream) or `temporary-retention` (blocker internal to an active retirement track)
+- `category` — one of `bridge-legacy` (waiting on an external replacement workstream), `temporary-retention` (blocker internal to an active retirement track, retires when the track closes), or `operational-retention` (kept because deploy/ops infrastructure consumes the surface, no product-side replacement planned)
 - `blocking_workstream` — the replacement program this retention waits on
 - `replacement_spec` — URL or path to the spec scoping the workstream, or `none` (with note)
 - `conversion_trigger` — the concrete observable event that converts surface from bridge to delete candidate
