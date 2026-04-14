@@ -149,7 +149,7 @@ Procedure:
 2. Run Section 2 probes 2, 4, 10, 11 against **both** master and the current stack tip.
 3. If any shared-plumbing file (`middleware.ts`, `i18n.ts`, nav config, locale slug maps) shows an edit dependency, narrow the carve-out to leaf pages only; shared-plumbing edits wait for Phase 2.
 4. Open a single PR carrying the 7-check rubric evidence. Target: master.
-5. Merge when CI (quality + security-gates + build-and-test; e2e is not required per the companion spec) passes.
+5. Merge when CI passes under the gating policy established by the companion spec's rollout.
 
 Non-goal: migrating any `(app)/*` route to `(dashboard)/*`. The migration is carried by the stack landing; this carve-out only deletes the version that exists on master.
 
@@ -201,7 +201,7 @@ This program does not write new tests. It defines the keeper surface and the han
 
    - Rebuilding the old 91-test Playwright suite shape.
    - Testing every route.
-   - Keeping any spec file from the old `app/e2e/*` folder. The old suite retires with this program or under the follow-on spec — not left unattended.
+   - Retaining the old `app/e2e/*` suite shape or carrying its specs forward by default. The old suite retires with this program or under the follow-on spec — not left unattended. Salvaging one or two files is not ruled out, but is an explicit decision of the follow-on spec, not an inheritance.
 
 5. **CI re-requirement gate.** The test pyramid rebuild produces, as a byproduct, a baseline-green CI commit on master. That commit is the oracle the companion e2e-rollback spec's follow-up workstream is waiting for. This is phrased as a handoff, not as this program's responsibility to deliver.
 
@@ -226,8 +226,13 @@ This section defines the **policy**. The live **register** lives outside the spe
 
 ### Seed entries for the register (to be written when the register file is created)
 
+**Bridge-legacy entries** — surfaces retained while a replacement workstream completes.
+
 1. **V1 dark-glass tokens.** Axis: visual. Blocking workstream: V2 visual completion. Replacement spec: none written as of 2026-04-11. Conversion trigger: every file in Section 2 probe 6 is off the list. `last_verified: 2026-04-11`.
 2. **V3 runtime.** Axis: runtime. Blocking workstream: Managed Agents Phase 3. Replacement spec: referenced in `docs/superpowers/specs/2026-04-09-managed-agents-architecture.md` Section 5 (Phase 3 not yet scoped in a standalone spec). Conversion trigger: Managed write tools land, `agent_v3_enabled=false` holds for one release with breaker closed. `last_verified: 2026-04-11`.
+
+**Temporary retention entries during active retirement** — blockers internal to a retirement track, not bridge legacy in the Section 1 sense. These exist only while a track is in progress and retire with it.
+
 3. **Orchestrator-owned shared types.** Axis: runtime. Blocking workstream: internal to this program (shared-type rehoming in Phase 2, orchestrator track). Replacement spec: this document. Conversion trigger: last external import of `@/lib/ai/orchestrator/types` removed. `last_verified: 2026-04-11`.
 
 ## Section 7 — Success criteria
@@ -236,7 +241,7 @@ The program is done when all four are true.
 
 1. **Delete legacy surfaces are gone.** `(app)/*` English route layer, the full orchestrator retirement cluster (after shared-type rehoming), and all confirmed-delete orphaned AI modules and routes are removed from master. **Removal is proven by rerunning the Section 2 probes against master, not by stale PR evidence.**
 2. **Bridge surfaces have live retention justifications.** Every V1 dark-glass file matching probe 6 and every V3 runtime module has an entry in the retention register naming its blocking workstream and conversion trigger. No un-justified bridge legacy.
-3. **Keeper surface is declared, not just implied.** The Section 5 keeper list matches the post-decom code tree. No module in the keeper list is missing, no module outside it exists in the tree except bridge legacy with live retention entries.
+3. **Keeper surface is declared, not just implied.** The Section 5 keeper list matches the post-decom code tree. No module in the keeper list is missing, and no module outside the declared keeper surface exists **within the legacy-program axes** (route naming, visual system, agent runtime, orphaned capability surface) except bridge legacy with live retention entries. Non-program code (billing, auth infrastructure, integrations, etc.) is unaffected by this criterion.
 4. **Handoff to test pyramid rebuild is complete.** The follow-on test-pyramid-rebuild spec exists and points back at this spec's Section 5 as its keeper-surface input. The old `app/e2e/*` suite and its broken Romanian-route specs are either deleted with this program or explicitly scoped for deletion by the follow-on spec — not left in the tree unattended.
 
 ### Explicit non-criteria
