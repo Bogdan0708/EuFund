@@ -215,6 +215,7 @@ jobs:
           NEXTAUTH_SECRET: ci-test-secret-not-for-production
           VECTOR_PROVIDER: memory
           PLAYWRIGHT_BASE_URL: http://localhost:3000
+          PLAYWRIGHT_ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}
         run: |
           PORT=3000 npm run dev &
           for i in $(seq 1 60); do
