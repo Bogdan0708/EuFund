@@ -2,7 +2,7 @@ import {
   pgTable, pgEnum, uuid, varchar, text, boolean, integer, decimal,
   timestamp, jsonb, inet, bigint, date, index, uniqueIndex, unique, real,
 } from 'drizzle-orm/pg-core';
-import { relations, sql } from 'drizzle-orm';
+import { relations, sql, desc } from 'drizzle-orm';
 
 // ─── Enums ───────────────────────────────────────────────────────
 export const userRoleEnum = pgEnum('user_role', ['admin', 'org_admin', 'project_manager', 'viewer']);
@@ -900,6 +900,18 @@ export const agentSessions = pgTable('agent_sessions', {
   idxCallId: index('idx_agent_sessions_call').on(table.selectedCallId),
 }))
 
+export const agentTurns = pgTable('agent_turns', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').notNull().references(() => agentSessions.id, { onDelete: 'cascade' }),
+  requestId: text('request_id').notNull(),
+  runtimeMode: runtimeModeEnum('runtime_mode').notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+}, (table) => ({
+  sessionRequestUnique: unique('agent_turns_session_request_unique').on(table.sessionId, table.requestId),
+  idxSessionStarted: index('idx_agent_turns_session_started').on(table.sessionId, desc(table.startedAt)),
+}));
+
 export const agentSectionStatusEnum = pgEnum('agent_section_status', [
   'pending', 'generating', 'draft', 'accepted', 'stale', 'invalidated', 'needs_review', 'failed', 'rejected',
 ])
@@ -962,8 +974,9 @@ export const agentMessages = pgTable('agent_messages', {
   runtimeMode: runtimeModeEnum('runtime_mode').notNull().default('v3'),
   provider: varchar('provider', { length: 20 }),
   model: varchar('model', { length: 50 }),
+  turnId: uuid('turn_id').references(() => agentTurns.id, { onDelete: 'set null' }),
 }, (table) => ({
-  idxSessionSeq: index('idx_agent_messages_seq').on(table.sessionId, table.sequenceNumber),
+  idxSessionSequence: uniqueIndex('idx_agent_messages_session_sequence').on(table.sessionId, table.sequenceNumber),
   idxSessionCompacted: index('idx_agent_messages_compacted').on(table.sessionId, table.compactedAt),
   idxRuntime: index('idx_agent_messages_runtime').on(table.runtimeMode, table.createdAt),
 }))
