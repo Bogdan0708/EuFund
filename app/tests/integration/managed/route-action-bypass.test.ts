@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mockRunV3 = vi.fn().mockResolvedValue(undefined)
 const mockRunManaged = vi.fn().mockResolvedValue(undefined)
@@ -109,7 +109,11 @@ vi.mock('@/lib/middleware/rate-limit', () => ({
 }))
 
 describe('POST /api/ai/agent — structured action bypass', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.MANAGED_RUNTIME_ENABLED = 'true'
+  })
+  afterEach(() => { delete process.env.MANAGED_RUNTIME_ENABLED })
 
   it('routes action requests to V3 even when managed flag is ON', async () => {
     const { POST } = await import('@/app/api/ai/agent/route')

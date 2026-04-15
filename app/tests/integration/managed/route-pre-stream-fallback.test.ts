@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mockRunV3 = vi.fn().mockResolvedValue(undefined)
 const mockRunManaged = vi.fn().mockResolvedValue(undefined)
@@ -103,7 +103,9 @@ vi.mock('@/lib/middleware/rate-limit', () => ({
 describe('POST /api/ai/agent — pre-stream fallback', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    process.env.MANAGED_RUNTIME_ENABLED = 'true'
   })
+  afterEach(() => { delete process.env.MANAGED_RUNTIME_ENABLED })
 
   it('degrades to V3 when Anthropic client setup fails', async () => {
     const { POST } = await import('@/app/api/ai/agent/route')

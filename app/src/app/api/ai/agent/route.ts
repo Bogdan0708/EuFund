@@ -102,9 +102,20 @@ async function handler(req: NextRequest) {
   // Explicit action support in the managed runtime is a follow-up.
   const hasStructuredAction = body.action !== undefined && body.action !== null
 
+  // Service-local hard gate. Main production service leaves this env
+  // unset and therefore never dynamically imports managed-side runtime,
+  // circuit-breaker, or anthropic-client modules. Only `fondeu-pilot`
+  // sets MANAGED_RUNTIME_ENABLED=true. A flag widening mistake in the
+  // shared DB cannot leak managed traffic into production.
+  const managedRuntimeEnabled = process.env.MANAGED_RUNTIME_ENABLED === 'true'
+
   const managedEnabled =
+    managedRuntimeEnabled &&
     !hasStructuredAction &&
-    (await isFeatureEnabled('managed_agent_enabled', { userId: user.id }))
+    (await isFeatureEnabled('managed_agent_enabled', {
+      userId: user.id,
+      bypassCache: true,
+    }))
 
   if (hasStructuredAction) {
     log.info(

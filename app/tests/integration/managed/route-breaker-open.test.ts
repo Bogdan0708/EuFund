@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mockRunV3 = vi.fn().mockResolvedValue(undefined)
 const mockRunManaged = vi.fn().mockResolvedValue(undefined)
@@ -97,7 +97,11 @@ vi.mock('@/lib/middleware/rate-limit', () => ({
 }))
 
 describe('POST /api/ai/agent — circuit breaker open', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.MANAGED_RUNTIME_ENABLED = 'true'
+  })
+  afterEach(() => { delete process.env.MANAGED_RUNTIME_ENABLED })
 
   it('routes to V3 when circuit breaker is open', async () => {
     const { POST } = await import('@/app/api/ai/agent/route')

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mockRunV3 = vi.fn().mockResolvedValue(undefined)
 const mockRecordFailure = vi.fn()
@@ -109,7 +109,9 @@ vi.mock('@/lib/middleware/rate-limit', () => ({
 describe('POST /api/ai/agent — mid-stream failure', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    process.env.MANAGED_RUNTIME_ENABLED = 'true'
   })
+  afterEach(() => { delete process.env.MANAGED_RUNTIME_ENABLED })
 
   it('emits error SSE event and records failure when runManagedTurn throws', async () => {
     const { POST } = await import('@/app/api/ai/agent/route')
