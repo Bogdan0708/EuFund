@@ -24,7 +24,7 @@ This spec closes both gaps together, because they share one rollout gate: fix th
 
 - Audit Finding fixes 1–5.
 - Two additive migrations:
-  - **M1 (retry idempotency):** `agent_turns` claim table + `turn_id` column on `agent_messages` + partial unique index `(session_id, request_id)` at the turn level.
+  - **M1 (retry idempotency):** `agent_turns` claim table with `UNIQUE (session_id, request_id)` + nullable `turn_id` column on `agent_messages`.
   - **M2 (history ordering integrity):** unique index `(session_id, sequence_number)` on `agent_messages`, with the pre-existing non-unique index dropped.
 - Preview deploy: new `fondeu-pilot` Cloud Run service against the production data plane.
 - Service-local gate (`MANAGED_RUNTIME_ENABLED` env var) to prevent accidental managed routing on the main service.
@@ -56,18 +56,17 @@ Code comment marks the helper as an extraction candidate for a post-pilot shared
 
 **Touches:** `app/src/app/api/ai/agent/route.ts`, `app/src/lib/ai/agent/managed/runtime.ts`, new index from M2.
 
-Contract on the managed POST:
+Contract on the managed POST (tightens the existing `stateVersion` field — no rename; `app/src/lib/ai/agent/types.ts:234` and `app/src/hooks/useAgent.ts:161` already carry it):
 
-- `expectedStateVersion` required on every managed POST.
+- `stateVersion` **required** on every managed POST (route stops treating the check as conditional).
 - Missing → `400 request validation error: missing_state_version` (bilingual message).
 - Stale → `409 ConcurrencyError: stale_state_version` (bilingual message).
-- Route stops treating the check as conditional.
 
 Session state mutation uses atomic CAS on `agent_sessions.state_version`, matching Phase 3a's write-service discipline. Second concurrent submission fails loud with 409 rather than silently interleaving.
 
 M2's unique index on `(session_id, sequence_number)` enforces storage-layer integrity. `appendManagedMessage` performs one internal retry on a uniqueness conflict (compute max, insert), then fails loudly on the second conflict. This is a safety net, not the primary concurrency model.
 
-Frontend `useAgent` hook already tracks `stateVersion` from the state payload; one line to include it in POST body.
+Client change is requiredness-only: `useAgent` already tracks `stateVersion` and sends it; the server contract tightens to reject omitted/stale values rather than introducing a new field.
 
 ### Finding 3 — deferred persistence + requestId dedupe
 
@@ -211,7 +210,7 @@ Run before enabling the flag. Expected drill-triggered 409s (tests 4, 5) do not 
    (a) Flip `managed_agent_enabled.enabled = false` mid-session; next turn routes to V3 within 1 turn (validates Finding 4 cache-bypass + fail-closed).
    (b) Unset `MANAGED_RUNTIME_ENABLED` on pilot service, redeploy revision; submit turn; routes to V3 even if flag still targets the allowlisted user (validates the service-local gate).
 3. **Auth-fail fallback** — temporarily unset `ANTHROPIC_API_KEY` on `fondeu-pilot`; submit turn; request completes via V3 with `application_agent_sessions.degraded_reason='auth_setup_failure'` recorded.
-4. **Concurrency drill** — submit two overlapping POSTs with the same `expectedStateVersion`; second returns `409 stale_state_version` (validates Finding 2).
+4. **Concurrency drill** — submit two overlapping POSTs with the same `stateVersion`; second returns `409 stale_state_version` (validates Finding 2).
 5. **Retry idempotency drill** — simulate mid-stream Anthropic failure after first assistant output block; client retries with the same `requestId`; second request returns deterministic `409 conflict_request_id`; no duplicate user turn in `agent_messages`; `agent_turns` has exactly one row for that `requestId` (validates Finding 3 + M1).
 6. **Compaction continuity drill** — build a session with enough history to trigger summary compaction (producing a `system_summary` message row and/or `session.messageSummary`); submit a managed turn; verify the system prompt passed to Anthropic includes the bounded summary block; turn completes coherently without re-asking for summarized context. **Validates the Finding 1 hardening** — not a regression smoke on current behavior.
 
@@ -364,7 +363,7 @@ Commit sequence within the PR:
 3. **Finding 5** — breaker rolling-window (smallest, self-contained).
 4. **Finding 1** — managed history summary loading + prompt summary block.
 5. **Service-local gate** — `MANAGED_RUNTIME_ENABLED` short-circuit at route entry, before any managed-side import or initialization.
-6. **Finding 2** — mandatory `expectedStateVersion` CAS + bilingual 409 + DB uniqueness retry-once fallback.
+6. **Finding 2** — mandatory `stateVersion` CAS (tighten existing field, no rename) + bilingual 409 + DB uniqueness retry-once fallback.
 7. **Finding 3** — deferred persistence + `requestId` + turn-claim transaction + deterministic 409 on conflict + ownership checks on both create and conflict/readback paths.
 8. **Observability instrumentation** — logs, metrics, reconciliation queries. Downstream of M1: queries source from `agent_turns`, not `agent_messages.latency_ms`.
 9. **Smoke test suite** — scripts in `app/scripts/smoke/managed-pilot/`, runnable against pilot URL.
@@ -372,7 +371,14 @@ Commit sequence within the PR:
 11. **CLAUDE.md note** — pilot operational status (flag default-off, targeted when live).
 12. **Retention register entry** — "Agent-surface RLS: agent tables rely on app-code predicates; add DB-level RLS in a dedicated spec post-pilot."
 
-Each commit is standalone-testable where the underlying schema allows. Migrations apply before deploy; subsequent commits keep production green regardless of deploy-vs-migrate ordering.
+Each commit is standalone-testable where the underlying schema allows.
+
+**Deploy ordering is not commutative for the pilot service.** Once commits 6–7 land, the managed path depends on the `agent_turns` table and `turn_id` column. If `fondeu-pilot` deploys before M1+M2 apply, managed requests on the pilot service will hit missing-schema failures. The ordering constraint is:
+
+1. Apply M1 + M2 to the production DB first.
+2. Only then deploy the hardened branch to `fondeu-pilot`.
+
+The main production service stays safe throughout either deploy order because the service-local `MANAGED_RUNTIME_ENABLED` gate short-circuits managed mode before any schema-dependent code path is reached. It is only the pilot service that must not be deployed before the migrations land.
 
 ## 9. Cross-references
 
