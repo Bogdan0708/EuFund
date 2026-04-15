@@ -1,9 +1,17 @@
 /**
  * Single source of truth for E2E test configuration.
- * Credentials match app/scripts/seed-admin.ts — change both together.
+ * PLAYWRIGHT_ADMIN_PASSWORD must match the ADMIN_PASSWORD used by
+ * scripts/seed-admin.ts in the same environment (local .env.local,
+ * or CI secret). No literal fallback — tests fail fast on a missing
+ * env var rather than silently seeding a known credential.
  */
 export const ADMIN_EMAIL = process.env.PLAYWRIGHT_ADMIN_EMAIL || 'godjabogdan@gmail.com';
-export const ADMIN_PASSWORD = process.env.PLAYWRIGHT_ADMIN_PASSWORD || 'DevAdmin123!';
+
+const adminPassword = process.env.PLAYWRIGHT_ADMIN_PASSWORD;
+if (!adminPassword) {
+  throw new Error('PLAYWRIGHT_ADMIN_PASSWORD is required for e2e tests.');
+}
+export const ADMIN_PASSWORD = adminPassword;
 
 /** Dismiss cookie consent banner so it doesn't block clicks. */
 export async function dismissCookieBanner(page: import('@playwright/test').Page) {
