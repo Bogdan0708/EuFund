@@ -17,6 +17,7 @@ import {
   markDegraded,
   recordTurnSuccess,
 } from '@/lib/ai/agent/managed/session-metadata'
+import { claimTurn, deleteEmptyTurn } from '@/lib/ai/agent/managed/history'
 
 const log = logger.child({ component: 'api-agent' })
 
@@ -51,16 +52,6 @@ async function handler(req: NextRequest) {
 
     if (!row) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
-    }
-
-    // Optimistic concurrency: reject stale writes
-    if (typeof body.stateVersion === 'number') {
-      if (body.stateVersion !== (row.stateVersion as number)) {
-        return NextResponse.json(
-          { error: 'Stale state — reload and retry', currentVersion: row.stateVersion },
-          { status: 409 },
-        )
-      }
     }
 
     session = mapSessionRow(row)
@@ -102,15 +93,87 @@ async function handler(req: NextRequest) {
   // Explicit action support in the managed runtime is a follow-up.
   const hasStructuredAction = body.action !== undefined && body.action !== null
 
+  // Service-local hard gate. Main production service leaves this env
+  // unset and therefore never dynamically imports managed-side runtime,
+  // circuit-breaker, or anthropic-client modules. Only `fondeu-pilot`
+  // sets MANAGED_RUNTIME_ENABLED=true. A flag widening mistake in the
+  // shared DB cannot leak managed traffic into production.
+  const managedRuntimeEnabled = process.env.MANAGED_RUNTIME_ENABLED === 'true'
+
   const managedEnabled =
+    managedRuntimeEnabled &&
     !hasStructuredAction &&
-    (await isFeatureEnabled('managed_agent_enabled', { userId: user.id }))
+    (await isFeatureEnabled('managed_agent_enabled', {
+      userId: user.id,
+      bypassCache: true,
+    }))
 
   if (hasStructuredAction) {
     log.info(
       { sessionId: session.id, userId: user.id, actionType: body.action?.type },
       'structured action request — routing to V3 (managed runtime does not yet handle actions)',
     )
+  }
+
+  // Optimistic concurrency. The managed path REQUIRES stateVersion (and
+  // returns bilingual error envelopes); the V3 path keeps the historical
+  // optional check with the legacy single-string error format. Only
+  // existing-session requests carry a comparable stateVersion.
+  if (body.sessionId) {
+    if (managedEnabled) {
+      if (typeof body.stateVersion !== 'number') {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'missing_state_version',
+              messageRo:
+                'Lipsește versiunea de stare. Reîncarcă pagina și reîncearcă.',
+              messageEn: 'Missing state version. Reload and retry.',
+            },
+          },
+          { status: 400 },
+        )
+      }
+      if (body.stateVersion !== session.stateVersion) {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'stale_state_version',
+              messageRo:
+                'Versiunea de stare este expirată. Reîncarcă și reîncearcă.',
+              messageEn: 'State version is stale. Reload and retry.',
+            },
+            currentVersion: session.stateVersion,
+          },
+          { status: 409 },
+        )
+      }
+    } else if (typeof body.stateVersion === 'number') {
+      if (body.stateVersion !== session.stateVersion) {
+        return NextResponse.json(
+          { error: 'Stale state — reload and retry', currentVersion: session.stateVersion },
+          { status: 409 },
+        )
+      }
+    }
+  }
+
+  // Managed path only: defensive requestId presence check. The DTO
+  // already marks it required, but a misbehaving client could POST an
+  // empty string.
+  if (managedEnabled) {
+    if (typeof body.requestId !== 'string' || body.requestId.length === 0) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'missing_request_id',
+            messageRo: 'Cerere fără identificator. Reîncearcă.',
+            messageEn: 'Request is missing requestId. Retry.',
+          },
+        },
+        { status: 400 },
+      )
+    }
   }
 
   if (managedEnabled) {
@@ -159,7 +222,33 @@ async function handler(req: NextRequest) {
         }
         return runV3WithSSE(session, sections, body, user)
       }
-      return runManagedWithSSE(session, sections, body, user)
+
+      // Pre-stream turn-claim. The INSERT either succeeds atomically
+      // or raises PG 23505 via the UNIQUE(session_id, request_id)
+      // constraint — which maps to a clean JSON 409 here, before any
+      // SSE Response is constructed. No inline reclaim: see claimTurn
+      // comment in history.ts for the race-safety argument.
+      const claim = await claimTurn({
+        sessionId: session.id,
+        userId: user.id,
+        requestId: body.requestId,
+        runtimeMode: 'managed',
+      })
+      if (claim.kind === 'conflict') {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'conflict_request_id',
+              messageRo:
+                'Cerere deja înregistrată. Dacă ai reîncercat, operațiunea a fost deja salvată.',
+              messageEn:
+                'Request already recorded. If this was a retry, the operation has already been saved.',
+            },
+          },
+          { status: 409 },
+        )
+      }
+      return runManagedWithSSE(session, sections, body, user, claim.turnId)
     }
     // Breaker is open — degrade to V3
     log.warn(
@@ -216,6 +305,7 @@ function runManagedWithSSE(
   sections: AgentSection[],
   body: AgentRequest,
   user: { id: string },
+  turnId: string,
 ): Response {
   const encoder = new TextEncoder()
   let firstByteFlushed = false
@@ -241,6 +331,11 @@ function runManagedWithSSE(
         )
       }
 
+      // Tracked locally so the catch branch can decide whether to call
+      // deleteEmptyTurn. If runManagedTurn throws, this stays false (it
+      // only flips when the runtime returns a non-throw result AND that
+      // result reports firstOutputPersisted=true).
+      let firstOutputPersisted = false
       try {
         const { runManagedTurn } = await import('@/lib/ai/agent/managed/runtime')
         const serviceCtx = {
@@ -256,28 +351,76 @@ function runManagedWithSSE(
           request: body,
           emit,
           serviceCtx,
+          turnId,
         })
+        firstOutputPersisted = result.firstOutputPersisted
 
-        const { recordManagedSuccess } = await import('@/lib/ai/agent/managed/circuit-breaker')
-        recordManagedSuccess()
+        if (firstOutputPersisted) {
+          // Only count the turn as a success when it actually produced a
+          // durable output. A no_output turn gets its claim row deleted
+          // below and must NOT be recorded as a successful managed turn
+          // in application_agent_sessions — the row would falsely claim
+          // lastTurn metadata for a turn with no persisted history.
+          const { recordManagedSuccess } = await import('@/lib/ai/agent/managed/circuit-breaker')
+          recordManagedSuccess()
 
-        try {
-          await recordTurnSuccess(
-            session.id,
-            user.id,
-            result.model,
-            result.toolCount,
-          )
-        } catch (metaErr) {
+          try {
+            await recordTurnSuccess(
+              session.id,
+              user.id,
+              result.model,
+              result.toolCount,
+            )
+          } catch (metaErr) {
+            log.warn(
+              {
+                sessionId: session.id,
+                err: metaErr instanceof Error ? metaErr.message : String(metaErr),
+              },
+              'recordTurnSuccess failed',
+            )
+          }
+        } else {
+          // No durable output — the claim row will be deleted below, so
+          // the turn leaves no DB trace. Treat as a pre-output failure
+          // for metadata purposes (no success recorded) while allowing
+          // the SSE response to close normally for the client.
           log.warn(
-            {
-              sessionId: session.id,
-              err: metaErr instanceof Error ? metaErr.message : String(metaErr),
-            },
-            'recordTurnSuccess failed',
+            { sessionId: session.id, turnId },
+            'managed turn returned with no durable output — cleaning claim',
           )
+          try {
+            await deleteEmptyTurn(turnId)
+          } catch (cleanupErr) {
+            log.warn(
+              {
+                sessionId: session.id,
+                turnId,
+                err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+              },
+              'deleteEmptyTurn failed (post-success, no output)',
+            )
+          }
         }
       } catch (err) {
+        // Pre-output failure: clean the empty claim row so a
+        // fresh-requestId retry succeeds. deleteEmptyTurn is a no-op if
+        // any child message exists (post-output failure path).
+        if (!firstOutputPersisted) {
+          try {
+            await deleteEmptyTurn(turnId)
+          } catch (cleanupErr) {
+            log.warn(
+              {
+                sessionId: session.id,
+                turnId,
+                err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+              },
+              'deleteEmptyTurn failed (catch branch)',
+            )
+          }
+        }
+
         const { recordManagedFailure } = await import('@/lib/ai/agent/managed/circuit-breaker')
         const reason = classifyManagedError(err)
         recordManagedFailure(reason)

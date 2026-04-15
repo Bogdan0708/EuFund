@@ -36,10 +36,12 @@ function evictIfNeeded(): void {
   }
 }
 
-async function fetchFlag(flagKey: string): Promise<FlagRow | null> {
-  const cached = cache.get(flagKey);
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-    return cached.flag;
+async function fetchFlag(flagKey: string, bypassCache = false): Promise<FlagRow | null> {
+  if (!bypassCache) {
+    const cached = cache.get(flagKey);
+    if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+      return cached.flag;
+    }
   }
 
   try {
@@ -57,13 +59,27 @@ async function fetchFlag(flagKey: string): Promise<FlagRow | null> {
       ? { key: row.key, enabled: row.enabled, targeting: row.targeting as FlagTargeting | null }
       : null;
 
-    evictIfNeeded();
-    cache.set(flagKey, { flag, fetchedAt: Date.now() });
+    if (!bypassCache) {
+      evictIfNeeded();
+      cache.set(flagKey, { flag, fetchedAt: Date.now() });
+    }
+    // bypassCache intentionally does not write-through: a subsequent non-bypass
+    // caller may still see stale data for up to CACHE_TTL_MS. Kill-switch flags
+    // should always pass bypassCache:true so they never read from the cache.
     return flag;
-  } catch {
-    // Fail-closed: unknown flag or error → false
+  } catch (err) {
+    // Fail-closed: DB error → null (treated as flag absent → disabled).
+    // On bypassCache path (kill-switches), this matters most — an unreachable
+    // DB must disable managed mode rather than stranding it open.
+    console.warn(`[feature-flags] read failed for key=${flagKey}`, err);
     return null;
   }
+}
+
+export interface FlagCheckContext {
+  userId?: string;
+  tier?: string;
+  bypassCache?: boolean;
 }
 
 /**
@@ -72,9 +88,9 @@ async function fetchFlag(flagKey: string): Promise<FlagRow | null> {
  */
 export async function isFeatureEnabled(
   flagKey: string,
-  ctx?: { userId?: string; tier?: string },
+  ctx?: FlagCheckContext,
 ): Promise<boolean> {
-  const flag = await fetchFlag(flagKey);
+  const flag = await fetchFlag(flagKey, ctx?.bypassCache);
   if (!flag || !flag.enabled) return false;
 
   const targeting = flag.targeting;

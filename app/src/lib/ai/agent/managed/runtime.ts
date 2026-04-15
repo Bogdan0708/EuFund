@@ -25,7 +25,12 @@ import { MANAGED_READ_ONLY_TOOLS } from './tools'
 import { translateAnthropicEvent, createTranslatorContext } from './translator'
 import { buildManagedSystemPrompt } from './prompt'
 import { executeManagedTool, type ExecutorResult } from './executor'
-import { loadManagedHistory, appendManagedMessage } from './history'
+import {
+  loadManagedHistory,
+  appendManagedMessage,
+  persistFirstDurableOutput,
+  markTurnCompleted,
+} from './history'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'managed-runtime' })
@@ -40,6 +45,10 @@ export interface ManagedRuntimeOptions {
   request: AgentRequest
   emit: (event: AgentEvent) => void
   serviceCtx: ServiceContext
+  // Pre-stream turn-claim id. All persisted messages in this turn are
+  // tagged with it. Owned by the route — the route inserts the claim
+  // row before opening the SSE Response and passes the id in here.
+  turnId: string
 }
 
 export interface ManagedTurnResult {
@@ -47,27 +56,38 @@ export interface ManagedTurnResult {
   iterationCount: number
   model: string | null
   latencyMs: number
+  // False means the turn failed (or stopped) before the first durable
+  // assistant/tool_use block ever persisted. The route's catch branch
+  // uses this to decide whether to call deleteEmptyTurn. Any non-throw
+  // return from this function implies a turn that did produce content.
+  firstOutputPersisted: boolean
 }
 
 export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<ManagedTurnResult> {
-  const { session, sections, request, emit, serviceCtx } = opts
+  const { session, sections, request, emit, serviceCtx, turnId } = opts
   const start = Date.now()
   const anthropic = getAnthropicClient()
   const tctx = createTranslatorContext()
 
   let toolCount = 0
   let iterationCount = 0
+  // Message persistence is deferred until the first durable assistant or
+  // tool_use block arrives. This flag flips true inside the stream loop
+  // the first time we flush the user message + first output together.
+  let firstOutputPersisted = false
 
-  // 1. Load history
-  const history = await loadManagedHistory(session.id)
+  // 1. Load history (with summary extracted from system_summary rows
+  //    or session.messageSummary fallback). The user message for THIS
+  //    turn is NOT yet persisted — it joins the in-memory history only
+  //    and flushes to DB alongside the first durable output via
+  //    persistFirstDurableOutput. See Finding 3 (pre-stream claim +
+  //    deferred persistence).
+  const { summary, messages: history } = await loadManagedHistory(session.id, {
+    fallbackSummary: session.messageSummary ?? null,
+  })
 
-  // 2. Append the current user message if present
+  // 2. Push the current user message into in-memory history ONLY.
   if (request.message) {
-    await appendManagedMessage(session.id, {
-      role: 'user',
-      messageType: 'text',
-      content: request.message,
-    }, { runtimeMode: 'managed' })
     history.push({ role: 'user', content: request.message })
   }
 
@@ -77,6 +97,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     sections,
     session.currentPhase as Phase,
     session.locale,
+    summary,
   )
 
   // 4. Tool loop
@@ -141,17 +162,40 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
       }
     }
 
-    // Persist the assistant message
+    // Persist the assistant message. The FIRST durable output in the
+    // turn is flushed in a single transaction alongside the user
+    // message (Finding 3 — deferred persistence). Subsequent outputs
+    // append normally, tagged with the same turnId.
     if (assistantBlocks.length > 0) {
-      await appendManagedMessage(session.id, {
-        role: 'assistant',
-        messageType: 'text',
-        content: assistantBlocks,
-      }, {
-        runtimeMode: 'managed',
-        provider: 'anthropic',
-        model: tctx.messageModel,
-      })
+      if (!firstOutputPersisted) {
+        await persistFirstDurableOutput({
+          turnId,
+          sessionId: session.id,
+          userMessage: request.message ?? '',
+          firstOutput: {
+            role: 'assistant',
+            messageType: 'text',
+            content: assistantBlocks,
+          },
+          meta: {
+            runtimeMode: 'managed',
+            provider: 'anthropic',
+            model: tctx.messageModel,
+          },
+        })
+        firstOutputPersisted = true
+      } else {
+        await appendManagedMessage(session.id, {
+          role: 'assistant',
+          messageType: 'text',
+          content: assistantBlocks,
+          turnId,
+        }, {
+          runtimeMode: 'managed',
+          provider: 'anthropic',
+          model: tctx.messageModel,
+        })
+      }
       runningMessages.push({ role: 'assistant', content: assistantBlocks })
     }
 
@@ -191,6 +235,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
         }],
         toolCallId: block.id,
         toolName: result.toolName,
+        turnId,
       }, { runtimeMode: 'managed' })
     }
 
@@ -217,23 +262,40 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     })
   }
 
+  // Mark the turn complete only if at least one durable output landed.
+  // A turn that hit the iteration cap without producing any output (or
+  // one where the stream produced zero blocks) stays uncompleted so the
+  // route's catch branch or the daily reconciliation cron can classify
+  // it as an empty orphan.
+  if (firstOutputPersisted) {
+    await markTurnCompleted(turnId)
+  }
+
   const finalState = buildUISnapshot(session, sections)
   emit({ type: 'done', finalState })
 
+  // Structured turn-complete log — consumed by the reconciliation
+  // queries and pilot dashboards (see docs/superpowers/runbooks/
+  // managed-pilot-observability.md).
   log.info({
+    event: 'managed_turn_complete',
     sessionId: session.id,
+    turnId,
     requestId: request.requestId,
+    iterations: iterationCount,
     toolCount,
-    iterationCount,
+    durationMs: Date.now() - start,
+    outcome: firstOutputPersisted ? 'completed' : 'no_output',
+    degradedReason: null,
     model: tctx.messageModel,
-    latencyMs: Date.now() - start,
-  }, 'managed turn complete')
+  }, 'managed_turn_complete')
 
   return {
     toolCount,
     iterationCount,
     model: tctx.messageModel,
     latencyMs: Date.now() - start,
+    firstOutputPersisted,
   }
 }
 

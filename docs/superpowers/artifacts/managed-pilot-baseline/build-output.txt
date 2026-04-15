@@ -1,0 +1,225 @@
+
+> app@0.1.0 build
+> npm run prebuild:safe && next build
+
+
+> app@0.1.0 prebuild:safe
+> node scripts/prebuild-safe.mjs
+
+Removed stale build artifact: .next
+Prebuild sanity checks passed.
+  ▲ Next.js 14.2.35
+  - Experiments (use with caution):
+    · instrumentationHook
+
+   Creating an optimized production build ...
+ ⚠ Compiled with warnings
+
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentation.js
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentation.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/index.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/index.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/index.js
+../../EU-Funds/app/node_modules/@sentry/node/build/cjs/integrations/tracing/postgresjs.js
+../../EU-Funds/app/node_modules/@sentry/node/build/cjs/index.js
+../../EU-Funds/app/node_modules/@sentry/nextjs/build/cjs/index.server.js
+./src/lib/monitoring/sentry.ts
+./src/app/global-error.tsx
+
+../../EU-Funds/app/node_modules/require-in-the-middle/index.js
+Critical dependency: require function is used in a way in which dependencies cannot be statically extracted
+
+Import trace for requested module:
+../../EU-Funds/app/node_modules/require-in-the-middle/index.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentation.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/index.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/index.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/index.js
+../../EU-Funds/app/node_modules/@sentry/node/build/cjs/integrations/tracing/postgresjs.js
+../../EU-Funds/app/node_modules/@sentry/node/build/cjs/index.js
+../../EU-Funds/app/node_modules/@sentry/nextjs/build/cjs/index.server.js
+./src/lib/monitoring/sentry.ts
+./src/app/global-error.tsx
+
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentation.js
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentation.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/index.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/index.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/index.js
+../../EU-Funds/app/node_modules/@sentry/node/build/cjs/integrations/tracing/postgresjs.js
+../../EU-Funds/app/node_modules/@sentry/node/build/cjs/index.js
+../../EU-Funds/app/node_modules/@sentry/nextjs/build/cjs/index.server.js
+./src/lib/monitoring/sentry.ts
+
+../../EU-Funds/app/node_modules/require-in-the-middle/index.js
+Critical dependency: require function is used in a way in which dependencies cannot be statically extracted
+
+Import trace for requested module:
+../../EU-Funds/app/node_modules/require-in-the-middle/index.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentation.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/index.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/platform/index.js
+../../EU-Funds/app/node_modules/@opentelemetry/instrumentation/build/esm/index.js
+../../EU-Funds/app/node_modules/@sentry/node/build/cjs/integrations/tracing/postgresjs.js
+../../EU-Funds/app/node_modules/@sentry/node/build/cjs/index.js
+../../EU-Funds/app/node_modules/@sentry/nextjs/build/cjs/index.server.js
+./src/lib/monitoring/sentry.ts
+
+   Skipping linting
+   Checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/36) ...
+{"level":"error","time":"2026-04-15T08:32:43.094Z","env":"production","pid":130253,"component":"calls-api","error":{"description":"Route /api/v1/calls couldn't be rendered statically because it used `headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error","digest":"DYNAMIC_SERVER_USAGE"},"msg":"[calls:list] error"}
+{"level":"error","time":"2026-04-15T08:32:43.098Z","env":"production","pid":130211,"error":{"description":"Route /api/integrations/funding-calls couldn't be rendered statically because it used `headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error","digest":"DYNAMIC_SERVER_USAGE"},"msg":"Funding calls error:"}
+{"level":"error","time":"2026-04-15T08:32:43.100Z","env":"production","pid":130176,"error":{"description":"Route /api/integrations/eurostat couldn't be rendered statically because it used `headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error","digest":"DYNAMIC_SERVER_USAGE"},"msg":"Eurostat integration error:"}
+   Generating static pages (9/36) 
+{"level":"error","time":"2026-04-15T08:32:43.115Z","env":"production","pid":130155,"error":{"description":"Route /api/integrations/eurlex/search couldn't be rendered statically because it used `headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error","digest":"DYNAMIC_SERVER_USAGE"},"msg":"EUR-Lex search error:"}
+{"level":"error","time":"2026-04-15T08:32:43.116Z","env":"production","pid":130260,"component":"auth-export","error":{"description":"Route /api/auth/export couldn't be rendered statically because it used `headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error","digest":"DYNAMIC_SERVER_USAGE"},"msg":"[auth:export]"}
+   Generating static pages (18/36) 
+   Generating static pages (27/36) 
+{"level":"error","time":"2026-04-15T08:32:43.148Z","env":"production","pid":130295,"error":{"description":"Route /api/integrations/cordis couldn't be rendered statically because it used `headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error","digest":"DYNAMIC_SERVER_USAGE"},"msg":"CORDIS search error:"}
+ ✓ Generating static pages (36/36)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                                           Size     First Load JS
+┌ ○ /                                                                 155 B          89.7 kB
+├ ○ /_not-found                                                       155 B          89.7 kB
+├ ƒ /[locale]/[...catchAll]                                           155 B          89.7 kB
+├ ƒ /[locale]/asistent-ai                                             724 B           111 kB
+├ ƒ /[locale]/autentificare                                           3.7 kB          121 kB
+├ ƒ /[locale]/bun-venit                                               3.6 kB          121 kB
+├ ƒ /[locale]/documente                                               3.11 kB         148 kB
+├ ƒ /[locale]/interese                                                3.12 kB         121 kB
+├ ƒ /[locale]/panou                                                   4.15 kB         161 kB
+├ ƒ /[locale]/proiecte                                                3.42 kB         166 kB
+├ ƒ /[locale]/proiecte/[id]                                           63 kB           217 kB
+├ ƒ /[locale]/proiecte/[id]/sectiuni/[sectionId]                      3.77 kB         109 kB
+├ ƒ /[locale]/proiecte/nou                                            699 B           111 kB
+├ ƒ /[locale]/setari                                                  4.67 kB         150 kB
+├ ƒ /[locale]/verifica-email                                          3.17 kB         111 kB
+├ ƒ /api/admin/ingest-call                                            0 B                0 B
+├ ƒ /api/ai/agent                                                     0 B                0 B
+├ ƒ /api/ai/agent/sessions                                            0 B                0 B
+├ ƒ /api/ai/agent/sessions/[sessionId]/messages                       0 B                0 B
+├ ƒ /api/ai/agent/sessions/[sessionId]/sections                       0 B                0 B
+├ ƒ /api/ai/agent/sessions/[sessionId]/sections/[sectionId]/versions  0 B                0 B
+├ ƒ /api/ai/agent/state                                               0 B                0 B
+├ ƒ /api/ai/chat                                                      0 B                0 B
+├ ƒ /api/auth/[...nextauth]                                           0 B                0 B
+├ ƒ /api/auth/account                                                 0 B                0 B
+├ ƒ /api/auth/consent                                                 0 B                0 B
+├ ƒ /api/auth/consent/bulk                                            0 B                0 B
+├ ƒ /api/auth/export                                                  0 B                0 B
+├ ƒ /api/auth/onboarding                                              0 B                0 B
+├ ƒ /api/csp-report                                                   0 B                0 B
+├ ƒ /api/documents/[id]                                               0 B                0 B
+├ ƒ /api/documents/[id]/analyze                                       0 B                0 B
+├ ƒ /api/documents/upload                                             0 B                0 B
+├ ƒ /api/health                                                       0 B                0 B
+├ ƒ /api/integrations/cordis                                          0 B                0 B
+├ ƒ /api/integrations/eurlex/document/[celex]                         0 B                0 B
+├ ƒ /api/integrations/eurlex/search                                   0 B                0 B
+├ ƒ /api/integrations/eurostat                                        0 B                0 B
+├ ƒ /api/integrations/funding-calls                                   0 B                0 B
+├ ƒ /api/integrations/onrc/validate                                   0 B                0 B
+├ ƒ /api/integrations/qes/prepare-document                            0 B                0 B
+├ ƒ /api/integrations/qes/sign-document                               0 B                0 B
+├ ƒ /api/mcp/read                                                     0 B                0 B
+├ ƒ /api/mcp/research                                                 0 B                0 B
+├ ƒ /api/mcp/rules                                                    0 B                0 B
+├ ƒ /api/mcp/write                                                    0 B                0 B
+├ ƒ /api/metrics                                                      0 B                0 B
+├ ƒ /api/ready                                                        0 B                0 B
+├ ○ /api/test-ai                                                      0 B                0 B
+├ ƒ /api/v1/admin/billing/trial-notifications                         0 B                0 B
+├ ƒ /api/v1/admin/calls                                               0 B                0 B
+├ ƒ /api/v1/admin/connectors/[slug]/sync                              0 B                0 B
+├ ƒ /api/v1/admin/discovery/run                                       0 B                0 B
+├ ƒ /api/v1/admin/feature-flags                                       0 B                0 B
+├ ƒ /api/v1/admin/feature-flags/[key]                                 0 B                0 B
+├ ƒ /api/v1/admin/funding-ai/documents                                0 B                0 B
+├ ƒ /api/v1/admin/funding-ai/extractions                              0 B                0 B
+├ ƒ /api/v1/admin/funding-ai/review-queue                             0 B                0 B
+├ ƒ /api/v1/admin/funding-ai/review-queue/[id]                        0 B                0 B
+├ ƒ /api/v1/admin/funding-ai/versions                                 0 B                0 B
+├ ƒ /api/v1/admin/knowledge/ingest                                    0 B                0 B
+├ ƒ /api/v1/admin/programs                                            0 B                0 B
+├ ƒ /api/v1/admin/retention                                           0 B                0 B
+├ ƒ /api/v1/approvals                                                 0 B                0 B
+├ ƒ /api/v1/audit                                                     0 B                0 B
+├ ƒ /api/v1/audit/integrity                                           0 B                0 B
+├ ƒ /api/v1/calls                                                     0 B                0 B
+├ ƒ /api/v1/organizations                                             0 B                0 B
+├ ƒ /api/v1/organizations/[id]                                        0 B                0 B
+├ ƒ /api/v1/organizations/[id]/ai-reviews                             0 B                0 B
+├ ƒ /api/v1/organizations/[id]/approvals                              0 B                0 B
+├ ƒ /api/v1/organizations/[id]/audit                                  0 B                0 B
+├ ƒ /api/v1/organizations/[id]/members                                0 B                0 B
+├ ƒ /api/v1/organizations/[id]/verify                                 0 B                0 B
+├ ƒ /api/v1/projects                                                  0 B                0 B
+├ ƒ /api/v1/projects/[id]                                             0 B                0 B
+├ ƒ /api/v1/projects/[id]/comments                                    0 B                0 B
+├ ƒ /api/v1/projects/[id]/compliance                                  0 B                0 B
+├ ƒ /api/v1/projects/[id]/compliance/ai-score                         0 B                0 B
+├ ƒ /api/v1/projects/[id]/compliance/evidence-coverage                0 B                0 B
+├ ƒ /api/v1/projects/[id]/compliance/ghid-tasks                       0 B                0 B
+├ ƒ /api/v1/projects/[id]/evidence-ledger                             0 B                0 B
+├ ƒ /api/v1/projects/[id]/export                                      0 B                0 B
+├ ƒ /api/v1/projects/[id]/files                                       0 B                0 B
+├ ƒ /api/v1/projects/[id]/files/[fileId]                              0 B                0 B
+├ ƒ /api/v1/projects/[id]/mysmis-export                               0 B                0 B
+├ ƒ /api/v1/projects/[id]/risks                                       0 B                0 B
+├ ƒ /api/v1/projects/[id]/risks/ai-assessment                         0 B                0 B
+├ ƒ /api/v1/projects/[id]/sections                                    0 B                0 B
+├ ƒ /api/v1/projects/[id]/sections/[sectionId]                        0 B                0 B
+├ ƒ /api/v1/projects/[id]/sections/[sectionId]/export                 0 B                0 B
+├ ƒ /api/v1/projects/[id]/sections/[sectionId]/state                  0 B                0 B
+├ ƒ /api/v1/projects/[id]/submission-documents/[docId]                0 B                0 B
+├ ƒ /api/v1/projects/[id]/timeline                                    0 B                0 B
+├ ƒ /api/v1/projects/[id]/timeline/[itemId]                           0 B                0 B
+├ ƒ /api/v1/projects/[id]/versions                                    0 B                0 B
+├ ƒ /api/v1/projects/[id]/work-packages                               0 B                0 B
+├ ƒ /api/v1/projects/[id]/work-packages/[wpId]                        0 B                0 B
+├ ƒ /api/v1/user/preferences                                          0 B                0 B
+├ ƒ /api/v1/workspace                                                 0 B                0 B
+├ ƒ /api/webhooks/stripe                                              0 B                0 B
+├ ○ /pricing                                                          155 B          89.7 kB
+├ ○ /robots.txt                                                       0 B                0 B
+└ ○ /sitemap.xml                                                      0 B                0 B
++ First Load JS shared by all                                         89.5 kB
+  ├ chunks/3347-b37724e32e49841e.js                                   31.9 kB
+  ├ chunks/80fc6581-eae6a5157da00dad.js                               53.6 kB
+  └ other shared chunks (total)                                       4.01 kB
+
+
+ƒ Middleware                                                          37.3 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+       0 B
+├ ƒ /api/v1/projects/[id]/work-packages/[wpId]                        0 B                0 B
+├ ƒ /api/v1/user/preferences                                          0 B                0 B
+├ ƒ /api/v1/workspace                                                 0 B                0 B
+├ ƒ /api/webhooks/stripe                                              0 B                0 B
+├ ○ /pricing                                                          155 B          89.7 kB
+├ ○ /robots.txt                                                       0 B                0 B
+└ ○ /sitemap.xml                                                      0 B                0 B
++ First Load JS shared by all                                         89.5 kB
+  ├ chunks/3347-b37724e32e49841e.js                                   31.9 kB
+  ├ chunks/80fc6581-eae6a5157da00dad.js                               53.6 kB
+  └ other shared chunks (total)                                       4.01 kB
+
+
+ƒ Middleware                                                          37.3 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

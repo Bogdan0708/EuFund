@@ -40,6 +40,26 @@ Each entry has:
 - **conversion_trigger:** Managed write tools land, `agent_v3_enabled=false` holds for one release with circuit breaker closed
 - **last_verified:** 2026-04-14
 
+### Agent-surface RLS
+
+- **surface:** `agent_sessions`, `agent_messages`, `agent_turns`, `agent_sections`, `agent_section_versions`, `agent_checkpoints` — all ownership enforced by app-code predicates rather than DB-level RLS
+- **axis:** capability
+- **category:** bridge-legacy
+- **blocking_workstream:** dedicated post-pilot agent-surface RLS spec (not yet written)
+- **replacement_spec:** none yet — pilot-readiness spec `docs/superpowers/specs/2026-04-14-managed-agents-pilot-readiness-design.md` introduces `agent_turns` matching the existing posture and calls out RLS as out-of-scope
+- **conversion_trigger:** a comprehensive agent-surface RLS spec + migrations covering all six tables, with `withUserRLS(userId, fn)` applied at every call site
+- **last_verified:** 2026-04-14
+
+### Managed-path summary writes
+
+- **surface:** `app/src/lib/ai/agent/managed/` runtime path — READS `system_summary` rows and `session.messageSummary` but never writes them. V3's `app/src/lib/ai/agent/history.ts` compaction writer stays the sole producer.
+- **axis:** capability
+- **category:** bridge-legacy
+- **blocking_workstream:** Managed Agents Phase 3b/3c writer surface
+- **replacement_spec:** referenced in `docs/superpowers/specs/2026-04-09-managed-agents-architecture.md` Section 5 (Phase 3b/3c not yet scoped standalone)
+- **conversion_trigger:** Phase 3b/3c writer surface lands with a managed-path compaction trigger mirroring V3's, and fully-managed sessions cease growing toward the context window without summary rotation
+- **last_verified:** 2026-04-14
+
 ---
 
 ## Temporary retention entries during active retirement
@@ -67,3 +87,16 @@ Historical log of retention entries whose conversion triggers fired and surfaces
 ## Adding new entries
 
 Any retirement PR that produces a `needs to be retained for reason X` finding adds an entry here. The PR description must cite the entry. If the finding has no entry and no proposal to add one, the surface is a delete candidate by default per spec Section 6.
+
+---
+
+## Informational notes (not retention entries)
+
+Context recorded for the managed-agents pilot that does NOT carry a retirement trigger and therefore is not subject to the 60-day re-verification rule. These are explicitly accepted tradeoffs for the pilot window.
+
+### Managed-pilot operational risks
+
+- **Fail-closed flag reads** (pilot-readiness spec §3 Finding 4): A transient DB hiccup on the pilot service returns `managed_agent_enabled = false` and kicks users to V3. Acceptable for a safety-first pilot; revisit if DB flakiness is observed during the 7-day window.
+- **Nuclear rollback collateral**: scaling `fondeu-pilot` to zero disrupts any dev/test workload pointing at it. Runbook labels it nuclear; primary and secondary paths are preferred.
+- **Smoke-suite cookie dependency**: `app/scripts/smoke/managed-pilot/` requires a session cookie for the target userId. If the pilot environment uses IP-bound or very short-lived sessions, refresh the cookie at the start of each smoke run.
+- **Client 409 UX**: the server returns `stale_state_version` and `conflict_request_id` with bilingual envelopes, but `app/src/hooks/useAgent.ts` currently treats 409s as generic failures. A small client follow-up (auto-refresh `stateVersion` from `currentVersion`, toast the bilingual message) is recommended but not required for pilot.

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mockRunV3 = vi.fn().mockResolvedValue(undefined)
 const mockRunManaged = vi.fn().mockResolvedValue(undefined)
@@ -72,19 +72,26 @@ vi.mock('@/lib/db', () => {
     }))
     return chain
   }
-  return {
-    db: {
-      select: vi.fn(() => makeChain()),
-      insert: vi.fn(() => ({
-        values: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([row]) })),
+  const mockDb: any = {
+    select: vi.fn(() => makeChain()),
+    insert: vi.fn(() => ({
+      values: vi.fn(() => ({
+        returning: vi.fn().mockResolvedValue([{ ...row, id: 'mock-turn-id' }]),
+        then: (resolve: (val: unknown) => void) => resolve(undefined),
       })),
-    },
+    })),
+    update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
+    delete: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
   }
+  mockDb.transaction = vi.fn(async (cb: any) => cb(mockDb))
+  return { db: mockDb }
 })
 
 vi.mock('@/lib/db/schema', () => ({
   agentSessions: { id: 'id', userId: 'user_id' },
   agentSections: { sessionId: 'session_id' },
+  agentTurns: { id: 'id', sessionId: 'session_id', requestId: 'request_id' },
+  agentMessages: { sessionId: 'session_id', sequenceNumber: 'sequence_number', turnId: 'turn_id' },
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -103,7 +110,9 @@ vi.mock('@/lib/middleware/rate-limit', () => ({
 describe('POST /api/ai/agent — pre-stream fallback', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    process.env.MANAGED_RUNTIME_ENABLED = 'true'
   })
+  afterEach(() => { delete process.env.MANAGED_RUNTIME_ENABLED })
 
   it('degrades to V3 when Anthropic client setup fails', async () => {
     const { POST } = await import('@/app/api/ai/agent/route')
@@ -114,6 +123,8 @@ describe('POST /api/ai/agent — pre-stream fallback', () => {
         requestId: 'req-pre-stream-1',
         locale: 'ro',
         sessionId: '11111111-1111-4111-8111-111111111111',
+        stateVersion: 0,
+        message: 'hi',
       }),
     })
 

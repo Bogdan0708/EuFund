@@ -6,15 +6,28 @@
 
 import type { AgentSession, AgentSection, Phase } from '../types'
 
+// Cap on inline conversation-summary text. Tail-sliced (most recent wins)
+// so a runaway summary cannot push tool definitions out of context.
+const SUMMARY_MAX_CHARS = 4000
+
 export function buildManagedSystemPrompt(
   session: AgentSession,
   sections: AgentSection[],
   phase: Phase,
   locale: 'ro' | 'en',
+  summary: string | null = null,
 ): string {
-  return locale === 'ro'
+  const body = locale === 'ro'
     ? buildRomanianPrompt(session, sections, phase)
     : buildEnglishPrompt(session, sections, phase)
+
+  if (!summary) return body
+
+  const clipped = summary.length > SUMMARY_MAX_CHARS
+    ? summary.slice(-SUMMARY_MAX_CHARS)
+    : summary
+  const block = `\n\n<conversation_summary>\n${clipped}\n</conversation_summary>\n`
+  return body + block
 }
 
 function buildRomanianPrompt(session: AgentSession, sections: AgentSection[], phase: Phase): string {

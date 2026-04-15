@@ -38,7 +38,8 @@ describe('history helpers', () => {
 
       const { loadManagedHistory } = await import('@/lib/ai/agent/managed/history')
       const result = await loadManagedHistory('sess-1')
-      expect(result).toEqual([])
+      expect(result.messages).toEqual([])
+      expect(result.summary).toBeNull()
     })
 
     it('converts user text message to MessageParam', async () => {
@@ -62,9 +63,9 @@ describe('history helpers', () => {
 
       const { loadManagedHistory } = await import('@/lib/ai/agent/managed/history')
       const result = await loadManagedHistory('sess-1')
-      expect(result).toHaveLength(1)
-      expect(result[0].role).toBe('user')
-      expect(result[0].content).toBe('Vreau fonduri')
+      expect(result.messages).toHaveLength(1)
+      expect(result.messages[0].role).toBe('user')
+      expect(result.messages[0].content).toBe('Vreau fonduri')
     })
 
     it('converts assistant structured content to MessageParam', async () => {
@@ -88,9 +89,9 @@ describe('history helpers', () => {
 
       const { loadManagedHistory } = await import('@/lib/ai/agent/managed/history')
       const result = await loadManagedHistory('sess-1')
-      expect(result).toHaveLength(1)
-      expect(result[0].role).toBe('assistant')
-      expect(Array.isArray(result[0].content)).toBe(true)
+      expect(result.messages).toHaveLength(1)
+      expect(result.messages[0].role).toBe('assistant')
+      expect(Array.isArray(result.messages[0].content)).toBe(true)
     })
 
     it('skips compacted messages', async () => {
@@ -122,8 +123,8 @@ describe('history helpers', () => {
 
       const { loadManagedHistory } = await import('@/lib/ai/agent/managed/history')
       const result = await loadManagedHistory('sess-1')
-      expect(result).toHaveLength(1)
-      expect(result[0].content).toBe('Current message')
+      expect(result.messages).toHaveLength(1)
+      expect(result.messages[0].content).toBe('Current message')
     })
   })
 
