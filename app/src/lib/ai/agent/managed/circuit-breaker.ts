@@ -1,9 +1,11 @@
 // ── Managed-agent circuit breaker ───────────────────────────────
 // Per-process in-memory breaker that protects the managed runtime
-// from cascading Anthropic API failures. 3 consecutive failures
-// open the breaker; a 30s cooldown precedes a half-open probe on
-// the next request. Standalone implementation — does not share state
-// with the general-purpose CircuitBreaker in @/lib/errors.
+// from cascading Anthropic API failures. Rolling 5-min window:
+// 3 failures within the window open the breaker for a 30s cooldown,
+// then one half-open probe is allowed. Probe success closes the
+// breaker; probe failure re-opens it immediately. Standalone
+// implementation — does not share state with the general-purpose
+// CircuitBreaker in @/lib/errors.
 
 // DegradedReason — the set of reasons the managed runtime can persist
 // to application_agent_sessions.degraded_reason. This is deliberately
@@ -18,34 +20,66 @@ export type DegradedReason =
   | 'stream_disconnect'
   | 'auth_setup_failure'
 
-type BreakerState = 'closed' | 'open'
+type BreakerState = 'closed' | 'open' | 'half_open'
 
 const FAILURE_THRESHOLD = 3
+const WINDOW_MS = 5 * 60_000
 const COOLDOWN_MS = 30_000
 
-let consecutiveFailures = 0
+let failureTimestamps: number[] = []
 let state: BreakerState = 'closed'
 let openedAt = 0
+let probeInFlight = false
+
+function pruneWindow(now: number): void {
+  const cutoff = now - WINDOW_MS
+  failureTimestamps = failureTimestamps.filter(t => t >= cutoff)
+}
 
 export const managedCircuitBreaker = {
   /**
-   * Returns true if requests should be short-circuited to V3.
-   * If the breaker was open but the cooldown has elapsed, transitions
-   * back to closed (half-open probe) and returns false so the next
-   * request is allowed to try the managed runtime.
+   * Returns true if the request should be short-circuited to V3.
+   *
+   * Transitions:
+   *  - closed: allow all requests.
+   *  - open: reject all until cooldown elapses, then transition to half_open.
+   *  - half_open: allow exactly ONE probe request. All concurrent callers
+   *    after the probe is claimed continue to see open=true until the
+   *    probe reports via recordManagedSuccess/recordManagedFailure.
    */
   isOpen(): boolean {
-    if (state === 'open') {
-      if (Date.now() - openedAt >= COOLDOWN_MS) {
-        // Cooldown elapsed — allow a probe attempt
-        state = 'closed'
-        consecutiveFailures = 0
-        return false
-      }
-      return true
+    const now = Date.now()
+
+    if (state === 'open' && now - openedAt >= COOLDOWN_MS) {
+      state = 'half_open'
+      probeInFlight = false
     }
+
+    if (state === 'open') return true
+
+    if (state === 'half_open') {
+      if (probeInFlight) return true     // probe already out; hold others
+      probeInFlight = true                // claim the single probe slot
+      return false
+    }
+
     return false
   },
+}
+
+export function recordManagedSuccess(): void {
+  // A successful turn (or probe) closes the breaker.
+  if (state === 'half_open' || state === 'open') {
+    state = 'closed'
+    failureTimestamps = []
+    openedAt = 0
+    probeInFlight = false
+    return
+  }
+  // Steady-state success prunes expired failures but does not zero them;
+  // a single success should not let a long-running bad run cross the
+  // window without penalty.
+  pruneWindow(Date.now())
 }
 
 export function recordManagedFailure(reason: DegradedReason): void {
@@ -54,21 +88,31 @@ export function recordManagedFailure(reason: DegradedReason): void {
   // The breaker itself only counts failures, but keeping reason in the
   // signature lets callers pass classification through a single call site.
   void reason
-  consecutiveFailures += 1
-  if (consecutiveFailures >= FAILURE_THRESHOLD) {
+  const now = Date.now()
+
+  // Probe failure during half_open re-opens immediately, regardless of
+  // the rolling-window count — the probe's whole purpose is a single-shot
+  // trust check.
+  if (state === 'half_open') {
     state = 'open'
-    openedAt = Date.now()
+    openedAt = now
+    probeInFlight = false
+    return
+  }
+
+  pruneWindow(now)
+  failureTimestamps.push(now)
+  if (failureTimestamps.length >= FAILURE_THRESHOLD) {
+    state = 'open'
+    openedAt = now
+    probeInFlight = false
   }
 }
 
-export function recordManagedSuccess(): void {
-  consecutiveFailures = 0
-  state = 'closed'
-}
-
-// Test-only reset. Do not call from production code.
-export function __resetBreakerForTests(): void {
-  consecutiveFailures = 0
+/** Test-only. Resets breaker state between vitest cases. */
+export function _resetForTest(): void {
+  failureTimestamps = []
   state = 'closed'
   openedAt = 0
+  probeInFlight = false
 }
