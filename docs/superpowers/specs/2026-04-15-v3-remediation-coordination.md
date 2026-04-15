@@ -19,10 +19,10 @@ Do not run two writing sessions on the same branch/worktree.
 
 | # | Item | Status | Evidence anchor |
 |---|---|---|---|
-| 1 | `agent_sessions` migration drift | Open — planned only | `app/src/lib/db/schema.ts` vs `app/drizzle/*` |
-| 2 | AI rate-limit bypass | Open | `app/src/lib/middleware/auth.ts:121-122` (commit `40507cb`) |
-| 3 | `seed-admin.ts` hardcoded password | Open | `app/scripts/seed-admin.ts:15` (`DEV_PASSWORD = 'DevAdmin123!'`) |
-| 4 | `ci.yml` hardcoded password literals (x4) | Open | `.github/workflows/ci.yml:151,196,201,211` (`fondeu_dev_2026`) |
+| 1 | `agent_sessions` migration drift | Addressed ✅ (`c4e17a3`) | `app/src/lib/db/schema.ts` vs `app/drizzle/*` |
+| 2 | AI rate-limit bypass | Addressed ✅ (`7e5c174` + test follow-up `c894124`) | `app/src/lib/middleware/auth.ts:121-122` (commit `40507cb`) |
+| 3 | `seed-admin.ts` hardcoded password | Addressed ✅ (`0c65580`) | `app/scripts/seed-admin.ts:15` (`DEV_PASSWORD = 'DevAdmin123!'`) |
+| 4 | `ci.yml` hardcoded password literals (x4) | Addressed ✅ (`0c65580`, branch-sweep follow-ups `8bf82c8` + `6df8fee`) | `.github/workflows/ci.yml:151,196,201,211` (`fondeu_dev_2026`) |
 | 5 | CSRF `!isPublic` bypass | Addressed ✅ | `app/src/middleware.ts:237` (commit `f7f702b`) |
 
 ## Execution order
