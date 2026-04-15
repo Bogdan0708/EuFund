@@ -75,6 +75,8 @@ Expected: clean tree, HEAD at `81bc042 docs(specs): pilot-readiness spec — 3 r
 
 The verification gate in Task 12 compares against this baseline. Capture commands must be derivable from the plan alone — no reliance on MEMORY.md or session-start context.
 
+**Baseline contract (explicit):** the baseline is captured from the **implementation branch HEAD immediately before Task 1 begins** — after the spec and plan doc commits have landed on the branch, but before any code change from Task 1 onward. This matches what Task 12 actually compares against. The branch at that point = `origin/master` + the doc-only spec/plan commits; code state is identical to master.
+
 Run baseline capture and commit it to the worktree as a reference file:
 
 ```bash
@@ -1496,16 +1498,19 @@ git add app/src/app/api/ai/agent/route.ts \
 git -c commit.gpgsign=false commit -m "feat(managed): pre-stream turn claim + deferred message persistence
 
 Finding 3. Pre-stream claim: route inserts agent_turns (UNIQUE on
-session_id, request_id) before constructing the SSE Response. On
-PG 23505 with a child-bearing existing row → HTTP 409
-conflict_request_id (clean JSON, never SSE). On 23505 with a stale
-empty row (pre-output-failed prior attempt) → delete + retry insert
-once, then proceed.
+session_id, request_id) before constructing the SSE Response. Any
+PG 23505 on the claim INSERT → HTTP 409 conflict_request_id returned
+as clean JSON (never SSE). No inline reclaim: 'no children yet' is
+the normal state of a live turn during stream startup, so deleting
+and retrying would race with active streams. Orphan pre-output-failed
+claims are cleaned by the runtime's catch-branch deleteEmptyTurn call;
+residual orphans from failed cleanup are caught by daily cron.
 
 Message durability is deferred: user message and first assistant/tool
 output persist together in one transaction when the first durable
 stream event arrives. Pre-output stream failure → deleteEmptyTurn
-cleans the claim row so the retry is a fresh turn.
+removes the empty claim row so a fresh-requestId retry (the normal
+useAgent flow) claims cleanly.
 
 AgentRequest.requestId and useAgent.ts were already in shape; this
 commit is server-side only. Ownership verified inside claimTurn
@@ -1914,7 +1919,7 @@ operational context stays in the runbook, not durable repo guidance."
 
 - [ ] **Step 1: Compare test output against the in-worktree baseline**
 
-Task 0 Step 2 committed `docs/superpowers/artifacts/managed-pilot-baseline/` with the exact baseline from master. The gate is: current output matches or strictly improves upon that baseline.
+Task 0 Step 2 committed `docs/superpowers/artifacts/managed-pilot-baseline/` from the implementation branch HEAD immediately before Task 1 began (code-state-equivalent to master). The gate is: current output matches or strictly improves upon that baseline.
 
 ```bash
 cd /home/godja/Dev/EU-Funds-spec-pilot
@@ -1951,9 +1956,23 @@ Expected: **zero failures**. If anything fails here, fix before push — this su
 - [ ] **Step 3: Build**
 
 ```bash
-cd app && npm run build 2>&1 | tail -15
+cd app && npm run build 2>&1 | tee /tmp/pilot-current-build.txt | tail -15
 ```
-Expected: **zero errors**. Warnings are acceptable only if they appear on master too (capture master's warning list before any edit and compare). No route manifest regressions — the pilot gate is runtime, not build-time.
+Expected: **zero errors**. Compare against the committed build baseline:
+
+```bash
+diff /tmp/pilot-current-build.txt \
+     docs/superpowers/artifacts/managed-pilot-baseline/build-output.txt
+```
+Output diff should be empty or show only benign, deterministic changes (e.g., a timestamp or a new route added by this PR). New errors or new warnings block the PR. No route manifest regressions — the pilot gate is runtime, not build-time.
+
+Note: `next build` output contains non-deterministic lines (timings, build IDs). A pre-filter may help:
+
+```bash
+scrub() { sed -E 's/[0-9]+\.?[0-9]*\s?(ms|s|kB|MB)//g; s/[0-9a-f]{8,}//g' ; }
+diff <(scrub < /tmp/pilot-current-build.txt) \
+     <(scrub < docs/superpowers/artifacts/managed-pilot-baseline/build-output.txt)
+```
 
 - [ ] **Step 4: Typecheck**
 
