@@ -1,12 +1,28 @@
 // ─── Client-side CSRF Token Helper ──────────────────────────────
-// Read token from bootstrap meta/header (not cookies), send as X-CSRF-Token header
+// Read token from bootstrap meta/header (not cookies), send as X-CSRF-Token header.
+// Token discovery order: in-memory cache → <meta name="csrf-token"> → /api/health bootstrap.
 
 let csrfTokenCache: string | null = null;
 let bootstrapPromise: Promise<string | null> | null = null;
 
+function readTokenFromMeta(): string | null {
+  if (typeof document === 'undefined') return null;
+  const tag = document.querySelector('meta[name="csrf-token"]');
+  const value = tag?.getAttribute('content')?.trim();
+  return value ? value : null;
+}
+
 function cacheToken(token: string | null): void {
   if (!token) return;
   csrfTokenCache = token;
+
+  // Reflect the latest token on the meta tag so server-rendered fragments
+  // that re-query the DOM see the rotation without a page reload.
+  if (typeof document === 'undefined') return;
+  const tag = document.querySelector('meta[name="csrf-token"]');
+  if (tag) {
+    tag.setAttribute('content', token);
+  }
 }
 
 function captureTokenFromResponse(response: Response): void {
@@ -37,10 +53,18 @@ export async function bootstrapCSRFToken(): Promise<string | null> {
 }
 
 /**
- * Read the CSRF token from in-memory cache or meta bootstrap.
+ * Read the CSRF token from in-memory cache, then from the
+ * <meta name="csrf-token"> tag if a server-rendered page embedded one.
+ * Returns null if neither is set — callers that need to send the token
+ * should await `bootstrapCSRFToken()`.
  */
 export function getCSRFToken(): string | null {
   if (csrfTokenCache) return csrfTokenCache;
+  const metaToken = readTokenFromMeta();
+  if (metaToken) {
+    csrfTokenCache = metaToken;
+    return metaToken;
+  }
   return null;
 }
 
