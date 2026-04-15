@@ -51,16 +51,25 @@ vi.mock('@/lib/db', () => {
     }
     return chain
   }
-  return {
-    db: {
-      select: vi.fn(() => makeChain()),
-      insert: vi.fn(() => ({ values: vi.fn().mockResolvedValue(undefined) })),
-    },
+  const mockDb: any = {
+    select: vi.fn(() => makeChain()),
+    insert: vi.fn(() => ({
+      values: vi.fn(() => ({
+        returning: vi.fn().mockResolvedValue([{ id: 'mock-turn-id' }]),
+        then: (resolve: (val: unknown) => void) => resolve(undefined),
+      })),
+    })),
+    update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
+    delete: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
   }
+  mockDb.transaction = vi.fn(async (cb: any) => cb(mockDb))
+  return { db: mockDb }
 })
 
 vi.mock('@/lib/db/schema', () => ({
-  agentMessages: { sessionId: 'session_id', sequenceNumber: 'sequence_number' },
+  agentMessages: { sessionId: 'session_id', sequenceNumber: 'sequence_number', turnId: 'turn_id' },
+  agentTurns: { id: 'id', sessionId: 'session_id', requestId: 'request_id' },
+  agentSessions: { id: 'id', userId: 'user_id' },
   runtimeModeEnum: {},
 }))
 
@@ -152,6 +161,7 @@ describe('runManagedTurn — write tool blocked', () => {
         message: 'Salvează secțiunea.',
       },
       emit: (e) => events.push(e),
+      turnId: '99999999-9999-4999-8999-999999999999',
       serviceCtx: {
         userId: mockSession.userId,
         sessionId: mockSession.id,

@@ -17,6 +17,7 @@ import {
   markDegraded,
   recordTurnSuccess,
 } from '@/lib/ai/agent/managed/session-metadata'
+import { claimTurn, deleteEmptyTurn } from '@/lib/ai/agent/managed/history'
 
 const log = logger.child({ component: 'api-agent' })
 
@@ -157,6 +158,24 @@ async function handler(req: NextRequest) {
     }
   }
 
+  // Managed path only: defensive requestId presence check. The DTO
+  // already marks it required, but a misbehaving client could POST an
+  // empty string.
+  if (managedEnabled) {
+    if (typeof body.requestId !== 'string' || body.requestId.length === 0) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'missing_request_id',
+            messageRo: 'Cerere fără identificator. Reîncearcă.',
+            messageEn: 'Request is missing requestId. Retry.',
+          },
+        },
+        { status: 400 },
+      )
+    }
+  }
+
   if (managedEnabled) {
     const { managedCircuitBreaker, recordManagedFailure } = await import(
       '@/lib/ai/agent/managed/circuit-breaker'
@@ -203,7 +222,33 @@ async function handler(req: NextRequest) {
         }
         return runV3WithSSE(session, sections, body, user)
       }
-      return runManagedWithSSE(session, sections, body, user)
+
+      // Pre-stream turn-claim. The INSERT either succeeds atomically
+      // or raises PG 23505 via the UNIQUE(session_id, request_id)
+      // constraint — which maps to a clean JSON 409 here, before any
+      // SSE Response is constructed. No inline reclaim: see claimTurn
+      // comment in history.ts for the race-safety argument.
+      const claim = await claimTurn({
+        sessionId: session.id,
+        userId: user.id,
+        requestId: body.requestId,
+        runtimeMode: 'managed',
+      })
+      if (claim.kind === 'conflict') {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'conflict_request_id',
+              messageRo:
+                'Cerere deja înregistrată. Dacă ai reîncercat, operațiunea a fost deja salvată.',
+              messageEn:
+                'Request already recorded. If this was a retry, the operation has already been saved.',
+            },
+          },
+          { status: 409 },
+        )
+      }
+      return runManagedWithSSE(session, sections, body, user, claim.turnId)
     }
     // Breaker is open — degrade to V3
     log.warn(
@@ -260,6 +305,7 @@ function runManagedWithSSE(
   sections: AgentSection[],
   body: AgentRequest,
   user: { id: string },
+  turnId: string,
 ): Response {
   const encoder = new TextEncoder()
   let firstByteFlushed = false
@@ -285,6 +331,11 @@ function runManagedWithSSE(
         )
       }
 
+      // Tracked locally so the catch branch can decide whether to call
+      // deleteEmptyTurn. If runManagedTurn throws, this stays false (it
+      // only flips when the runtime returns a non-throw result AND that
+      // result reports firstOutputPersisted=true).
+      let firstOutputPersisted = false
       try {
         const { runManagedTurn } = await import('@/lib/ai/agent/managed/runtime')
         const serviceCtx = {
@@ -300,7 +351,9 @@ function runManagedWithSSE(
           request: body,
           emit,
           serviceCtx,
+          turnId,
         })
+        firstOutputPersisted = result.firstOutputPersisted
 
         const { recordManagedSuccess } = await import('@/lib/ai/agent/managed/circuit-breaker')
         recordManagedSuccess()
@@ -321,7 +374,43 @@ function runManagedWithSSE(
             'recordTurnSuccess failed',
           )
         }
+
+        // A turn that never produced a durable output is indistinguishable
+        // from a pre-output failure as far as the claim row is concerned —
+        // clean the empty claim so a fresh-requestId retry can claim again.
+        if (!firstOutputPersisted) {
+          try {
+            await deleteEmptyTurn(turnId)
+          } catch (cleanupErr) {
+            log.warn(
+              {
+                sessionId: session.id,
+                turnId,
+                err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+              },
+              'deleteEmptyTurn failed (post-success, no output)',
+            )
+          }
+        }
       } catch (err) {
+        // Pre-output failure: clean the empty claim row so a
+        // fresh-requestId retry succeeds. deleteEmptyTurn is a no-op if
+        // any child message exists (post-output failure path).
+        if (!firstOutputPersisted) {
+          try {
+            await deleteEmptyTurn(turnId)
+          } catch (cleanupErr) {
+            log.warn(
+              {
+                sessionId: session.id,
+                turnId,
+                err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+              },
+              'deleteEmptyTurn failed (catch branch)',
+            )
+          }
+        }
+
         const { recordManagedFailure } = await import('@/lib/ai/agent/managed/circuit-breaker')
         const reason = classifyManagedError(err)
         recordManagedFailure(reason)

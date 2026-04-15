@@ -5,8 +5,8 @@
 
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages'
 import { db } from '@/lib/db'
-import { agentMessages } from '@/lib/db/schema'
-import { eq, asc, desc } from 'drizzle-orm'
+import { agentMessages, agentSessions, agentTurns } from '@/lib/db/schema'
+import { eq, asc, desc, count as sqlCount } from 'drizzle-orm'
 
 export interface ManagedMessageMeta {
   runtimeMode: 'v3' | 'managed'
@@ -82,6 +82,7 @@ export async function appendManagedMessage(
     content: unknown
     toolName?: string
     toolCallId?: string
+    turnId?: string | null
   },
   meta: ManagedMessageMeta,
 ): Promise<number> {
@@ -111,6 +112,7 @@ export async function appendManagedMessage(
         content: message.content as never,
         toolName: message.toolName ?? null,
         toolCallId: message.toolCallId ?? null,
+        turnId: message.turnId ?? null,
         sequenceNumber,
         runtimeMode: meta.runtimeMode,
         provider: meta.provider ?? null,
@@ -124,4 +126,151 @@ export async function appendManagedMessage(
     }
   }
   throw new Error('appendManagedMessage: sequence number conflict after retry')
+}
+
+export type ClaimResult =
+  | { kind: 'claimed'; turnId: string }
+  // Any UNIQUE(session_id, request_id) violation. Route returns HTTP 409.
+  | { kind: 'conflict' }
+
+/**
+ * Pre-stream turn-claim. Inserts a new agent_turns row atomically and
+ * returns the new turn id, or `{kind:'conflict'}` on PG 23505.
+ *
+ * **No inline reclaim.** "No child messages" is the normal state of a
+ * live turn during stream startup (the window between claim insert and
+ * first durable output can be tens of seconds). An inline
+ * "no-children → reclaim" rule would race with active streams and
+ * delete legitimate in-flight turns. Pre-output stream failures are
+ * cleaned up by the runtime's catch branch via `deleteEmptyTurn`;
+ * orphan claims from failed cleanup are swept by the daily cron.
+ *
+ * Ownership is verified inside the transaction. The route has already
+ * verified ownership when loading the session row — this is defence in
+ * depth for any future direct caller.
+ */
+export async function claimTurn(input: {
+  sessionId: string
+  userId: string
+  requestId: string
+  runtimeMode: 'v3' | 'managed'
+}): Promise<ClaimResult> {
+  try {
+    return await db.transaction(async (tx) => {
+      const [sess] = await tx
+        .select({ userId: agentSessions.userId })
+        .from(agentSessions)
+        .where(eq(agentSessions.id, input.sessionId))
+        .limit(1)
+      if (!sess || sess.userId !== input.userId) {
+        throw new Error('session ownership denied')
+      }
+      const [row] = await tx
+        .insert(agentTurns)
+        .values({
+          sessionId: input.sessionId,
+          requestId: input.requestId,
+          runtimeMode: input.runtimeMode,
+        })
+        .returning({ id: agentTurns.id })
+      return { kind: 'claimed', turnId: row.id } as const
+    })
+  } catch (err) {
+    const pgCode = (err as { code?: string } | null)?.code
+    if (pgCode === '23505') return { kind: 'conflict' }
+    throw err
+  }
+}
+
+/**
+ * Delete an empty turn-claim row after a pre-output stream failure.
+ * Safety net: if the turn has any child agent_messages rows, this is a
+ * no-op. Callers must only invoke this before any first durable output
+ * has been persisted.
+ */
+export async function deleteEmptyTurn(turnId: string): Promise<void> {
+  const [row] = await db
+    .select({ c: sqlCount() })
+    .from(agentMessages)
+    .where(eq(agentMessages.turnId, turnId))
+  const childCount = (row?.c ?? 0) as number
+  if (childCount > 0) return
+  await db.delete(agentTurns).where(eq(agentTurns.id, turnId))
+}
+
+/**
+ * Single transaction that persists the user message and the first
+ * durable assistant/tool_use output, both tagged with `turnId`. Uses
+ * retry-once on PG 23505 against the unique
+ * (session_id, sequence_number) index. Second conflict rolls back the
+ * whole transaction — caller sees a thrown error, not a partial write.
+ */
+export async function persistFirstDurableOutput(input: {
+  turnId: string
+  sessionId: string
+  userMessage: string
+  firstOutput: {
+    role: 'assistant'
+    messageType: 'text' | 'tool_use'
+    content: unknown
+    toolName?: string
+    toolCallId?: string
+  }
+  meta: ManagedMessageMeta
+}): Promise<void> {
+  // Retry wraps the WHOLE transaction, not the inserts inside it. On PG,
+  // a constraint violation aborts the current transaction — subsequent
+  // statements in the same tx raise "current transaction is aborted".
+  // Each retry must therefore open a fresh transaction.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await db.transaction(async (tx) => {
+        const [last] = await tx
+          .select()
+          .from(agentMessages)
+          .where(eq(agentMessages.sessionId, input.sessionId))
+          .orderBy(desc(agentMessages.sequenceNumber))
+          .limit(1)
+        const userSeq = last ? (last.sequenceNumber as number) + 1 : 0
+
+        await tx.insert(agentMessages).values({
+          sessionId: input.sessionId,
+          role: 'user',
+          messageType: 'text',
+          content: input.userMessage as never,
+          turnId: input.turnId,
+          sequenceNumber: userSeq,
+          runtimeMode: input.meta.runtimeMode,
+          provider: input.meta.provider ?? null,
+          model: input.meta.model ?? null,
+        })
+        await tx.insert(agentMessages).values({
+          sessionId: input.sessionId,
+          role: 'assistant',
+          messageType: input.firstOutput.messageType,
+          content: input.firstOutput.content as never,
+          toolName: input.firstOutput.toolName ?? null,
+          toolCallId: input.firstOutput.toolCallId ?? null,
+          turnId: input.turnId,
+          sequenceNumber: userSeq + 1,
+          runtimeMode: input.meta.runtimeMode,
+          provider: input.meta.provider ?? null,
+          model: input.meta.model ?? null,
+        })
+      })
+      return
+    } catch (err) {
+      const pgCode = (err as { code?: string } | null)?.code
+      if (pgCode === '23505' && attempt === 0) continue
+      throw err
+    }
+  }
+  throw new Error('persistFirstDurableOutput: sequence conflict after retry')
+}
+
+export async function markTurnCompleted(turnId: string): Promise<void> {
+  await db
+    .update(agentTurns)
+    .set({ completedAt: new Date() })
+    .where(eq(agentTurns.id, turnId))
 }

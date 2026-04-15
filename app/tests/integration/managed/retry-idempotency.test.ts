@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
+// ── Shared fakes ────────────────────────────────────────────────
 const mockRunV3 = vi.fn().mockResolvedValue(undefined)
 const mockRunManaged = vi.fn().mockResolvedValue(undefined)
 
@@ -43,33 +44,41 @@ vi.mock('@/lib/ai/agent/managed/session-metadata', () => ({
   recordTurnSuccess: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('@/lib/db', () => {
-  const row = {
-    id: '11111111-1111-4111-8111-111111111111',
-    userId: 'user-1',
-    projectId: null,
-    stateVersion: 5,
-    status: 'active',
-    locale: 'ro',
-    selectedCallId: null,
-    currentPhase: 'discovery',
-    blueprint: null,
-    eligibility: null,
-    outline: null,
-    warnings: [],
-    planningArtifact: null,
-    outlineFrozen: false,
-    messageSummary: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  }
+const sessionRow = {
+  id: '11111111-1111-4111-8111-111111111111',
+  userId: 'user-1',
+  projectId: null,
+  stateVersion: 0,
+  status: 'active',
+  locale: 'ro',
+  selectedCallId: null,
+  currentPhase: 'discovery',
+  blueprint: null,
+  eligibility: null,
+  outline: null,
+  warnings: [],
+  planningArtifact: null,
+  outlineFrozen: false,
+  messageSummary: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+}
 
+// ── Per-test agentTurns insert behavior ────────────────────────
+// The tests install a fake via `setClaimBehavior(...)`. Each call lets a
+// test toggle the simulated result of the pre-stream claim insert:
+//   'ok'       → normal insert, returns a turn id
+//   'conflict' → throws a PG 23505 uniqueness violation
+let claimBehavior: 'ok' | 'conflict' = 'ok'
+function setClaimBehavior(b: 'ok' | 'conflict') { claimBehavior = b }
+
+vi.mock('@/lib/db', () => {
   const makeChain = () => {
     const chain: Record<string, unknown> = {}
     chain.from = vi.fn(() => chain)
     chain.where = vi.fn(() => {
       const whereResult: Record<string, unknown> = {
-        limit: vi.fn().mockResolvedValue([row]),
+        limit: vi.fn().mockResolvedValue([sessionRow]),
         then: (resolve: (rows: unknown[]) => unknown) => resolve([]),
       }
       return whereResult
@@ -77,18 +86,36 @@ vi.mock('@/lib/db', () => {
     return chain
   }
 
-  const mockDb: any = {
+  // Fake transaction that routes INSERT into agent_turns through the
+  // configurable claimBehavior switch so tests can reproduce 23505.
+  const txFactory = () => ({
     select: vi.fn(() => makeChain()),
     insert: vi.fn(() => ({
       values: vi.fn(() => ({
-        returning: vi.fn().mockResolvedValue([{ ...row, id: 'mock-turn-id' }]),
+        returning: vi.fn(() => {
+          if (claimBehavior === 'conflict') {
+            const err = new Error('duplicate key value violates unique constraint') as Error & { code?: string }
+            err.code = '23505'
+            return Promise.reject(err)
+          }
+          return Promise.resolve([{ id: 'mock-turn-id' }])
+        }),
+      })),
+    })),
+  })
+
+  const mockDb: Record<string, unknown> = {
+    select: vi.fn(() => makeChain()),
+    insert: vi.fn(() => ({
+      values: vi.fn(() => ({
+        returning: vi.fn().mockResolvedValue([sessionRow]),
         then: (resolve: (val: unknown) => void) => resolve(undefined),
       })),
     })),
     update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
     delete: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
   }
-  mockDb.transaction = vi.fn(async (cb: any) => cb(mockDb))
+  mockDb.transaction = vi.fn(async (cb: (tx: unknown) => unknown) => cb(txFactory()))
   return { db: mockDb }
 })
 
@@ -102,6 +129,9 @@ vi.mock('@/lib/db/schema', () => ({
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(),
   and: vi.fn(),
+  asc: vi.fn(),
+  desc: vi.fn(),
+  count: vi.fn(),
 }))
 
 vi.mock('@/lib/logger', () => ({
@@ -112,73 +142,102 @@ vi.mock('@/lib/middleware/rate-limit', () => ({
   withRateLimit: (_cfg: unknown, handler: (req: Request) => Promise<Response>) => handler,
 }))
 
-describe('managed route — mandatory stateVersion', () => {
+describe('managed retry idempotency — pre-stream turn claim', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.MANAGED_RUNTIME_ENABLED = 'true'
+    setClaimBehavior('ok')
   })
   afterEach(() => { delete process.env.MANAGED_RUNTIME_ENABLED })
 
-  it('returns 400 missing_state_version when managed POST omits stateVersion', async () => {
+  it('rejects managed POST without requestId with 400', async () => {
     const { POST } = await import('@/app/api/ai/agent/route')
     const req = new Request('http://localhost/api/ai/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sessionId: '11111111-1111-4111-8111-111111111111',
-        requestId: 'req-1',
+        sessionId: sessionRow.id,
         locale: 'ro',
+        stateVersion: 0,
         message: 'hi',
-        // no stateVersion
+        // no requestId
       }),
     })
     const res = await POST(req as never)
     expect(res.status).toBe(400)
-    const json = await res.json()
-    expect(json.error.code).toBe('missing_state_version')
-    expect(json.error.messageRo).toBeDefined()
-    expect(json.error.messageEn).toBeDefined()
     expect(mockRunManaged).not.toHaveBeenCalled()
   })
 
-  it('returns 409 stale_state_version when stateVersion is stale', async () => {
+  it('returns HTTP 409 conflict_request_id as clean JSON when claim conflicts', async () => {
+    setClaimBehavior('conflict')
     const { POST } = await import('@/app/api/ai/agent/route')
     const req = new Request('http://localhost/api/ai/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sessionId: '11111111-1111-4111-8111-111111111111',
-        requestId: 'req-2',
+        sessionId: sessionRow.id,
+        requestId: 'req-abc',
         locale: 'ro',
+        stateVersion: 0,
         message: 'hi',
-        stateVersion: 3,
       }),
     })
     const res = await POST(req as never)
     expect(res.status).toBe(409)
+    // Response must be clean JSON — never SSE.
+    expect(res.headers.get('content-type')).toMatch(/application\/json/)
     const json = await res.json()
-    expect(json.error.code).toBe('stale_state_version')
-    expect(json.currentVersion).toBe(5)
+    expect(json.error.code).toBe('conflict_request_id')
+    expect(json.error.messageRo).toBeDefined()
+    expect(json.error.messageEn).toBeDefined()
+    // Runtime was never reached — claim rejection is fully pre-stream.
     expect(mockRunManaged).not.toHaveBeenCalled()
   })
 
-  it('proceeds to managed dispatch when stateVersion matches', async () => {
+  it('conflict response is unconditional — no inline reclaim attempted', async () => {
+    // Same setup as the previous test: conflict fires and we confirm that
+    // the response is still 409 rather than somehow recovering by deleting
+    // and re-claiming. The spec explicitly forbids inline reclaim because
+    // a live in-flight stream has no children until first durable output.
+    setClaimBehavior('conflict')
     const { POST } = await import('@/app/api/ai/agent/route')
     const req = new Request('http://localhost/api/ai/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sessionId: '11111111-1111-4111-8111-111111111111',
-        requestId: 'req-3',
+        sessionId: sessionRow.id,
+        requestId: 'req-abc',
         locale: 'ro',
+        stateVersion: 0,
         message: 'hi',
-        stateVersion: 5,
+      }),
+    })
+    const res = await POST(req as never)
+    expect(res.status).toBe(409)
+    expect(res.headers.get('content-type')).toMatch(/application\/json/)
+    expect(mockRunManaged).not.toHaveBeenCalled()
+  })
+
+  it('successful claim proceeds to managed dispatch with SSE response', async () => {
+    const { POST } = await import('@/app/api/ai/agent/route')
+    const req = new Request('http://localhost/api/ai/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: sessionRow.id,
+        requestId: 'req-fresh',
+        locale: 'ro',
+        stateVersion: 0,
+        message: 'hi',
       }),
     })
     const res = await POST(req as never)
     expect(res.status).toBe(200)
-    // Drain SSE stream so the managed runtime's start() actually runs
+    expect(res.headers.get('content-type')).toMatch(/text\/event-stream/)
     await res.text()
     expect(mockRunManaged).toHaveBeenCalled()
+    // turnId was passed as an argument to runManagedTurn
+    const passedOpts = mockRunManaged.mock.calls[0][0] as { turnId?: string }
+    expect(passedOpts.turnId).toBe('mock-turn-id')
   })
 })

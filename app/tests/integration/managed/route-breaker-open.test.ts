@@ -68,19 +68,26 @@ vi.mock('@/lib/db', () => {
     }))
     return chain
   }
-  return {
-    db: {
-      select: vi.fn(() => makeChain()),
-      insert: vi.fn(() => ({
-        values: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([row]) })),
+  const mockDb: any = {
+    select: vi.fn(() => makeChain()),
+    insert: vi.fn(() => ({
+      values: vi.fn(() => ({
+        returning: vi.fn().mockResolvedValue([{ ...row, id: 'mock-turn-id' }]),
+        then: (resolve: (val: unknown) => void) => resolve(undefined),
       })),
-    },
+    })),
+    update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
+    delete: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
   }
+  mockDb.transaction = vi.fn(async (cb: any) => cb(mockDb))
+  return { db: mockDb }
 })
 
 vi.mock('@/lib/db/schema', () => ({
   agentSessions: { id: 'id', userId: 'user_id' },
   agentSections: { sessionId: 'session_id' },
+  agentTurns: { id: 'id', sessionId: 'session_id', requestId: 'request_id' },
+  agentMessages: { sessionId: 'session_id', sequenceNumber: 'sequence_number', turnId: 'turn_id' },
 }))
 
 vi.mock('drizzle-orm', () => ({
