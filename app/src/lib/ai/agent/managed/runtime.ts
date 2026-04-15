@@ -274,16 +274,21 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   const finalState = buildUISnapshot(session, sections)
   emit({ type: 'done', finalState })
 
+  // Structured turn-complete log — consumed by the reconciliation
+  // queries and pilot dashboards (see docs/superpowers/runbooks/
+  // managed-pilot-observability.md).
   log.info({
+    event: 'managed_turn_complete',
     sessionId: session.id,
-    requestId: request.requestId,
     turnId,
-    firstOutputPersisted,
+    requestId: request.requestId,
+    iterations: iterationCount,
     toolCount,
-    iterationCount,
+    durationMs: Date.now() - start,
+    outcome: firstOutputPersisted ? 'completed' : 'no_output',
+    degradedReason: null,
     model: tctx.messageModel,
-    latencyMs: Date.now() - start,
-  }, 'managed turn complete')
+  }, 'managed_turn_complete')
 
   return {
     toolCount,
