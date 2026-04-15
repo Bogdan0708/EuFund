@@ -14,18 +14,39 @@ export interface ManagedMessageMeta {
   model?: string | null
 }
 
+// Near-copy of V3 summary semantics (see lib/ai/agent/history.ts for the
+// V3 compaction writer — the only path that currently creates
+// system_summary rows). EXTRACTION SEAM: this logic is a candidate for a
+// shared history helper in a post-pilot cleanup. Keep it local for now to
+// minimize blast radius.
+export interface ManagedHistory {
+  summary: string | null
+  messages: MessageParam[]
+}
+
 /**
  * Load all non-compacted messages for a session and convert to
- * Anthropic MessageParam[] for replay in a managed turn.
+ * Anthropic MessageParam[] for replay in a managed turn. Any
+ * `system_summary` rows encountered are extracted into the returned
+ * `summary` field rather than streamed as messages.
  */
-export async function loadManagedHistory(sessionId: string): Promise<MessageParam[]> {
+export async function loadManagedHistory(
+  sessionId: string,
+  opts: { fallbackSummary?: string | null } = {},
+): Promise<ManagedHistory> {
   const rows = await db.select()
     .from(agentMessages)
     .where(eq(agentMessages.sessionId, sessionId))
     .orderBy(asc(agentMessages.sequenceNumber))
 
+  let summary: string | null = null
   const messages: MessageParam[] = []
+
   for (const row of rows) {
+    if (row.messageType === 'system_summary') {
+      if (typeof row.content === 'string') summary = row.content
+      continue
+    }
     if (row.compactedAt) continue // skip compacted messages
 
     const role = row.role as 'user' | 'assistant'
@@ -44,7 +65,9 @@ export async function loadManagedHistory(sessionId: string): Promise<MessagePara
     }
   }
 
-  return messages
+  if (summary === null && opts.fallbackSummary) summary = opts.fallbackSummary
+
+  return { summary, messages }
 }
 
 /**

@@ -58,8 +58,11 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   let toolCount = 0
   let iterationCount = 0
 
-  // 1. Load history
-  const history = await loadManagedHistory(session.id)
+  // 1. Load history (with summary extracted from system_summary rows
+  //    or session.messageSummary fallback).
+  const { summary, messages: history } = await loadManagedHistory(session.id, {
+    fallbackSummary: session.messageSummary ?? null,
+  })
 
   // 2. Append the current user message if present
   if (request.message) {
@@ -77,6 +80,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     sections,
     session.currentPhase as Phase,
     session.locale,
+    summary,
   )
 
   // 4. Tool loop
