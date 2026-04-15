@@ -1,7 +1,8 @@
 /**
  * Seed platform admin account.
- * Usage: npx tsx scripts/seed-admin.ts
- * Requires DATABASE_URL in .env.local
+ * Usage: ADMIN_PASSWORD=... npx tsx scripts/seed-admin.ts
+ * Requires DATABASE_URL and ADMIN_PASSWORD (in .env.local for local dev,
+ * as CI secrets for pipelines).
  */
 import { config } from 'dotenv';
 config({ path: '.env.local' });
@@ -12,12 +13,17 @@ import bcrypt from 'bcryptjs';
 import * as schema from '../src/lib/db/schema';
 
 const ADMIN_EMAIL = 'godjabogdan@gmail.com';
-const DEV_PASSWORD = 'DevAdmin123!';
 
 async function main() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     console.error('DATABASE_URL is required');
+    process.exit(1);
+  }
+
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) {
+    console.error('ADMIN_PASSWORD is required. Set it in .env.local for local dev or as a CI secret.');
     process.exit(1);
   }
 
@@ -28,7 +34,7 @@ async function main() {
     where: eq(schema.users.email, ADMIN_EMAIL),
   });
 
-  const passwordHash = await bcrypt.hash(DEV_PASSWORD, 12);
+  const passwordHash = await bcrypt.hash(adminPassword, 12);
 
   if (existing) {
     // Always update password hash for dev login
