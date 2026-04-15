@@ -85,14 +85,16 @@ turns — the access-log derivation is authoritative.
 
 ### Conflict counter (observational)
 
-```sql
--- Number of same-requestId retries the route rejected in 24h.
--- No direct DB signal; derive from log pipeline:
---   count(log.event == 'managed_route_conflict_request_id' over 24h)
-```
+At present there is no dedicated structured log for route-level 409
+responses — the route relies on the standard Next.js request log
+plus the pilot Cloud Run access log. Derive the conflict count from
+the Cloud Run access log filter `status:409 path:/api/ai/agent` over
+24h. If a dedicated `managed_route_conflict_request_id` log event is
+wanted, add it in a follow-up PR (route.ts near the
+`conflict_request_id` branch) and update this section.
 
-Expected to be near zero with the fresh-per-POST `useAgent` client.
-A spike points to a client that reuses requestIds.
+Expected baseline: near zero with the fresh-per-POST `useAgent`
+client. A spike points to a client that reuses requestIds.
 
 ## Dashboards
 
@@ -100,11 +102,23 @@ Two dashboards in the ops console:
 
 ### Pilot health (oncall)
 
-- Request count by runtime (`managed` vs `v3`).
-- Success rate (managed): `completed / (completed + error)`.
-- Breaker state transitions (gauge: `closed | open | half_open`).
-- Fallback rate: managed-eligible requests that ended up on V3.
-- Managed P95 vs V3 P95 latency.
+- Request count by runtime (`managed` vs `v3`), derived from
+  `agent_turns.runtime_mode` for managed and Cloud Run access logs
+  for the combined baseline.
+- Success rate (managed): `completed / (completed + error)`, derived
+  from the `managed_turn_complete` structured log's `outcome` field.
+- Fallback rate: managed-eligible requests that ended up on V3 —
+  derived from the ratio of `agent_turns runtime_mode='v3'` to total
+  requests on the pilot service.
+- Managed P95 vs V3 P95 latency (queries above).
+
+Breaker state is currently per-process in-memory
+(`app/src/lib/ai/agent/managed/circuit-breaker.ts`) and not emitted
+as a metric or log signal. If oncall wants a breaker gauge, add a
+transition log in the breaker module and a metric exporter as a
+follow-up. For the pilot window, breaker state is observed
+indirectly via the fallback-rate gauge: a sustained spike in V3
+traffic on `fondeu-pilot` means the breaker opened.
 
 ### Audit (daily review)
 

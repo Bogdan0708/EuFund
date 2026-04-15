@@ -355,30 +355,40 @@ function runManagedWithSSE(
         })
         firstOutputPersisted = result.firstOutputPersisted
 
-        const { recordManagedSuccess } = await import('@/lib/ai/agent/managed/circuit-breaker')
-        recordManagedSuccess()
+        if (firstOutputPersisted) {
+          // Only count the turn as a success when it actually produced a
+          // durable output. A no_output turn gets its claim row deleted
+          // below and must NOT be recorded as a successful managed turn
+          // in application_agent_sessions — the row would falsely claim
+          // lastTurn metadata for a turn with no persisted history.
+          const { recordManagedSuccess } = await import('@/lib/ai/agent/managed/circuit-breaker')
+          recordManagedSuccess()
 
-        try {
-          await recordTurnSuccess(
-            session.id,
-            user.id,
-            result.model,
-            result.toolCount,
-          )
-        } catch (metaErr) {
+          try {
+            await recordTurnSuccess(
+              session.id,
+              user.id,
+              result.model,
+              result.toolCount,
+            )
+          } catch (metaErr) {
+            log.warn(
+              {
+                sessionId: session.id,
+                err: metaErr instanceof Error ? metaErr.message : String(metaErr),
+              },
+              'recordTurnSuccess failed',
+            )
+          }
+        } else {
+          // No durable output — the claim row will be deleted below, so
+          // the turn leaves no DB trace. Treat as a pre-output failure
+          // for metadata purposes (no success recorded) while allowing
+          // the SSE response to close normally for the client.
           log.warn(
-            {
-              sessionId: session.id,
-              err: metaErr instanceof Error ? metaErr.message : String(metaErr),
-            },
-            'recordTurnSuccess failed',
+            { sessionId: session.id, turnId },
+            'managed turn returned with no durable output — cleaning claim',
           )
-        }
-
-        // A turn that never produced a durable output is indistinguishable
-        // from a pre-output failure as far as the claim row is concerned —
-        // clean the empty claim so a fresh-requestId retry can claim again.
-        if (!firstOutputPersisted) {
           try {
             await deleteEmptyTurn(turnId)
           } catch (cleanupErr) {

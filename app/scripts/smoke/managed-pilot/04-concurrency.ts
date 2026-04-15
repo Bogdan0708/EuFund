@@ -1,47 +1,41 @@
 // Smoke 04 — concurrency (automated). Fires two parallel managed POSTs
-// with the same stateVersion + distinct requestIds. The pilot's
-// optimistic precondition (Task 6) should admit exactly one; the other
-// arrives with stale state (because the first commits a new version)
-// and receives 409 stale_state_version.
+// with identical (sessionId, requestId). The agent_turns UNIQUE
+// (session_id, request_id) constraint should admit exactly one claim;
+// the other raises PG 23505, which the route maps to HTTP 409
+// conflict_request_id as clean JSON.
 //
-// Note: this is a race — if both requests pass the precondition and
-// both attempt to claim distinct requestIds, you'll get two 200s and
-// both writes succeed in sequence. For the pilot smoke we assert the
-// spec-intended outcome (one 200, one 409) and tolerate two-200 on the
-// rare scheduling win by failing loud so the operator can investigate.
+// Note on the premise: stateVersion is NOT the concurrency primitive
+// here. The managed runtime is read-only (Phase 2) and never bumps
+// stateVersion, so two distinct-requestId parallel POSTs would both
+// pass the precondition and both succeed. The real atomic boundary
+// for managed turns is the pre-stream turn-claim (Task 7), which is
+// what this smoke exercises.
 import { env, postAgent, uuid, report } from './lib'
 
-async function currentStateVersion(): Promise<{ sessionId: string; stateVersion: number }> {
-  // The pilot exposes session state via GET /api/ai/agent/[sessionId]/state
-  // (V3-era handler). If that's absent, the operator must pre-seed a
-  // session via the dashboard and paste its {sessionId, stateVersion}
-  // into PILOT_SESSION_JSON.
+async function main(): Promise<void> {
+  env('PILOT_URL')
   const raw = process.env.PILOT_SESSION_JSON
   if (!raw) {
-    throw new Error(
-      'set PILOT_SESSION_JSON={"sessionId":"...","stateVersion":N} — no live state-read endpoint plumbed yet',
-    )
+    throw new Error('set PILOT_SESSION_JSON={"sessionId":"...","stateVersion":N}')
   }
-  const parsed = JSON.parse(raw) as { sessionId: string; stateVersion: number }
-  return parsed
-}
+  const { sessionId, stateVersion } = JSON.parse(raw) as {
+    sessionId: string
+    stateVersion: number
+  }
 
-async function main(): Promise<void> {
-  env('PILOT_URL') // validate env early
-  const { sessionId, stateVersion } = await currentStateVersion()
-
+  const requestId = uuid()
   const a = postAgent({
     sessionId,
     locale: 'ro',
-    message: 'Concurrency smoke A.',
-    requestId: uuid(),
+    message: 'Concurrency smoke — attempt A.',
+    requestId,
     stateVersion,
   })
   const b = postAgent({
     sessionId,
     locale: 'ro',
-    message: 'Concurrency smoke B.',
-    requestId: uuid(),
+    message: 'Concurrency smoke — attempt B.',
+    requestId,
     stateVersion,
   })
   const [ra, rb] = await Promise.all([a, b])
@@ -51,11 +45,16 @@ async function main(): Promise<void> {
     throw new Error(`expected [200, 409], got ${codes.join(',')}`)
   }
   const loser = ra.status === 409 ? ra : rb
-  const json = (await loser.json()) as { error?: { code?: string } }
-  if (json.error?.code !== 'stale_state_version') {
-    throw new Error(`loser error code was ${json.error?.code}, expected stale_state_version`)
+  const contentType = loser.headers.get('content-type') ?? ''
+  if (!contentType.includes('application/json')) {
+    throw new Error(`loser content-type must be JSON (never SSE), got ${contentType}`)
   }
-  report('04-concurrency', 'pass', { codes })
+  const json = (await loser.json()) as { error?: { code?: string } }
+  if (json.error?.code !== 'conflict_request_id') {
+    throw new Error(`loser error code was ${json.error?.code}, expected conflict_request_id`)
+  }
+
+  report('04-concurrency', 'pass', { codes, sessionId, requestId })
 }
 
 main().catch((e) => {

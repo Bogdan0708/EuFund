@@ -10,9 +10,9 @@ from the pilot exit criterion "zero unexpected server-caused 409s".
 | 01 | `01-happy-path.ts` | automated |
 | 02 | `02-kill-switch.ts` | manual-assisted (operator flips flag, then unsets env + redeploys) |
 | 03 | `03-auth-fail.ts` | manual-assisted (operator unsets `ANTHROPIC_API_KEY` + redeploys) |
-| 04 | `04-concurrency.ts` | automated |
-| 05 | `05-retry-idempotency.ts` | automated |
-| 06 | `06-compaction-continuity.ts` | automated (long-running, exercises compaction) |
+| 04 | `04-concurrency.ts` | automated (tests same-requestId claim race) |
+| 05 | `05-retry-idempotency.ts` | automated (tests same-session-same-requestId rejection) |
+| 06 | `06-compaction-continuity.ts` | manual-assisted (3-phase: V3 warmup → summary verify → managed validation) |
 
 "Manual-assisted" scripts print explicit operator prompts and exit
 non-zero if the prerequisite action isn't performed within a timeout.
@@ -24,7 +24,10 @@ export PILOT_URL="https://fondeu-pilot-....run.app"
 export PILOT_SESSION_COOKIE="authjs.session-token=..."
 export TARGET_USER_ID="..."
 export DATABASE_URL="postgres://..."
-# Smokes 04 and 06 require a pre-seeded session:
+# Smokes 04, 05, and 06 require a pre-seeded session. The agent_turns
+# uniqueness boundary is (session_id, request_id), so any smoke that
+# tests idempotency or claim semantics must target the same sessionId
+# across attempts.
 export PILOT_SESSION_JSON='{"sessionId":"...","stateVersion":N}'
 ```
 
