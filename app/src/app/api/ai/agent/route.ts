@@ -53,16 +53,6 @@ async function handler(req: NextRequest) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     }
 
-    // Optimistic concurrency: reject stale writes
-    if (typeof body.stateVersion === 'number') {
-      if (body.stateVersion !== (row.stateVersion as number)) {
-        return NextResponse.json(
-          { error: 'Stale state — reload and retry', currentVersion: row.stateVersion },
-          { status: 409 },
-        )
-      }
-    }
-
     session = mapSessionRow(row)
 
     const sectionRows = await db
@@ -122,6 +112,49 @@ async function handler(req: NextRequest) {
       { sessionId: session.id, userId: user.id, actionType: body.action?.type },
       'structured action request — routing to V3 (managed runtime does not yet handle actions)',
     )
+  }
+
+  // Optimistic concurrency. The managed path REQUIRES stateVersion (and
+  // returns bilingual error envelopes); the V3 path keeps the historical
+  // optional check with the legacy single-string error format. Only
+  // existing-session requests carry a comparable stateVersion.
+  if (body.sessionId) {
+    if (managedEnabled) {
+      if (typeof body.stateVersion !== 'number') {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'missing_state_version',
+              messageRo:
+                'Lipsește versiunea de stare. Reîncarcă pagina și reîncearcă.',
+              messageEn: 'Missing state version. Reload and retry.',
+            },
+          },
+          { status: 400 },
+        )
+      }
+      if (body.stateVersion !== session.stateVersion) {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'stale_state_version',
+              messageRo:
+                'Versiunea de stare este expirată. Reîncarcă și reîncearcă.',
+              messageEn: 'State version is stale. Reload and retry.',
+            },
+            currentVersion: session.stateVersion,
+          },
+          { status: 409 },
+        )
+      }
+    } else if (typeof body.stateVersion === 'number') {
+      if (body.stateVersion !== session.stateVersion) {
+        return NextResponse.json(
+          { error: 'Stale state — reload and retry', currentVersion: session.stateVersion },
+          { status: 409 },
+        )
+      }
+    }
   }
 
   if (managedEnabled) {

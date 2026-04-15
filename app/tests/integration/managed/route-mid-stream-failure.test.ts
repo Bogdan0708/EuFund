@@ -122,6 +122,8 @@ describe('POST /api/ai/agent — mid-stream failure', () => {
         requestId: 'req-mid-1',
         locale: 'ro',
         sessionId: '11111111-1111-4111-8111-111111111111',
+        stateVersion: 0,
+        message: 'hi',
       }),
     })
 

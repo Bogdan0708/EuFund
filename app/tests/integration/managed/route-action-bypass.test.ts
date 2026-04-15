@@ -145,6 +145,7 @@ describe('POST /api/ai/agent — structured action bypass', () => {
         requestId: 'req-2',
         locale: 'ro',
         sessionId: '11111111-1111-4111-8111-111111111111',
+        stateVersion: 0,
         message: 'Salut, caut apeluri.',
       }),
     })

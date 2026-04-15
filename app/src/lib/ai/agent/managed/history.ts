@@ -85,29 +85,43 @@ export async function appendManagedMessage(
   },
   meta: ManagedMessageMeta,
 ): Promise<number> {
-  const [last] = await db.select()
-    .from(agentMessages)
-    .where(eq(agentMessages.sessionId, sessionId))
-    .orderBy(desc(agentMessages.sequenceNumber))
-    .limit(1)
+  // Storage-layer safety net for sequence-number races. Two concurrent
+  // appends can compute the same sequenceNumber before either insert
+  // commits; the UNIQUE (session_id, sequence_number) constraint then
+  // raises PG error 23505 on the loser. Retry once recomputes the
+  // sequence and tries again. Real per-turn dedupe lives in the
+  // agent_turns claim (see route — Task 7); this is a backstop.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const [last] = await db.select()
+      .from(agentMessages)
+      .where(eq(agentMessages.sessionId, sessionId))
+      .orderBy(desc(agentMessages.sequenceNumber))
+      .limit(1)
 
-  const sequenceNumber = last ? (last.sequenceNumber as number) + 1 : 0
+    const sequenceNumber = last ? (last.sequenceNumber as number) + 1 : 0
 
-  // content can be a string, an array of content blocks, or an object.
-  // The jsonb column accepts any JSON shape; the `as never` cast
-  // satisfies Drizzle's typed insert signature.
-  await db.insert(agentMessages).values({
-    sessionId,
-    role: message.role,
-    messageType: message.messageType,
-    content: message.content as never,
-    toolName: message.toolName ?? null,
-    toolCallId: message.toolCallId ?? null,
-    sequenceNumber,
-    runtimeMode: meta.runtimeMode,
-    provider: meta.provider ?? null,
-    model: meta.model ?? null,
-  })
-
-  return sequenceNumber
+    try {
+      // content can be a string, an array of content blocks, or an object.
+      // The jsonb column accepts any JSON shape; the `as never` cast
+      // satisfies Drizzle's typed insert signature.
+      await db.insert(agentMessages).values({
+        sessionId,
+        role: message.role,
+        messageType: message.messageType,
+        content: message.content as never,
+        toolName: message.toolName ?? null,
+        toolCallId: message.toolCallId ?? null,
+        sequenceNumber,
+        runtimeMode: meta.runtimeMode,
+        provider: meta.provider ?? null,
+        model: meta.model ?? null,
+      })
+      return sequenceNumber
+    } catch (err) {
+      const pgCode = (err as { code?: string } | null)?.code
+      if (pgCode === '23505' && attempt === 0) continue
+      throw err
+    }
+  }
+  throw new Error('appendManagedMessage: sequence number conflict after retry')
 }
