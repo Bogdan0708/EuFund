@@ -148,7 +148,7 @@ jobs:
         env:
           POSTGRES_DB: fondeu
           POSTGRES_USER: fondeu
-          POSTGRES_PASSWORD: fondeu_dev_2026
+          POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
         ports:
           - 5432:5432
         options: >-
@@ -193,12 +193,13 @@ jobs:
 
       - name: Push DB schema
         env:
-          DATABASE_URL: postgresql://fondeu:fondeu_dev_2026@localhost:5432/fondeu
+          DATABASE_URL: postgresql://fondeu:${{ secrets.CI_POSTGRES_PASSWORD }}@localhost:5432/fondeu
         run: npx drizzle-kit push
 
       - name: Seed admin user
         env:
-          DATABASE_URL: postgresql://fondeu:fondeu_dev_2026@localhost:5432/fondeu
+          DATABASE_URL: postgresql://fondeu:${{ secrets.CI_POSTGRES_PASSWORD }}@localhost:5432/fondeu
+          ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}
         run: npx tsx scripts/seed-admin.ts
 
       - name: Flush Redis rate limits
@@ -208,12 +209,13 @@ jobs:
         env:
           CI: true
           NODE_ENV: development
-          DATABASE_URL: postgresql://fondeu:fondeu_dev_2026@localhost:5432/fondeu
+          DATABASE_URL: postgresql://fondeu:${{ secrets.CI_POSTGRES_PASSWORD }}@localhost:5432/fondeu
           REDIS_URL: redis://localhost:6379
           NEXTAUTH_URL: http://localhost:3000
           NEXTAUTH_SECRET: ci-test-secret-not-for-production
           VECTOR_PROVIDER: memory
           PLAYWRIGHT_BASE_URL: http://localhost:3000
+          PLAYWRIGHT_ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}
         run: |
           PORT=3000 npm run dev &
           for i in $(seq 1 60); do
