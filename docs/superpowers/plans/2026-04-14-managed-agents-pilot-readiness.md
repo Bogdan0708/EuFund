@@ -2059,3 +2059,25 @@ Coverage check vs spec sections:
 - **§8 Implementation ordering** → The 12 tasks here map 1:1 to the spec's commit sequence.
 
 No placeholders, no "TBD", no "similar to Task N", no references to undefined types. Field naming is consistent (`stateVersion`, `requestId`, `turnId`, `agentTurns`). DDL in Task 1 matches TypeScript schema mirror in Task 1 Step 4. Test file paths match the create list. Commit messages are scoped and descriptive.
+
+---
+
+## Execution log
+
+| Task | Status | Commit(s) | Notes |
+|---|---|---|---|
+| Task 0 — Worktree + baseline | ✅ Complete | `c4cd8a6` docs(artifacts): pilot-readiness baseline snapshot | Baseline captured from branch HEAD before Task 1. Tests: 166 files passed, 1002 tests passed, 15 skipped, 2 todo, **0 failures**. Typecheck: zero errors. Build: green (OpenTelemetry/Sentry warnings only, also on master). Files in `docs/superpowers/artifacts/managed-pilot-baseline/`. |
+| Task 1 — Migrations M1 + M2 | ✅ Complete | `7c1b3db` feat(managed): M1+M2 — agent_turns claim table + sequence uniqueness | Two migrations + journal entries (idx 26, 27) + schema.ts mirror. Spec review ✅, code quality review ✅ (one cosmetic nit on near-identical `when` timestamps). Node_modules symlinked from main worktree for test/typecheck/build. |
+| Task 2 — Finding 4 flag cache-bypass | ⏳ Next | — | Start here in fresh session. |
+| Task 3–11 | ⏸ Pending | — | Strict subagent-driven pattern. |
+| Task 12 — Verification + PR | ⏸ Pending | — | — |
+
+**Handoff prompt for next session:**
+
+> Continue managed-pilot-readiness execution from Task 2 on branch `spec/managed-pilot-readiness`. Task 0 and Task 1 are complete and pushed (commits `c4cd8a6`, `7c1b3db`). Follow the approved plan at `docs/superpowers/plans/2026-04-14-managed-agents-pilot-readiness.md`. Keep the same discipline: implementer subagent → spec review → code review → commit, one task at a time. Worktree: `/home/godja/Dev/EU-Funds-spec-pilot`. `app/node_modules` is a symlink to the main worktree's install — do not remove it.
+
+**Known open items for tomorrow:**
+
+- None from plan audits — all 4 review rounds landed before execution started.
+- Baseline `failing-tests.txt` is empty (zero-failure baseline). Task 12 should diff current against that — any new failure blocks.
+- Observation: MEMORY.md mentioned pre-existing failures (timeline-assignee, trial-notifications) that did NOT actually fail when the baseline was captured. Either those flake or they were already fixed elsewhere. Not a concern for Task 12 as long as the baseline stays the ground truth.
