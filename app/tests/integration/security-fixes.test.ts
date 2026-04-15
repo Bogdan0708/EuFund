@@ -59,26 +59,26 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
 
   describe('Rate Limiting', () => {
     
-    it('should return 429 when rate limit is exceeded', async () => {
-      // Mock the rate limit checker to return 'denied'
+    it('should return 429 when hourly rate limit is exceeded', async () => {
       vi.doMock('@/lib/redis/client', () => ({
         isRedisAvailable: vi.fn().mockResolvedValue(true),
         checkRateLimit: vi.fn().mockResolvedValue({
           allowed: false,
           remaining: 0,
-          resetTime: new Date(Date.now() + 3600 * 1000),
+          resetTime: Date.now() + 3600 * 1000,
         }),
+        getRedis: vi.fn().mockReturnValue({ incr: vi.fn(), expire: vi.fn() }),
       }));
-      // Mock auth to return a 'free' tier user
       vi.doMock('@/lib/auth', () => ({
         auth: () => Promise.resolve({ user: { id: 'free-user-1', email: 'free@test.com' } }),
       }));
-      // Mock db/cache to return 'free' tier
-      vi.doMock('@/lib/db', () => ({ db: {}, schema: {} }));
+      vi.doMock('@/lib/db', () => ({ db: {} }));
+      vi.doMock('@/lib/db/schema', () => ({ users: {} }));
       vi.doMock('lru-cache', () => ({
         LRUCache: class {
           get = () => 'free';
           set = vi.fn();
+          delete = vi.fn();
         }
       }));
 
@@ -88,30 +88,36 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
       const request = createNextRequest('/api/ai/predict');
       const response = await withAIAuth(request, handler);
 
-      // Rate limiting disabled in dev mode — handler is called regardless of mock
-      expect(response.status).toBe(200);
-      expect(handler).toHaveBeenCalledOnce();
+      expect(response.status).toBe(429);
+      expect(handler).not.toHaveBeenCalled();
+      const body = await response.json();
+      expect(body.code).toBe('RATE_LIMIT_EXCEEDED');
+      expect(response.headers.get('Retry-After')).toBeTruthy();
     });
 
-    it('should set X-RateLimit headers on success', async () => {
-      const resetTime = Date.now() + 60_000;
-      // Mock rate limit to return 'allowed'
+    it('passes the request through to the handler on success', async () => {
       vi.doMock('@/lib/redis/client', () => ({
         isRedisAvailable: vi.fn().mockResolvedValue(true),
         checkRateLimit: vi.fn().mockResolvedValue({
           allowed: true,
           remaining: 9,
-          resetTime,
+          resetTime: Date.now() + 60_000,
+        }),
+        getRedis: vi.fn().mockReturnValue({
+          incr: vi.fn().mockResolvedValue(1),
+          expire: vi.fn().mockResolvedValue(1),
         }),
       }));
-       vi.doMock('@/lib/auth', () => ({
+      vi.doMock('@/lib/auth', () => ({
         auth: () => Promise.resolve({ user: { id: 'pro-user-1', email: 'pro@test.com' } }),
       }));
-      vi.doMock('@/lib/db', () => ({ db: {}, schema: {} }));
-       vi.doMock('lru-cache', () => ({
+      vi.doMock('@/lib/db', () => ({ db: {} }));
+      vi.doMock('@/lib/db/schema', () => ({ users: {} }));
+      vi.doMock('lru-cache', () => ({
         LRUCache: class {
           get = () => 'pro';
           set = vi.fn();
+          delete = vi.fn();
         }
       }));
 
@@ -121,11 +127,10 @@ describe('Enhanced Security Integration Tests (Fixes)', () => {
       const request = createNextRequest('/api/ai/generate');
       const response = await withAIAuth(request, handler);
 
-      // Rate limiting disabled in dev mode — no rate limit headers set
       expect(response.status).toBe(200);
-      expect(response.headers.get('X-RateLimit-Limit')).toBeNull();
-      expect(response.headers.get('X-RateLimit-Remaining')).toBeNull();
-      expect(response.headers.get('X-RateLimit-Reset')).toBeNull();
+      expect(handler).toHaveBeenCalledOnce();
+      // X-RateLimit-* response headers are not part of the current success contract;
+      // add them in a dedicated follow-up if clients request them.
     });
 
     it('should reject missing Content-Type in withAIAuth for POST requests', async () => {
