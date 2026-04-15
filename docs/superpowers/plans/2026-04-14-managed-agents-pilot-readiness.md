@@ -23,7 +23,7 @@
 | `app/tests/unit/feature-flags-bypass-cache.test.ts` | Finding 4 unit tests — `bypassCache` skips LRU, fail-closed on DB error. |
 | `app/tests/unit/managed/breaker-windowed.test.ts` | Finding 5 unit tests — rolling-window semantics. |
 | `app/tests/unit/managed/history-summary.test.ts` | Finding 1 unit tests — `system_summary` + `messageSummary` loading. |
-| `app/tests/integration/managed/stateversion-cas.test.ts` | Finding 2 integration — mandatory stateVersion, stale → 409. |
+| `app/tests/integration/managed/stateversion-precondition.test.ts` | Finding 2 integration — mandatory stateVersion, stale → 409. |
 | `app/tests/integration/managed/retry-idempotency.test.ts` | Finding 3 integration — turn-claim dedupe, deferred persistence. |
 | `app/scripts/smoke/managed-pilot/01-happy-path.ts` | Smoke 1. |
 | `app/scripts/smoke/managed-pilot/02-kill-switch.ts` | Smoke 2 (two-part). |
@@ -31,8 +31,10 @@
 | `app/scripts/smoke/managed-pilot/04-concurrency.ts` | Smoke 4. |
 | `app/scripts/smoke/managed-pilot/05-retry-idempotency.ts` | Smoke 5. |
 | `app/scripts/smoke/managed-pilot/06-compaction-continuity.ts` | Smoke 6. |
+| `app/scripts/smoke/managed-pilot/lib.ts` | Shared env/uuid/fetch helpers for smoke scripts. |
 | `app/scripts/smoke/managed-pilot/README.md` | How to run the suite. |
 | `docs/superpowers/runbooks/managed-agents-pilot-rollback.md` | Three-path rollback. |
+| `docs/superpowers/runbooks/managed-pilot-observability.md` | Daily reconciliation queries + dashboard outline. |
 
 ### Modify
 
@@ -45,11 +47,13 @@
 | `app/src/lib/ai/agent/managed/history.ts` | Add summary loading; extend `appendManagedMessage` to accept/write `turn_id`; add `insertTurnAndMessages` transaction helper. |
 | `app/src/lib/ai/agent/managed/prompt.ts` | Render bounded summary block when present. |
 | `app/src/lib/ai/agent/managed/runtime.ts` | Defer user-message persistence; integrate `requestId`; write turn-claim + first durable output in one transaction. |
-| `app/src/app/api/ai/agent/route.ts` | Service-local `MANAGED_RUNTIME_ENABLED` gate; mandatory `stateVersion` + `requestId` on managed path; bilingual 400/409 responses; ownership on conflict path. |
-| `app/src/lib/ai/agent/types.ts` | Add `requestId` to managed request DTO; no field rename (`stateVersion` stays). |
-| `app/src/hooks/useAgent.ts` | Emit a fresh `requestId` per POST; send `stateVersion` on every managed request (already tracked — change is requiredness discipline). |
+| `app/src/app/api/ai/agent/route.ts` | Service-local `MANAGED_RUNTIME_ENABLED` gate; mandatory `stateVersion` on managed path; pre-stream turn-claim insert (real atomic boundary); bilingual 400/409 responses. |
 | `docs/superpowers/legacy-retention-register.md` | Add "Agent-surface RLS" entry. |
-| `CLAUDE.md` | Pilot operational note: flag default-off, service-local gate on `fondeu-pilot` only. |
+
+**NOT modified** (already in shape per code inspection 2026-04-14):
+- `app/src/lib/ai/agent/types.ts` — `AgentRequest.requestId` is already a required field (line 286). No DTO change needed.
+- `app/src/hooks/useAgent.ts` — already generates a fresh `requestId` per POST (line 170). No client change needed.
+- `CLAUDE.md` — deliberately omitted to avoid scope creep. Pilot operational context lives in the runbook only.
 
 ---
 
@@ -170,7 +174,23 @@ Append two entries to the `entries` array. Idx is the next sequential integer; `
     }
 ```
 
-Verify idx values: `jq '.entries | last' app/drizzle/meta/_journal.json` after edit.
+Verify idx values and filename consistency:
+
+```bash
+jq '.entries[-2:]' app/drizzle/meta/_journal.json
+# Assert: last two tags match the two SQL filename stems exactly.
+ls app/drizzle/*.sql | tail -2
+# Cross-check: tag field (no .sql suffix) matches filename stem.
+```
+
+Fail-fast script inline:
+```bash
+cd app
+last_two_tags=$(jq -r '.entries[-2:] | .[].tag' drizzle/meta/_journal.json | sort)
+last_two_files=$(ls drizzle/*.sql | xargs -n1 basename | sed 's/\.sql$//' | tail -2 | sort)
+diff <(echo "$last_two_tags") <(echo "$last_two_files") || { echo "JOURNAL/SQL MISMATCH"; exit 1; }
+```
+Expected: diff shows nothing. If mismatch, fix the journal entries before continuing.
 
 - [ ] **Step 4: Update `schema.ts` — add `agentTurns` table + `turnId` column**
 
@@ -405,7 +425,7 @@ describe('managed breaker — rolling window', () => {
     expect(managedCircuitBreaker.isOpen()).toBe(false)
   })
 
-  it('stays open during 30s cooldown then allows probe', async () => {
+  it('stays open during 30s cooldown then allows exactly one probe', async () => {
     const { managedCircuitBreaker, recordManagedFailure, _resetForTest } = await import('@/lib/ai/agent/managed/circuit-breaker')
     _resetForTest()
     recordManagedFailure('anthropic_unavailable')
@@ -415,6 +435,36 @@ describe('managed breaker — rolling window', () => {
     vi.advanceTimersByTime(20_000)
     expect(managedCircuitBreaker.isOpen()).toBe(true)
     vi.advanceTimersByTime(15_000)
+    // First caller after cooldown claims the probe slot — gets through.
+    expect(managedCircuitBreaker.isOpen()).toBe(false)
+    // Second concurrent caller sees breaker as still open until the probe resolves.
+    expect(managedCircuitBreaker.isOpen()).toBe(true)
+  })
+
+  it('probe failure re-opens immediately without waiting for 3-failure window', async () => {
+    const { managedCircuitBreaker, recordManagedFailure, _resetForTest } = await import('@/lib/ai/agent/managed/circuit-breaker')
+    _resetForTest()
+    recordManagedFailure('anthropic_unavailable')
+    recordManagedFailure('anthropic_unavailable')
+    recordManagedFailure('anthropic_unavailable')
+    vi.advanceTimersByTime(35_000)
+    expect(managedCircuitBreaker.isOpen()).toBe(false)  // probe claimed
+    recordManagedFailure('anthropic_unavailable')       // probe fails
+    expect(managedCircuitBreaker.isOpen()).toBe(true)   // re-opened
+  })
+
+  it('probe success closes the breaker', async () => {
+    const { managedCircuitBreaker, recordManagedFailure, recordManagedSuccess, _resetForTest } = await import('@/lib/ai/agent/managed/circuit-breaker')
+    _resetForTest()
+    recordManagedFailure('anthropic_unavailable')
+    recordManagedFailure('anthropic_unavailable')
+    recordManagedFailure('anthropic_unavailable')
+    vi.advanceTimersByTime(35_000)
+    expect(managedCircuitBreaker.isOpen()).toBe(false)
+    recordManagedSuccess()
+    expect(managedCircuitBreaker.isOpen()).toBe(false)
+    // After close, normal semantics resume.
+    recordManagedFailure('anthropic_unavailable')
     expect(managedCircuitBreaker.isOpen()).toBe(false)
   })
 })
@@ -432,6 +482,8 @@ Expected: `_resetForTest` not exported; the "spaced failures" test fails because
 In `app/src/lib/ai/agent/managed/circuit-breaker.ts`, replace the module-level `consecutiveFailures` / `state` / `openedAt` with a rolling-window list:
 
 ```ts
+type BreakerState = 'closed' | 'open' | 'half_open'
+
 const FAILURE_THRESHOLD = 3
 const WINDOW_MS = 5 * 60_000
 const COOLDOWN_MS = 30_000
@@ -439,6 +491,7 @@ const COOLDOWN_MS = 30_000
 let failureTimestamps: number[] = []
 let state: BreakerState = 'closed'
 let openedAt = 0
+let probeInFlight = false
 
 function pruneWindow(now: number): void {
   const cutoff = now - WINDOW_MS
@@ -446,29 +499,71 @@ function pruneWindow(now: number): void {
 }
 
 export const managedCircuitBreaker = {
+  /**
+   * Returns true if the request should be short-circuited to V3.
+   *
+   * Transitions:
+   *  - closed: allow all requests.
+   *  - open: reject all until cooldown elapses, then transition to half_open.
+   *  - half_open: allow exactly ONE probe request. All concurrent callers
+   *    after the probe is claimed continue to see open=true until the
+   *    probe reports via recordManagedSuccess/recordManagedFailure.
+   */
   isOpen(): boolean {
     const now = Date.now()
-    if (state === 'open') {
-      if (now - openedAt >= COOLDOWN_MS) {
-        state = 'closed'
-        failureTimestamps = []
-        return false
-      }
-      return true
+
+    if (state === 'open' && now - openedAt >= COOLDOWN_MS) {
+      state = 'half_open'
+      probeInFlight = false
     }
-    pruneWindow(now)
+
+    if (state === 'open') return true
+
+    if (state === 'half_open') {
+      if (probeInFlight) return true     // probe already out; hold others
+      probeInFlight = true                // claim the single probe slot
+      return false
+    }
+
     return false
   },
+}
+
+export function recordManagedSuccess(): void {
+  // A successful turn (or probe) closes the breaker.
+  if (state === 'half_open' || state === 'open') {
+    state = 'closed'
+    failureTimestamps = []
+    openedAt = 0
+    probeInFlight = false
+    return
+  }
+  // Steady-state success prunes expired failures but does not zero them;
+  // a single success should not let a long-running bad run cross the
+  // window without penalty.
+  pruneWindow(Date.now())
 }
 
 export function recordManagedFailure(reason: DegradedReason): void {
   void reason
   const now = Date.now()
+
+  // Probe failure during half_open re-opens immediately, regardless of
+  // the rolling-window count — the probe's whole purpose is a single-shot
+  // trust check.
+  if (state === 'half_open') {
+    state = 'open'
+    openedAt = now
+    probeInFlight = false
+    return
+  }
+
   pruneWindow(now)
   failureTimestamps.push(now)
   if (failureTimestamps.length >= FAILURE_THRESHOLD) {
     state = 'open'
     openedAt = now
+    probeInFlight = false
   }
 }
 
@@ -477,10 +572,11 @@ export function _resetForTest(): void {
   failureTimestamps = []
   state = 'closed'
   openedAt = 0
+  probeInFlight = false
 }
 ```
 
-Keep `DegradedReason` export and `BreakerState` type unchanged.
+`BreakerState` now has three values. `DegradedReason` export unchanged. Call sites that invoke `recordManagedFailure` on error stay as-is; add `recordManagedSuccess` calls at turn completion (runtime.ts already has a success path — see Task 7 Step 6).
 
 - [ ] **Step 4: Run tests — expect PASS**
 
@@ -769,16 +865,18 @@ set the env in beforeEach to exercise the flag path."
 
 ---
 
-## Task 6: Finding 2 — mandatory stateVersion CAS + 409
+## Task 6: Finding 2 — mandatory stateVersion precondition + 409
 
 **Files:**
 - Modify: `app/src/app/api/ai/agent/route.ts`
 - Modify: `app/src/lib/ai/agent/managed/history.ts` (sequence retry-once)
-- Create: `app/tests/integration/managed/stateversion-cas.test.ts`
+- Create: `app/tests/integration/managed/stateversion-precondition.test.ts`
+
+**Note on terminology:** The route change here is a **mandatory stateVersion precondition check** (read-compare-reject), not an atomic compare-and-swap mutation. The real atomic concurrency boundary for managed turns is the pre-stream turn-claim insert into `agent_turns` in Task 7 — the `UNIQUE (session_id, request_id)` constraint either succeeds atomically or raises a unique-violation. Precondition + claim together give the guarantee; neither alone does.
 
 - [ ] **Step 1: Write failing tests**
 
-Create `app/tests/integration/managed/stateversion-cas.test.ts`:
+Create `app/tests/integration/managed/stateversion-precondition.test.ts`:
 
 ```ts
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
@@ -830,7 +928,7 @@ Follow the existing `route-*.test.ts` mock scaffolding: `vi.doMock('@/lib/middle
 - [ ] **Step 2: Run — expect FAIL**
 
 ```bash
-cd app && npx vitest run tests/integration/managed/stateversion-cas.test.ts 2>&1 | tail -10
+cd app && npx vitest run tests/integration/managed/stateversion-precondition.test.ts 2>&1 | tail -10
 ```
 
 - [ ] **Step 3: Tighten the route contract**
@@ -925,7 +1023,7 @@ Update `appendManagedMessage` to call this helper.
 - [ ] **Step 5: Run tests — expect PASS**
 
 ```bash
-cd app && npx vitest run tests/integration/managed/stateversion-cas.test.ts 2>&1 | tail -10
+cd app && npx vitest run tests/integration/managed/stateversion-precondition.test.ts 2>&1 | tail -10
 cd app && npx vitest run tests/unit/managed/history.test.ts 2>&1 | tail -5
 ```
 
@@ -934,8 +1032,8 @@ cd app && npx vitest run tests/unit/managed/history.test.ts 2>&1 | tail -5
 ```bash
 git add app/src/app/api/ai/agent/route.ts \
         app/src/lib/ai/agent/managed/history.ts \
-        app/tests/integration/managed/stateversion-cas.test.ts
-git -c commit.gpgsign=false commit -m "feat(managed): mandatory stateVersion CAS + bilingual 409
+        app/tests/integration/managed/stateversion-precondition.test.ts
+git -c commit.gpgsign=false commit -m "feat(managed): mandatory stateVersion precondition + bilingual 409
 
 Finding 2. Managed POST now requires stateVersion. Missing → 400
 missing_state_version. Stale → 409 stale_state_version with
@@ -943,20 +1041,44 @@ currentVersion echoed. V3 path untouched.
 
 appendManagedMessage retries once on PG 23505 (unique session,
 sequence_number) as storage-layer safety net — not the primary
-concurrency model. Second conflict fails loud."
+concurrency model. Second conflict fails loud.
+
+The real atomic concurrency boundary for managed turns is the
+pre-stream agent_turns claim (Task 7, UNIQUE(session_id, request_id)).
+This change is the staleness-detection half; claim is the dedupe half."
 ```
 
 ---
 
-## Task 7: Finding 3 — deferred persistence + turn claim + requestId dedupe
+## Task 7: Finding 3 — pre-stream turn-claim + deferred message persistence
 
 **Files:**
-- Modify: `app/src/lib/ai/agent/types.ts` (add `requestId` to managed request DTO)
-- Modify: `app/src/hooks/useAgent.ts` (emit fresh `requestId` per POST)
-- Modify: `app/src/app/api/ai/agent/route.ts` (require `requestId`, ownership on conflict)
-- Modify: `app/src/lib/ai/agent/managed/history.ts` (add `claimTurnAndPersistFirstOutput` helper)
-- Modify: `app/src/lib/ai/agent/managed/runtime.ts` (defer persistence)
+- Modify: `app/src/app/api/ai/agent/route.ts` (pre-stream turn-claim; deterministic 409 before Response construction)
+- Modify: `app/src/lib/ai/agent/managed/history.ts` (add `claimTurn`, `deleteEmptyTurn`, `persistFirstDurableOutput`, `markTurnCompleted`)
+- Modify: `app/src/lib/ai/agent/managed/runtime.ts` (defer message persistence; accept `turnId` param)
 - Create: `app/tests/integration/managed/retry-idempotency.test.ts`
+
+**Architecture note — pre-stream claim:**
+
+The spec's locked rule is "turn becomes durable when first durable assistant or tool-use event arrives." That is about message persistence. The turn-claim row in `agent_turns` is a separate concern — it is the atomic dedupe boundary, and it must happen **before** the SSE Response is constructed so that `conflict_request_id` can be returned as a clean HTTP 409 rather than an SSE error event.
+
+Flow:
+
+1. **Route (pre-stream)** validates `stateVersion` (Task 6) and `requestId` (already required in DTO).
+2. **Route (pre-stream)** attempts to claim the turn:
+   - `INSERT INTO agent_turns (session_id, request_id, runtime_mode) RETURNING id`.
+   - On PG 23505 (unique violation): check whether the existing `agent_turns` row has any child `agent_messages`.
+     - Has children → post-output retry → return HTTP 409 `conflict_request_id` immediately (pre-stream).
+     - No children → stale pre-output-failed claim → `DELETE` it, retry the INSERT once, continue.
+3. **Route** constructs the SSE Response and passes `turnId` into `runManagedWithSSE`.
+4. **Runtime (inside stream)** holds the user message in memory. First durable assistant/tool-use event → transactional `persistFirstDurableOutput(turnId, userMessage, firstOutput)` inserts both rows with the existing `turnId`. Subsequent outputs append with `turnId`.
+5. **Runtime (success)** calls `markTurnCompleted(turnId)` and emits an SSE completion event.
+6. **Runtime (pre-output failure)** — stream errors before any message persists — calls `deleteEmptyTurn(turnId)` (no child messages, safe to remove) and emits an SSE error event. A retry with the same `requestId` now finds no row → fresh turn.
+7. **Runtime (post-output failure)** — stream errors after some messages persisted — leaves the row, emits an SSE error event. A retry with the same `requestId` hits the claim conflict at step 2 and receives HTTP 409.
+
+This resolves the pre-stream vs. mid-stream boundary cleanly. HTTP 409 is only ever returned before Response construction; once the stream starts, all failures are SSE events.
+
+**Note: `AgentRequest.requestId` is already required** (`app/src/lib/ai/agent/types.ts:286`) and `useAgent.ts:170` already generates one per POST. No DTO or client change in this task. The change is server-side only.
 
 - [ ] **Step 1: Write failing integration tests**
 
@@ -979,9 +1101,11 @@ describe('managed retry idempotency', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 409 conflict_request_id on same-requestId retry after turn is durable', async () => {
-    // Set up: one agent_turns row already exists for (sess-1, req-abc).
-    // POST with same requestId should return deterministic 409.
+  it('returns HTTP 409 conflict_request_id pre-stream when existing turn has child messages', async () => {
+    // Set up: one agent_turns row for (sess-1, req-abc) WITH at least one
+    // child agent_messages row. Mock agentTurns INSERT to raise PG 23505.
+    // Mock the follow-up SELECT to return {id: turn-abc} and the child
+    // count query to return {count: 1}.
     const { POST } = await import('@/app/api/ai/agent/route')
     const body = { sessionId: 'sess-1', message: 'hi', stateVersion: 1, requestId: 'req-abc' }
     const res = await POST(new Request('http://localhost/api/ai/agent', {
@@ -990,13 +1114,29 @@ describe('managed retry idempotency', () => {
     expect(res.status).toBe(409)
     const json = await res.json()
     expect(json.error?.code).toBe('conflict_request_id')
+    // Response must be clean JSON — never SSE.
+    expect(res.headers.get('content-type')).toMatch(/application\/json/)
   })
 
-  it('pre-output Anthropic failure leaves no agent_turns row and no user message', async () => {
-    // Mock anthropic stream to throw before first output block.
-    // Verify: no agent_turns row for the requestId, no agent_messages row with role=user.
-    // Client retry with same requestId creates a fresh turn.
-    // (Assert via DB mock call recording.)
+  it('reclaims a stale empty turn (pre-output-failed prior attempt) and proceeds', async () => {
+    // Set up: agentTurns INSERT raises 23505. Follow-up SELECT returns
+    // {id: turn-stale}. Child count returns 0 → claim helper deletes and
+    // retries the INSERT, which succeeds. POST returns SSE stream (200).
+    const { POST } = await import('@/app/api/ai/agent/route')
+    const body = { sessionId: 'sess-1', message: 'hi', stateVersion: 1, requestId: 'req-abc' }
+    const res = await POST(new Request('http://localhost/api/ai/agent', {
+      method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' },
+    }) as any)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toMatch(/text\/event-stream/)
+  })
+
+  it('pre-output Anthropic failure cleans up the empty turn claim', async () => {
+    // Mock anthropic stream to throw before emitting any content block.
+    // After the stream ends, verify deleteEmptyTurn was invoked with the
+    // claimed turnId (DB mock call recording). A subsequent retry with
+    // the same requestId must succeed (no conflict) — verify by simulating
+    // a second POST and asserting 200.
   })
 })
 ```
@@ -1007,46 +1147,9 @@ describe('managed retry idempotency', () => {
 cd app && npx vitest run tests/integration/managed/retry-idempotency.test.ts 2>&1 | tail -10
 ```
 
-- [ ] **Step 3: Extend request DTO + client to carry `requestId`**
+- [ ] **Step 3: Validate `requestId` presence on managed route (no DTO change)**
 
-In `app/src/lib/ai/agent/types.ts`, add `requestId` to the managed-request shape (e.g., `AgentRequestBody` interface):
-
-```ts
-export interface AgentRequestBody {
-  sessionId?: string
-  locale: 'ro' | 'en'
-  message?: string
-  action?: { /* ... unchanged ... */ }
-  stateVersion?: number
-  /**
-   * Client-supplied UUID per POST. Required on the managed path for
-   * retry idempotency. Backward compatible on V3 path where it's ignored.
-   */
-  requestId?: string
-}
-```
-
-In `app/src/hooks/useAgent.ts`, at the POST call site (around line 161), generate a fresh UUID per submission and include it:
-
-```ts
-const requestId = crypto.randomUUID()
-const res = await fetch('/api/ai/agent', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    sessionId: current.sessionId,
-    locale,
-    message,
-    action,
-    stateVersion: current.stateVersion,
-    requestId,
-  }),
-})
-```
-
-- [ ] **Step 4: Require `requestId` on managed route**
-
-In `app/src/app/api/ai/agent/route.ts`, **on the managed path only**, after the stateVersion checks:
+`AgentRequest.requestId` is already declared as required (`app/src/lib/ai/agent/types.ts:286`), but a misbehaving client could still POST with an empty string. On the managed path only, after the stateVersion checks, add a defensive check:
 
 ```ts
 if (typeof body.requestId !== 'string' || body.requestId.length === 0) {
@@ -1063,30 +1166,115 @@ if (typeof body.requestId !== 'string' || body.requestId.length === 0) {
 }
 ```
 
-- [ ] **Step 5: Implement turn-claim transaction**
+- [ ] **Step 4: Implement pre-stream claim + helpers**
 
 In `app/src/lib/ai/agent/managed/history.ts`, add:
 
 ```ts
 import { agentTurns, agentSessions } from '@/lib/db/schema'
+import { count as sqlCount } from 'drizzle-orm'
 
-export class RequestIdConflictError extends Error {
-  constructor() { super('request_id conflict'); this.name = 'RequestIdConflictError' }
-}
+export type ClaimResult =
+  | { kind: 'claimed'; turnId: string }
+  | { kind: 'conflict' }  // post-output retry — route returns HTTP 409
 
 /**
- * Atomic turn-claim + first-output persistence. Called at the moment
- * the first durable assistant or tool-use event arrives from the
- * Anthropic stream. If UNIQUE(session_id, request_id) fires, throws
- * RequestIdConflictError — caller (runtime.ts) translates that to a
- * 409 conflict_request_id at the route layer.
+ * Pre-stream turn-claim. Inserts a new agent_turns row atomically.
  *
- * Ownership is checked inside the transaction against agent_sessions.
+ * On PG 23505 (UNIQUE violation):
+ *   - If the existing row has child messages → post-output retry → 'conflict'.
+ *   - If no child messages → stale pre-output-failed claim → delete + retry once.
+ *
+ * Ownership is checked inside the transaction. Caller (route) MUST have
+ * already verified session ownership when loading the session row; this
+ * re-verification is defense in depth.
  */
-export async function claimTurnAndPersistFirstOutput(input: {
+export async function claimTurn(input: {
   sessionId: string
   userId: string
   requestId: string
+  runtimeMode: 'v3' | 'managed'
+}): Promise<ClaimResult> {
+  // Inner insert helper — also verifies ownership at the same time
+  async function tryInsert(): Promise<{ kind: 'claimed'; turnId: string } | { kind: 'unique_violation' }> {
+    try {
+      return await db.transaction(async (tx) => {
+        const [sess] = await tx.select({ userId: agentSessions.userId })
+          .from(agentSessions)
+          .where(eq(agentSessions.id, input.sessionId))
+          .limit(1)
+        if (!sess || sess.userId !== input.userId) {
+          throw new Error('session ownership denied')
+        }
+        const [row] = await tx.insert(agentTurns).values({
+          sessionId: input.sessionId,
+          requestId: input.requestId,
+          runtimeMode: input.runtimeMode,
+        }).returning({ id: agentTurns.id })
+        return { kind: 'claimed', turnId: row.id }
+      })
+    } catch (err: any) {
+      if (err?.code === '23505') return { kind: 'unique_violation' }
+      throw err
+    }
+  }
+
+  const first = await tryInsert()
+  if (first.kind === 'claimed') return first
+
+  // Unique violation: inspect the existing row.
+  const [existing] = await db.select({ id: agentTurns.id })
+    .from(agentTurns)
+    .where(and(
+      eq(agentTurns.sessionId, input.sessionId),
+      eq(agentTurns.requestId, input.requestId),
+    ))
+    .limit(1)
+  if (!existing) {
+    // Race: the conflicting row was deleted between our insert and this select.
+    // Retry once.
+    const second = await tryInsert()
+    if (second.kind === 'claimed') return second
+    return { kind: 'conflict' }
+  }
+
+  const [children] = await db.select({ count: sqlCount() })
+    .from(agentMessages)
+    .where(eq(agentMessages.turnId, existing.id))
+  const hasChildren = (children?.count ?? 0) > 0
+
+  if (hasChildren) return { kind: 'conflict' }
+
+  // Stale pre-output-failed claim. Delete + retry once.
+  await db.delete(agentTurns).where(eq(agentTurns.id, existing.id))
+  const retry = await tryInsert()
+  if (retry.kind === 'claimed') return retry
+  return { kind: 'conflict' }
+}
+
+/**
+ * Delete an empty turn-claim row after a pre-output stream failure.
+ * No-op if the row has any child messages (safety net — should never
+ * happen because callers only invoke this before any message persists).
+ */
+export async function deleteEmptyTurn(turnId: string): Promise<void> {
+  const [children] = await db.select({ count: sqlCount() })
+    .from(agentMessages)
+    .where(eq(agentMessages.turnId, turnId))
+  if ((children?.count ?? 0) > 0) return  // safety: never delete a turn with history
+  await db.delete(agentTurns).where(eq(agentTurns.id, turnId))
+}
+
+/**
+ * Single transaction: user message + first durable assistant/tool output,
+ * both tagged with turnId. Sequence allocation uses the same retry-once
+ * logic as appendManagedMessage (Task 6) to survive PG 23505 on the
+ * unique (session_id, sequence_number) index. If sequence retry fails,
+ * the whole transaction rolls back — no orphan persistence.
+ */
+export async function persistFirstDurableOutput(input: {
+  turnId: string
+  sessionId: string
   userMessage: string
   firstOutput: {
     role: 'assistant'
@@ -1096,66 +1284,48 @@ export async function claimTurnAndPersistFirstOutput(input: {
     toolCallId?: string
   }
   meta: ManagedMessageMeta
-}): Promise<{ turnId: string }> {
-  return await db.transaction(async (tx) => {
-    // Ownership check
-    const [sess] = await tx.select({ userId: agentSessions.userId })
-      .from(agentSessions)
-      .where(eq(agentSessions.id, input.sessionId))
-      .limit(1)
-    if (!sess || sess.userId !== input.userId) {
-      throw new Error('session ownership denied')
+}): Promise<void> {
+  await db.transaction(async (tx) => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const [last] = await tx.select()
+        .from(agentMessages)
+        .where(eq(agentMessages.sessionId, input.sessionId))
+        .orderBy(desc(agentMessages.sequenceNumber))
+        .limit(1)
+      const userSeq = last ? (last.sequenceNumber as number) + 1 : 0
+
+      try {
+        await tx.insert(agentMessages).values({
+          sessionId: input.sessionId,
+          role: 'user',
+          messageType: 'text',
+          content: input.userMessage as never,
+          turnId: input.turnId,
+          sequenceNumber: userSeq,
+          runtimeMode: input.meta.runtimeMode,
+          provider: input.meta.provider ?? null,
+          model: input.meta.model ?? null,
+        })
+        await tx.insert(agentMessages).values({
+          sessionId: input.sessionId,
+          role: 'assistant',
+          messageType: input.firstOutput.messageType,
+          content: input.firstOutput.content as never,
+          toolName: input.firstOutput.toolName,
+          toolCallId: input.firstOutput.toolCallId,
+          turnId: input.turnId,
+          sequenceNumber: userSeq + 1,
+          runtimeMode: input.meta.runtimeMode,
+          provider: input.meta.provider ?? null,
+          model: input.meta.model ?? null,
+        })
+        return
+      } catch (err: any) {
+        if (err?.code === '23505' && attempt === 0) continue
+        throw err
+      }
     }
-
-    // Insert turn row (atomic dedupe boundary)
-    let turnId: string
-    try {
-      const [inserted] = await tx.insert(agentTurns).values({
-        sessionId: input.sessionId,
-        requestId: input.requestId,
-        runtimeMode: input.meta.runtimeMode,
-      }).returning({ id: agentTurns.id })
-      turnId = inserted.id
-    } catch (err: any) {
-      if (err?.code === '23505') throw new RequestIdConflictError()
-      throw err
-    }
-
-    // Insert user message
-    const [userSeq] = await tx.select()
-      .from(agentMessages)
-      .where(eq(agentMessages.sessionId, input.sessionId))
-      .orderBy(desc(agentMessages.sequenceNumber))
-      .limit(1)
-    const userSequence = userSeq ? (userSeq.sequenceNumber as number) + 1 : 0
-    await tx.insert(agentMessages).values({
-      sessionId: input.sessionId,
-      role: 'user',
-      messageType: 'text',
-      content: input.userMessage as never,
-      turnId,
-      sequenceNumber: userSequence,
-      runtimeMode: input.meta.runtimeMode,
-      provider: input.meta.provider ?? null,
-      model: input.meta.model ?? null,
-    })
-
-    // Insert first assistant output
-    await tx.insert(agentMessages).values({
-      sessionId: input.sessionId,
-      role: 'assistant',
-      messageType: input.firstOutput.messageType,
-      content: input.firstOutput.content as never,
-      toolName: input.firstOutput.toolName,
-      toolCallId: input.firstOutput.toolCallId,
-      turnId,
-      sequenceNumber: userSequence + 1,
-      runtimeMode: input.meta.runtimeMode,
-      provider: input.meta.provider ?? null,
-      model: input.meta.model ?? null,
-    })
-
-    return { turnId }
+    throw new Error('sequence conflict after retry in persistFirstDurableOutput')
   })
 }
 
@@ -1164,15 +1334,53 @@ export async function markTurnCompleted(turnId: string): Promise<void> {
 }
 ```
 
-- [ ] **Step 6: Defer persistence in `runManagedTurn`**
+`and`, `eq`, `sqlCount` etc. imported from `drizzle-orm` at the top of the file.
 
-In `app/src/lib/ai/agent/managed/runtime.ts`, modify the runtime loop:
+- [ ] **Step 5: Call `claimTurn` pre-stream in the route**
 
-1. **Remove** the early `appendManagedMessage(... role: 'user' ...)` call (around line 64). User message stays in memory.
-2. **Accumulate** the user message + first stream event until durability fires.
-3. When the translator yields its first assistant output block OR first tool_use block, call `claimTurnAndPersistFirstOutput(...)`. Catch `RequestIdConflictError` and surface to route as a typed error.
-4. Subsequent assistant / tool_result messages in the same turn use `appendManagedMessage` with `turnId` passed through.
-5. When the turn loop exits normally, call `markTurnCompleted(turnId)`.
+In `app/src/app/api/ai/agent/route.ts`, **after** all managed-path validation (service-local gate, flag, stateVersion, requestId defensive check, session loaded) and **before** calling `runManagedWithSSE`, claim the turn synchronously:
+
+```ts
+import { claimTurn } from '@/lib/ai/agent/managed/history'
+// ...
+
+const claim = await claimTurn({
+  sessionId: session.id,
+  userId: user.id,
+  requestId: body.requestId,
+  runtimeMode: 'managed',
+})
+
+if (claim.kind === 'conflict') {
+  return NextResponse.json(
+    {
+      error: {
+        code: 'conflict_request_id',
+        messageRo: 'Cerere deja înregistrată. Dacă ai reîncercat, operațiunea a fost deja salvată.',
+        messageEn: 'Request already recorded. If this was a retry, the operation has already been saved.',
+      },
+    },
+    { status: 409 },
+  )
+}
+
+// claim.kind === 'claimed' — pass claim.turnId into the stream.
+return runManagedWithSSE(session, sections, body, user, claim.turnId)
+```
+
+The route signature of `runManagedWithSSE` gains a required `turnId: string` parameter. No try/catch wrapper around `runManagedWithSSE` for idempotency — conflict handling is fully pre-stream.
+
+- [ ] **Step 6: Defer message persistence in `runManagedTurn`; accept `turnId`**
+
+In `app/src/lib/ai/agent/managed/runtime.ts`:
+
+1. **Remove** the early `appendManagedMessage(... role: 'user' ...)` call. The user message stays in memory.
+2. `runManagedTurn` accepts `turnId: string` as part of its context (plumbed from the route).
+3. On the first durable assistant or tool-use event from the Anthropic stream, call `persistFirstDurableOutput({ turnId, sessionId: session.id, userMessage: request.message, firstOutput, meta })`.
+4. Subsequent assistant / tool_result messages in the same turn use `appendManagedMessage(..., turnId)` — extend the helper signature to accept an optional `turnId` and set it on the row.
+5. Track a local `firstOutputPersisted` boolean.
+6. On turn success, `await markTurnCompleted(turnId)` and `recordManagedSuccess()` (see Task 3 for the new `recordManagedSuccess` export).
+7. On stream failure: if `firstOutputPersisted === false`, `await deleteEmptyTurn(turnId)`. The runtime's existing error path in `runManagedWithSSE` (around route.ts:280) already converts the error to an SSE error event — leave that unchanged, just add the cleanup call before the existing recordManagedFailure/markDegraded calls.
 
 Sketch:
 
@@ -1181,67 +1389,64 @@ export async function runManagedTurn(ctx: {
   session: AgentSession
   sections: Section[]
   request: { message: string; requestId: string; userId: string }
+  turnId: string
   onEvent: (e: AgentEvent) => void
-}): Promise<void> {
-  const { session, sections, request } = ctx
+}): Promise<{ model: string; toolCount: number; firstOutputPersisted: boolean }> {
+  const { session, sections, request, turnId } = ctx
   const { summary, messages: history } = await loadManagedHistory(session.id, {
     fallbackSummary: session.messageSummary ?? null,
   })
-
-  // Stage user message in memory — do NOT persist yet.
-  const pendingUser: MessageParam = { role: 'user', content: request.message }
-  history.push(pendingUser)
+  history.push({ role: 'user', content: request.message })
 
   const systemPrompt = buildManagedSystemPrompt(
     session, sections, session.currentPhase as Phase, session.locale, summary,
   )
 
-  let turnId: string | null = null
-  // ... stream loop ...
-  //   on first durable output block:
-  //     try {
-  //       const { turnId: tid } = await claimTurnAndPersistFirstOutput({
-  //         sessionId: session.id, userId: request.userId, requestId: request.requestId,
-  //         userMessage: request.message, firstOutput: { /* from stream */ },
-  //         meta: { runtimeMode: 'managed', model: ... },
-  //       })
-  //       turnId = tid
-  //     } catch (e) {
-  //       if (e instanceof RequestIdConflictError) throw e  // bubble to route
-  //       throw e
-  //     }
-  //   on subsequent outputs: appendManagedMessage(..., turnId: turnId!, ...)
+  let firstOutputPersisted = false
+  let toolCount = 0
+  // ... stream loop; on first durable output block:
+  //   await persistFirstDurableOutput({
+  //     turnId,
+  //     sessionId: session.id,
+  //     userMessage: request.message,
+  //     firstOutput: { role: 'assistant', messageType: '…', content: … },
+  //     meta: { runtimeMode: 'managed', model },
+  //   })
+  //   firstOutputPersisted = true
+  // subsequent outputs: await appendManagedMessage(session.id, { ..., turnId }, meta)
   // end of turn:
-  if (turnId) await markTurnCompleted(turnId)
+  await markTurnCompleted(turnId)
+  return { model, toolCount, firstOutputPersisted }
 }
 ```
 
-- [ ] **Step 7: Translate `RequestIdConflictError` at the route**
+- [ ] **Step 7: Add cleanup on pre-output failure in `runManagedWithSSE`**
 
-In `app/src/app/api/ai/agent/route.ts`, wrap the `runManagedWithSSE` invocation in a try/catch:
+In the existing managed error branch of `runManagedWithSSE` (`app/src/app/api/ai/agent/route.ts` around line 280), add cleanup before the degraded-metadata calls:
 
 ```ts
-try {
-  return await runManagedWithSSE(/* ... */)
 } catch (err) {
-  if (err instanceof RequestIdConflictError) {
-    // Ownership re-check for the conflict path (spec §3 Finding 3)
-    // Note: session ownership was already verified above when we loaded `row`;
-    // this catch path is reached after that check, so no additional DB read needed.
-    return NextResponse.json(
-      {
-        error: {
-          code: 'conflict_request_id',
-          messageRo: 'Cerere deja înregistrată. Dacă ai reîncercat, operațiunea a fost deja salvată.',
-          messageEn: 'Request already recorded. If this was a retry, the operation has already been saved.',
-        },
-      },
-      { status: 409 },
-    )
+  // NEW: clean up the pre-stream turn claim if nothing was persisted.
+  try {
+    // runManagedTurn either returned a partial result before throwing,
+    // or threw before it had a chance to set firstOutputPersisted.
+    // Access the stored flag via the runtime result capture, or use a
+    // capture-ref pattern. Conservative default: check if any
+    // agent_messages rows exist for this turnId; if zero, delete the claim.
+    const { deleteEmptyTurn } = await import('@/lib/ai/agent/managed/history')
+    await deleteEmptyTurn(claim.turnId)
+  } catch (cleanupErr) {
+    log.warn({ turnId: claim.turnId, err: cleanupErr }, 'pre-output turn cleanup failed')
   }
-  throw err
+
+  const { recordManagedFailure } = await import('@/lib/ai/agent/managed/circuit-breaker')
+  const reason = classifyManagedError(err)
+  recordManagedFailure(reason)
+  // ... existing markDegraded path and SSE error event ...
 }
 ```
+
+`deleteEmptyTurn` is a no-op if children exist (safety built into the helper). Capture `claim.turnId` in the closure from Step 5.
 
 - [ ] **Step 8: Run tests — expect PASS**
 
@@ -1254,27 +1459,27 @@ cd app && npx vitest run tests/unit/managed/ 2>&1 | tail -20
 - [ ] **Step 9: Commit**
 
 ```bash
-git add app/src/lib/ai/agent/types.ts \
-        app/src/hooks/useAgent.ts \
-        app/src/app/api/ai/agent/route.ts \
+git add app/src/app/api/ai/agent/route.ts \
         app/src/lib/ai/agent/managed/history.ts \
         app/src/lib/ai/agent/managed/runtime.ts \
         app/tests/integration/managed/retry-idempotency.test.ts
-git -c commit.gpgsign=false commit -m "feat(managed): deferred persistence + turn claim + requestId dedupe
+git -c commit.gpgsign=false commit -m "feat(managed): pre-stream turn claim + deferred message persistence
 
-Finding 3. Managed turn becomes durable only when the first durable
-assistant or tool-use event arrives. Single transaction inserts
-agent_turns (with UNIQUE(session_id, request_id)), user message, and
-first assistant output — all sharing turn_id.
+Finding 3. Pre-stream claim: route inserts agent_turns (UNIQUE on
+session_id, request_id) before constructing the SSE Response. On
+PG 23505 with a child-bearing existing row → HTTP 409
+conflict_request_id (clean JSON, never SSE). On 23505 with a stale
+empty row (pre-output-failed prior attempt) → delete + retry insert
+once, then proceed.
 
-Pre-output failure: nothing persists, retry is a fresh turn.
-Post-output retry with same requestId: claim insert fails with
-PG 23505 → RequestIdConflictError → deterministic 409
-conflict_request_id. Route does NOT attempt stream resume (deferred).
+Message durability is deferred: user message and first assistant/tool
+output persist together in one transaction when the first durable
+stream event arrives. Pre-output stream failure → deleteEmptyTurn
+cleans the claim row so the retry is a fresh turn.
 
-Client useAgent hook generates a fresh UUID per POST. managed request
-DTO now requires requestId (400 missing_request_id otherwise).
-Ownership verified inside the claim transaction."
+AgentRequest.requestId and useAgent.ts were already in shape; this
+commit is server-side only. Ownership verified inside claimTurn
+transaction (defense in depth; route already checked above)."
 ```
 
 ---
@@ -1432,9 +1637,12 @@ async function main() {
     stateVersion: 0,
   })
   if (res.status !== 200) throw new Error(`expected 200, got ${res.status}: ${await res.text()}`)
-  // Stream should yield at least one event
+  const contentType = res.headers.get('content-type') ?? ''
+  if (!contentType.includes('text/event-stream')) throw new Error(`expected SSE content-type, got ${contentType}`)
   const text = await res.text()
-  if (!text.includes('event:')) throw new Error('no SSE events in response')
+  // The route emits `data: {json}\n\n` per event (see route.ts:185). No
+  // `event:` field is used.
+  if (!/^data:\s/m.test(text)) throw new Error('no SSE data lines in response')
   console.log(JSON.stringify({ smoke: '01-happy-path', status: 'pass', requestId }))
 }
 
@@ -1443,15 +1651,15 @@ main().catch((e) => { console.error(e); process.exit(1) })
 
 - [ ] **Step 3: Write smokes 02–06**
 
-Follow the same pattern:
+Follow the same pattern. The suite is a mix of **automated** and **manual-assisted** smokes — the README labels each explicitly.
 
-- **02-kill-switch.ts** (two-part):
-  - (a) Start a session. Have the operator flip the flag off (curl the admin PATCH). Submit another turn. Assert the response does NOT use managed (e.g., check the stream metadata header / log presence).
-  - (b) Unset `MANAGED_RUNTIME_ENABLED` on pilot (instructed in README). Redeploy. Submit turn. Assert routes to V3.
-- **03-auth-fail.ts**: operator unsets `ANTHROPIC_API_KEY` secret on pilot; script submits turn; expects 200 from V3 fallback + DB verification that `application_agent_sessions.degraded_reason='auth_setup_failure'`.
-- **04-concurrency.ts**: fetch current session `stateVersion`. Fire two POSTs in parallel with the same `stateVersion`. Expect one 200 and one 409 with `code='stale_state_version'`.
-- **05-retry-idempotency.ts**: submit a turn; simulate Anthropic mid-stream failure (operator temporarily blocks outbound, or use a test-only endpoint that forces error post-first-output). Retry with the same `requestId`. Expect 409 `conflict_request_id`. DB verify exactly one `agent_turns` row for that `requestId` and exactly one user message for that `turn_id`.
-- **06-compaction-continuity.ts**: create a session and submit enough turns to trigger compaction (>threshold, depends on V3 compaction settings). Then submit a managed turn with content that relies on summarized context. Assert the response shows the model referenced prior context, and DB verify `session.messageSummary` or `system_summary` row exists.
+- **02-kill-switch.ts** (**manual-assisted, two-part**):
+  - (a) Script submits a managed turn to confirm the pilot is live. Operator then runs `curl … PATCH … enabled=false` (or the DB fallback in the runbook). Script waits ~2s and submits another turn, asserting the response was served by V3 (checks for the absence of the managed-mode marker: DB verify the latest `agent_messages` row has `runtime_mode='v3'`).
+  - (b) Operator unsets `MANAGED_RUNTIME_ENABLED` on pilot and redeploys (instructions in README). Script submits another turn; asserts V3 routing via the same DB marker.
+- **03-auth-fail.ts** (**manual-assisted**): operator unsets the `ANTHROPIC_API_KEY` secret on pilot and redeploys. Script submits a turn; expects HTTP 200 from V3 fallback, then DB verifies `application_agent_sessions.degraded_reason='auth_setup_failure'` was recorded for the session.
+- **04-concurrency.ts** (**automated**): fetch current session `stateVersion`. Fire two POSTs in parallel with the same `stateVersion` and distinct `requestId`s. Expect one 200 (SSE) and one 409 with `error.code='stale_state_version'`.
+- **05-retry-idempotency.ts** (**automated, assuming a test seam**): submit a managed turn with `requestId=A`, let it complete. Submit another managed turn with the same `requestId=A`. Expect pre-stream HTTP 409 with `error.code='conflict_request_id'` and `content-type: application/json` (never SSE). DB verify exactly one `agent_turns` row for that `requestId` and that its child `agent_messages` count is >0 (not the stale-empty branch).
+- **06-compaction-continuity.ts** (**automated, long-running**): create a session and submit enough turns to trigger V3 summary compaction (check the existing V3 compaction threshold at `lib/ai/agent/history.ts`; default is typically ~20 messages). Verify a `system_summary` row or a populated `session.messageSummary` exists. Then submit a managed turn referencing early context. Assert the model response coherently references summarized context without re-asking. DB verify at least one managed turn with `runtime_mode='managed'` in `agent_turns`.
 
 Each script should print a single JSON line `{"smoke":"NN-name","status":"pass"|"fail","...evidence":...}` and exit non-zero on failure.
 
@@ -1462,7 +1670,18 @@ Create `app/scripts/smoke/managed-pilot/README.md`:
 ```markdown
 # Managed Pilot Smoke Suite
 
-Run before enabling `managed_agent_enabled` for the target userId. All 6 must pass.
+Six tests, mixing automated and manual-assisted. All six must pass before enabling `managed_agent_enabled` for the target userId.
+
+| # | Script | Mode |
+|---|---|---|
+| 01 | `01-happy-path.ts` | automated |
+| 02 | `02-kill-switch.ts` | manual-assisted (operator flips flag, then unsets env + redeploys) |
+| 03 | `03-auth-fail.ts` | manual-assisted (operator unsets `ANTHROPIC_API_KEY` + redeploys) |
+| 04 | `04-concurrency.ts` | automated |
+| 05 | `05-retry-idempotency.ts` | automated |
+| 06 | `06-compaction-continuity.ts` | automated (long-running, exercises compaction) |
+
+"Manual-assisted" scripts print explicit waiting prompts and exit non-zero if the operator has not performed the prerequisite action within a timeout.
 
 ## Setup
 
@@ -1595,11 +1814,12 @@ drill (entry criterion #5)."
 
 ---
 
-## Task 11: CLAUDE.md note + retention register entry
+## Task 11: Retention register entry (CLAUDE.md deliberately unchanged)
 
 **Files:**
-- Modify: `CLAUDE.md`
 - Modify: `docs/superpowers/legacy-retention-register.md`
+
+**Scope note:** `CLAUDE.md` is intentionally NOT modified. Pilot-specific operational context (service URL, env gate, runbook path) lives in the runbook only. `CLAUDE.md` is for durable repo guidance, not time-bound phase status.
 
 - [ ] **Step 1: Add retention register entry**
 
@@ -1616,31 +1836,23 @@ Append a new entry matching the existing format. Suggested content:
 
 **Status:** Known gap — deferred to a dedicated post-pilot spec.
 
-**Context:** Agent tables (`agent_sessions`, `agent_messages`, `agent_turns`, `agent_sections`, `agent_section_versions`, `agent_checkpoints`) currently rely on app-code ownership predicates rather than DB-level RLS. The pilot-readiness PR (spec 2026-04-14-managed-agents-pilot-readiness-design.md) introduces `agent_turns` matching this posture.
+**Context:** Agent tables (`agent_sessions`, `agent_messages`, `agent_turns`, `agent_sections`, `agent_section_versions`, `agent_checkpoints`) currently rely on app-code ownership predicates rather than DB-level RLS. The pilot-readiness PR (spec `docs/superpowers/specs/2026-04-14-managed-agents-pilot-readiness-design.md`) introduces `agent_turns` matching this posture.
 
 **Owner:** TBD when the dedicated RLS spec lands.
 
 **Retirement trigger:** A comprehensive agent-surface RLS spec + migrations that cover all six tables together with updated `withUserRLS(userId, fn)` usage at every call site.
 ```
 
-- [ ] **Step 2: Update CLAUDE.md**
-
-Find the section that lists pilot/feature status (if present) or the agent architecture section. Add a note:
-
-```markdown
-### Managed Agents Pilot
-
-`fondeu-pilot` Cloud Run service is the canary for Phase 2 managed runtime. Hardened per spec `docs/superpowers/specs/2026-04-14-managed-agents-pilot-readiness-design.md`. Gating: service-local env `MANAGED_RUNTIME_ENABLED=true` + DB flag `managed_agent_enabled` targeted to single userId. Main production service (`fondeu-platform`) has `MANAGED_RUNTIME_ENABLED` unset — 100% V3. Kill switch: flag off propagates in <1s (bypassCache). Runbook: `docs/superpowers/runbooks/managed-agents-pilot-rollback.md`.
-```
-
-- [ ] **Step 3: Commit**
+- [ ] **Step 2: Commit**
 
 ```bash
-git add CLAUDE.md docs/superpowers/legacy-retention-register.md
-git -c commit.gpgsign=false commit -m "docs: managed pilot operational note + agent-surface RLS register entry
+git add docs/superpowers/legacy-retention-register.md
+git -c commit.gpgsign=false commit -m "docs(register): agent-surface RLS entry
 
-CLAUDE.md pilot status paragraph. Retention register records
-agent-surface RLS as a known gap with retirement trigger."
+Records that agent tables rely on app-code ownership predicates
+rather than DB-level RLS, with a retirement trigger pointing at a
+dedicated post-pilot RLS spec. No CLAUDE.md change — pilot
+operational context stays in the runbook, not durable repo guidance."
 ```
 
 ---
@@ -1649,28 +1861,57 @@ agent-surface RLS as a known gap with retirement trigger."
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Full unit + integration test run**
+- [ ] **Step 1: Baseline pre-existing failures (done once, before any edits)**
+
+Before starting Task 1, capture the master baseline into an inline allowlist. This runs once and is pinned explicitly — not left as a vague "acceptable." If the allowlist grows during this PR, that is a regression and must be investigated.
 
 ```bash
-cd app && npm run test 2>&1 | tail -30
+cd app && npm test 2>&1 | grep -E "FAIL|✗" | sort -u > /tmp/managed-pilot-baseline.txt
+cat /tmp/managed-pilot-baseline.txt
 ```
-Expected: 1002+ tests pass, ~15 skipped, 2 todo, 0 new failures. Pre-existing failures (timeline-assignee-validation, trial-notifications-route per MEMORY.md) are acceptable — not part of this PR.
 
-- [ ] **Step 2: Build**
+Expected pinned failures at pilot-readiness branch start (snapshot from MEMORY.md; re-verify at time of execution):
+- `timeline-assignee-validation.test.ts` — 2 failing cases
+- `trial-notifications-route.test.ts` — 1 failing case
+- Any e2e specs that run under vitest
+
+If the actual list differs from the expectation, STOP and reconcile with the user before proceeding. Do not silently widen the allowlist.
+
+- [ ] **Step 2: Full unit + integration test run — scoped green**
+
+```bash
+# Exclude pre-existing-failure files explicitly so the gate is objectively green.
+cd app && npx vitest run \
+  --exclude tests/integration/timeline-assignee-validation.test.ts \
+  --exclude tests/integration/trial-notifications-route.test.ts \
+  2>&1 | tail -10
+```
+Expected: **zero failures** in the scoped run. If anything new appears, fix before push — do not defer.
+
+Also run the excluded files standalone and confirm their failure count matches the baseline exactly (no new regressions hidden in the exclusion):
+
+```bash
+cd app && npx vitest run tests/integration/timeline-assignee-validation.test.ts \
+                        tests/integration/trial-notifications-route.test.ts \
+                        2>&1 | tail -5
+```
+Failure count must equal baseline. If higher, investigate before push.
+
+- [ ] **Step 3: Build**
 
 ```bash
 cd app && npm run build 2>&1 | tail -15
 ```
-Expected: green. No route manifest regressions (pilot gate is runtime, not build-time).
+Expected: **zero errors**. Warnings are acceptable only if they appear on master too (capture master's warning list before any edit and compare). No route manifest regressions — the pilot gate is runtime, not build-time.
 
-- [ ] **Step 3: Typecheck**
+- [ ] **Step 4: Typecheck**
 
 ```bash
 cd app && npm run typecheck 2>&1 | tail -5
 ```
-Expected: green.
+Expected: **zero errors**. If master has pre-existing typecheck errors (per git status at session start showed `M app/src/lib/validation/schemas.ts`), they must be captured in the baseline step and matched exactly.
 
-- [ ] **Step 4: Push + PR**
+- [ ] **Step 5: Push + PR**
 
 ```bash
 git push -u origin spec/managed-pilot-readiness
@@ -1706,7 +1947,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 5: Post-merge prerequisites for pilot go-live**
+- [ ] **Step 6: Post-merge prerequisites for pilot go-live**
 
 After the PR merges to master:
 
