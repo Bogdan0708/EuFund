@@ -1,0 +1,270 @@
+
+> app@0.1.0 test
+> vitest run
+
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90m/home/godja/Dev/EU-Funds-spec-pilot/app[39m
+
+[90mstderr[2m | tests/integration/security.test.ts[2m > [22m[2mSecurity Integration Tests[2m > [22m[2mCSRF Protection[2m > [22m[2mshould reject POST to /api/* without CSRF token
+[22m[39m{"component":"middleware","requestId":"8546f6ea-e3de-4ccc-bdaa-ad1a1dc6550d","ip":"127.0.0.1","path":"/api/ai/predict-success","msg":"[middleware] CSRF validation failed"}
+
+[90mstderr[2m | tests/integration/security.test.ts[2m > [22m[2mSecurity Integration Tests[2m > [22m[2mCSRF Protection[2m > [22m[2mshould reject PUT to /api/* without CSRF token
+[22m[39m{"component":"middleware","requestId":"d010860a-ebdd-447e-ace5-4f5b501adfa2","ip":"127.0.0.1","path":"/api/v1/projects/123","msg":"[middleware] CSRF validation failed"}
+
+[90mstderr[2m | tests/integration/security.test.ts[2m > [22m[2mSecurity Integration Tests[2m > [22m[2mCSRF Protection[2m > [22m[2mshould reject DELETE to /api/* without CSRF token
+[22m[39m{"component":"middleware","requestId":"ff5ba4fa-f857-4041-8f99-8b60702b839a","ip":"127.0.0.1","path":"/api/v1/projects/123","msg":"[middleware] CSRF validation failed"}
+
+[90mstderr[2m | tests/integration/security.test.ts[2m > [22m[2mSecurity Integration Tests[2m > [22m[2mCSRF Protection[2m > [22m[2mshould reject POST with mismatched CSRF tokens
+[22m[39m{"component":"middleware","requestId":"18ba0535-a126-4eaf-8f84-1cdded0739c2","ip":"127.0.0.1","path":"/api/ai/predict-success","msg":"[middleware] CSRF validation failed"}
+
+[90mstderr[2m | tests/integration/security.test.ts[2m > [22m[2mSecurity Integration Tests[2m > [22m[2mAuth Middleware[2m > [22m[2mshould return 401 for /api/ai/* routes without auth
+[22m[39m{"component":"middleware","requestId":"da760369-5677-4b0c-8269-31abbe6a632f","ip":"127.0.0.1","path":"/api/ai/predict-success","msg":"[middleware] Unauthorized API access"}
+
+[90mstderr[2m | tests/integration/security.test.ts[2m > [22m[2mSecurity Integration Tests[2m > [22m[2mAuth Middleware[2m > [22m[2mshould return 401 for /api/v1/* routes without auth
+[22m[39m{"component":"middleware","requestId":"cab477a7-62ea-4b8b-a747-5315b9ac50a6","ip":"127.0.0.1","path":"/api/v1/projects","msg":"[middleware] Unauthorized API access"}
+
+ [32m✓[39m tests/integration/security.test.ts [2m([22m[2m23 tests[22m[2m)[22m[33m 324[2mms[22m[39m
+ [32m✓[39m tests/integration/critical-flows.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 559[2mms[22m[39m
+     [33m[2m✓[22m[39m authorization boundary: document access is controlled by RLS at the database level [33m 527[2mms[22m[39m
+ [32m✓[39m tests/integration/org-members-route.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 743[2mms[22m[39m
+     [33m[2m✓[22m[39m removes a non-admin member [33m 723[2mms[22m[39m
+ [32m✓[39m tests/integration/funding-ai-review-queue-item-route.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 661[2mms[22m[39m
+     [33m[2m✓[22m[39m updates queue item status to approved and logs audit [33m 660[2mms[22m[39m
+ [32m✓[39m tests/integration/evidence-ledger-route.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 577[2mms[22m[39m
+     [33m[2m✓[22m[39m appends evidence event for authorized project manager [33m 576[2mms[22m[39m
+{"level":"error","time":"2026-04-15T08:30:50.416Z","env":"test","pid":125567,"component":"consent-bulk","error":{},"msg":"[consent:bulk] PATCH error"}
+ [2m[90m↓[39m[22m tests/integration/services/phase3-rollback-version-race.test.ts [2m([22m[2m1 test[22m[2m | [22m[33m1 skipped[39m[2m)[22m
+ [32m✓[39m tests/integration/funding-ai-versions-route.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 682[2mms[22m[39m
+     [33m[2m✓[22m[39m denies non-platform-admin users [33m 660[2mms[22m[39m
+ [32m✓[39m tests/integration/document-upload-validation.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 692[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects MIME/signature mismatch (PDF bytes declared as DOCX) [33m 667[2mms[22m[39m
+ [2m[90m↓[39m[22m tests/integration/services/phase3-audit-chain.test.ts [2m([22m[2m1 test[22m[2m | [22m[33m1 skipped[39m[2m)[22m
+ [2m[90m↓[39m[22m tests/integration/services/phase3-concurrency.test.ts [2m([22m[2m8 tests[22m[2m | [22m[33m8 skipped[39m[2m)[22m
+ [2m[90m↓[39m[22m tests/integration/services/phase3-concurrent-writers.test.ts [2m([22m[2m4 tests[22m[2m | [22m[33m4 skipped[39m[2m)[22m
+ [32m✓[39m tests/integration/admin-programs-route.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 637[2mms[22m[39m
+     [33m[2m✓[22m[39m denies non-admin users [33m 583[2mms[22m[39m
+ [32m✓[39m tests/integration/auth-consent-bulk-route.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 625[2mms[22m[39m
+     [33m[2m✓[22m[39m applies multiple consent updates in one transaction [33m 580[2mms[22m[39m
+ [32m✓[39m tests/integration/transactional-writes.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 757[2mms[22m[39m
+     [33m[2m✓[22m[39m onboarding profile step uses a DB transaction for user and org creation [33m 621[2mms[22m[39m
+ [32m✓[39m tests/integration/ghid-tasks-persistence-route.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 773[2mms[22m[39m
+     [33m[2m✓[22m[39m persists generated ghid tasks for authorized project manager [33m 771[2mms[22m[39m
+ [32m✓[39m tests/integration/project-planning-routes.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 686[2mms[22m[39m
+     [33m[2m✓[22m[39m audits timeline item creation [33m 570[2mms[22m[39m
+ [32m✓[39m tests/integration/approvals-route.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 694[2mms[22m[39m
+     [33m[2m✓[22m[39m approves a project from verificare to finalizat [33m 636[2mms[22m[39m
+ [32m✓[39m tests/integration/org-idor-detail.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 723[2mms[22m[39m
+       [33m[2m✓[22m[39m returns 403 when caller is not a member of the org [33m 670[2mms[22m[39m
+{"level":"info","time":"2026-04-15T08:30:50.560Z","env":"test","pid":125582,"component":"trial-notifications","result":{"dryRun":false,"processed":2,"matched":2,"emailed":2,"skippedExisting":0,"failed":0},"msg":"[trial-notifications] completed"}
+ [32m✓[39m tests/integration/project-compliance-route.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 828[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects free-tier users before running compliance analysis [33m 826[2mms[22m[39m
+{"level":"info","time":"2026-04-15T08:30:50.569Z","env":"test","pid":125582,"component":"trial-notifications","result":{"dryRun":false,"processed":1,"matched":1,"emailed":0,"skippedExisting":1,"failed":0},"msg":"[trial-notifications] completed"}
+ [32m✓[39m tests/integration/trial-notifications.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 790[2mms[22m[39m
+     [33m[2m✓[22m[39m sends reminders for users who hit the 7-day and 1-day trial windows [33m 781[2mms[22m[39m
+ [32m✓[39m tests/integration/health-route.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 843[2mms[22m[39m
+     [33m[2m✓[22m[39m returns detailed health outside production [33m 838[2mms[22m[39m
+ [32m✓[39m tests/integration/projects-route.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 760[2mms[22m[39m
+     [33m[2m✓[22m[39m uses the only membership org when orgId is omitted [33m 701[2mms[22m[39m
+ [32m✓[39m tests/integration/project-risk-ai-route.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 854[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects free-tier users before AI risk assessment runs [33m 853[2mms[22m[39m
+ [32m✓[39m tests/integration/tier-gating.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 848[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects MySMIS export for free-tier users [33m 846[2mms[22m[39m
+ [32m✓[39m tests/integration/project-detail-route.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 870[2mms[22m[39m
+     [33m[2m✓[22m[39m returns latest project_documents metadata alongside project data [33m 798[2mms[22m[39m
+{"level":"warn","time":"2026-04-15T08:30:50.734Z","env":"test","pid":125457,"component":"redis-client","msg":"Redis not configured - allowing request (fail-open)"}
+{"level":"warn","time":"2026-04-15T08:30:50.776Z","env":"test","pid":125457,"component":"redis-client","msg":"Redis not configured - allowing request (fail-open)"}
+{"level":"warn","time":"2026-04-15T08:30:50.798Z","env":"test","pid":125457,"component":"redis-client","msg":"Redis not configured - allowing request (fail-open)"}
+{"level":"warn","time":"2026-04-15T08:30:50.834Z","env":"test","pid":125457,"component":"redis-client","msg":"Redis not configured - allowing request (fail-open)"}
+{"level":"warn","time":"2026-04-15T08:30:50.898Z","env":"test","pid":125457,"component":"redis-client","msg":"Redis not configured - allowing request (fail-open)"}
+ [32m✓[39m tests/integration/sections-api.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 1122[2mms[22m[39m
+     [33m[2m✓[22m[39m returns 400 when workspace is read-only (snapshot mode) [33m 654[2mms[22m[39m
+ [32m✓[39m tests/integration/org-approvals-route.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 461[2mms[22m[39m
+     [33m[2m✓[22m[39m maps approve decisions to finalizat [33m 446[2mms[22m[39m
+ [32m✓[39m tests/integration/workspace.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 415[2mms[22m[39m
+     [33m[2m✓[22m[39m fills missing versioning fields with defaults [33m 371[2mms[22m[39m
+ [32m✓[39m tests/integration/auth-export-route.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 440[2mms[22m[39m
+     [33m[2m✓[22m[39m returns only authenticated user data and applies rate limiting [33m 438[2mms[22m[39m
+ [32m✓[39m tests/components/glass.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 393[2mms[22m[39m
+ [32m✓[39m tests/integration/timeline-assignee-validation.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 401[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects POST when assignedTo is outside project organization [33m 348[2mms[22m[39m
+ [32m✓[39m tests/integration/evidence-coverage-route.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 430[2mms[22m[39m
+     [33m[2m✓[22m[39m returns evidence coverage for authorized viewers [33m 427[2mms[22m[39m
+ [32m✓[39m tests/integration/auth-providers.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 457[2mms[22m[39m
+     [33m[2m✓[22m[39m exports auth handlers [33m 455[2mms[22m[39m
+ [32m✓[39m tests/integration/agent-section-list.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 391[2mms[22m[39m
+     [33m[2m✓[22m[39m returns sections ordered by documentOrder [33m 373[2mms[22m[39m
+ [32m✓[39m tests/integration/submission-documents-route.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 432[2mms[22m[39m
+     [33m[2m✓[22m[39m updates a submission document status for an RLS-authorized project member [33m 413[2mms[22m[39m
+ [32m✓[39m tests/integration/agent-section-versions.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 393[2mms[22m[39m
+     [33m[2m✓[22m[39m returns all versions with full content, newest first [33m 379[2mms[22m[39m
+ [32m✓[39m tests/integration/agent-sessions-list.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 405[2mms[22m[39m
+     [33m[2m✓[22m[39m returns sessions for the authenticated user [33m 377[2mms[22m[39m
+ [32m✓[39m tests/integration/document-download-signed-url.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 333[2mms[22m[39m
+     [33m[2m✓[22m[39m redirects to signed URL when object is stored in GCS [33m 331[2mms[22m[39m
+ [32m✓[39m tests/integration/ai-gateway-contract.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 335[2mms[22m[39m
+     [33m[2m✓[22m[39m aiGenerate routes through centralized provider router [33m 326[2mms[22m[39m
+ [32m✓[39m tests/integration/project-comments-route.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 435[2mms[22m[39m
+     [33m[2m✓[22m[39m creates a comment and writes an audit event [33m 433[2mms[22m[39m
+ [32m✓[39m tests/integration/section-integrity-mismatch.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 342[2mms[22m[39m
+     [33m[2m✓[22m[39m detects JSONB contentHash mismatch vs latest version row [33m 309[2mms[22m[39m
+ [32m✓[39m tests/integration/auth-consent-route.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 533[2mms[22m[39m
+     [33m[2m✓[22m[39m grants optional consent and logs consent.grant [33m 495[2mms[22m[39m
+ [32m✓[39m tests/integration/agent-session-messages.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 376[2mms[22m[39m
+     [33m[2m✓[22m[39m returns messages for session owner [33m 358[2mms[22m[39m
+ [32m✓[39m tests/integration/audit-route.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 474[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects audit listing without orgId when the user administers multiple orgs [33m 472[2mms[22m[39m
+ [32m✓[39m tests/integration/mcp/read.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 1315[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects request with no Authorization header → 401 [33m 1256[2mms[22m[39m
+ [32m✓[39m tests/unit/discovery-pipeline.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 430[2mms[22m[39m
+     [33m[2m✓[22m[39m exports runDiscovery function [33m 343[2mms[22m[39m
+ [32m✓[39m tests/integration/billing-trial.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 581[2mms[22m[39m
+     [33m[2m✓[22m[39m treats new free users as trialing with effective pro limits [33m 565[2mms[22m[39m
+ [32m✓[39m tests/integration/admin-calls-route.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 553[2mms[22m[39m
+     [33m[2m✓[22m[39m denies non-admin users [33m 495[2mms[22m[39m
+ [32m✓[39m tests/unit/section-versions.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 487[2mms[22m[39m
+     [33m[2m✓[22m[39m writes v1 for every section on initial generation [33m 307[2mms[22m[39m
+ [32m✓[39m tests/integration/auth-account-delete.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 1514[2mms[22m[39m
+     [33m[2m✓[22m[39m requires password confirmation and anonymizes account data [33m 1512[2mms[22m[39m
+ [32m✓[39m tests/integration/ai-output-sanitization.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 1599[2mms[22m[39m
+     [33m[2m✓[22m[39m redacts PII from AI JSON responses in withAIAuth [33m 1597[2mms[22m[39m
+ [32m✓[39m tests/integration/ai-feature-rate-limit.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 1721[2mms[22m[39m
+     [33m[2m✓[22m[39m uses ai_usage:user:feature:YYYY-MM-DD key and allows request within limit [33m 1677[2mms[22m[39m
+ [32m✓[39m tests/integration/security-fixes.test.ts [2m([22m[2m10 tests[22m[2m | [22m[33m2 skipped[39m[2m)[22m[33m 1783[2mms[22m[39m
+       [33m[2m✓[22m[39m should return 429 when rate limit is exceeded [33m 1681[2mms[22m[39m
+ [32m✓[39m tests/integration/token-storage.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 207[2mms[22m[39m
+ [32m✓[39m tests/integration/rls-context.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 244[2mms[22m[39m
+ [32m✓[39m tests/unit/usage.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 71[2mms[22m[39m
+ [32m✓[39m tests/integration/managed/runtime-happy-path.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 743[2mms[22m[39m
+     [33m[2m✓[22m[39m emits text_delta and done for a simple text-only turn [33m 741[2mms[22m[39m
+ [32m✓[39m tests/integration/project-userid.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 230[2mms[22m[39m
+ [32m✓[39m tests/integration/managed/runtime-write-tool-blocked.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 730[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects save_section_draft with Phase 2 message before invoking any service [33m 728[2mms[22m[39m
+ [32m✓[39m tests/integration/managed/runtime-tool-error.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 253[2mms[22m[39m
+ [32m✓[39m tests/integration/tier-enum.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 231[2mms[22m[39m
+ [32m✓[39m tests/integration/user-preferences.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 232[2mms[22m[39m
+ [32m✓[39m tests/integration/new-tables.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 230[2mms[22m[39m
+ [32m✓[39m tests/integration/managed/runtime-multi-iteration.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 422[2mms[22m[39m
+     [33m[2m✓[22m[39m runs 3 iterations with 2 tool calls then text end_turn [33m 421[2mms[22m[39m
+ [32m✓[39m tests/integration/managed/runtime-iteration-cap.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 507[2mms[22m[39m
+     [33m[2m✓[22m[39m stops at ITERATION_CAP (8) and emits a bilingual limit warning [33m 506[2mms[22m[39m
+ [32m✓[39m tests/integration/sentry-fallback.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 928[2mms[22m[39m
+     [33m[2m✓[22m[39m does not throw when Sentry SDK is unavailable [33m 927[2mms[22m[39m
+ [32m✓[39m tests/integration/dashboard-v3-sessions.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 271[2mms[22m[39m
+ [32m✓[39m tests/integration/document-delete-storage-cleanup.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 279[2mms[22m[39m
+ [32m✓[39m tests/integration/funding-consolidation.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 255[2mms[22m[39m
+ [32m✓[39m tests/unit/managed/executor.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 278[2mms[22m[39m
+ [32m✓[39m tests/integration/trial-notifications-route.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 151[2mms[22m[39m
+ [32m✓[39m tests/integration/org-membership-guard.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 134[2mms[22m[39m
+ [32m✓[39m tests/unit/services/rollback-section.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 281[2mms[22m[39m
+ [32m✓[39m tests/unit/services/approve-section.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 310[2mms[22m[39m
+     [33m[2m✓[22m[39m throws POLICY_OUTLINE_NOT_FROZEN when outline is not frozen [33m 308[2mms[22m[39m
+ [32m✓[39m tests/unit/services/freeze-outline.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 314[2mms[22m[39m
+     [33m[2m✓[22m[39m happy path: freezes outline, advances phase to drafting [33m 309[2mms[22m[39m
+ [32m✓[39m tests/unit/services/mark-section-stale.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 315[2mms[22m[39m
+     [33m[2m✓[22m[39m happy path from draft [33m 311[2mms[22m[39m
+ [32m✓[39m tests/unit/services/reject-section.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 258[2mms[22m[39m
+{"level":"info","time":"2026-04-15T08:30:51.787Z","env":"test","pid":126028,"component":"gateway","provider":"openai","model":"gpt-5.4","msg":"AI request"}
+{"level":"info","time":"2026-04-15T08:30:51.791Z","env":"test","pid":126028,"component":"gateway","provider":"openai","model":"gpt-5.4","msg":"AI request"}
+ [32m✓[39m tests/integration/managed/route-action-bypass.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 345[2mms[22m[39m
+ [32m✓[39m tests/integration/managed/route-pre-stream-fallback.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 337[2mms[22m[39m
+     [33m[2m✓[22m[39m degrades to V3 when Anthropic client setup fails [33m 335[2mms[22m[39m
+ [32m✓[39m tests/integration/managed/route-breaker-open.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 301[2mms[22m[39m
+ [32m✓[39m tests/integration/managed/route-mid-stream-failure.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 353[2mms[22m[39m
+     [33m[2m✓[22m[39m emits error SSE event and records failure when runManagedTurn throws [33m 352[2mms[22m[39m
+ [32m✓[39m tests/unit/orchestrator-gateway.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 61[2mms[22m[39m
+ [32m✓[39m tests/integration/managed/route-flag-off.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 118[2mms[22m[39m
+ [32m✓[39m tests/unit/services/set-selected-call.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 272[2mms[22m[39m
+ [32m✓[39m tests/integration/feature-flags.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 48[2mms[22m[39m
+ [32m✓[39m tests/unit/managed/history.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 52[2mms[22m[39m
+ [32m✓[39m tests/unit/managed/session-metadata.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 51[2mms[22m[39m
+ [32m✓[39m tests/integrations/circuit-breaker-metrics.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 98[2mms[22m[39m
+ [32m✓[39m tests/unit/managed/anthropic-client.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 65[2mms[22m[39m
+ [32m✓[39m tests/integration/retention-cleanup.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 160[2mms[22m[39m
+ [32m✓[39m tests/rules.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 38[2mms[22m[39m
+ [32m✓[39m tests/errors.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 31[2mms[22m[39m
+ [32m✓[39m tests/integration/audit-hash-chain.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 115[2mms[22m[39m
+ [32m✓[39m tests/romanian.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m tests/unit/mcp/auth.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m tests/compliance-validation.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m tests/unit/section-docx.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 307[2mms[22m[39m
+ [32m✓[39m tests/unit/export-docx.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 328[2mms[22m[39m
+     [33m[2m✓[22m[39m generates a buffer from project sections [33m 311[2mms[22m[39m
+ [32m✓[39m tests/integration/metrics-route.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 162[2mms[22m[39m
+ [32m✓[39m tests/unit/services/sections-write.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m tests/unit/services/application-write.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m tests/unit/services/blueprint.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m tests/integrations/mysmis-contract.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/form-templates.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 282[2mms[22m[39m
+ [32m✓[39m tests/unit/docx-structure.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 46[2mms[22m[39m
+ [32m✓[39m tests/unit/services/application.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m tests/unit/services/freshness.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m tests/unit/service-eligibility.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m tests/unit/services/sections.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m tests/unit/services/errors.test.ts [2m([22m[2m50 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m tests/unit/services/evidence.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m tests/integrations/common.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 58[2mms[22m[39m
+ [32m✓[39m tests/unit/proposal-markdown.test.ts [2m([22m[2m30 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m tests/integrations/romanian.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/services/projects.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m tests/unit/policy/matrix.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m tests/integrations/ghid-task-generator.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-providers.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-transitions.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m tests/integrations/ec-portal.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/integration/agent-state-persistence.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/unit/services/set-application-status.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m tests/unit/policy/enforce.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/service-rules-application.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m tests/unit/tiers.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-history.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-types.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/unit/knowledge-write-back.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/services/policy-matrix-coverage.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/section-specs.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/unit/managed/translator.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/integrations/eurlex.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m tests/unit/adapters/search-calls.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-policies.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/unit/model-routing.test.ts [2m([22m[2m38 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-prompt.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/unit/session-knowledge.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-run-eligibility.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-get-blueprint.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m tests/unit/schema/section-enums.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/unit/policy/eligibility.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m tests/unit/managed/prompt.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-generate-section.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m tests/integration/middleware-public-paths.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-retrieve-session-context.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/service-rules-sections.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m tests/unit/managed/circuit-breaker.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/unit/auth-config.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m tests/unit/policy/matrix-docs-sync.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/unit/services/save-section-draft.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-resolve-call.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-extract-structure.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-validate-section.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/unit/services/validation-error.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-list-annexes.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/unit/proposal-patterns.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [2m[90m↓[39m[22m tests/integration/rls-postgres-enforcement.test.ts [2m([22m[2m1 test[22m[2m | [22m[33m1 skipped[39m[2m)[22m
+ [32m✓[39m tests/ai-sanitize-security.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-runtime.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-refresh-freshness.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-runtime-structured-action-guards.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/integration/agent-session-lifecycle.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-search-calls.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-regenerate-section.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m tests/integration/crawler-ssrf-validation.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-retrieve-evidence.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-registry.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m tests/unit/agent-tool-validate-application.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m tests/unit/managed/tools.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m tests/ai-components.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/rag-pipeline-security.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m166 passed[39m[22m[2m | [22m[33m5 skipped[39m[90m (171)[39m
+[2m      Tests [22m [1m[32m1002 passed[39m[22m[2m | [22m[33m15 skipped[39m[2m | [22m[90m2 todo[39m[90m (1019)[39m
+[2m   Start at [22m 09:30:48
+[2m   Duration [22m 4.50s[2m (transform 26.99s, setup 0ms, import 37.50s, tests 45.58s, environment 22ms)[22m
+
