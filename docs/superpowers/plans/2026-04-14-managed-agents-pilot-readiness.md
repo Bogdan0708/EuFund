@@ -71,10 +71,47 @@ git log --oneline -3
 ```
 Expected: clean tree, HEAD at `81bc042 docs(specs): pilot-readiness spec — 3 review fixes` or a later commit on the same branch. If worktree missing, recreate with `git worktree add -b chore/managed-pilot-readiness /home/godja/Dev/EU-Funds-pilot origin/master`.
 
-- [ ] **Step 2: Verify unit test baseline**
+- [ ] **Step 2: Capture the baseline (reproducible, in-worktree)**
 
-Run: `cd app && npm test 2>&1 | tail -5`
-Expected: ~1002 passed, 15 skipped, 2 todo (pre-existing baseline post PR #43).
+The verification gate in Task 12 compares against this baseline. Capture commands must be derivable from the plan alone — no reliance on MEMORY.md or session-start context.
+
+Run baseline capture and commit it to the worktree as a reference file:
+
+```bash
+cd /home/godja/Dev/EU-Funds-spec-pilot
+mkdir -p docs/superpowers/artifacts/managed-pilot-baseline
+cd app
+
+# Test baseline — full file list with PASS/FAIL summary
+npm test 2>&1 | tee ../docs/superpowers/artifacts/managed-pilot-baseline/test-output.txt | tail -5
+
+# Extract failing tests into a pinned allowlist
+grep -E "FAIL|✗" ../docs/superpowers/artifacts/managed-pilot-baseline/test-output.txt \
+  | sort -u \
+  > ../docs/superpowers/artifacts/managed-pilot-baseline/failing-tests.txt
+
+# Typecheck baseline
+npm run typecheck 2>&1 | tee ../docs/superpowers/artifacts/managed-pilot-baseline/typecheck-output.txt
+
+# Build warnings baseline (warnings only; errors are not expected)
+npm run build 2>&1 | tee ../docs/superpowers/artifacts/managed-pilot-baseline/build-output.txt
+```
+
+Commit these as a reference artifact:
+
+```bash
+cd /home/godja/Dev/EU-Funds-spec-pilot
+git add docs/superpowers/artifacts/managed-pilot-baseline/
+git -c commit.gpgsign=false commit -m "docs(artifacts): pilot-readiness baseline snapshot
+
+Captured at branch spec/managed-pilot-readiness HEAD. Task 12
+verification gate compares against these files. Not edited by
+subsequent tasks."
+```
+
+Expected shape: `failing-tests.txt` should be small — most test suites pass on master. Typecheck should be green (the plan warns about a possible stale `M app/src/lib/validation/schemas.ts` edit from the prior session; if present, either revert it before baselining, or let the baseline include its failure and the plan tracks that as "to fix" rather than "to match").
+
+If the baseline has unexpected failures that are not the two well-known pre-existing ones (timeline-assignee-validation, trial-notifications-route), STOP and reconcile with the user before starting Task 1.
 
 ---
 
@@ -147,6 +184,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS "idx_agent_messages_session_sequence"
 
 DROP INDEX IF EXISTS "idx_agent_messages_seq";
 ```
+
+**Production-scale note:** `CREATE UNIQUE INDEX` (without `CONCURRENTLY`) takes an `ACCESS EXCLUSIVE` lock on `agent_messages` for the duration of the build. At pilot scale (agent tables are young, far below 1M rows at the time of this PR) the build completes in under a second and downtime is negligible. If future rollouts apply this migration to a much larger table, switch to:
+
+```sql
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "idx_agent_messages_session_sequence"
+  ON "agent_messages" ("session_id", "sequence_number");
+```
+
+Drizzle wraps migrations in a transaction by default, and `CREATE INDEX CONCURRENTLY` cannot run inside a transaction. If needed, either (a) split that statement into its own migration file with transaction wrapping disabled, or (b) run the `CONCURRENTLY` version manually out-of-band and then mark the migration as applied in `drizzle.__drizzle_migrations`. For this PR's scale, the non-concurrent form is fine.
 
 - [ ] **Step 3: Add journal entries**
 
@@ -614,6 +660,8 @@ deferred to post-pilot."
 - Modify: `app/src/lib/ai/agent/managed/runtime.ts`
 - Create: `app/tests/unit/managed/history-summary.test.ts`
 
+**Scope boundary — summary writes are deferred:** Managed READS summaries but does NOT WRITE them. V3's compaction path (`lib/ai/agent/history.ts:171`) stays the only writer. A session whose turns are all managed never generates new summaries, so history grows toward the context window. For a 7-day pilot with ≥50 turns and ≥1 user, estimated usage is ~50 turns × ~1k tokens ≈ 50k tokens, well under Claude Sonnet 4.5's 200k window — not a practical risk at pilot scale. Adding a managed-path summary writer is post-pilot work, scoped with Phase 3b/3c. The spec §5.6 abort trigger "P95 latency > 2× V3 baseline sustained ≥1h" catches it as a symptom if it emerges. Task 11 includes a retention-register entry recording this limitation.
+
 - [ ] **Step 1: Write failing test**
 
 Create `app/tests/unit/managed/history-summary.test.ts`:
@@ -1067,13 +1115,13 @@ Flow:
 1. **Route (pre-stream)** validates `stateVersion` (Task 6) and `requestId` (already required in DTO).
 2. **Route (pre-stream)** attempts to claim the turn:
    - `INSERT INTO agent_turns (session_id, request_id, runtime_mode) RETURNING id`.
-   - On PG 23505 (unique violation): check whether the existing `agent_turns` row has any child `agent_messages`.
-     - Has children → post-output retry → return HTTP 409 `conflict_request_id` immediately (pre-stream).
-     - No children → stale pre-output-failed claim → `DELETE` it, retry the INSERT once, continue.
+   - On PG 23505 (unique violation): return HTTP 409 `conflict_request_id` **unconditionally**. No inline reclaim.
+   - Rationale: "no children yet" is the normal state of a live turn during stream startup (the window between claim insert and first durable output can be tens of seconds). An inline "no-children → reclaim" rule would race with active streams and delete legitimate in-flight turns. Orphan pre-output-failed claims are cleaned by the daily reconciliation cron in §6.3 (observability doc), not by concurrent writers.
+   - Real-world impact: `useAgent.ts:170` generates a fresh `requestId` per POST, so user-visible retries always use a new id and claim cleanly. Same-`requestId` retries only arise from fetch-level auto-retry (rare for POST + SSE) and the 409 response is the correct outcome for those.
 3. **Route** constructs the SSE Response and passes `turnId` into `runManagedWithSSE`.
 4. **Runtime (inside stream)** holds the user message in memory. First durable assistant/tool-use event → transactional `persistFirstDurableOutput(turnId, userMessage, firstOutput)` inserts both rows with the existing `turnId`. Subsequent outputs append with `turnId`.
 5. **Runtime (success)** calls `markTurnCompleted(turnId)` and emits an SSE completion event.
-6. **Runtime (pre-output failure)** — stream errors before any message persists — calls `deleteEmptyTurn(turnId)` (no child messages, safe to remove) and emits an SSE error event. A retry with the same `requestId` now finds no row → fresh turn.
+6. **Runtime (pre-output failure)** — stream errors before any message persists — calls `deleteEmptyTurn(turnId)` (no child messages, safe to remove) and emits an SSE error event. The row is gone, so a **fresh `requestId`** retry (the normal client flow) will claim cleanly. A same-`requestId` retry arriving *before* `deleteEmptyTurn` completes still gets 409 — acceptable (rare with fresh-requestId clients; consistent with reviewer guidance). Orphan rows from failed `deleteEmptyTurn` calls are caught by daily cron.
 7. **Runtime (post-output failure)** — stream errors after some messages persisted — leaves the row, emits an SSE error event. A retry with the same `requestId` hits the claim conflict at step 2 and receives HTTP 409.
 
 This resolves the pre-stream vs. mid-stream boundary cleanly. HTTP 409 is only ever returned before Response construction; once the stream starts, all failures are SSE events.
@@ -1118,17 +1166,30 @@ describe('managed retry idempotency', () => {
     expect(res.headers.get('content-type')).toMatch(/application\/json/)
   })
 
-  it('reclaims a stale empty turn (pre-output-failed prior attempt) and proceeds', async () => {
-    // Set up: agentTurns INSERT raises 23505. Follow-up SELECT returns
-    // {id: turn-stale}. Child count returns 0 → claim helper deletes and
-    // retries the INSERT, which succeeds. POST returns SSE stream (200).
+  it('returns HTTP 409 unconditionally on same-requestId retry during an in-flight turn (no inline reclaim)', async () => {
+    // Set up: agentTurns INSERT raises 23505. The existing row has NO
+    // children yet (live stream, pre-first-output). With no inline
+    // reclaim logic, the route must still return 409 — never delete
+    // and re-claim, which would strand the active stream.
     const { POST } = await import('@/app/api/ai/agent/route')
     const body = { sessionId: 'sess-1', message: 'hi', stateVersion: 1, requestId: 'req-abc' }
     const res = await POST(new Request('http://localhost/api/ai/agent', {
       method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' },
     }) as any)
-    expect(res.status).toBe(200)
-    expect(res.headers.get('content-type')).toMatch(/text\/event-stream/)
+    expect(res.status).toBe(409)
+    const json = await res.json()
+    expect(json.error?.code).toBe('conflict_request_id')
+    // Response must be clean JSON — never SSE.
+    expect(res.headers.get('content-type')).toMatch(/application\/json/)
+  })
+
+  it('fresh-requestId retry after pre-output failure succeeds (via deleteEmptyTurn cleanup, not via inline reclaim)', async () => {
+    // Set up: first POST triggers pre-output Anthropic failure. Runtime
+    // catch branch calls deleteEmptyTurn, removing the claim row.
+    // Second POST with a FRESH requestId then claims cleanly.
+    // (Simulate via DB mock: after first turn cleanup, second INSERT
+    // does not raise 23505.)
+    // Assert second POST returns 200 / SSE.
   })
 
   it('pre-output Anthropic failure cleans up the empty turn claim', async () => {
@@ -1176,18 +1237,22 @@ import { count as sqlCount } from 'drizzle-orm'
 
 export type ClaimResult =
   | { kind: 'claimed'; turnId: string }
-  | { kind: 'conflict' }  // post-output retry — route returns HTTP 409
+  | { kind: 'conflict' }  // any UNIQUE(session_id, request_id) violation — route returns HTTP 409
 
 /**
  * Pre-stream turn-claim. Inserts a new agent_turns row atomically.
  *
- * On PG 23505 (UNIQUE violation):
- *   - If the existing row has child messages → post-output retry → 'conflict'.
- *   - If no child messages → stale pre-output-failed claim → delete + retry once.
+ * On PG 23505 (UNIQUE violation): returns `{kind:'conflict'}` unconditionally.
  *
- * Ownership is checked inside the transaction. Caller (route) MUST have
- * already verified session ownership when loading the session row; this
- * re-verification is defense in depth.
+ * No inline reclaim. Pre-output failures are cleaned up by the runtime's
+ * error path via deleteEmptyTurn; orphans from failed cleanup are caught
+ * by daily cron (§6.3 observability doc). An inline "no-children → reclaim"
+ * rule would race with legitimate in-flight streams that have not yet
+ * reached first output — "no children" is the normal pre-output state.
+ *
+ * Ownership is verified inside the transaction. Caller (route) has
+ * already verified ownership when loading the session row; this is
+ * defense in depth.
  */
 export async function claimTurn(input: {
   sessionId: string
@@ -1195,61 +1260,26 @@ export async function claimTurn(input: {
   requestId: string
   runtimeMode: 'v3' | 'managed'
 }): Promise<ClaimResult> {
-  // Inner insert helper — also verifies ownership at the same time
-  async function tryInsert(): Promise<{ kind: 'claimed'; turnId: string } | { kind: 'unique_violation' }> {
-    try {
-      return await db.transaction(async (tx) => {
-        const [sess] = await tx.select({ userId: agentSessions.userId })
-          .from(agentSessions)
-          .where(eq(agentSessions.id, input.sessionId))
-          .limit(1)
-        if (!sess || sess.userId !== input.userId) {
-          throw new Error('session ownership denied')
-        }
-        const [row] = await tx.insert(agentTurns).values({
-          sessionId: input.sessionId,
-          requestId: input.requestId,
-          runtimeMode: input.runtimeMode,
-        }).returning({ id: agentTurns.id })
-        return { kind: 'claimed', turnId: row.id }
-      })
-    } catch (err: any) {
-      if (err?.code === '23505') return { kind: 'unique_violation' }
-      throw err
-    }
+  try {
+    return await db.transaction(async (tx) => {
+      const [sess] = await tx.select({ userId: agentSessions.userId })
+        .from(agentSessions)
+        .where(eq(agentSessions.id, input.sessionId))
+        .limit(1)
+      if (!sess || sess.userId !== input.userId) {
+        throw new Error('session ownership denied')
+      }
+      const [row] = await tx.insert(agentTurns).values({
+        sessionId: input.sessionId,
+        requestId: input.requestId,
+        runtimeMode: input.runtimeMode,
+      }).returning({ id: agentTurns.id })
+      return { kind: 'claimed', turnId: row.id } as const
+    })
+  } catch (err: any) {
+    if (err?.code === '23505') return { kind: 'conflict' }
+    throw err
   }
-
-  const first = await tryInsert()
-  if (first.kind === 'claimed') return first
-
-  // Unique violation: inspect the existing row.
-  const [existing] = await db.select({ id: agentTurns.id })
-    .from(agentTurns)
-    .where(and(
-      eq(agentTurns.sessionId, input.sessionId),
-      eq(agentTurns.requestId, input.requestId),
-    ))
-    .limit(1)
-  if (!existing) {
-    // Race: the conflicting row was deleted between our insert and this select.
-    // Retry once.
-    const second = await tryInsert()
-    if (second.kind === 'claimed') return second
-    return { kind: 'conflict' }
-  }
-
-  const [children] = await db.select({ count: sqlCount() })
-    .from(agentMessages)
-    .where(eq(agentMessages.turnId, existing.id))
-  const hasChildren = (children?.count ?? 0) > 0
-
-  if (hasChildren) return { kind: 'conflict' }
-
-  // Stale pre-output-failed claim. Delete + retry once.
-  await db.delete(agentTurns).where(eq(agentTurns.id, existing.id))
-  const retry = await tryInsert()
-  if (retry.kind === 'claimed') return retry
-  return { kind: 'conflict' }
 }
 
 /**
@@ -1841,6 +1871,27 @@ Append a new entry matching the existing format. Suggested content:
 **Owner:** TBD when the dedicated RLS spec lands.
 
 **Retirement trigger:** A comprehensive agent-surface RLS spec + migrations that cover all six tables together with updated `withUserRLS(userId, fn)` usage at every call site.
+
+---
+
+## Managed-path summary writes
+
+**Status:** Known limitation — deferred to Phase 3b/3c.
+
+**Context:** Managed runtime READS `system_summary` rows and `session.messageSummary` (per pilot-readiness spec §3 Finding 1) but does not trigger compaction. V3's `lib/ai/agent/history.ts:171` is the sole writer. Fully-managed sessions grow history toward the context window.
+
+**Retirement trigger:** Phase 3b/3c writer surface lands, with a managed-path compaction trigger mirroring V3's.
+
+---
+
+## Managed-pilot operational risks (informational)
+
+**Status:** Explicitly accepted tradeoffs for the pilot window. Not code gaps; no retirement trigger.
+
+- **Fail-closed flag reads** (spec §3 Finding 4): A transient DB hiccup on the pilot service returns `managed_agent_enabled = false` and kicks users to V3. Acceptable for a safety-first pilot; revisit if DB flakiness is observed during the 7-day window.
+- **Nuclear rollback collateral**: scaling `fondeu-pilot` to zero would disrupt any other dev/test workload pointing at it. Runbook calls this nuclear; primary and secondary paths are preferred.
+- **Smoke-suite cookie dependency**: the suite requires a session cookie for the target userId. If the pilot environment uses IP-bound or very short-lived sessions, refresh the cookie at the start of each smoke run. Documented in `scripts/smoke/managed-pilot/README.md`.
+- **Client 409 UX**: the server returns `stale_state_version` and `conflict_request_id` with bilingual messages, but `useAgent.ts` currently treats 409s as generic failures. A small client follow-up (auto-refresh `stateVersion` from the response's `currentVersion` field, toast the bilingual message) is recommended but not required for pilot. Scoped to a follow-up PR — not this one.
 ```
 
 - [ ] **Step 2: Commit**
@@ -1861,41 +1912,41 @@ operational context stays in the runbook, not durable repo guidance."
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Baseline pre-existing failures (done once, before any edits)**
+- [ ] **Step 1: Compare test output against the in-worktree baseline**
 
-Before starting Task 1, capture the master baseline into an inline allowlist. This runs once and is pinned explicitly — not left as a vague "acceptable." If the allowlist grows during this PR, that is a regression and must be investigated.
+Task 0 Step 2 committed `docs/superpowers/artifacts/managed-pilot-baseline/` with the exact baseline from master. The gate is: current output matches or strictly improves upon that baseline.
 
 ```bash
-cd app && npm test 2>&1 | grep -E "FAIL|✗" | sort -u > /tmp/managed-pilot-baseline.txt
-cat /tmp/managed-pilot-baseline.txt
+cd /home/godja/Dev/EU-Funds-spec-pilot
+cd app
+
+# Run full test suite and capture
+npm test 2>&1 | tee /tmp/pilot-current-tests.txt | tail -5
+
+# Extract current failing tests
+grep -E "FAIL|✗" /tmp/pilot-current-tests.txt | sort -u > /tmp/pilot-current-failing.txt
+
+# Diff against the committed baseline
+diff ../docs/superpowers/artifacts/managed-pilot-baseline/failing-tests.txt \
+     /tmp/pilot-current-failing.txt
 ```
 
-Expected pinned failures at pilot-readiness branch start (snapshot from MEMORY.md; re-verify at time of execution):
-- `timeline-assignee-validation.test.ts` — 2 failing cases
-- `trial-notifications-route.test.ts` — 1 failing case
-- Any e2e specs that run under vitest
+Expected: diff output is empty (identical) or shows only **removed** lines (tests that were failing and now pass). Any added lines (new failures) block the PR — do not push until investigated.
 
-If the actual list differs from the expectation, STOP and reconcile with the user before proceeding. Do not silently widen the allowlist.
+- [ ] **Step 2: Scoped green run on managed-pilot test surface**
 
-- [ ] **Step 2: Full unit + integration test run — scoped green**
+The managed-pilot test files added by this PR must be zero-failure independently:
 
 ```bash
-# Exclude pre-existing-failure files explicitly so the gate is objectively green.
 cd app && npx vitest run \
-  --exclude tests/integration/timeline-assignee-validation.test.ts \
-  --exclude tests/integration/trial-notifications-route.test.ts \
+  tests/unit/feature-flags-bypass-cache.test.ts \
+  tests/unit/managed/breaker-windowed.test.ts \
+  tests/unit/managed/history-summary.test.ts \
+  tests/integration/managed/stateversion-precondition.test.ts \
+  tests/integration/managed/retry-idempotency.test.ts \
   2>&1 | tail -10
 ```
-Expected: **zero failures** in the scoped run. If anything new appears, fix before push — do not defer.
-
-Also run the excluded files standalone and confirm their failure count matches the baseline exactly (no new regressions hidden in the exclusion):
-
-```bash
-cd app && npx vitest run tests/integration/timeline-assignee-validation.test.ts \
-                        tests/integration/trial-notifications-route.test.ts \
-                        2>&1 | tail -5
-```
-Failure count must equal baseline. If higher, investigate before push.
+Expected: **zero failures**. If anything fails here, fix before push — this surface is the PR's own test coverage.
 
 - [ ] **Step 3: Build**
 
@@ -1909,7 +1960,13 @@ Expected: **zero errors**. Warnings are acceptable only if they appear on master
 ```bash
 cd app && npm run typecheck 2>&1 | tail -5
 ```
-Expected: **zero errors**. If master has pre-existing typecheck errors (per git status at session start showed `M app/src/lib/validation/schemas.ts`), they must be captured in the baseline step and matched exactly.
+Expected: **zero errors**. Compare against the committed typecheck baseline:
+
+```bash
+diff <(cd app && npm run typecheck 2>&1) \
+     docs/superpowers/artifacts/managed-pilot-baseline/typecheck-output.txt
+```
+Output diff should be empty or show only removed errors (improvements).
 
 - [ ] **Step 5: Push + PR**
 
@@ -1922,7 +1979,7 @@ gh pr create --base master \
 
 Lands audit-finding hardening + preview-deploy scaffolding for the managed-agents runtime so a single-user pilot on \`fondeu-pilot\` can start. Scope A+B of the decom-program decomposition.
 
-5 Finding fixes (history continuity, stateVersion CAS, retry idempotency, flag cache-bypass, rolling-window breaker) + 2 additive migrations + service-local gate + 6-test smoke suite + rollback runbook + observability queries + CLAUDE.md + retention-register entry.
+5 Finding fixes (history summary continuity, mandatory stateVersion precondition, pre-stream turn-claim idempotency, flag cache-bypass kill switch, rolling-window half-open breaker) + 2 additive migrations (agent_turns claim table, agent_messages sequence uniqueness) + service-local MANAGED_RUNTIME_ENABLED gate + 6-test smoke suite (mix of automated + manual-assisted) + rollback runbook + observability reconciliation queries + retention-register entry for agent-surface RLS.
 
 Spec: \`docs/superpowers/specs/2026-04-14-managed-agents-pilot-readiness-design.md\`
 Plan: \`docs/superpowers/plans/2026-04-14-managed-agents-pilot-readiness.md\`
