@@ -120,6 +120,20 @@ export async function executeManagedTool(
       'managed tool executed',
     )
 
+    if (WRITE_TOOL_NAMES.has(name)) {
+      log.info(
+        {
+          tool: name,
+          userId: ctx.userId,
+          sessionId: ctx.sessionId,
+          requestId: ctx.requestId,
+          isError: false,
+          latencyMs: Date.now() - start,
+        },
+        'managed write tool executed',
+      )
+    }
+
     return {
       content,
       isError: false,
@@ -128,46 +142,61 @@ export async function executeManagedTool(
       truncated,
     }
   } catch (err) {
-    if (err instanceof Error && err.message === 'tool_timeout') {
-      return errorResult(name, start, 'Tool timed out after 15s')
-    }
-    if (err instanceof NotFoundError) {
-      return errorResult(name, start, `NOT_FOUND: ${err.message}`)
-    }
-    if (err instanceof AuthorizationError) {
-      return errorResult(
-        name,
-        start,
-        'AUTHORIZATION: Access denied to requested session',
+    const result = mapErrorToResult(err, name, start, ctx)
+    if (WRITE_TOOL_NAMES.has(name)) {
+      log.info(
+        {
+          tool: name,
+          userId: ctx.userId,
+          sessionId: ctx.sessionId,
+          requestId: ctx.requestId,
+          isError: true,
+          latencyMs: result.latencyMs,
+        },
+        'managed write tool executed',
       )
     }
-    if (err instanceof ValidationError) {
-      const code = err.policyCode ?? `VALIDATION:${err.field}`
-      return errorResult(name, start, `${code}: ${err.message}`)
-    }
-    if (err instanceof ConcurrencyError) {
-      return errorResult(name, start, `CONCURRENCY: ${err.message}`)
-    }
-    if (err instanceof ExternalDependencyError) {
-      return errorResult(
-        name,
-        start,
-        `EXTERNAL_DEPENDENCY: ${err.service} unavailable`,
-      )
-    }
-    if (err instanceof ServiceError) {
-      return errorResult(name, start, `${err.code}: ${err.message}`)
-    }
-    log.error(
-      {
-        tool: name,
-        error: err instanceof Error ? err.message : String(err),
-        requestId: ctx.requestId,
-      },
-      'unexpected managed tool error',
-    )
-    return errorResult(name, start, 'Internal tool error')
+    return result
   }
+}
+
+function mapErrorToResult(
+  err: unknown,
+  name: string,
+  start: number,
+  ctx: ServiceContext,
+): ExecutorResult {
+  if (err instanceof Error && err.message === 'tool_timeout') {
+    return errorResult(name, start, 'Tool timed out after 15s')
+  }
+  if (err instanceof NotFoundError) {
+    return errorResult(name, start, `NOT_FOUND: ${err.message}`)
+  }
+  if (err instanceof AuthorizationError) {
+    return errorResult(name, start, 'AUTHORIZATION: Access denied to requested session')
+  }
+  if (err instanceof ValidationError) {
+    const code = err.policyCode ?? `VALIDATION:${err.field}`
+    return errorResult(name, start, `${code}: ${err.message}`)
+  }
+  if (err instanceof ConcurrencyError) {
+    return errorResult(name, start, `CONCURRENCY: ${err.message}`)
+  }
+  if (err instanceof ExternalDependencyError) {
+    return errorResult(name, start, `EXTERNAL_DEPENDENCY: ${err.service} unavailable`)
+  }
+  if (err instanceof ServiceError) {
+    return errorResult(name, start, `${err.code}: ${err.message}`)
+  }
+  log.error(
+    {
+      tool: name,
+      error: err instanceof Error ? err.message : String(err),
+      requestId: ctx.requestId,
+    },
+    'unexpected managed tool error',
+  )
+  return errorResult(name, start, 'Internal tool error')
 }
 
 function errorResult(
