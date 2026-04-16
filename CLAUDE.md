@@ -17,10 +17,16 @@ npm run build            # Production build
 npm run lint             # ESLint (next lint)
 npm run typecheck        # tsc --noEmit
 
-# Tests (Vitest)
+# Tests (Vitest — unit + integration)
 npm run test             # Run all tests once
 npm run test:watch       # Watch mode
-npx vitest run tests/integration/feature-flags.test.ts  # Single test file
+npx vitest run tests/integration/feature-flags.test.ts  # Single Vitest file
+
+# E2E tests (Playwright — informational only, not a merge gate)
+npx playwright test                                     # All E2E tests
+npx playwright test e2e/auth/login.spec.ts              # Single spec
+npx playwright test -g "login succeeds"                 # Filter by test name
+# Requires: dev server running, REDIS_URL set, PLAYWRIGHT_ADMIN_PASSWORD set
 
 # Database (Drizzle ORM)
 npm run db:generate      # Generate migration from schema changes
@@ -115,6 +121,22 @@ Tests live in `app/tests/` (not `src/`). Path alias: `@/*` maps to `app/src/*`.
 
 **Token TTLs**: Email verification = 24h, password reset = 1h.
 
+### Agent Architecture
+
+The primary AI interaction path. Three runtimes coexist in source; master currently uses two.
+
+**V3 Agent** (`lib/ai/agent/`): state-machine agent with phases `discovery` → `research` → `structuring` → `drafting` → `review`. Each phase gates which MCP tools are available via the registry. Main entry: `POST /api/ai/agent`. Session state tracked in `agent_sessions` with `stateVersion` optimistic-concurrency tokens — all mutations use CAS. **Authoritative runtime today.**
+
+**Managed Agents** (`lib/ai/agent/managed/`): Phase 2 pilot, gated by `managed_agent_enabled` flag. **Read-only on master** — 14 tools (9 read + 5 rules), no write tools. Phase 3 (write tools + structured-action bridge) is in progress per `docs/superpowers/specs/2026-04-10-managed-agents-phase3-design.md`; not merged.
+
+**Service layer** (`lib/ai/agent/services/`): all V3 state mutations route through service functions, never direct DB writes. Key services: `application.ts`, `sections.ts`, `blueprint.ts`, `evidence.ts`, `freshness.ts`. Service errors: `NotFoundError`, `AuthorizationError`, `ValidationError`, `ConcurrencyError`.
+
+**Policy matrix** (`lib/ai/agent/policy/matrix.ts`): declarative precondition rules for 8 mutations (`saveSectionDraft`, `approveSection`, `rollbackSection`, `rejectSection`, `markSectionStale`, `setSelectedCall`, `freezeOutline`, `setApplicationStatus`). Enforced by `assertPolicy()`. Bypassing the service layer breaks the audit chain — always mutate through services.
+
+**MCP tools** (`lib/ai/agent/mcp/`): organized as `read/` (search-calls, get-call-blueprint, get-application-state, list-sections, get-section, get-validation-report, get-project-summary, list-uploaded-documents, retrieve-evidence), `rules/` (run-eligibility, validate-section, validate-application, check-missing-annexes, score-fit), `research/` (refresh-call-freshness, verify-deadline, check-call-page-updates). Tool availability is phase-gated by the registry.
+
+**Senior Review primitive** (planned, not yet implemented): runtime-owned escalation at 4 high-stakes gates (call selection, outline freeze, eligibility verdict, section recovery). Spec: `docs/superpowers/specs/2026-04-14-senior-review-primitive-design.md`. PR 1 plan: `docs/superpowers/plans/2026-04-14-senior-review-pr1-foundation.md`. Blocked on Managed Phase 3 merging.
+
 ### Routing Conventions
 
 - Romanian page paths: `/ro/autentificare`, `/ro/inregistrare`, `/ro/resetare-parola`, `/ro/panou`, `/ro/proiecte`
@@ -141,6 +163,8 @@ Tests live in `app/tests/` (not `src/`). Path alias: `@/*` maps to `app/src/*`.
 ### AI Providers
 
 Multi-provider setup: OpenAI (primary), Anthropic (alternative), Google (alternative), Perplexity. Configuration in `app/src/lib/ai/config.ts`. Tier-based rate limits per feature (proposals: 10/day, docs: 20/day, grants: 50/day).
+
+Production AI calls route through a separate **AI Gateway** service (Cloud Run, project `mitch-ai-services`, region `europe-west2`) rather than calling providers directly. Consumed via `AI_GATEWAY_URL`, `AI_GATEWAY_API_KEY`, `AI_GATEWAY_TENANT_ID` env vars. Gateway is an independent codebase — not in this repo. `lib/ai/providers/` falls back to direct provider SDKs if gateway env vars are unset (useful for local dev).
 
 ### External Integrations
 
@@ -180,7 +204,9 @@ This project is part of a cross-project knowledge system:
 
 ### Gotchas
 
+- `app/src/lib/db/rls.sql` is a **design reference, not an execution artifact** — the migrator only runs files under `app/drizzle/`. RLS policies for new tables must live in the drizzle migration file itself. Keep `rls.sql` in sync for human readability, but never assume it runs.
 - `rls.sql` variable must match `withUserRLS()`: both use `app.current_user_id`
+- This repo uses git worktrees heavily. `.worktrees/` is gitignored; sibling external worktrees (`~/Dev/EU-Funds-*`) are also common. Check `git worktree list` before assuming master state — the primary checkout may not be up to date.
 - `requirePlatformAdmin()` always hits DB — never trust session alone for admin checks
 - `logAudit()` only logs when a DB mutation actually occurs (no-op guard for consent)
 - `grantedAt` should NOT be set on withdraw-from-scratch consent records
@@ -191,6 +217,11 @@ This project is part of a cross-project knowledge system:
 - Qdrant must have `QDRANT_API_KEY` set in production — unauthenticated Qdrant is a read/write security risk
 - `direct-ingest-guides.ts` is emergency-only — it bypasses API auth, audit logging, and review. Never use as a normal ingestion path
 - Vector store `MemoryVectorStore` treats filter as key-value equality; `QdrantVectorStore` passes filter raw to Qdrant API — not interchangeable for filtered searches
+- `seed-admin.ts` requires `ADMIN_PASSWORD` in the environment — no source-code fallback. Set it in `.env.local` locally or as the `CI_ADMIN_PASSWORD` secret in pipelines. The same value must be mirrored to `PLAYWRIGHT_ADMIN_PASSWORD` on any job that runs e2e login, otherwise `app/e2e/test-config.ts` throws at module load.
+- AI endpoints are fail-closed on Redis — `guardAIRequest` (`lib/middleware/auth.ts`) returns 503 `RATE_LIMIT_UNAVAILABLE` if `isRedisAvailable()` returns false. Local dev needs `REDIS_URL` set or every `/api/ai/*` call fails with 503.
+- `npm run db:generate` is broken — `app/drizzle/meta/` is missing 18 of 25 snapshots (gaps at `0007–0009`, `0012–0024`), so drizzle-kit aborts before emitting new SQL. Until snapshots are rebuilt, new migrations must be hand-authored in the style of `0023`/`0024` and their entry manually appended to `meta/_journal.json`. See `0028_agent_sessions_project_and_outline_frozen.sql` for an example.
+- Vector store defaults to `VECTOR_PROVIDER=memory` for local dev (no Qdrant needed). Only production and explicit RAG-testing sessions need `VECTOR_PROVIDER=qdrant` + `QDRANT_URL` + `QDRANT_API_KEY`. Do not stand up a local Qdrant unless you are specifically testing RAG behavior.
+- `next dev` binds to port 3000 by default. If port 3000 is occupied by a parallel project on the same workstation, override with `PORT=3002 npm run dev` and update `NEXTAUTH_URL` in `.env.local` to match, otherwise auth callbacks break.
 
 ## CI gate policy
 
