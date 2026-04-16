@@ -196,3 +196,18 @@ export const MANAGED_TOOL_NAMES: ReadonlySet<string> = new Set([
   ...RULE_TOOL_NAMES,
   ...WRITE_TOOL_NAMES,
 ])
+
+/**
+ * Returns the tool surface the managed runtime should advertise to Anthropic
+ * for a given turn. When writes are disabled for this user (allowWrites=false),
+ * write tools are excluded entirely — the model never sees them and cannot
+ * attempt them, matching the behavioral contract of the rollout gate.
+ *
+ * The executor's allowWrites gate remains as defense-in-depth in case a
+ * write tool somehow reaches dispatch (shouldn't happen since the tool is
+ * absent from the advertised set, but costs nothing to keep).
+ */
+export function getManagedTools(allowWrites: boolean): Tool[] {
+  if (allowWrites) return MANAGED_TOOLS
+  return MANAGED_TOOLS.filter((t) => !WRITE_TOOL_NAMES.has(t.name))
+}

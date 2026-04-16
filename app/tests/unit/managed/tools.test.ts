@@ -6,6 +6,7 @@ import {
   RULE_TOOL_NAMES,
   WRITE_TOOL_NAMES,
   PHASE_4_BLOCKED_TOOL_NAMES,
+  getManagedTools,
 } from '@/lib/ai/agent/managed/tools'
 
 describe('MANAGED_TOOLS', () => {
@@ -129,6 +130,32 @@ describe('tool name sets', () => {
   it('PHASE_4_BLOCKED_TOOL_NAMES is disjoint from MANAGED_TOOL_NAMES', () => {
     for (const name of PHASE_4_BLOCKED_TOOL_NAMES) {
       expect(MANAGED_TOOL_NAMES.has(name), `${name} leaked into MANAGED_TOOL_NAMES`).toBe(false)
+    }
+  })
+})
+
+describe('getManagedTools', () => {
+  it('returns the full 22-tool surface when allowWrites=true', () => {
+    const tools = getManagedTools(true)
+    expect(tools).toHaveLength(22)
+    expect(tools).toBe(MANAGED_TOOLS)
+  })
+
+  it('returns only 14 read+rules tools when allowWrites=false', () => {
+    const tools = getManagedTools(false)
+    expect(tools).toHaveLength(14)
+    const names = new Set(tools.map((t) => t.name))
+    for (const name of READ_TOOL_NAMES) expect(names.has(name)).toBe(true)
+    for (const name of RULE_TOOL_NAMES) expect(names.has(name)).toBe(true)
+    for (const name of WRITE_TOOL_NAMES) expect(names.has(name)).toBe(false)
+  })
+
+  it('never returns Phase 4 tools in either mode', () => {
+    for (const allowWrites of [true, false]) {
+      const names = new Set(getManagedTools(allowWrites).map((t) => t.name))
+      for (const phase4 of PHASE_4_BLOCKED_TOOL_NAMES) {
+        expect(names.has(phase4), `${phase4} leaked into getManagedTools(${allowWrites})`).toBe(false)
+      }
     }
   })
 })

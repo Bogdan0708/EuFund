@@ -21,7 +21,7 @@ import type {
 } from '../types'
 import type { ServiceContext } from '../services/types'
 import { getAnthropicClient } from '@/lib/ai/anthropic-client'
-import { MANAGED_TOOLS, WRITE_TOOL_NAMES } from './tools'
+import { getManagedTools, WRITE_TOOL_NAMES } from './tools'
 import { translateAnthropicEvent, createTranslatorContext } from './translator'
 import { buildManagedSystemPrompt } from './prompt'
 import { executeManagedTool, type ExecutorResult } from './executor'
@@ -138,13 +138,20 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
 
   // 3. Build the system prompt. When systemSummary is non-null, a bilingual
   //    'Prior conversation summary' block is appended at the prompt end.
+  //    When allowWrites is false, the write-tool surface and the "Write
+  //    tool rules" block are omitted so the model never sees writes it
+  //    cannot perform. The executor gate in tool dispatch remains as
+  //    defense-in-depth.
+  const allowWrites = serviceCtx.allowWrites === true
   const systemPrompt = buildManagedSystemPrompt(
     session,
     sections,
     session.currentPhase as Phase,
     session.locale,
+    allowWrites,
     systemSummary,
   )
+  const tools = getManagedTools(allowWrites)
 
   // 4. Tool loop
   const runningMessages: MessageParam[] = [...history]
@@ -155,7 +162,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     const stream = anthropic.messages.stream({
       model: MODEL,
       system: systemPrompt,
-      tools: MANAGED_TOOLS,
+      tools,
       messages: runningMessages,
       max_tokens: MAX_TOKENS_PER_TURN,
     })

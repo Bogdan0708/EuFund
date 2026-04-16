@@ -22,70 +22,85 @@ const mockSession: AgentSession = {
   updatedAt: new Date(),
 }
 
-describe('buildManagedSystemPrompt', () => {
+describe('buildManagedSystemPrompt (allowWrites=false, read-only default)', () => {
   it('returns a non-empty string for Romanian locale', () => {
-    const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro')
+    const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro', false)
     expect(prompt.length).toBeGreaterThan(100)
   })
 
   it('references the full workflow (discovery through review)', () => {
-    const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro')
+    const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro', false)
     expect(prompt.toLowerCase()).toMatch(/discovery|descoperire|drafting|redactare/)
   })
 
   it('references tool categories', () => {
-    const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro')
+    const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro', false)
     expect(prompt.toLowerCase()).toMatch(/tool|instrument|apel/)
   })
 
   it('switches language on locale change', () => {
-    const ro = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro')
-    const en = buildManagedSystemPrompt({ ...mockSession, locale: 'en' }, [], 'discovery', 'en')
+    const ro = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro', false)
+    const en = buildManagedSystemPrompt({ ...mockSession, locale: 'en' }, [], 'discovery', 'en', false)
     expect(ro).not.toBe(en)
   })
 
   it('includes hard rules (evidence discipline, no invented facts)', () => {
-    const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro')
+    const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro', false)
     expect(prompt.toLowerCase()).toMatch(/evidence|dovezi|nu inventa|never invent/)
   })
 
   it('includes current phase indicator', () => {
-    const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro')
+    const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro', false)
     expect(prompt.toLowerCase()).toMatch(/discovery|descoperire/)
   })
 
-  it('references write tools (Phase 3b exposes them)', () => {
-    const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro')
-    const writeTools = ['save_section_draft', 'approve_revision', 'rollback_section']
+  it('does NOT reference write tools when allowWrites is false', () => {
+    const ro = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro', false)
+    const en = buildManagedSystemPrompt({ ...mockSession, locale: 'en' }, [], 'discovery', 'en', false)
+    const writeTools = [
+      'save_section_draft', 'approve_revision', 'rollback_section',
+      'set_application_status', 'set_selected_call', 'freeze_outline',
+      'mark_section_stale', 'reject_section',
+    ]
     for (const name of writeTools) {
-      expect(prompt).toContain(name)
+      expect(ro, `RO prompt should not mention ${name}`).not.toContain(name)
+      expect(en, `EN prompt should not mention ${name}`).not.toContain(name)
     }
+  })
+
+  it('does NOT include the "Write tool rules" block when allowWrites is false', () => {
+    const ro = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro', false)
+    const en = buildManagedSystemPrompt({ ...mockSession, locale: 'en' }, [], 'discovery', 'en', false)
+    expect(ro).not.toMatch(/Reguli pentru instrumentele de scriere/)
+    expect(en).not.toMatch(/Write tool rules/)
+    expect(ro).not.toMatch(/PARALLEL_WRITE_BLOCKED/)
+    expect(en).not.toMatch(/PARALLEL_WRITE_BLOCKED/)
   })
 })
 
 describe('buildManagedSystemPrompt priorSummary parameter', () => {
   it('appends Romanian label when priorSummary is provided in ro locale', () => {
-    const result = buildManagedSystemPrompt(mockSession, [], 'drafting', 'ro', 'Rezumat de test')
+    const result = buildManagedSystemPrompt(mockSession, [], 'drafting', 'ro', false, 'Rezumat de test')
     expect(result).toMatch(/## Rezumat conversație anterioară/)
     expect(result.endsWith('Rezumat de test')).toBe(true)
     expect(result).not.toMatch(/<conversation_summary>/)
   })
 
   it('appends English label in en locale', () => {
-    const result = buildManagedSystemPrompt(mockSession, [], 'drafting', 'en', 'Test summary')
+    const result = buildManagedSystemPrompt(mockSession, [], 'drafting', 'en', false, 'Test summary')
     expect(result).toMatch(/## Prior conversation summary/)
     expect(result.endsWith('Test summary')).toBe(true)
     expect(result).not.toMatch(/<conversation_summary>/)
   })
 
   it('omits the label when priorSummary is null', () => {
-    const result = buildManagedSystemPrompt(mockSession, [], 'drafting', 'en', null)
+    const result = buildManagedSystemPrompt(mockSession, [], 'drafting', 'en', false, null)
     expect(result).not.toMatch(/Prior conversation summary/)
     expect(result).not.toMatch(/Rezumat conversație anterioară/)
   })
 
-  it('is backwards compatible (existing 4-arg call signature)', () => {
-    const result = buildManagedSystemPrompt(mockSession, [], 'drafting', 'en')
+  it('omits the label when priorSummary is omitted (5-arg call)', () => {
+    const result = buildManagedSystemPrompt(mockSession, [], 'drafting', 'en', false)
     expect(result).not.toMatch(/Prior conversation summary/)
     expect(result.length).toBeGreaterThan(100)
   })
