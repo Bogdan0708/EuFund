@@ -17,10 +17,16 @@ npm run build            # Production build
 npm run lint             # ESLint (next lint)
 npm run typecheck        # tsc --noEmit
 
-# Tests (Vitest)
+# Tests (Vitest — unit + integration)
 npm run test             # Run all tests once
 npm run test:watch       # Watch mode
-npx vitest run tests/integration/feature-flags.test.ts  # Single test file
+npx vitest run tests/integration/feature-flags.test.ts  # Single Vitest file
+
+# E2E tests (Playwright — informational only, not a merge gate)
+npx playwright test                                     # All E2E tests
+npx playwright test e2e/auth/login.spec.ts              # Single spec
+npx playwright test -g "login succeeds"                 # Filter by test name
+# Requires: dev server running, REDIS_URL set, PLAYWRIGHT_ADMIN_PASSWORD set
 
 # Database (Drizzle ORM)
 npm run db:generate      # Generate migration from schema changes
@@ -158,6 +164,8 @@ The primary AI interaction path. Three runtimes coexist in source; master curren
 
 Multi-provider setup: OpenAI (primary), Anthropic (alternative), Google (alternative), Perplexity. Configuration in `app/src/lib/ai/config.ts`. Tier-based rate limits per feature (proposals: 10/day, docs: 20/day, grants: 50/day).
 
+Production AI calls route through a separate **AI Gateway** service (Cloud Run, project `mitch-ai-services`, region `europe-west2`) rather than calling providers directly. Consumed via `AI_GATEWAY_URL`, `AI_GATEWAY_API_KEY`, `AI_GATEWAY_TENANT_ID` env vars. Gateway is an independent codebase — not in this repo. `lib/ai/providers/` falls back to direct provider SDKs if gateway env vars are unset (useful for local dev).
+
 ### External Integrations
 
 EU data: EurLex, CORDIS, Eurostat, EC Portal. Romanian: ONRC (company registry), ANAF (tax), MySMIS (project management system with XML export). All clients in `app/src/lib/integrations/`. Use `CircuitBreaker` from `@/lib/errors` for external API calls.
@@ -212,6 +220,8 @@ This project is part of a cross-project knowledge system:
 - `seed-admin.ts` requires `ADMIN_PASSWORD` in the environment — no source-code fallback. Set it in `.env.local` locally or as the `CI_ADMIN_PASSWORD` secret in pipelines. The same value must be mirrored to `PLAYWRIGHT_ADMIN_PASSWORD` on any job that runs e2e login, otherwise `app/e2e/test-config.ts` throws at module load.
 - AI endpoints are fail-closed on Redis — `guardAIRequest` (`lib/middleware/auth.ts`) returns 503 `RATE_LIMIT_UNAVAILABLE` if `isRedisAvailable()` returns false. Local dev needs `REDIS_URL` set or every `/api/ai/*` call fails with 503.
 - `npm run db:generate` is broken — `app/drizzle/meta/` is missing 18 of 25 snapshots (gaps at `0007–0009`, `0012–0024`), so drizzle-kit aborts before emitting new SQL. Until snapshots are rebuilt, new migrations must be hand-authored in the style of `0023`/`0024` and their entry manually appended to `meta/_journal.json`. See `0028_agent_sessions_project_and_outline_frozen.sql` for an example.
+- Vector store defaults to `VECTOR_PROVIDER=memory` for local dev (no Qdrant needed). Only production and explicit RAG-testing sessions need `VECTOR_PROVIDER=qdrant` + `QDRANT_URL` + `QDRANT_API_KEY`. Do not stand up a local Qdrant unless you are specifically testing RAG behavior.
+- `next dev` binds to port 3000 by default. If port 3000 is occupied by a parallel project on the same workstation, override with `PORT=3002 npm run dev` and update `NEXTAUTH_URL` in `.env.local` to match, otherwise auth callbacks break.
 
 ## CI gate policy
 
