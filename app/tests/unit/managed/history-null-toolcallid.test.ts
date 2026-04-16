@@ -77,14 +77,14 @@ describe('loadManagedHistory — null toolCallId pairing', () => {
     // assistant message with synthetic ID
     const assistantMsg = result.messages[0]
     expect(assistantMsg.role).toBe('assistant')
-    const assistantBlocks = assistantMsg.content as Array<Record<string, unknown>>
+    const assistantBlocks = assistantMsg.content as unknown as Array<Record<string, unknown>>
     expect(assistantBlocks[0].type).toBe('tool_use')
     expect(assistantBlocks[0].id).toBe('tu_legacy_m-0')
 
     // user message: tool_use_id should match the synthetic assistant ID (FIFO shifted)
     const userMsg = result.messages[1]
     expect(userMsg.role).toBe('user')
-    const resultBlocks = userMsg.content as Array<Record<string, unknown>>
+    const resultBlocks = userMsg.content as unknown as Array<Record<string, unknown>>
     expect(resultBlocks[0].type).toBe('tool_result')
     expect(resultBlocks[0].tool_use_id).toBe('tu_legacy_m-0')
   })
@@ -122,7 +122,7 @@ describe('loadManagedHistory — null toolCallId pairing', () => {
 
     const assistantMsg = result.messages[0]
     expect(assistantMsg.role).toBe('assistant')
-    const assistantBlocks = assistantMsg.content as Array<Record<string, unknown>>
+    const assistantBlocks = assistantMsg.content as unknown as Array<Record<string, unknown>>
     expect(assistantBlocks).toHaveLength(2)
     expect(assistantBlocks[0].id).toBe('tu_legacy_m-1')
     expect(assistantBlocks[1].id).toBe('tu_legacy_m-2')
@@ -130,7 +130,7 @@ describe('loadManagedHistory — null toolCallId pairing', () => {
     // ONE user message with TWO tool_result blocks — FIFO: m-1 first, m-2 second
     const userMsg = result.messages[1]
     expect(userMsg.role).toBe('user')
-    const resultBlocks = userMsg.content as Array<Record<string, unknown>>
+    const resultBlocks = userMsg.content as unknown as Array<Record<string, unknown>>
     expect(resultBlocks).toHaveLength(2)
     expect(resultBlocks[0].tool_use_id).toBe('tu_legacy_m-1')
     expect(resultBlocks[1].tool_use_id).toBe('tu_legacy_m-2')
@@ -168,12 +168,12 @@ describe('loadManagedHistory — null toolCallId pairing', () => {
 
     expect(result.messages).toHaveLength(2)
 
-    const assistantBlocks = result.messages[0].content as Array<Record<string, unknown>>
+    const assistantBlocks = result.messages[0].content as unknown as Array<Record<string, unknown>>
     expect(assistantBlocks).toHaveLength(2)
     expect(assistantBlocks[0].id).toBe('tu_explicit')
     expect(assistantBlocks[1].id).toBe('tu_legacy_m-9')
 
-    const resultBlocks = result.messages[1].content as Array<Record<string, unknown>>
+    const resultBlocks = result.messages[1].content as unknown as Array<Record<string, unknown>>
     expect(resultBlocks).toHaveLength(2)
     // FIFO: first shift gives tu_explicit, second shift gives tu_legacy_m-9
     expect(resultBlocks[0].tool_use_id).toBe('tu_explicit')

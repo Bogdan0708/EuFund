@@ -103,7 +103,7 @@ describe('loadManagedHistory — mixed V3 + managed-native', () => {
     // V3 tool_call was converted to assistant with tool_use block
     const assistantWithV3Tool = result.messages[1]
     expect(assistantWithV3Tool.role).toBe('assistant')
-    const v3Blocks = assistantWithV3Tool.content as Array<Record<string, unknown>>
+    const v3Blocks = assistantWithV3Tool.content as unknown as Array<Record<string, unknown>>
     expect(Array.isArray(v3Blocks)).toBe(true)
     expect(v3Blocks[0].type).toBe('tool_use')
     expect(v3Blocks[0].id).toBe('tu_v3_1')
@@ -111,7 +111,7 @@ describe('loadManagedHistory — mixed V3 + managed-native', () => {
     // V3 tool_result was converted to user with tool_result block
     const userWithV3Result = result.messages[2]
     expect(userWithV3Result.role).toBe('user')
-    const resultBlocks = userWithV3Result.content as Array<Record<string, unknown>>
+    const resultBlocks = userWithV3Result.content as unknown as Array<Record<string, unknown>>
     expect(Array.isArray(resultBlocks)).toBe(true)
     expect(resultBlocks[0].type).toBe('tool_result')
     expect(resultBlocks[0].tool_use_id).toBe('tu_v3_1')
@@ -119,14 +119,14 @@ describe('loadManagedHistory — mixed V3 + managed-native', () => {
     // Managed-native assistant tool_use passes through unchanged
     const managedAssistant = result.messages[5]
     expect(managedAssistant.role).toBe('assistant')
-    const managedBlocks = managedAssistant.content as Array<Record<string, unknown>>
+    const managedBlocks = managedAssistant.content as unknown as Array<Record<string, unknown>>
     expect(managedBlocks[0].type).toBe('tool_use')
     expect(managedBlocks[0].id).toBe('tu_managed_1')
 
     // Managed-native user tool_result passes through unchanged
     const managedUserResult = result.messages[6]
     expect(managedUserResult.role).toBe('user')
-    const managedResultBlocks = managedUserResult.content as Array<Record<string, unknown>>
+    const managedResultBlocks = managedUserResult.content as unknown as Array<Record<string, unknown>>
     expect(managedResultBlocks[0].type).toBe('tool_result')
     expect(managedResultBlocks[0].tool_use_id).toBe('tu_managed_1')
   })

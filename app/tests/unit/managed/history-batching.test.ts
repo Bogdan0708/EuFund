@@ -99,7 +99,7 @@ describe('loadManagedHistory — batching', () => {
     // ONE assistant message with TWO tool_use blocks
     const assistantMsg = result.messages[1]
     expect(assistantMsg.role).toBe('assistant')
-    const assistantBlocks = assistantMsg.content as Array<Record<string, unknown>>
+    const assistantBlocks = assistantMsg.content as unknown as Array<Record<string, unknown>>
     expect(Array.isArray(assistantBlocks)).toBe(true)
     expect(assistantBlocks).toHaveLength(2)
     expect(assistantBlocks[0].type).toBe('tool_use')
@@ -113,7 +113,7 @@ describe('loadManagedHistory — batching', () => {
     // ONE user message with TWO tool_result blocks (FIFO: tu_batch_1 first, tu_batch_2 second)
     const userResultMsg = result.messages[2]
     expect(userResultMsg.role).toBe('user')
-    const resultBlocks = userResultMsg.content as Array<Record<string, unknown>>
+    const resultBlocks = userResultMsg.content as unknown as Array<Record<string, unknown>>
     expect(Array.isArray(resultBlocks)).toBe(true)
     expect(resultBlocks).toHaveLength(2)
     expect(resultBlocks[0].type).toBe('tool_result')

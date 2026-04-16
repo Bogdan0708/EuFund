@@ -88,7 +88,7 @@ describe('loadManagedHistory — V3 replay', () => {
     // msg 1: assistant with one tool_use block
     expect(m1.role).toBe('assistant')
     expect(Array.isArray(m1.content)).toBe(true)
-    const blocks1 = m1.content as Array<Record<string, unknown>>
+    const blocks1 = m1.content as unknown as Array<Record<string, unknown>>
     expect(blocks1).toHaveLength(1)
     expect(blocks1[0].type).toBe('tool_use')
     expect(blocks1[0].id).toBe('tu_1')
@@ -98,7 +98,7 @@ describe('loadManagedHistory — V3 replay', () => {
     // msg 2: user with one tool_result block
     expect(m2.role).toBe('user')
     expect(Array.isArray(m2.content)).toBe(true)
-    const blocks2 = m2.content as Array<Record<string, unknown>>
+    const blocks2 = m2.content as unknown as Array<Record<string, unknown>>
     expect(blocks2).toHaveLength(1)
     expect(blocks2[0].type).toBe('tool_result')
     expect(blocks2[0].tool_use_id).toBe('tu_1')
