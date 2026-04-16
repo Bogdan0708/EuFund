@@ -38,6 +38,15 @@ import { inputSchema as scoreFitSchema } from '../mcp/rules/score-fit'
 import { inputSchema as validateSectionSchema } from '../mcp/rules/validate-section'
 import { inputSchema as validateApplicationSchema } from '../mcp/rules/validate-application'
 import { inputSchema as checkMissingAnnexesSchema } from '../mcp/rules/check-missing-annexes'
+// Phase 3b write schemas
+import { inputSchema as saveSectionDraftSchema } from '../mcp/write/save-section-draft'
+import { inputSchema as approveRevisionSchema } from '../mcp/write/approve-revision'
+import { inputSchema as rollbackSectionSchema } from '../mcp/write/rollback-section'
+import { inputSchema as setApplicationStatusSchema } from '../mcp/write/set-application-status'
+import { inputSchema as setSelectedCallSchema } from '../mcp/write/set-selected-call'
+import { inputSchema as freezeOutlineSchema } from '../mcp/write/freeze-outline'
+import { inputSchema as markSectionStaleSchema } from '../mcp/write/mark-section-stale'
+import { inputSchema as rejectSectionSchema } from '../mcp/write/reject-section'
 
 import { logger } from '@/lib/logger'
 
@@ -301,6 +310,39 @@ async function dispatchTool(
     case 'check_missing_annexes': {
       const i = checkMissingAnnexesSchema.parse(rawInput)
       return application.checkMissingAnnexes(ctx, i.sessionId)
+    }
+    // ── Phase 3b write tools ───────────────────────────────────────────────
+    case 'save_section_draft': {
+      const i = saveSectionDraftSchema.parse(rawInput)
+      return sections.saveSectionDraft(ctx, i)
+    }
+    case 'approve_revision': {
+      const i = approveRevisionSchema.parse(rawInput)
+      return sections.approveSection(ctx, i)
+    }
+    case 'rollback_section': {
+      const i = rollbackSectionSchema.parse(rawInput)
+      return sections.rollbackSection(ctx, i)
+    }
+    case 'mark_section_stale': {
+      const i = markSectionStaleSchema.parse(rawInput)
+      return sections.markSectionStale(ctx, i)
+    }
+    case 'reject_section': {
+      const i = rejectSectionSchema.parse(rawInput)
+      return sections.rejectSection(ctx, i)
+    }
+    case 'set_application_status': {
+      const i = setApplicationStatusSchema.parse(rawInput)
+      return application.setApplicationStatus(ctx, i)
+    }
+    case 'set_selected_call': {
+      const i = setSelectedCallSchema.parse(rawInput)
+      return application.setSelectedCall(ctx, i)
+    }
+    case 'freeze_outline': {
+      const i = freezeOutlineSchema.parse(rawInput)
+      return application.freezeOutline(ctx, i)
     }
     default:
       throw new Error(`Dispatcher has no handler for ${name}`)
