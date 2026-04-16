@@ -273,6 +273,90 @@ export async function persistFirstDurableOutput(input: {
   throw new Error('persistFirstDurableOutput: sequence conflict after retry')
 }
 
+// ── classifyRow ──────────────────────────────────────────────────
+// Pure helper: tags each agent_messages row with a discriminated
+// union describing how the Phase 3b loader should convert it to an
+// Anthropic MessageParam content-block shape.
+//
+// Consumed by the Task 3 loader rewrite. Do NOT call from
+// loadManagedHistory yet — that wiring lands in Task 7.
+
+export type RowClassification =
+  | { kind: 'user_text'; text: string }
+  | { kind: 'user_text_blocks'; blocks: unknown[] }
+  | { kind: 'user_tool_result_native'; blocks: unknown[] }
+  | { kind: 'user_tool_result_legacy_v3'; toolUseId: string; toolName: string; contentString: string; isError: boolean }
+  | { kind: 'assistant_text'; text: string }
+  | { kind: 'assistant_blocks_native'; blocks: unknown[] }
+  | { kind: 'assistant_tool_call_legacy_v3'; toolUseId: string; toolName: string; name: string; input: unknown }
+  | { kind: 'system_summary'; text: string }
+  | { kind: 'system_drop' }
+  | { kind: 'unknown_drop'; reason: string }
+
+export function classifyRow(row: typeof agentMessages.$inferSelect): RowClassification {
+  // Synthetic ID for rows where toolCallId was not persisted (V3 era)
+  const synthId = (id: string) => `tu_legacy_${id}`
+
+  if (row.role === 'user' && row.messageType === 'text') {
+    if (typeof row.content === 'string') return { kind: 'user_text', text: row.content }
+    if (Array.isArray(row.content)) return { kind: 'user_text_blocks', blocks: row.content as unknown[] }
+    return { kind: 'unknown_drop', reason: 'user text content is neither string nor array' }
+  }
+
+  if (row.role === 'user' && row.messageType === 'tool_result') {
+    if (Array.isArray(row.content)) return { kind: 'user_tool_result_native', blocks: row.content as unknown[] }
+    return { kind: 'unknown_drop', reason: 'user tool_result content is not an array' }
+  }
+
+  if (row.role === 'assistant' && row.messageType === 'text') {
+    if (typeof row.content === 'string') return { kind: 'assistant_text', text: row.content }
+    if (Array.isArray(row.content)) return { kind: 'assistant_blocks_native', blocks: row.content as unknown[] }
+    return { kind: 'unknown_drop', reason: 'assistant text content is neither string nor array' }
+  }
+
+  if (row.role === 'assistant' && row.messageType === 'tool_use') {
+    if (Array.isArray(row.content)) return { kind: 'assistant_blocks_native', blocks: row.content as unknown[] }
+    return { kind: 'unknown_drop', reason: 'assistant tool_use content is not an array' }
+  }
+
+  // V3 legacy assistant tool_call row
+  if (row.role === 'assistant' && row.messageType === 'tool_call') {
+    const content = row.content as { name?: string; arguments?: unknown } | null
+    if (content && typeof content === 'object' && typeof content.name === 'string') {
+      return {
+        kind: 'assistant_tool_call_legacy_v3',
+        toolUseId: row.toolCallId ?? synthId(row.id),
+        toolName: row.toolName ?? content.name,
+        name: content.name,
+        input: content.arguments ?? {},
+      }
+    }
+    return { kind: 'unknown_drop', reason: 'V3 assistant tool_call content missing name field' }
+  }
+
+  // V3 legacy tool_result row (role='tool', written by V3 runtime)
+  if (row.role === 'tool' && row.messageType === 'tool_result') {
+    const content = row.content as { success?: boolean; data?: unknown; error?: string } | null
+    const isError = content?.success === false
+    return {
+      kind: 'user_tool_result_legacy_v3',
+      toolUseId: row.toolCallId ?? synthId(row.id),
+      toolName: row.toolName ?? 'unknown',
+      contentString: JSON.stringify(content ?? {}),
+      isError,
+    }
+  }
+
+  if (row.role === 'system' && row.messageType === 'system_summary') {
+    if (typeof row.content === 'string') return { kind: 'system_summary', text: row.content }
+    return { kind: 'unknown_drop', reason: 'system_summary content is not a string' }
+  }
+
+  if (row.role === 'system') return { kind: 'system_drop' }
+
+  return { kind: 'unknown_drop', reason: `unhandled role=${row.role} messageType=${row.messageType}` }
+}
+
 export async function markTurnCompleted(turnId: string): Promise<void> {
   await db
     .update(agentTurns)
