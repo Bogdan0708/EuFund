@@ -338,12 +338,16 @@ function runManagedWithSSE(
       let firstOutputPersisted = false
       try {
         const { runManagedTurn } = await import('@/lib/ai/agent/managed/runtime')
+        const allowWrites = await isFeatureEnabled('managed_agent_writes_enabled', {
+          userId: user.id,
+        })
         const serviceCtx = {
           userId: user.id,
           sessionId: session.id,
           projectId: session.projectId ?? undefined,
           requestId: body.requestId,
           now: new Date(),
+          allowWrites,
         }
         const result = await runManagedTurn({
           session,
