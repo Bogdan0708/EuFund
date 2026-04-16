@@ -76,28 +76,28 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   // the first time we flush the user message + first output together.
   let firstOutputPersisted = false
 
-  // 1. Load history (with summary extracted from system_summary rows
-  //    or session.messageSummary fallback). The user message for THIS
-  //    turn is NOT yet persisted — it joins the in-memory history only
-  //    and flushes to DB alongside the first durable output via
-  //    persistFirstDurableOutput. See Finding 3 (pre-stream claim +
-  //    deferred persistence).
-  const { summary, messages: history } = await loadManagedHistory(session.id, {
-    fallbackSummary: session.messageSummary ?? null,
-  })
+  // 1. Load history. systemSummary is extracted from V3 compaction rows
+  //    (system_summary message type) or falls back to session.messageSummary
+  //    when no compaction rows exist.
+  //    The user message for THIS turn is NOT yet persisted — it joins
+  //    the in-memory history only and flushes to DB alongside the first
+  //    durable output via persistFirstDurableOutput. See Finding 3
+  //    (pre-stream claim + deferred persistence).
+  const { messages: history, systemSummary } = await loadManagedHistory(session.id)
 
   // 2. Push the current user message into in-memory history ONLY.
   if (request.message) {
     history.push({ role: 'user', content: request.message })
   }
 
-  // 3. Build the system prompt
+  // 3. Build the system prompt. When systemSummary is non-null, a bilingual
+  //    'Prior conversation summary' block is appended at the prompt end.
   const systemPrompt = buildManagedSystemPrompt(
     session,
     sections,
     session.currentPhase as Phase,
     session.locale,
-    summary,
+    systemSummary,
   )
 
   // 4. Tool loop
