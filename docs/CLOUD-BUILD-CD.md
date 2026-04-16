@@ -22,7 +22,6 @@ Legacy image-only build:
 - migration job update/create
 - migration execution
 - Cloud Run deploy for `fondeu-platform`
-- AI gateway smoke checks
 - authenticated production health check
 
 ## Required substitutions
@@ -31,7 +30,6 @@ Configure these on the Cloud Build trigger:
 - `_GCS_BUCKET`
 - `_GCS_KEY_FILENAME`
 - `_QDRANT_URL`
-- `_AI_GATEWAY_URL`
 - `_PRODUCTION_URL`
 - `_CLOUDSQL_CONNECTION_NAME`
 - `_DB_SOCKET_PATH`
@@ -45,7 +43,6 @@ Defaults already exist for:
 - `_REGION=europe-west2`
 - `_MIGRATION_JOB=fondeu-db-migrate`
 - `_CLOUD_SQL_INSTANCE=fondeu-db`
-- `_AI_GATEWAY_TENANT_ID=fondeu-platform`
 - `_CLOUDSQL_CONNECTION_NAME=eufunding:europe-west2:fondeu-db`
 - `_DB_SOCKET_PATH=/cloudsql/eufunding:europe-west2:fondeu-db`
 - `_VPC_CONNECTOR=fondeu-vpc-connector`
@@ -61,7 +58,8 @@ The pipeline supports overridable secret-name substitutions. Defaults match curr
 - `_QDRANT_API_KEY_SECRET_NAME=QDRANT_API_KEY`
 - `_SMTP_PASS_SECRET_NAME=SMTP_PASS`
 - `_DB_PASS_SECRET_NAME=DB_PASS`
-- `_AI_GATEWAY_SECRET_NAME=AI_GATEWAY_API_KEY`
+- `_OPENAI_API_KEY_SECRET_NAME=OPENAI_API_KEY`
+- `_ANTHROPIC_API_KEY_SECRET_NAME=ANTHROPIC_API_KEY`
 - `_STRIPE_PUBLISHABLE_SECRET_NAME=STRIPE_PUBLISHABLE_KEY`
 - `_STRIPE_SECRET_KEY_SECRET_NAME=stripe-secret-key`
 - `_STRIPE_WEBHOOK_SECRET_NAME=stripe-webhook-secret`
@@ -77,9 +75,8 @@ These must exist in Secret Manager:
 - `QDRANT_API_KEY`
 - `SMTP_PASS`
 - `DB_PASS`
-- `AI_GATEWAY_API_KEY` by default, or whatever `_AI_GATEWAY_SECRET_NAME` points to
-
-The production deploy also maps the same secret to `AI_GATEWAY_KEY` at runtime for backward compatibility with older code paths.
+- `OPENAI_API_KEY` by default, or whatever `_OPENAI_API_KEY_SECRET_NAME` points to
+- `ANTHROPIC_API_KEY` by default, or whatever `_ANTHROPIC_API_KEY_SECRET_NAME` points to
 - `STRIPE_PUBLISHABLE_KEY` by default, or whatever `_STRIPE_PUBLISHABLE_SECRET_NAME` points to
 - `stripe-secret-key` by default, or whatever `_STRIPE_SECRET_KEY_SECRET_NAME` points to
 - `stripe-webhook-secret` by default, or whatever `_STRIPE_WEBHOOK_SECRET_NAME` points to
