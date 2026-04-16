@@ -21,10 +21,56 @@ import type {
 } from '../types'
 import type { ServiceContext } from '../services/types'
 import { getAnthropicClient } from '@/lib/ai/anthropic-client'
-import { MANAGED_TOOLS } from './tools'
+import { MANAGED_TOOLS, WRITE_TOOL_NAMES } from './tools'
 import { translateAnthropicEvent, createTranslatorContext } from './translator'
 import { buildManagedSystemPrompt } from './prompt'
 import { executeManagedTool, type ExecutorResult } from './executor'
+
+const PARALLEL_WRITE_BLOCKED_MESSAGE =
+  'PARALLEL_WRITE_BLOCKED: Only one write tool call is allowed per assistant message. This write was rejected because another write was already issued in the same turn. Wait for the first result, then decide the next step.'
+
+/**
+ * Runtime-level parallel-write cap (Desk Audit Fix 1).
+ *
+ * Allows at most ONE write tool call per assistant message. Subsequent
+ * write blocks receive a synthetic PARALLEL_WRITE_BLOCKED tool_result
+ * without being dispatched to the executor. Non-write tools run
+ * normally alongside the first write, preserving order so the Anthropic
+ * tool_use ↔ tool_result pairing invariant holds.
+ *
+ * Exported for unit testing; intended for internal use by runManagedTurn.
+ */
+export async function executeToolBlocksWithWriteCap(
+  blocks: ToolUseBlock[],
+  ctx: ServiceContext,
+  executor: (block: ToolUseBlock, c: ServiceContext) => Promise<ExecutorResult>,
+): Promise<Array<{ block: ToolUseBlock; result: ExecutorResult }>> {
+  let writesExecuted = 0
+  const out: Array<{ block: ToolUseBlock; result: ExecutorResult }> = []
+
+  for (const block of blocks) {
+    const isWrite = WRITE_TOOL_NAMES.has(block.name)
+
+    if (isWrite && writesExecuted >= 1) {
+      out.push({
+        block,
+        result: {
+          content: PARALLEL_WRITE_BLOCKED_MESSAGE,
+          isError: true,
+          toolName: block.name,
+          latencyMs: 0,
+        },
+      })
+      continue
+    }
+
+    const result = await executor(block, ctx)
+    if (isWrite) writesExecuted += 1
+    out.push({ block, result })
+  }
+
+  return out
+}
 import {
   loadManagedHistory,
   appendManagedMessage,
@@ -204,10 +250,17 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
       break
     }
 
-    // Execute tools sequentially in emitted order
+    // Execute tools sequentially in emitted order. Runtime-level
+    // parallel-write cap (Desk Audit Fix 1): at most one write per
+    // assistant message; subsequent writes get a synthetic
+    // PARALLEL_WRITE_BLOCKED tool_result without being dispatched.
+    const executionResults = await executeToolBlocksWithWriteCap(
+      toolBlocksToExecute,
+      serviceCtx,
+      executeManagedTool,
+    )
     const toolResultBlocks: ToolResultBlockParam[] = []
-    for (const block of toolBlocksToExecute) {
-      const result: ExecutorResult = await executeManagedTool(block, serviceCtx)
+    for (const { block, result } of executionResults) {
       toolCount += 1
 
       emit({
