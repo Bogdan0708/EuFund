@@ -28,9 +28,29 @@ describe('buildManagedSystemPrompt (allowWrites=false, read-only default)', () =
     expect(prompt.length).toBeGreaterThan(100)
   })
 
-  it('references the full workflow (discovery through review)', () => {
-    const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro', false)
-    expect(prompt.toLowerCase()).toMatch(/discovery|descoperire|drafting|redactare/)
+  it('restricts to discovery + research only when allowWrites=false', () => {
+    const ro = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro', false)
+    const en = buildManagedSystemPrompt({ ...mockSession, locale: 'en' }, [], 'discovery', 'en', false)
+    // Both locales should explicitly limit phase coverage and defer the
+    // write-side phases to the standard workflow.
+    expect(ro).toMatch(/Doar .*descoperire.*cercetare|doar-citire/i)
+    expect(ro).toMatch(/fluxul standard/i)
+    expect(en).toMatch(/Only .*discovery.* and .*research|read-only/i)
+    expect(en).toMatch(/standard workflow/i)
+  })
+
+  it('communicates read-only mode to the model when allowWrites=false', () => {
+    const ro = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro', false)
+    const en = buildManagedSystemPrompt({ ...mockSession, locale: 'en' }, [], 'discovery', 'en', false)
+    expect(ro).toMatch(/doar-citire|doar citire/i)
+    expect(en).toMatch(/read-only/i)
+  })
+
+  it('instructs the model to stay in read-only mode if the user asks for a write', () => {
+    const ro = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro', false)
+    const en = buildManagedSystemPrompt({ ...mockSession, locale: 'en' }, [], 'discovery', 'en', false)
+    expect(ro).toMatch(/Rămâi în modul doar-citire/i)
+    expect(en).toMatch(/Stay in read-only mode/i)
   })
 
   it('references tool categories', () => {

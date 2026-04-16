@@ -44,9 +44,25 @@ function buildRomanianPrompt(
     ? sections.map(s => `- ${s.sectionKey} (${s.status})`).join('\n')
     : '(nicio secțiune încă)'
 
+  const modeBlock = allowWrites
+    ? `## Fazele acoperite
+
+Ghidezi utilizatorul prin întregul flux: descoperire (discovery), cercetare (research), structurare (structuring), redactare (drafting) și revizuire (review).`
+    : `## Modul curent (doar-citire)
+
+Ești în modul **doar-citire**. Poți căuta apeluri, citi documente, evalua eligibilitatea și calcula scoruri de potrivire. **Nu poți salva ciorne, aproba secțiuni sau modifica starea cererii** — aceste operațiuni rămân în fluxul standard.
+
+## Fazele acoperite
+
+Doar **descoperire** (discovery) și **cercetare** (research). Când utilizatorul are nevoie de structurare, redactare sau revizuire, explică politicos că aceste faze sunt gestionate de fluxul standard.`
+
   const writeToolsLine = allowWrites
     ? '\n- **Write** (scriere, cu confirmare explicită): `save_section_draft`, `approve_revision`, `rollback_section`, `set_application_status`, `set_selected_call`, `freeze_outline`, `mark_section_stale`, `reject_section`'
     : ''
+
+  const readOnlyHardRule = allowWrites
+    ? ''
+    : '\n4. **Rămâi în modul doar-citire.** Dacă utilizatorul cere să salvezi, să aprobi sau să modifici starea cererii, explică politicos că aceste operațiuni sunt gestionate de fluxul standard.'
 
   const writeRulesBlock = allowWrites
     ? `
@@ -66,9 +82,7 @@ Instrumentele de scriere modifică starea sesiunii. Respectă aceste reguli:
 
   return `Ești FondEU, un asistent expert pentru cereri de finanțare UE (fonduri europene) destinate organizațiilor din România.
 
-## Fazele acoperite
-
-Ghidezi utilizatorul prin întregul flux: descoperire (discovery), cercetare (research), structurare (structuring), redactare (drafting) și revizuire (review).
+${modeBlock}
 
 ## Instrumentele tale
 
@@ -81,7 +95,7 @@ Toate rezultatele regulilor sunt deterministe — prezintă-le ca fapte.
 
 1. **Nu inventa niciodată** criterii de eligibilitate, sume de buget, cerințe de conformitate sau termene limită. Fiecare astfel de afirmație trebuie să provină dintr-un rezultat de instrument (dovezi, evidence).
 2. **Citează sursele**: pentru fiecare afirmație factuală, include "[Sursă: {titlu}]".
-3. **Spune când nu știi**. Sugerează ce instrument ar putea ajuta.${writeRulesBlock}
+3. **Spune când nu știi**. Sugerează ce instrument ar putea ajuta.${readOnlyHardRule}${writeRulesBlock}
 
 ## Stil conversațional
 
@@ -110,9 +124,25 @@ function buildEnglishPrompt(
     ? sections.map(s => `- ${s.sectionKey} (${s.status})`).join('\n')
     : '(no sections yet)'
 
+  const modeBlock = allowWrites
+    ? `## Phases covered
+
+You guide the user through the full workflow: discovery, research, structuring, drafting, and review.`
+    : `## Current mode (read-only)
+
+You are in **read-only mode**. You can search calls, read documents, evaluate eligibility, and compute fit scores. You **cannot save drafts, approve sections, or modify application state** — those operations remain in the standard workflow.
+
+## Phases covered
+
+Only **discovery** and **research**. When the user needs structuring, drafting, or review, politely explain that those phases are handled by the standard workflow.`
+
   const writeToolsLine = allowWrites
     ? '\n- **Write** (require explicit confirmation): `save_section_draft`, `approve_revision`, `rollback_section`, `set_application_status`, `set_selected_call`, `freeze_outline`, `mark_section_stale`, `reject_section`'
     : ''
+
+  const readOnlyHardRule = allowWrites
+    ? ''
+    : '\n4. **Stay in read-only mode.** If the user asks you to save, approve, or modify application state, politely explain that those operations are handled by the standard workflow.'
 
   const writeRulesBlock = allowWrites
     ? `
@@ -132,9 +162,7 @@ Write tools mutate session state. Follow these rules:
 
   return `You are FondEU, an expert operator for Romanian EU funding applications (cereri de finanțare).
 
-## Phases covered
-
-You guide the user through the full workflow: discovery, research, structuring, drafting, and review.
+${modeBlock}
 
 ## Your tools
 
@@ -147,7 +175,7 @@ All rule results are deterministic — present them as facts.
 
 1. **Never invent** eligibility criteria, budget figures, compliance requirements, or deadlines. Every such claim must come from a tool result (evidence).
 2. **Cite sources**: for every factual claim, include "[Source: {title}]".
-3. **Say when you don't know**. Suggest which tool could help.${writeRulesBlock}
+3. **Say when you don't know**. Suggest which tool could help.${readOnlyHardRule}${writeRulesBlock}
 
 ## Communication style
 

@@ -116,4 +116,38 @@ describe('Phase 3b prompt delta (allowWrites=false — read-only surface)', () =
       expect(ro).toContain(name)
     }
   })
+
+  it('preserves master read-only-pilot semantics: only discovery + research, writes deferred to standard workflow', () => {
+    const ro = buildManagedSystemPrompt(baseSession, [], 'drafting', 'ro', false)
+    const en = buildManagedSystemPrompt(baseSession, [], 'drafting', 'en', false)
+    expect(ro).toMatch(/Doar .*descoperire.*cercetare/i)
+    expect(ro).toMatch(/fluxul standard/i)
+    expect(en).toMatch(/Only .*discovery.* and .*research/i)
+    expect(en).toMatch(/standard workflow/i)
+  })
+
+  it('does NOT claim full-workflow coverage when allowWrites=false', () => {
+    const ro = buildManagedSystemPrompt(baseSession, [], 'drafting', 'ro', false)
+    const en = buildManagedSystemPrompt(baseSession, [], 'drafting', 'en', false)
+    expect(ro).not.toMatch(/Ghidezi utilizatorul prin întregul flux/)
+    expect(en).not.toMatch(/guide the user through the full workflow/i)
+  })
+})
+
+describe('Phase 3b prompt delta (allowWrites=true — full-workflow surface)', () => {
+  it('advertises the full workflow (discovery through review)', () => {
+    const ro = buildManagedSystemPrompt(baseSession, [], 'drafting', 'ro', true)
+    const en = buildManagedSystemPrompt(baseSession, [], 'drafting', 'en', true)
+    expect(ro).toMatch(/întregul flux|structurare.*redactare.*revizuire/i)
+    expect(en).toMatch(/full workflow|structuring.*drafting.*review/i)
+  })
+
+  it('does NOT include read-only mode copy when allowWrites=true', () => {
+    const ro = buildManagedSystemPrompt(baseSession, [], 'drafting', 'ro', true)
+    const en = buildManagedSystemPrompt(baseSession, [], 'drafting', 'en', true)
+    expect(ro).not.toMatch(/doar-citire|doar citire/i)
+    expect(en).not.toMatch(/read-only/i)
+    expect(ro).not.toMatch(/Rămâi în modul doar-citire/i)
+    expect(en).not.toMatch(/Stay in read-only mode/i)
+  })
 })
