@@ -26,8 +26,10 @@ export function buildManagedSystemPrompt(
   const clipped = summary.length > SUMMARY_MAX_CHARS
     ? summary.slice(-SUMMARY_MAX_CHARS)
     : summary
-  const block = `\n\n<conversation_summary>\n${clipped}\n</conversation_summary>\n`
-  return body + block
+  const label = locale === 'ro'
+    ? '## Rezumat conversație anterioară'
+    : '## Prior conversation summary'
+  return `${body}\n\n${label}\n\n${clipped}`
 }
 
 function buildRomanianPrompt(session: AgentSession, sections: AgentSection[], phase: Phase): string {

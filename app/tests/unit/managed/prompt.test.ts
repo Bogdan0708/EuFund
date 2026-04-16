@@ -62,3 +62,27 @@ describe('buildManagedSystemPrompt', () => {
     }
   })
 })
+
+describe('buildManagedSystemPrompt priorSummary parameter', () => {
+  it('appends Romanian label when priorSummary is provided in ro locale', () => {
+    const result = buildManagedSystemPrompt(mockSession, [], 'drafting', 'ro', 'Rezumat de test')
+    expect(result).toMatch(/## Rezumat conversație anterioară/)
+    expect(result).toMatch(/Rezumat de test/)
+  })
+
+  it('appends English label in en locale', () => {
+    const result = buildManagedSystemPrompt(mockSession, [], 'drafting', 'en', 'Test summary')
+    expect(result).toMatch(/## Prior conversation summary/)
+    expect(result).toMatch(/Test summary/)
+  })
+
+  it('omits the label when priorSummary is null', () => {
+    const result = buildManagedSystemPrompt(mockSession, [], 'drafting', 'en', null)
+    expect(result).not.toMatch(/Prior conversation summary/)
+  })
+
+  it('is backwards compatible (existing 4-arg call signature)', () => {
+    const result = buildManagedSystemPrompt(mockSession, [], 'drafting', 'en')
+    expect(result).toBeTruthy()
+  })
+})
