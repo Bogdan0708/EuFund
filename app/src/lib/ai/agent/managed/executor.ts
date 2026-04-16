@@ -142,7 +142,8 @@ export async function executeManagedTool(
       )
     }
     if (err instanceof ValidationError) {
-      return errorResult(name, start, `VALIDATION: ${err.message}`)
+      const code = err.policyCode ?? `VALIDATION:${err.field}`
+      return errorResult(name, start, `${code}: ${err.message}`)
     }
     if (err instanceof ConcurrencyError) {
       return errorResult(name, start, `CONCURRENCY: ${err.message}`)
