@@ -1,11 +1,12 @@
 // ── Managed runtime tool executor ───────────────────────────────
 // In-process dispatcher: maps tool_use blocks to Phase 1 service
-// calls. Allowlist via MANAGED_TOOL_NAMES. Write tools explicitly
-// blocked with Phase 2 rejection message. All ServiceError subclasses
-// mapped to isError tool results with safe content strings.
+// calls. Allowlist via MANAGED_TOOL_NAMES. Phase 4 write tools
+// (create_export_snapshot, save_call_blueprint) remain blocked with a
+// targeted rejection message. All ServiceError subclasses mapped to
+// isError tool results with safe content strings.
 
 import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/messages'
-import { MANAGED_TOOL_NAMES } from './tools'
+import { MANAGED_TOOL_NAMES, PHASE_4_BLOCKED_TOOL_NAMES } from './tools'
 import type { ServiceContext } from '../services/types'
 import {
   ServiceError,
@@ -42,17 +43,6 @@ import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'managed-executor' })
 
-// Known write tools are blocked with a Phase 2 rejection message so the
-// model gets actionable feedback instead of a bare "unknown tool" error.
-const KNOWN_WRITE_TOOLS = new Set([
-  'save_section_draft',
-  'approve_revision',
-  'rollback_section',
-  'save_call_blueprint',
-  'set_application_status',
-  'create_export_snapshot',
-])
-
 const MAX_CONTENT_BYTES = 16_000
 const TOOL_TIMEOUT_MS = 15_000
 
@@ -73,12 +63,11 @@ export async function executeManagedTool(
 
   // ── 1. Allowlist check ──────────────────────────────────────────────────
   if (!MANAGED_TOOL_NAMES.has(name)) {
-    if (KNOWN_WRITE_TOOLS.has(name)) {
+    if (PHASE_4_BLOCKED_TOOL_NAMES.has(name)) {
       return errorResult(
         name,
         start,
-        'Write tools are not available in Phase 2. The managed agent can only read and evaluate. ' +
-          'To save, approve, or export, please use the standard workflow.',
+        'This tool is not available in the managed runtime yet (Phase 4 scope). Please continue in the standard workflow.',
       )
     }
     return errorResult(name, start, `Unknown tool: ${name}`)

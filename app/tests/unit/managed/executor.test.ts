@@ -85,18 +85,31 @@ describe('executeManagedTool', () => {
     expect(parsed.matches).toBeDefined()
   })
 
-  it('blocks write tool with Phase 2 message', async () => {
+  it('blocks Phase 4 export-snapshot tool with targeted rejection', async () => {
     const { executeManagedTool } = await import(
       '@/lib/ai/agent/managed/executor'
     )
     const result = await executeManagedTool(
-      makeBlock('save_section_draft'),
+      makeBlock('create_export_snapshot'),
       mockCtx,
     )
 
     expect(result.isError).toBe(true)
-    expect(result.content).toContain('Phase 2')
-    expect(result.content).toMatch(/read and evaluate|read-only/i)
+    expect(result.content).toMatch(/Phase 4|not available in the managed runtime yet/i)
+    expect(result.content).toMatch(/standard workflow/i)
+  })
+
+  it('blocks Phase 4 save-call-blueprint tool with targeted rejection', async () => {
+    const { executeManagedTool } = await import(
+      '@/lib/ai/agent/managed/executor'
+    )
+    const result = await executeManagedTool(
+      makeBlock('save_call_blueprint'),
+      mockCtx,
+    )
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toMatch(/Phase 4|not available in the managed runtime yet/i)
   })
 
   it('blocks unknown tool name', async () => {

@@ -9,12 +9,14 @@ function makeFakeStream(events: unknown[]) {
   }
 }
 
-// Sub-stream 1 — tool_use(save_section_draft), stop_reason=tool_use. The
-// executor should reject this write tool before dispatching to any service.
+// Sub-stream 1 — tool_use(save_call_blueprint), stop_reason=tool_use. The
+// executor should reject this Phase 4 write tool before dispatching to any
+// service. (Phase 3b write tools are dispatchable and gated by allowWrites —
+// covered by runtime-write-disabled.test.ts.)
 const stream1Events = [
   { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-4-6', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 100, output_tokens: 0 } } },
-  { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tu_1', name: 'save_section_draft', input: {} } },
-  { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"sectionKey":"intro","content":"hello"}' } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tu_1', name: 'save_call_blueprint', input: {} } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"callId":"CALL-1"}' } },
   { type: 'content_block_stop', index: 0 },
   { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 20 } },
   { type: 'message_stop' },
@@ -135,10 +137,10 @@ const mockSession: AgentSession = {
   updatedAt: new Date(),
 }
 
-describe('runManagedTurn — write tool blocked', () => {
+describe('runManagedTurn — Phase 4 write tool blocked', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('rejects save_section_draft with Phase 2 message before invoking any service', async () => {
+  it('rejects save_call_blueprint with Phase 4 message before invoking any service', async () => {
     const { runManagedTurn } = await import('@/lib/ai/agent/managed/runtime')
     const { searchCalls, retrieveEvidence } = await import('@/lib/ai/agent/services/evidence')
     const { lookupBlueprint } = await import('@/lib/ai/agent/services/blueprint')
@@ -175,7 +177,7 @@ describe('runManagedTurn — write tool blocked', () => {
     const first = toolResults[0]
     if (first.type !== 'tool_result') throw new Error('expected tool_result')
     expect(first.success).toBe(false)
-    expect(first.summary).toContain('Phase 2')
+    expect(first.summary).toMatch(/Phase 4|not available in the managed runtime yet/i)
 
     // No service mock was called — the rejection must happen at the allowlist
     // stage, before any dispatch.
