@@ -1,8 +1,8 @@
 // ── Managed runtime tool definitions ────────────────────────────
-// 14 tools exposed to Anthropic's Messages API in Phase 2: 9 read +
-// 5 rules. Each tool's JSON schema is derived from the Phase 1 MCP
-// handler's Zod schema via `zodToJsonSchema`. Write tools are NOT
-// included — Phase 2 is read-only.
+// Tools exposed to Anthropic's Messages API. Each tool's JSON schema
+// is derived from the Phase 1 MCP handler's Zod schema via
+// `zodToJsonSchema`. Phase 2 was read-only (14 tools). Phase 3b adds
+// the 8 write tools (22 total: 9 read + 5 rules + 8 write).
 
 import type { Tool } from '@anthropic-ai/sdk/resources/messages'
 import { zodToJsonSchema } from '../utils'
@@ -25,7 +25,17 @@ import { inputSchema as validateSectionSchema } from '../mcp/rules/validate-sect
 import { inputSchema as validateApplicationSchema } from '../mcp/rules/validate-application'
 import { inputSchema as checkMissingAnnexesSchema } from '../mcp/rules/check-missing-annexes'
 
-export const MANAGED_READ_ONLY_TOOLS: Tool[] = [
+// Write tools — canonical Zod schemas exported from Phase 1/3b handlers
+import { inputSchema as saveSectionDraftSchema } from '../mcp/write/save-section-draft'
+import { inputSchema as approveRevisionSchema } from '../mcp/write/approve-revision'
+import { inputSchema as rollbackSectionSchema } from '../mcp/write/rollback-section'
+import { inputSchema as setApplicationStatusSchema } from '../mcp/write/set-application-status'
+import { inputSchema as setSelectedCallSchema } from '../mcp/write/set-selected-call'
+import { inputSchema as freezeOutlineSchema } from '../mcp/write/freeze-outline'
+import { inputSchema as markSectionStaleSchema } from '../mcp/write/mark-section-stale'
+import { inputSchema as rejectSectionSchema } from '../mcp/write/reject-section'
+
+export const MANAGED_TOOLS: Tool[] = [
   {
     name: 'search_calls',
     description: 'Search EU funding calls by semantic similarity. Returns ranked matches with call ID, title, program, relevance score, and a short snippet. Read-only.',
@@ -96,8 +106,108 @@ export const MANAGED_READ_ONLY_TOOLS: Tool[] = [
     description: 'Compare required annexes against uploaded documents. Returns required, uploaded, and missing lists.',
     input_schema: zodToJsonSchema(checkMissingAnnexesSchema) as Tool['input_schema'],
   },
+  {
+    name: 'save_section_draft',
+    description: 'Upsert a section draft by (sessionId, sectionKey), creating or updating the section and creating a new version record. Requires the outline to be frozen. Enforces concurrency via expectedStateVersion. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
+    input_schema: zodToJsonSchema(saveSectionDraftSchema) as Tool['input_schema'],
+  },
+  {
+    name: 'approve_revision',
+    description: 'Set a section status to accepted, copying content to acceptedContent. If already accepted, returns current state (no-op). Requires the outline to be frozen. Enforces concurrency via expectedStateVersion. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
+    input_schema: zodToJsonSchema(approveRevisionSchema) as Tool['input_schema'],
+  },
+  {
+    name: 'rollback_section',
+    description: 'Restore a section to a previous version by version number. Replaces section content with the historical version content and sets status to draft. Requires the outline to be frozen. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
+    input_schema: zodToJsonSchema(rollbackSectionSchema) as Tool['input_schema'],
+  },
+  {
+    name: 'set_application_status',
+    description: 'Update the status of an agent session to paused or completed. Setting to the current status is a no-op (idempotent). Completing requires passing validation. Enforces concurrency via expectedStateVersion. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
+    input_schema: zodToJsonSchema(setApplicationStatusSchema) as Tool['input_schema'],
+  },
+  {
+    name: 'set_selected_call',
+    description: "Set the session's selected funding call. Requires the session to be active and the outline not yet frozen. Idempotent if the same callId is already selected. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.",
+    input_schema: zodToJsonSchema(setSelectedCallSchema) as Tool['input_schema'],
+  },
+  {
+    name: 'freeze_outline',
+    description: 'Freeze the application outline, moving the workflow from structuring into drafting. Requires a selected call and passing eligibility. After freeze, the call cannot change and drafting tools become available. Idempotent if outline is already frozen. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
+    input_schema: zodToJsonSchema(freezeOutlineSchema) as Tool['input_schema'],
+  },
+  {
+    name: 'mark_section_stale',
+    description: 'Mark a section as stale, flagging it for regeneration. Valid from draft, needs_review, or accepted status. When demoting from accepted, the accepted snapshot is cleared. Idempotent if already stale. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
+    input_schema: zodToJsonSchema(markSectionStaleSchema) as Tool['input_schema'],
+  },
+  {
+    name: 'reject_section',
+    description: 'Reject a section with a required reason string. Valid from draft, needs_review, or same-reason rejected (no-op). Different-reason re-reject is forbidden to prevent rejection metadata churn. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
+    input_schema: zodToJsonSchema(rejectSectionSchema) as Tool['input_schema'],
+  },
 ]
 
-export const MANAGED_TOOL_NAMES: Set<string> = new Set(
-  MANAGED_READ_ONLY_TOOLS.map(t => t.name),
-)
+// ── Categorized tool name sets ─────────────────────────────────────────────
+// Four disjoint sets used by the executor's allowWrites gate, the Phase 4
+// rejection branch, and the runtime's parallel-write cap. Kept literal
+// (not derived from MANAGED_TOOLS) so the compiler can verify membership
+// against the entries and so adding a tool requires an explicit decision
+// about which category it belongs to.
+
+export const READ_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'search_calls',
+  'get_call_blueprint',
+  'retrieve_evidence',
+  'get_application_state',
+  'list_sections',
+  'get_section',
+  'get_validation_report',
+  'get_project_summary',
+  'list_uploaded_documents',
+])
+
+export const RULE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'run_eligibility',
+  'score_fit',
+  'validate_section',
+  'validate_application',
+  'check_missing_annexes',
+])
+
+export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'save_section_draft',
+  'approve_revision',
+  'rollback_section',
+  'set_application_status',
+  'set_selected_call',
+  'freeze_outline',
+  'mark_section_stale',
+  'reject_section',
+])
+
+export const PHASE_4_BLOCKED_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'create_export_snapshot',
+  'save_call_blueprint',
+])
+
+export const MANAGED_TOOL_NAMES: ReadonlySet<string> = new Set([
+  ...READ_TOOL_NAMES,
+  ...RULE_TOOL_NAMES,
+  ...WRITE_TOOL_NAMES,
+])
+
+/**
+ * Returns the tool surface the managed runtime should advertise to Anthropic
+ * for a given turn. When writes are disabled for this user (allowWrites=false),
+ * write tools are excluded entirely — the model never sees them and cannot
+ * attempt them, matching the behavioral contract of the rollout gate.
+ *
+ * The executor's allowWrites gate remains as defense-in-depth in case a
+ * write tool somehow reaches dispatch (shouldn't happen since the tool is
+ * absent from the advertised set, but costs nothing to keep).
+ */
+export function getManagedTools(allowWrites: boolean): Tool[] {
+  if (allowWrites) return MANAGED_TOOLS
+  return MANAGED_TOOLS.filter((t) => !WRITE_TOOL_NAMES.has(t.name))
+}

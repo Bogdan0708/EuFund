@@ -204,6 +204,13 @@
       "when": 1776816000000,
       "tag": "0028_agent_sessions_project_and_outline_frozen",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1776902400000,
+      "tag": "0029_managed_agent_writes_enabled_flag",
+      "breakpoints": true
     }
   ]
 }

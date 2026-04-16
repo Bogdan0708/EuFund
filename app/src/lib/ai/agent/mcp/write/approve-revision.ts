@@ -9,11 +9,12 @@ import { approveSection } from '../../services/sections'
 import { ConcurrencyError, NotFoundError, ValidationError } from '../../services/errors'
 import type { ServiceContext } from '../../services/types'
 
-const inputShape = {
+export const inputShape = {
   sessionId: z.string().uuid(),
   sectionKey: z.string().min(1),
   expectedStateVersion: z.number().int(),
 }
+export const inputSchema = z.object(inputShape)
 
 export function registerApproveRevision(server: McpServer, ctx: ServiceContext): void {
   server.tool(
@@ -45,7 +46,7 @@ export function registerApproveRevision(server: McpServer, ctx: ServiceContext):
         }
         if (err instanceof ValidationError) {
           return {
-            content: [{ type: 'text', text: JSON.stringify({ error: err.message, code: 'VALIDATION', field: err.field }) }],
+            content: [{ type: 'text', text: JSON.stringify({ error: err.message, code: err.policyCode ?? `VALIDATION:${err.field}`, field: err.field }) }],
             isError: true,
           }
         }

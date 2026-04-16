@@ -9,11 +9,12 @@ import { setApplicationStatus } from '../../services/application'
 import { ConcurrencyError, NotFoundError, ValidationError } from '../../services/errors'
 import type { ServiceContext } from '../../services/types'
 
-const inputShape = {
+export const inputShape = {
   sessionId: z.string().uuid(),
   status: z.enum(['paused', 'completed']),
   expectedStateVersion: z.number().int(),
 }
+export const inputSchema = z.object(inputShape)
 
 export function registerSetApplicationStatus(server: McpServer, ctx: ServiceContext): void {
   server.tool(
@@ -45,7 +46,7 @@ export function registerSetApplicationStatus(server: McpServer, ctx: ServiceCont
         }
         if (err instanceof ValidationError) {
           return {
-            content: [{ type: 'text', text: JSON.stringify({ error: err.message, code: 'VALIDATION', field: err.field }) }],
+            content: [{ type: 'text', text: JSON.stringify({ error: err.message, code: err.policyCode ?? `VALIDATION:${err.field}`, field: err.field }) }],
             isError: true,
           }
         }
