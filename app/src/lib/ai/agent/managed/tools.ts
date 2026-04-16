@@ -148,6 +148,51 @@ export const MANAGED_TOOLS: Tool[] = [
   },
 ]
 
-export const MANAGED_TOOL_NAMES: Set<string> = new Set(
-  MANAGED_TOOLS.map(t => t.name),
-)
+// ── Categorized tool name sets ─────────────────────────────────────────────
+// Four disjoint sets used by the executor's allowWrites gate, the Phase 4
+// rejection branch, and the runtime's parallel-write cap. Kept literal
+// (not derived from MANAGED_TOOLS) so the compiler can verify membership
+// against the entries and so adding a tool requires an explicit decision
+// about which category it belongs to.
+
+export const READ_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'search_calls',
+  'get_call_blueprint',
+  'retrieve_evidence',
+  'get_application_state',
+  'list_sections',
+  'get_section',
+  'get_validation_report',
+  'get_project_summary',
+  'list_uploaded_documents',
+])
+
+export const RULE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'run_eligibility',
+  'score_fit',
+  'validate_section',
+  'validate_application',
+  'check_missing_annexes',
+])
+
+export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'save_section_draft',
+  'approve_revision',
+  'rollback_section',
+  'set_application_status',
+  'set_selected_call',
+  'freeze_outline',
+  'mark_section_stale',
+  'reject_section',
+])
+
+export const PHASE_4_BLOCKED_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'create_export_snapshot',
+  'save_call_blueprint',
+])
+
+export const MANAGED_TOOL_NAMES: ReadonlySet<string> = new Set([
+  ...READ_TOOL_NAMES,
+  ...RULE_TOOL_NAMES,
+  ...WRITE_TOOL_NAMES,
+])

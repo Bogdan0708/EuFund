@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { MANAGED_TOOLS, MANAGED_TOOL_NAMES } from '@/lib/ai/agent/managed/tools'
+import {
+  MANAGED_TOOLS,
+  MANAGED_TOOL_NAMES,
+  READ_TOOL_NAMES,
+  RULE_TOOL_NAMES,
+  WRITE_TOOL_NAMES,
+  PHASE_4_BLOCKED_TOOL_NAMES,
+} from '@/lib/ai/agent/managed/tools'
 
 describe('MANAGED_TOOLS', () => {
   it('contains exactly 22 tools (9 read + 5 rules + 8 write)', () => {
@@ -76,6 +83,52 @@ describe('MANAGED_TOOLS', () => {
     const phase4 = ['create_export_snapshot', 'save_call_blueprint']
     for (const name of phase4) {
       expect(MANAGED_TOOL_NAMES.has(name)).toBe(false)
+    }
+  })
+})
+
+describe('tool name sets', () => {
+  it('READ_TOOL_NAMES has 9 entries', () => {
+    expect(READ_TOOL_NAMES.size).toBe(9)
+  })
+
+  it('RULE_TOOL_NAMES has 5 entries', () => {
+    expect(RULE_TOOL_NAMES.size).toBe(5)
+  })
+
+  it('WRITE_TOOL_NAMES has 8 entries', () => {
+    expect(WRITE_TOOL_NAMES.size).toBe(8)
+  })
+
+  it('PHASE_4_BLOCKED_TOOL_NAMES has 2 entries (create_export_snapshot, save_call_blueprint)', () => {
+    expect(PHASE_4_BLOCKED_TOOL_NAMES.has('create_export_snapshot')).toBe(true)
+    expect(PHASE_4_BLOCKED_TOOL_NAMES.has('save_call_blueprint')).toBe(true)
+    expect(PHASE_4_BLOCKED_TOOL_NAMES.size).toBe(2)
+  })
+
+  it('READ, RULE, and WRITE sets are disjoint', () => {
+    for (const r of READ_TOOL_NAMES) {
+      expect(RULE_TOOL_NAMES.has(r), `${r} in both READ and RULE`).toBe(false)
+      expect(WRITE_TOOL_NAMES.has(r), `${r} in both READ and WRITE`).toBe(false)
+    }
+    for (const r of RULE_TOOL_NAMES) {
+      expect(WRITE_TOOL_NAMES.has(r), `${r} in both RULE and WRITE`).toBe(false)
+    }
+  })
+
+  it('MANAGED_TOOL_NAMES is the union of READ + RULE + WRITE (22)', () => {
+    const expected = new Set([
+      ...READ_TOOL_NAMES,
+      ...RULE_TOOL_NAMES,
+      ...WRITE_TOOL_NAMES,
+    ])
+    expect(new Set(MANAGED_TOOL_NAMES)).toEqual(expected)
+    expect(MANAGED_TOOL_NAMES.size).toBe(22)
+  })
+
+  it('PHASE_4_BLOCKED_TOOL_NAMES is disjoint from MANAGED_TOOL_NAMES', () => {
+    for (const name of PHASE_4_BLOCKED_TOOL_NAMES) {
+      expect(MANAGED_TOOL_NAMES.has(name), `${name} leaked into MANAGED_TOOL_NAMES`).toBe(false)
     }
   })
 })
