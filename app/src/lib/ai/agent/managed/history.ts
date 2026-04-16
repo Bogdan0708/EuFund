@@ -3,7 +3,7 @@
 // Tags each appended message with runtime_mode, provider, model
 // for observability.
 
-import type { MessageParam } from '@anthropic-ai/sdk/resources/messages'
+import type { MessageParam, ContentBlock, ToolResultBlockParam } from '@anthropic-ai/sdk/resources/messages'
 import { db } from '@/lib/db'
 import { agentMessages, agentSessions, agentTurns } from '@/lib/db/schema'
 import { eq, asc, desc, count as sqlCount } from 'drizzle-orm'
@@ -28,51 +28,151 @@ export interface ManagedHistoryResult {
  * Load all non-compacted messages for a session and convert to
  * Anthropic MessageParam[] for replay in a managed turn.
  *
- * Returns { messages, systemSummary } where systemSummary is reserved for
- * the Phase 3b normalizer rewrite (Task 7). The current shim always
- * returns systemSummary: null — the Phase 2 body logic is preserved
- * intact and the summary wiring is a no-op until Task 7 lands.
+ * Phase 3b Task 3 rewrite: uses classifyRow + FIFO pairing for V3 legacy
+ * tool_call/tool_result rows. Reads session.messageSummary as a fallback
+ * summary source when no system_summary row exists in the message history.
+ *
+ * Returns { messages, systemSummary }. Task 7 wires systemSummary through
+ * to buildManagedSystemPrompt; this loader just extracts it.
+ *
+ * NOTE: Task 4 will wrap the returned messages through ensurePairingInvariant
+ * to handle orphan tool_use blocks from crashed V3 sessions. Do NOT call
+ * ensurePairingInvariant here — it doesn't exist yet.
  */
 export async function loadManagedHistory(
   sessionId: string,
   opts: { fallbackSummary?: string | null } = {},
 ): Promise<ManagedHistoryResult> {
-  const rows = await db.select()
-    .from(agentMessages)
-    .where(eq(agentMessages.sessionId, sessionId))
-    .orderBy(asc(agentMessages.sequenceNumber))
+  // Fetch rows + session in parallel. The session lookup gives us the
+  // messageSummary fallback when no system_summary row exists in history.
+  const [rows, sessionRow] = await Promise.all([
+    db.select()
+      .from(agentMessages)
+      .where(eq(agentMessages.sessionId, sessionId))
+      .orderBy(asc(agentMessages.sequenceNumber)),
+    db.select({ messageSummary: agentSessions.messageSummary })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, sessionId))
+      .limit(1),
+  ])
 
-  let summary: string | null = null
   const messages: MessageParam[] = []
+  let pendingAssistantBlocks: ContentBlock[] | null = null
+  const pendingToolUseIds: string[] = []     // FIFO queue for legacy V3 pairing
+  let pendingUserToolResults: ToolResultBlockParam[] | null = null
+  let systemSummary: string | null = null
 
-  for (const row of rows) {
-    if (row.messageType === 'system_summary') {
-      if (typeof row.content === 'string') summary = row.content
-      continue
+  // Flush pending assistant tool_use blocks to a message.
+  // clearQueue=true: also clear the FIFO pendingToolUseIds queue (used when
+  //   a non-tool-call row interrupts the assistant turn — any remaining queue
+  //   entries become orphan tool_use blocks for Task 4's ensurePairingInvariant).
+  // clearQueue=false: preserve the FIFO queue for the upcoming tool_result rows
+  //   that are about to consume it (used when flushing prior to processing
+  //   user_tool_result_legacy_v3 rows).
+  const flushAssistant = (clearQueue = true) => {
+    if (pendingAssistantBlocks && pendingAssistantBlocks.length > 0) {
+      messages.push({ role: 'assistant', content: pendingAssistantBlocks })
     }
-    if (row.compactedAt) continue // skip compacted messages
-
-    const role = row.role as 'user' | 'assistant'
-    if (role !== 'user' && role !== 'assistant') continue
-
-    // Content normalization: row.content can be a string (V3-style)
-    // or an array of content blocks (Anthropic-native).
-    const content = row.content
-    if (typeof content === 'string') {
-      messages.push({ role, content })
-    } else if (Array.isArray(content)) {
-      messages.push({ role, content: content as MessageParam['content'] })
-    } else {
-      // Object form (e.g., structured action from V3) — serialize as text
-      messages.push({ role, content: JSON.stringify(content) })
+    pendingAssistantBlocks = null
+    if (clearQueue) {
+      pendingToolUseIds.length = 0
     }
   }
 
-  if (summary === null && opts.fallbackSummary) summary = opts.fallbackSummary
+  const flushUserToolResults = () => {
+    if (pendingUserToolResults && pendingUserToolResults.length > 0) {
+      messages.push({ role: 'user', content: pendingUserToolResults })
+    }
+    pendingUserToolResults = null
+  }
 
-  // systemSummary wiring lands in Task 7. Shim: always null.
-  void summary
-  return { messages, systemSummary: null }
+  for (const row of rows) {
+    if (row.compactedAt) continue  // represented via the system_summary row compaction wrote
+
+    const c = classifyRow(row)
+
+    switch (c.kind) {
+      case 'system_summary':
+        systemSummary = c.text
+        continue
+
+      case 'system_drop':
+      case 'unknown_drop':
+        continue
+
+      case 'user_text':
+        flushUserToolResults()
+        flushAssistant(true)
+        messages.push({ role: 'user', content: c.text })
+        break
+
+      case 'user_text_blocks':
+        flushUserToolResults()
+        flushAssistant(true)
+        messages.push({ role: 'user', content: c.blocks as MessageParam['content'] })
+        break
+
+      case 'user_tool_result_native':
+        // Flush pending assistant blocks but PRESERVE the FIFO queue —
+        // native tool_result rows that follow V3 tool_call rows still need it.
+        flushAssistant(false)
+        if (!pendingUserToolResults) pendingUserToolResults = []
+        pendingUserToolResults.push(...(c.blocks as ToolResultBlockParam[]))
+        break
+
+      case 'user_tool_result_legacy_v3': {
+        // Flush pending assistant blocks but PRESERVE the FIFO queue so we can
+        // shift the matching toolUseId for this result.
+        flushAssistant(false)
+        const toolUseId = pendingToolUseIds.shift() ?? c.toolUseId
+        if (!pendingUserToolResults) pendingUserToolResults = []
+        pendingUserToolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolUseId,
+          content: c.contentString,
+          is_error: c.isError,
+        })
+        break
+      }
+
+      case 'assistant_text':
+        flushUserToolResults()
+        flushAssistant(true)
+        messages.push({ role: 'assistant', content: c.text })
+        break
+
+      case 'assistant_blocks_native':
+        flushUserToolResults()
+        flushAssistant(true)
+        messages.push({ role: 'assistant', content: c.blocks as MessageParam['content'] })
+        break
+
+      case 'assistant_tool_call_legacy_v3':
+        flushUserToolResults()
+        if (!pendingAssistantBlocks) pendingAssistantBlocks = []
+        pendingAssistantBlocks.push({
+          type: 'tool_use',
+          id: c.toolUseId,
+          name: c.name,
+          input: c.input as Record<string, unknown>,
+        })
+        pendingToolUseIds.push(c.toolUseId)
+        break
+    }
+  }
+
+  flushUserToolResults()
+  flushAssistant()
+
+  // Fallback summary source: session.messageSummary if no system_summary row
+  // The opts.fallbackSummary parameter is now superseded by the direct session
+  // lookup above. It is kept in the signature for backward compatibility but
+  // ignored — the session row is authoritative.
+  if (systemSummary === null && sessionRow[0]?.messageSummary) {
+    systemSummary = sessionRow[0].messageSummary
+  }
+
+  return { messages, systemSummary }
 }
 
 /**

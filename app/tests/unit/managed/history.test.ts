@@ -12,6 +12,10 @@ vi.mock('@/lib/db/schema', () => ({
     sessionId: 'session_id',
     sequenceNumber: 'sequence_number',
   },
+  agentSessions: {
+    id: 'id',
+    messageSummary: 'message_summary',
+  },
   runtimeModeEnum: {},
 }))
 
@@ -22,19 +26,31 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn(),
 }))
 
+// Helper to build a db.select mock for loadManagedHistory.
+// The new loader calls db.select() twice in Promise.all:
+//   call 1: agentMessages → .from().where().orderBy() → resolves rows
+//   call 2: agentSessions → .from().where().limit()   → resolves [{ messageSummary: null }]
+// We use a shared mock chain that supports both .orderBy() and .limit()
+// on the same where() result so any call order works.
+function mockSelectChain(db: any, messageRows: unknown[]) {
+  const whereResult = {
+    orderBy: vi.fn().mockResolvedValue(messageRows),
+    limit: vi.fn().mockResolvedValue([{ messageSummary: null }]),
+  }
+  ;(db.select as any).mockReturnValue({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue(whereResult),
+    }),
+  })
+}
+
 describe('history helpers', () => {
   beforeEach(() => vi.clearAllMocks())
 
   describe('loadManagedHistory', () => {
     it('returns empty array when no messages', async () => {
       const { db } = await import('@/lib/db')
-      ;(db.select as any).mockReturnValue({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            orderBy: vi.fn().mockResolvedValue([]),
-          }),
-        }),
-      })
+      mockSelectChain(db, [])
 
       const { loadManagedHistory } = await import('@/lib/ai/agent/managed/history')
       const result = await loadManagedHistory('sess-1')
@@ -44,22 +60,17 @@ describe('history helpers', () => {
 
     it('converts user text message to MessageParam', async () => {
       const { db } = await import('@/lib/db')
-      ;(db.select as any).mockReturnValue({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            orderBy: vi.fn().mockResolvedValue([
-              {
-                id: 'msg-1', sessionId: 'sess-1', sequenceNumber: 0,
-                role: 'user', messageType: 'text',
-                content: 'Vreau fonduri',
-                toolName: null, toolCallId: null,
-                compactedAt: null,
-                runtimeMode: 'managed', provider: null, model: null,
-              },
-            ]),
-          }),
-        }),
-      })
+      mockSelectChain(db, [
+        {
+          id: 'msg-1', sessionId: 'sess-1', sequenceNumber: 0,
+          role: 'user', messageType: 'text',
+          content: 'Vreau fonduri',
+          toolName: null, toolCallId: null,
+          compactedAt: null,
+          runtimeMode: 'managed', provider: null, model: null,
+          createdAt: new Date(), turnId: null,
+        },
+      ])
 
       const { loadManagedHistory } = await import('@/lib/ai/agent/managed/history')
       const result = await loadManagedHistory('sess-1')
@@ -70,22 +81,17 @@ describe('history helpers', () => {
 
     it('converts assistant structured content to MessageParam', async () => {
       const { db } = await import('@/lib/db')
-      ;(db.select as any).mockReturnValue({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            orderBy: vi.fn().mockResolvedValue([
-              {
-                id: 'msg-2', sessionId: 'sess-1', sequenceNumber: 1,
-                role: 'assistant', messageType: 'text',
-                content: [{ type: 'text', text: 'Salut' }],
-                toolName: null, toolCallId: null,
-                compactedAt: null,
-                runtimeMode: 'managed', provider: 'anthropic', model: 'claude-sonnet-4-6',
-              },
-            ]),
-          }),
-        }),
-      })
+      mockSelectChain(db, [
+        {
+          id: 'msg-2', sessionId: 'sess-1', sequenceNumber: 1,
+          role: 'assistant', messageType: 'text',
+          content: [{ type: 'text', text: 'Salut' }],
+          toolName: null, toolCallId: null,
+          compactedAt: null,
+          runtimeMode: 'managed', provider: 'anthropic', model: 'claude-sonnet-4-6',
+          createdAt: new Date(), turnId: null,
+        },
+      ])
 
       const { loadManagedHistory } = await import('@/lib/ai/agent/managed/history')
       const result = await loadManagedHistory('sess-1')
@@ -96,30 +102,26 @@ describe('history helpers', () => {
 
     it('skips compacted messages', async () => {
       const { db } = await import('@/lib/db')
-      ;(db.select as any).mockReturnValue({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            orderBy: vi.fn().mockResolvedValue([
-              {
-                id: 'msg-1', sessionId: 'sess-1', sequenceNumber: 0,
-                role: 'user', messageType: 'text',
-                content: 'Old message',
-                toolName: null, toolCallId: null,
-                compactedAt: new Date('2026-01-01'),
-                runtimeMode: 'v3', provider: null, model: null,
-              },
-              {
-                id: 'msg-2', sessionId: 'sess-1', sequenceNumber: 1,
-                role: 'user', messageType: 'text',
-                content: 'Current message',
-                toolName: null, toolCallId: null,
-                compactedAt: null,
-                runtimeMode: 'managed', provider: null, model: null,
-              },
-            ]),
-          }),
-        }),
-      })
+      mockSelectChain(db, [
+        {
+          id: 'msg-1', sessionId: 'sess-1', sequenceNumber: 0,
+          role: 'user', messageType: 'text',
+          content: 'Old message',
+          toolName: null, toolCallId: null,
+          compactedAt: new Date('2026-01-01'),
+          runtimeMode: 'v3', provider: null, model: null,
+          createdAt: new Date(), turnId: null,
+        },
+        {
+          id: 'msg-2', sessionId: 'sess-1', sequenceNumber: 1,
+          role: 'user', messageType: 'text',
+          content: 'Current message',
+          toolName: null, toolCallId: null,
+          compactedAt: null,
+          runtimeMode: 'managed', provider: null, model: null,
+          createdAt: new Date(), turnId: null,
+        },
+      ])
 
       const { loadManagedHistory } = await import('@/lib/ai/agent/managed/history')
       const result = await loadManagedHistory('sess-1')

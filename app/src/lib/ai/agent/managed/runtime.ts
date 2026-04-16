@@ -82,9 +82,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   //    the in-memory history only and flushes to DB alongside the first
   //    durable output via persistFirstDurableOutput. See Finding 3
   //    (pre-stream claim + deferred persistence).
-  const { messages: history } = await loadManagedHistory(session.id, {
-    fallbackSummary: session.messageSummary ?? null,
-  })
+  const { messages: history } = await loadManagedHistory(session.id)
 
   // 2. Push the current user message into in-memory history ONLY.
   if (request.message) {
