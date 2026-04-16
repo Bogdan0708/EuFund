@@ -28,9 +28,9 @@ describe('buildManagedSystemPrompt', () => {
     expect(prompt.length).toBeGreaterThan(100)
   })
 
-  it('includes Phase 2 scope notice (read-only)', () => {
+  it('references the full workflow (discovery through review)', () => {
     const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro')
-    expect(prompt.toLowerCase()).toMatch(/read.?only|nu poți scrie|doar citire/)
+    expect(prompt.toLowerCase()).toMatch(/discovery|descoperire|drafting|redactare/)
   })
 
   it('references tool categories', () => {
@@ -54,11 +54,11 @@ describe('buildManagedSystemPrompt', () => {
     expect(prompt.toLowerCase()).toMatch(/discovery|descoperire/)
   })
 
-  it('does not reference write tools', () => {
+  it('references write tools (Phase 3b exposes them)', () => {
     const prompt = buildManagedSystemPrompt(mockSession, [], 'discovery', 'ro')
     const writeTools = ['save_section_draft', 'approve_revision', 'rollback_section']
     for (const name of writeTools) {
-      expect(prompt).not.toContain(name)
+      expect(prompt).toContain(name)
     }
   })
 })
