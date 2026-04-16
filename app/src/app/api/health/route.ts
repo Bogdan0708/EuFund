@@ -91,13 +91,14 @@ export async function GET(request: NextRequest) {
       healthCheck.status = 'degraded';
     }
 
-    // AI service check
+    // AI provider check (direct SDK — no external gateway)
     try {
-      if (process.env.AI_GATEWAY_URL && (process.env.AI_GATEWAY_KEY || process.env.AI_GATEWAY_API_KEY)) {
-        healthCheck.services.ai = 'configured';
-      } else {
-        healthCheck.services.ai = 'not_configured';
-      }
+      const hasProvider = !!(
+        process.env.OPENAI_API_KEY ||
+        process.env.ANTHROPIC_API_KEY ||
+        process.env.GOOGLE_AI_API_KEY
+      );
+      healthCheck.services.ai = hasProvider ? 'configured' : 'not_configured';
     } catch {
       healthCheck.services.ai = 'error';
     }
