@@ -9,12 +9,13 @@ import { rollbackSection } from '../../services/sections'
 import { ConcurrencyError, NotFoundError, ValidationError } from '../../services/errors'
 import type { ServiceContext } from '../../services/types'
 
-const inputShape = {
+export const inputShape = {
   sessionId: z.string().uuid(),
   sectionKey: z.string().min(1),
   targetVersion: z.number().int(),
   expectedStateVersion: z.number().int(),
 }
+export const inputSchema = z.object(inputShape)
 
 export function registerRollbackSection(server: McpServer, ctx: ServiceContext): void {
   server.tool(
