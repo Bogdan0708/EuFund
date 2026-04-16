@@ -19,21 +19,24 @@ export interface ManagedMessageMeta {
 // system_summary rows). EXTRACTION SEAM: this logic is a candidate for a
 // shared history helper in a post-pilot cleanup. Keep it local for now to
 // minimize blast radius.
-export interface ManagedHistory {
-  summary: string | null
+export interface ManagedHistoryResult {
   messages: MessageParam[]
+  systemSummary: string | null
 }
 
 /**
  * Load all non-compacted messages for a session and convert to
- * Anthropic MessageParam[] for replay in a managed turn. Any
- * `system_summary` rows encountered are extracted into the returned
- * `summary` field rather than streamed as messages.
+ * Anthropic MessageParam[] for replay in a managed turn.
+ *
+ * Returns { messages, systemSummary } where systemSummary is reserved for
+ * the Phase 3b normalizer rewrite (Task 7). The current shim always
+ * returns systemSummary: null — the Phase 2 body logic is preserved
+ * intact and the summary wiring is a no-op until Task 7 lands.
  */
 export async function loadManagedHistory(
   sessionId: string,
   opts: { fallbackSummary?: string | null } = {},
-): Promise<ManagedHistory> {
+): Promise<ManagedHistoryResult> {
   const rows = await db.select()
     .from(agentMessages)
     .where(eq(agentMessages.sessionId, sessionId))
@@ -67,7 +70,9 @@ export async function loadManagedHistory(
 
   if (summary === null && opts.fallbackSummary) summary = opts.fallbackSummary
 
-  return { summary, messages }
+  // systemSummary wiring lands in Task 7. Shim: always null.
+  void summary
+  return { messages, systemSummary: null }
 }
 
 /**

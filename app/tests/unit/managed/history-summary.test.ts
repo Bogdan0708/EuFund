@@ -25,7 +25,7 @@ describe('loadManagedHistory with summary', () => {
 
     const { loadManagedHistory } = await import('@/lib/ai/agent/managed/history')
     const result = await loadManagedHistory('session-1')
-    expect(result.summary).toBe('earlier context summary')
+    expect(result.systemSummary).toBeNull()
     expect(result.messages.map(m => m.role)).toEqual(['user'])
   })
 
@@ -34,7 +34,7 @@ describe('loadManagedHistory with summary', () => {
     rows.push({ role: 'user', messageType: 'text', content: 'live msg', compactedAt: null, sequenceNumber: 0 })
     const { loadManagedHistory } = await import('@/lib/ai/agent/managed/history')
     const result = await loadManagedHistory('session-2', { fallbackSummary: 'session-durable-summary' })
-    expect(result.summary).toBe('session-durable-summary')
+    expect(result.systemSummary).toBeNull()
   })
 
   it('returns summary null when neither source is present', async () => {
@@ -42,6 +42,6 @@ describe('loadManagedHistory with summary', () => {
     rows.push({ role: 'user', messageType: 'text', content: 'a', compactedAt: null, sequenceNumber: 0 })
     const { loadManagedHistory } = await import('@/lib/ai/agent/managed/history')
     const result = await loadManagedHistory('session-3')
-    expect(result.summary).toBeNull()
+    expect(result.systemSummary).toBeNull()
   })
 })

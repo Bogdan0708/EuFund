@@ -39,7 +39,7 @@ describe('history helpers', () => {
       const { loadManagedHistory } = await import('@/lib/ai/agent/managed/history')
       const result = await loadManagedHistory('sess-1')
       expect(result.messages).toEqual([])
-      expect(result.summary).toBeNull()
+      expect(result.systemSummary).toBeNull()
     })
 
     it('converts user text message to MessageParam', async () => {

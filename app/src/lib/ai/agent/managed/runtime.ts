@@ -82,7 +82,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   //    and flushes to DB alongside the first durable output via
   //    persistFirstDurableOutput. See Finding 3 (pre-stream claim +
   //    deferred persistence).
-  const { summary, messages: history } = await loadManagedHistory(session.id, {
+  const { messages: history } = await loadManagedHistory(session.id, {
     fallbackSummary: session.messageSummary ?? null,
   })
 
@@ -92,12 +92,13 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   }
 
   // 3. Build the system prompt
+  // NOTE: summary arg is null for now — systemSummary wiring lands in Task 7.
   const systemPrompt = buildManagedSystemPrompt(
     session,
     sections,
     session.currentPhase as Phase,
     session.locale,
-    summary,
+    null,
   )
 
   // 4. Tool loop
