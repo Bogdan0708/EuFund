@@ -41,7 +41,6 @@ export interface ManagedHistoryResult {
  */
 export async function loadManagedHistory(
   sessionId: string,
-  opts: { fallbackSummary?: string | null } = {},
 ): Promise<ManagedHistoryResult> {
   // Fetch rows + session in parallel. The session lookup gives us the
   // messageSummary fallback when no system_summary row exists in history.
@@ -164,10 +163,7 @@ export async function loadManagedHistory(
   flushUserToolResults()
   flushAssistant()
 
-  // Fallback summary source: session.messageSummary if no system_summary row
-  // The opts.fallbackSummary parameter is now superseded by the direct session
-  // lookup above. It is kept in the signature for backward compatibility but
-  // ignored — the session row is authoritative.
+  // Fallback summary source: session.messageSummary if no system_summary row.
   if (systemSummary === null && sessionRow[0]?.messageSummary) {
     systemSummary = sessionRow[0].messageSummary
   }
@@ -378,8 +374,7 @@ export async function persistFirstDurableOutput(input: {
 // union describing how the Phase 3b loader should convert it to an
 // Anthropic MessageParam content-block shape.
 //
-// Consumed by the Task 3 loader rewrite. Do NOT call from
-// loadManagedHistory yet — that wiring lands in Task 7.
+// Consumed by loadManagedHistory (wired in as of Task 3).
 
 export type RowClassification =
   // --- Keep variants (produce Anthropic MessageParam output) ---
