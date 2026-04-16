@@ -43,10 +43,6 @@ export const AI_CONFIG = {
     grantMatchesPerDay: 50,
     complianceChecksPerDay: 30,
   },
-  // Gateway settings
-  gateway: {
-    tenantId: process.env.AI_GATEWAY_TENANT_ID || 'fondeu-platform',
-  },
   // GDPR: Data processing agreement references
   gdpr: {
     legalBasis: 'contract' as const,

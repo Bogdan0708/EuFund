@@ -164,9 +164,12 @@ The primary AI interaction path. Three runtimes coexist in source; master curren
 
 ### AI Providers
 
-Multi-provider setup: OpenAI (primary), Anthropic (alternative), Google (alternative), Perplexity. Configuration in `app/src/lib/ai/config.ts`. Tier-based rate limits per feature (proposals: 10/day, docs: 20/day, grants: 50/day).
+Multi-provider setup using direct SDK calls — no external gateway. Configuration in `app/src/lib/ai/config.ts`. Tier-based rate limits per feature (proposals: 10/day, docs: 20/day, grants: 50/day).
 
-Production AI calls route through a separate **AI Gateway** service (Cloud Run, project `mitch-ai-services`, region `europe-west2`) rather than calling providers directly. Consumed via `AI_GATEWAY_URL`, `AI_GATEWAY_API_KEY`, `AI_GATEWAY_TENANT_ID` env vars. Gateway is an independent codebase — not in this repo. `lib/ai/providers/` falls back to direct provider SDKs if gateway env vars are unset (useful for local dev).
+- **One-shot generation** (`lib/ai/client.ts`): routes through `lib/ai/providers/router.ts` which calls OpenAI/Anthropic/Google/Perplexity SDKs directly. Model selection via `lib/ai/model-routing.ts`.
+- **Managed Agents** (`lib/ai/agent/managed/runtime.ts`): calls Anthropic SDK directly for streaming tool-use loops.
+- **Discovery** (`lib/discovery/pipeline.ts`): uses the in-app `lib/ai/gateway.ts` adapter which instantiates provider SDKs — not an HTTP hop to an external service.
+- **Embeddings**: always OpenAI `text-embedding-3-small` via direct SDK.
 
 ### External Integrations
 
