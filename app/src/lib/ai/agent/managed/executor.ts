@@ -6,7 +6,7 @@
 // isError tool results with safe content strings.
 
 import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/messages'
-import { MANAGED_TOOL_NAMES, PHASE_4_BLOCKED_TOOL_NAMES } from './tools'
+import { MANAGED_TOOL_NAMES, PHASE_4_BLOCKED_TOOL_NAMES, WRITE_TOOL_NAMES } from './tools'
 import type { ServiceContext } from '../services/types'
 import {
   ServiceError,
@@ -71,6 +71,17 @@ export async function executeManagedTool(
       )
     }
     return errorResult(name, start, `Unknown tool: ${name}`)
+  }
+
+  // ── 1b. Write rollout gate ──────────────────────────────────────────────
+  // Write tools fire BEFORE dispatch — no service call happens on the
+  // blocked path. ctx.allowWrites is the single rollout control.
+  if (WRITE_TOOL_NAMES.has(name) && ctx.allowWrites !== true) {
+    return errorResult(
+      name,
+      start,
+      'Managed write tools are disabled for your account. Reads and evaluations are still available. This is a rollout gate, not a permanent restriction.',
+    )
   }
 
   // ── 2. Dispatch with timeout ────────────────────────────────────────────
