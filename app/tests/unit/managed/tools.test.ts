@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { MANAGED_READ_ONLY_TOOLS, MANAGED_TOOL_NAMES } from '@/lib/ai/agent/managed/tools'
+import { MANAGED_TOOLS, MANAGED_TOOL_NAMES } from '@/lib/ai/agent/managed/tools'
 
-describe('MANAGED_READ_ONLY_TOOLS', () => {
+describe('MANAGED_TOOLS', () => {
   it('contains exactly 14 tools (9 read + 5 rules)', () => {
-    expect(MANAGED_READ_ONLY_TOOLS).toHaveLength(14)
+    expect(MANAGED_TOOLS).toHaveLength(14)
   })
 
   it('each tool has name, description, and input_schema', () => {
-    for (const tool of MANAGED_READ_ONLY_TOOLS) {
+    for (const tool of MANAGED_TOOLS) {
       expect(typeof tool.name).toBe('string')
       expect(tool.name.length).toBeGreaterThan(0)
       expect(typeof tool.description).toBe('string')
@@ -19,7 +19,7 @@ describe('MANAGED_READ_ONLY_TOOLS', () => {
 
   it('MANAGED_TOOL_NAMES is a Set of all tool names', () => {
     expect(MANAGED_TOOL_NAMES.size).toBe(14)
-    for (const tool of MANAGED_READ_ONLY_TOOLS) {
+    for (const tool of MANAGED_TOOLS) {
       expect(MANAGED_TOOL_NAMES.has(tool.name)).toBe(true)
     }
   })

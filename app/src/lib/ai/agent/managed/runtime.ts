@@ -21,7 +21,7 @@ import type {
 } from '../types'
 import type { ServiceContext } from '../services/types'
 import { getAnthropicClient } from '@/lib/ai/anthropic-client'
-import { MANAGED_READ_ONLY_TOOLS } from './tools'
+import { MANAGED_TOOLS } from './tools'
 import { translateAnthropicEvent, createTranslatorContext } from './translator'
 import { buildManagedSystemPrompt } from './prompt'
 import { executeManagedTool, type ExecutorResult } from './executor'
@@ -109,7 +109,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     const stream = anthropic.messages.stream({
       model: MODEL,
       system: systemPrompt,
-      tools: MANAGED_READ_ONLY_TOOLS,
+      tools: MANAGED_TOOLS,
       messages: runningMessages,
       max_tokens: MAX_TOKENS_PER_TURN,
     })

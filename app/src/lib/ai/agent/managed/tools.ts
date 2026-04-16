@@ -1,8 +1,8 @@
 // ── Managed runtime tool definitions ────────────────────────────
-// 14 tools exposed to Anthropic's Messages API in Phase 2: 9 read +
-// 5 rules. Each tool's JSON schema is derived from the Phase 1 MCP
-// handler's Zod schema via `zodToJsonSchema`. Write tools are NOT
-// included — Phase 2 is read-only.
+// Tools exposed to Anthropic's Messages API. Each tool's JSON schema
+// is derived from the Phase 1 MCP handler's Zod schema via
+// `zodToJsonSchema`. Phase 2 was read-only (14 tools). Phase 3b adds
+// the 8 write tools (22 total: 9 read + 5 rules + 8 write).
 
 import type { Tool } from '@anthropic-ai/sdk/resources/messages'
 import { zodToJsonSchema } from '../utils'
@@ -25,7 +25,7 @@ import { inputSchema as validateSectionSchema } from '../mcp/rules/validate-sect
 import { inputSchema as validateApplicationSchema } from '../mcp/rules/validate-application'
 import { inputSchema as checkMissingAnnexesSchema } from '../mcp/rules/check-missing-annexes'
 
-export const MANAGED_READ_ONLY_TOOLS: Tool[] = [
+export const MANAGED_TOOLS: Tool[] = [
   {
     name: 'search_calls',
     description: 'Search EU funding calls by semantic similarity. Returns ranked matches with call ID, title, program, relevance score, and a short snippet. Read-only.',
@@ -99,5 +99,5 @@ export const MANAGED_READ_ONLY_TOOLS: Tool[] = [
 ]
 
 export const MANAGED_TOOL_NAMES: Set<string> = new Set(
-  MANAGED_READ_ONLY_TOOLS.map(t => t.name),
+  MANAGED_TOOLS.map(t => t.name),
 )
