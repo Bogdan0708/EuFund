@@ -20,6 +20,15 @@ export interface ServiceContext {
   projectId?: string
   requestId: string
   now: Date
+  /**
+   * Managed-runtime rollout control. When false (or undefined), the
+   * managed executor blocks write tools with a targeted error before
+   * any service call. Services IGNORE this field — it is checked only
+   * in the managed executor and (later) the structured-action bridge.
+   * Enforcement at the service layer would couple domain logic to
+   * rollout state, which is wrong.
+   */
+  allowWrites?: boolean
 }
 
 // ── Context Assertion Helpers ──────────────────────────────────────────────
