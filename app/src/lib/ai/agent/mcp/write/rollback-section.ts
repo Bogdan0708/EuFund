@@ -48,7 +48,7 @@ export function registerRollbackSection(server: McpServer, ctx: ServiceContext):
         }
         if (err instanceof ValidationError) {
           return {
-            content: [{ type: 'text', text: JSON.stringify({ error: err.message, code: 'VALIDATION', field: err.field }) }],
+            content: [{ type: 'text', text: JSON.stringify({ error: err.message, code: err.policyCode ?? `VALIDATION:${err.field}`, field: err.field }) }],
             isError: true,
           }
         }
