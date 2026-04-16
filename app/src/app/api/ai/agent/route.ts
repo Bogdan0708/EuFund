@@ -338,8 +338,14 @@ function runManagedWithSSE(
       let firstOutputPersisted = false
       try {
         const { runManagedTurn } = await import('@/lib/ai/agent/managed/runtime')
+        // bypassCache: true — managed_agent_writes_enabled is a rollout
+        // control for a mutating surface. If we need to disable writes in
+        // an emergency, the 60s cache TTL must not delay the shutoff on
+        // warm instances. Matches the feature-flags service pattern for
+        // kill-switch-style flags.
         const allowWrites = await isFeatureEnabled('managed_agent_writes_enabled', {
           userId: user.id,
+          bypassCache: true,
         })
         const serviceCtx = {
           userId: user.id,

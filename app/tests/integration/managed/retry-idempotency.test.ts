@@ -237,7 +237,21 @@ describe('managed retry idempotency — pre-stream turn claim', () => {
     await res.text()
     expect(mockRunManaged).toHaveBeenCalled()
     // turnId was passed as an argument to runManagedTurn
-    const passedOpts = mockRunManaged.mock.calls[0][0] as { turnId?: string }
+    const passedOpts = mockRunManaged.mock.calls[0][0] as {
+      turnId?: string
+      serviceCtx?: { allowWrites?: boolean }
+    }
     expect(passedOpts.turnId).toBe('mock-turn-id')
+    // Route reads managed_agent_writes_enabled with bypassCache:true so
+    // an emergency disable is effective within one request rather than
+    // after the 60s cache TTL.
+    const { isFeatureEnabled } = await import('@/lib/feature-flags')
+    expect(isFeatureEnabled).toHaveBeenCalledWith(
+      'managed_agent_writes_enabled',
+      expect.objectContaining({ userId: 'user-1', bypassCache: true }),
+    )
+    // Mocked flag returns false for unknown keys → ctx.allowWrites=false
+    // in the managed turn (fail-closed default).
+    expect(passedOpts.serviceCtx?.allowWrites).toBe(false)
   })
 })
