@@ -527,11 +527,29 @@ export function classifyRow(row: typeof agentMessages.$inferSelect): RowClassifi
   if (row.role === 'assistant' && row.messageType === 'tool_call') {
     const content = row.content as { name?: string; arguments?: unknown } | null
     if (content && typeof content === 'object' && typeof content.name === 'string') {
+      // V3 runtime persists toolCall.arguments as a JSON-encoded STRING
+      // (see lib/ai/agent/runtime.ts:257 — the raw string from the model's
+      // tool_call is stored unchanged; runtime.ts:211 JSON.parses it at
+      // execution time, which proves the persisted shape is string).
+      // Anthropic's tool_use.input requires an object, so parse strings
+      // here. Tolerate object shapes too — test fixtures and any non-V3
+      // writer that stored a parsed object still work.
+      const rawArgs = content.arguments
+      let input: unknown = {}
+      if (typeof rawArgs === 'string') {
+        try {
+          input = JSON.parse(rawArgs)
+        } catch {
+          input = {}
+        }
+      } else if (rawArgs && typeof rawArgs === 'object') {
+        input = rawArgs
+      }
       return {
         kind: 'assistant_tool_call_legacy_v3',
         toolUseId: row.toolCallId ?? synthId(row.id),
         name: content.name,
-        input: content.arguments ?? {},
+        input,
       }
     }
     return { kind: 'unknown_drop', reason: 'V3 assistant tool_call content missing name field' }

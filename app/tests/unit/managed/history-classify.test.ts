@@ -56,12 +56,15 @@ describe('classifyRow', () => {
     expect(c.kind).toBe('assistant_blocks_native')
   })
 
-  it('classifies a V3-era assistant tool_call row with explicit toolCallId', () => {
+  it('classifies a V3-era assistant tool_call row with string arguments (real V3 shape)', () => {
+    // V3 runtime persists toolCall.arguments unchanged as a JSON-encoded
+    // string (runtime.ts:257). The normalizer must parse it back to an
+    // object so Anthropic's tool_use.input contract is satisfied.
     const c = classifyRow(row({
       id: 'm-42',
       role: 'assistant',
       messageType: 'tool_call',
-      content: { name: 'search_calls', arguments: { query: 'pnrr' } } as never,
+      content: { name: 'search_calls', arguments: JSON.stringify({ query: 'pnrr' }) } as never,
       toolName: 'search_calls',
       toolCallId: 'tu_xyz',
     }))
@@ -70,6 +73,36 @@ describe('classifyRow', () => {
       expect(c.toolUseId).toBe('tu_xyz')
       expect(c.name).toBe('search_calls')
       expect(c.input).toEqual({ query: 'pnrr' })
+    }
+  })
+
+  it('tolerates object-shaped arguments (test fixtures / non-V3 writers)', () => {
+    const c = classifyRow(row({
+      id: 'm-43',
+      role: 'assistant',
+      messageType: 'tool_call',
+      content: { name: 'search_calls', arguments: { query: 'pnrr' } } as never,
+      toolName: 'search_calls',
+      toolCallId: 'tu_abc',
+    }))
+    expect(c.kind).toBe('assistant_tool_call_legacy_v3')
+    if (c.kind === 'assistant_tool_call_legacy_v3') {
+      expect(c.input).toEqual({ query: 'pnrr' })
+    }
+  })
+
+  it('falls back to {} when V3 tool_call arguments is an unparseable string', () => {
+    const c = classifyRow(row({
+      id: 'm-99',
+      role: 'assistant',
+      messageType: 'tool_call',
+      content: { name: 'search_calls', arguments: 'not valid json{{{' } as never,
+      toolName: 'search_calls',
+      toolCallId: 'tu_bad',
+    }))
+    expect(c.kind).toBe('assistant_tool_call_legacy_v3')
+    if (c.kind === 'assistant_tool_call_legacy_v3') {
+      expect(c.input).toEqual({})
     }
   })
 

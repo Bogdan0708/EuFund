@@ -52,7 +52,9 @@ describe('loadManagedHistory — real V3 session replay', () => {
 
     // Seed 4 agent_messages rows that mirror V3 persistence exactly
     //   seq 0: user text (the initial user message)
-    //   seq 1: assistant tool_call (V3 shape — no toolCallId, content={name,arguments})
+    //   seq 1: assistant tool_call (V3 shape — no toolCallId, content={name, arguments: <json-string>})
+    //          NB: V3 persists toolCall.arguments unchanged as a JSON-encoded STRING
+    //          (see lib/ai/agent/runtime.ts:257). Integration fixture must match.
     //   seq 2: tool tool_result (V3 shape — role='tool', no toolCallId, content={success,data})
     //   seq 3: assistant text (final answer)
     await sql`
@@ -67,7 +69,7 @@ describe('loadManagedHistory — real V3 session replay', () => {
         (
           ${randomUUID()}::uuid, ${sessionId}::uuid,
           'assistant', 'tool_call',
-          ${'{"name":"search_calls","arguments":{"query":"pnrr"}}'}::jsonb,
+          ${'{"name":"search_calls","arguments":"{\\"query\\":\\"pnrr\\"}"}'}::jsonb,
           'search_calls', NULL, 1, 'v3'
         ),
         (
