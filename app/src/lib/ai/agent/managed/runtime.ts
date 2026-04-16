@@ -76,12 +76,12 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   // the first time we flush the user message + first output together.
   let firstOutputPersisted = false
 
-  // 1. Load history (with summary extracted from system_summary rows
-  //    or session.messageSummary fallback). The user message for THIS
-  //    turn is NOT yet persisted — it joins the in-memory history only
-  //    and flushes to DB alongside the first durable output via
-  //    persistFirstDurableOutput. See Finding 3 (pre-stream claim +
-  //    deferred persistence).
+  // 1. Load history. systemSummary is currently always null (Task 1 shim);
+  //    wiring it through to buildManagedSystemPrompt lands in Task 7.
+  //    The user message for THIS turn is NOT yet persisted — it joins
+  //    the in-memory history only and flushes to DB alongside the first
+  //    durable output via persistFirstDurableOutput. See Finding 3
+  //    (pre-stream claim + deferred persistence).
   const { messages: history } = await loadManagedHistory(session.id, {
     fallbackSummary: session.messageSummary ?? null,
   })
