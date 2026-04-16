@@ -6,8 +6,8 @@ type Row = typeof agentMessages.$inferSelect
 
 function row(overrides: Partial<Row>): Row {
   return {
-    id: 'm-default',
-    sessionId: 's-default',
+    id: '11111111-1111-4111-8111-111111111111',
+    sessionId: '22222222-2222-4222-8222-222222222222',
     role: 'user',
     messageType: 'text',
     content: 'hello',
@@ -147,5 +147,20 @@ describe('classifyRow', () => {
   it('tags malformed rows as unknown_drop with a reason', () => {
     const c = classifyRow(row({ role: 'banana' as never, messageType: 'text', content: 'x' }))
     expect(c.kind).toBe('unknown_drop')
+    if (c.kind === 'unknown_drop') {
+      expect(c.reason).toContain('banana')
+    }
+  })
+
+  it('drops V3 structured_action rows with explicit legacy reason (not generic unknown_drop)', () => {
+    const c = classifyRow(row({
+      role: 'user',
+      messageType: 'structured_action' as never,
+      content: { type: 'approve_section', sectionId: 'sec-1' } as never,
+    }))
+    expect(c.kind).toBe('unknown_drop')
+    if (c.kind === 'unknown_drop') {
+      expect(c.reason).toBe('legacy_v3_user_structured_action_control_plane')
+    }
   })
 })

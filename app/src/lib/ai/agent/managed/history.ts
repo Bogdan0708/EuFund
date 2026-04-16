@@ -282,20 +282,25 @@ export async function persistFirstDurableOutput(input: {
 // loadManagedHistory yet — that wiring lands in Task 7.
 
 export type RowClassification =
+  // --- Keep variants (produce Anthropic MessageParam output) ---
   | { kind: 'user_text'; text: string }
   | { kind: 'user_text_blocks'; blocks: unknown[] }
   | { kind: 'user_tool_result_native'; blocks: unknown[] }
   | { kind: 'user_tool_result_legacy_v3'; toolUseId: string; toolName: string; contentString: string; isError: boolean }
   | { kind: 'assistant_text'; text: string }
   | { kind: 'assistant_blocks_native'; blocks: unknown[] }
-  | { kind: 'assistant_tool_call_legacy_v3'; toolUseId: string; toolName: string; name: string; input: unknown }
+  | { kind: 'assistant_tool_call_legacy_v3'; toolUseId: string; name: string; input: unknown }
   | { kind: 'system_summary'; text: string }
+  // --- Known legacy drop variants (explicitly classified, no output) ---
   | { kind: 'system_drop' }
+  // --- Unknown fallback (last resort; telemetry-visible via reason) ---
   | { kind: 'unknown_drop'; reason: string }
 
 export function classifyRow(row: typeof agentMessages.$inferSelect): RowClassification {
   // Synthetic ID for rows where toolCallId was not persisted (V3 era)
   const synthId = (id: string) => `tu_legacy_${id}`
+
+  // --- Keep variants (produce Anthropic MessageParam output) ---
 
   if (row.role === 'user' && row.messageType === 'text') {
     if (typeof row.content === 'string') return { kind: 'user_text', text: row.content }
@@ -326,7 +331,6 @@ export function classifyRow(row: typeof agentMessages.$inferSelect): RowClassifi
       return {
         kind: 'assistant_tool_call_legacy_v3',
         toolUseId: row.toolCallId ?? synthId(row.id),
-        toolName: row.toolName ?? content.name,
         name: content.name,
         input: content.arguments ?? {},
       }
@@ -352,8 +356,18 @@ export function classifyRow(row: typeof agentMessages.$inferSelect): RowClassifi
     return { kind: 'unknown_drop', reason: 'system_summary content is not a string' }
   }
 
+  // --- Known legacy drop variants (explicitly classified, no output) ---
+
+  // Known legacy V3 control-plane rows — intentionally dropped with a
+  // distinctive reason so ops telemetry can distinguish them from
+  // genuinely unknown rows reaching the final fallback.
+  if (row.role === 'user' && row.messageType === 'structured_action') {
+    return { kind: 'unknown_drop', reason: 'legacy_v3_user_structured_action_control_plane' }
+  }
+
   if (row.role === 'system') return { kind: 'system_drop' }
 
+  // --- Unknown fallback (last resort; telemetry-visible via reason) ---
   return { kind: 'unknown_drop', reason: `unhandled role=${row.role} messageType=${row.messageType}` }
 }
 
