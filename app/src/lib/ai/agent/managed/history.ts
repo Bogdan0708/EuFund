@@ -3,7 +3,7 @@
 // Tags each appended message with runtime_mode, provider, model
 // for observability.
 
-import type { MessageParam, ContentBlock, ToolResultBlockParam } from '@anthropic-ai/sdk/resources/messages'
+import type { MessageParam, ContentBlock, ContentBlockParam, ToolResultBlockParam } from '@anthropic-ai/sdk/resources/messages'
 import { db } from '@/lib/db'
 import { agentMessages, agentSessions, agentTurns } from '@/lib/db/schema'
 import { eq, asc, desc, count as sqlCount } from 'drizzle-orm'
@@ -35,9 +35,9 @@ export interface ManagedHistoryResult {
  * Returns { messages, systemSummary }. Task 7 wires systemSummary through
  * to buildManagedSystemPrompt; this loader just extracts it.
  *
- * NOTE: Task 4 will wrap the returned messages through ensurePairingInvariant
- * to handle orphan tool_use blocks from crashed V3 sessions. Do NOT call
- * ensurePairingInvariant here — it doesn't exist yet.
+ * Messages are repaired via ensurePairingInvariant before return, trimming
+ * orphan tool_use/tool_result blocks from crashed V3 sessions so Anthropic's
+ * API accepts the replay.
  */
 export async function loadManagedHistory(
   sessionId: string,
@@ -405,12 +405,13 @@ export function ensurePairingInvariant(messages: MessageParam[]): MessageParam[]
       }
 
       // Look at the next message to find matching tool_result ids.
+      // Next is a user message: its content is ContentBlockParam[].
       const next = messages[i + 1]
       const matchedIds = new Set<string>()
       if (next && next.role === 'user' && Array.isArray(next.content)) {
-        for (const block of next.content as ContentBlock[]) {
-          if (block.type === 'tool_result' && typeof (block as { tool_use_id?: string }).tool_use_id === 'string') {
-            matchedIds.add((block as { tool_use_id: string }).tool_use_id)
+        for (const block of next.content as ContentBlockParam[]) {
+          if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+            matchedIds.add(block.tool_use_id)
           }
         }
       }
@@ -430,7 +431,10 @@ export function ensurePairingInvariant(messages: MessageParam[]): MessageParam[]
     }
 
     if (msg.role === 'user' && Array.isArray(msg.content)) {
-      const toolResultBlocks = (msg.content as ContentBlock[]).filter(b => b.type === 'tool_result')
+      // User-message content is ContentBlockParam[] (includes ToolResultBlockParam,
+      // ImageBlockParam, etc. — not in the narrower ContentBlock union used for
+      // assistant response blocks).
+      const toolResultBlocks = (msg.content as ContentBlockParam[]).filter(b => b.type === 'tool_result')
 
       if (toolResultBlocks.length === 0) {
         out.push(msg)
@@ -443,17 +447,17 @@ export function ensurePairingInvariant(messages: MessageParam[]): MessageParam[]
       const matchedIds = new Set<string>()
       if (prev && prev.role === 'assistant' && Array.isArray(prev.content)) {
         for (const block of prev.content as ContentBlock[]) {
-          if (block.type === 'tool_use' && typeof (block as { id?: string }).id === 'string') {
-            matchedIds.add((block as { id: string }).id)
+          if (block.type === 'tool_use' && typeof block.id === 'string') {
+            matchedIds.add(block.id)
           }
         }
       }
 
       // Trim orphan tool_result blocks; keep all non-tool_result blocks and
       // tool_result blocks whose tool_use_id has a matching tool_use.
-      const trimmed = (msg.content as ContentBlock[]).filter(b => {
+      const trimmed = (msg.content as ContentBlockParam[]).filter(b => {
         if (b.type !== 'tool_result') return true
-        return matchedIds.has((b as { tool_use_id: string }).tool_use_id)
+        return matchedIds.has(b.tool_use_id)
       })
 
       if (trimmed.length > 0) {
