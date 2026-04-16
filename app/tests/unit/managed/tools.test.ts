@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { MANAGED_TOOLS, MANAGED_TOOL_NAMES } from '@/lib/ai/agent/managed/tools'
 
 describe('MANAGED_TOOLS', () => {
-  it('contains exactly 14 tools (9 read + 5 rules)', () => {
-    expect(MANAGED_TOOLS).toHaveLength(14)
+  it('contains exactly 22 tools (9 read + 5 rules + 8 write)', () => {
+    expect(MANAGED_TOOLS).toHaveLength(22)
   })
 
   it('each tool has name, description, and input_schema', () => {
@@ -18,7 +18,7 @@ describe('MANAGED_TOOLS', () => {
   })
 
   it('MANAGED_TOOL_NAMES is a Set of all tool names', () => {
-    expect(MANAGED_TOOL_NAMES.size).toBe(14)
+    expect(MANAGED_TOOL_NAMES.size).toBe(22)
     for (const tool of MANAGED_TOOLS) {
       expect(MANAGED_TOOL_NAMES.has(tool.name)).toBe(true)
     }
@@ -45,12 +45,36 @@ describe('MANAGED_TOOLS', () => {
     }
   })
 
-  it('does NOT include any write tools', () => {
-    const writeTools = [
+  it('includes all 8 write tools', () => {
+    const writeNames = [
       'save_section_draft', 'approve_revision', 'rollback_section',
-      'save_call_blueprint', 'set_application_status', 'create_export_snapshot',
+      'set_application_status', 'set_selected_call', 'freeze_outline',
+      'mark_section_stale', 'reject_section',
     ]
-    for (const name of writeTools) {
+    const names = new Set(MANAGED_TOOLS.map((t) => t.name))
+    for (const name of writeNames) {
+      expect(names.has(name), `missing ${name}`).toBe(true)
+    }
+  })
+
+  it('write tool descriptions include the confirmation rule', () => {
+    const writeNames = [
+      'save_section_draft', 'approve_revision', 'rollback_section',
+      'set_application_status', 'set_selected_call', 'freeze_outline',
+      'mark_section_stale', 'reject_section',
+    ]
+    for (const name of writeNames) {
+      const tool = MANAGED_TOOLS.find((t) => t.name === name)
+      expect(tool, `${name} not found`).toBeDefined()
+      expect(tool!.description, `${name} description`).toMatch(
+        /explicit user confirmation|structured UI action confirmation/i,
+      )
+    }
+  })
+
+  it('Phase 4 write tools are NOT exposed', () => {
+    const phase4 = ['create_export_snapshot', 'save_call_blueprint']
+    for (const name of phase4) {
       expect(MANAGED_TOOL_NAMES.has(name)).toBe(false)
     }
   })
