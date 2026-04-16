@@ -168,7 +168,10 @@ export async function loadManagedHistory(
     systemSummary = sessionRow[0].messageSummary
   }
 
-  return { messages, systemSummary }
+  // Trim orphan tool_use/tool_result blocks before returning. Crashed V3
+  // sessions may leave unpaired blocks that Anthropic's API would reject.
+  const repaired = ensurePairingInvariant(messages)
+  return { messages: repaired, systemSummary }
 }
 
 /**
@@ -367,6 +370,103 @@ export async function persistFirstDurableOutput(input: {
     }
   }
   throw new Error('persistFirstDurableOutput: sequence conflict after retry')
+}
+
+// ── ensurePairingInvariant ───────────────────────────────────────
+// Trims orphan tool_use and tool_result blocks from a MessageParam[]
+// so the array satisfies Anthropic's pairing requirement:
+//   every tool_use in an assistant message must have a matching
+//   tool_result in the *immediately following* user message.
+//
+// Repair rule (trim-only, no synthetic insertion):
+//   Assistant direction: remove tool_use blocks whose id is NOT in the
+//     next user message's tool_result set. Drop the assistant message
+//     entirely if trimming empties its content array.
+//   User direction: remove tool_result blocks whose tool_use_id is NOT
+//     in the *output*-previous assistant message's tool_use set
+//     (uses `out[last]`, not `messages[i-1]`, so repairs compound).
+//     Drop the user message entirely if trimming empties its content array.
+//   String content passes through untouched (non-array = no tool blocks).
+//
+// Single pass, O(n). Does not mutate the input array.
+
+export function ensurePairingInvariant(messages: MessageParam[]): MessageParam[] {
+  const out: MessageParam[] = []
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]
+
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      const toolUseBlocks = (msg.content as ContentBlock[]).filter(b => b.type === 'tool_use')
+
+      if (toolUseBlocks.length === 0) {
+        out.push(msg)
+        continue
+      }
+
+      // Look at the next message to find matching tool_result ids.
+      const next = messages[i + 1]
+      const matchedIds = new Set<string>()
+      if (next && next.role === 'user' && Array.isArray(next.content)) {
+        for (const block of next.content as ContentBlock[]) {
+          if (block.type === 'tool_result' && typeof (block as { tool_use_id?: string }).tool_use_id === 'string') {
+            matchedIds.add((block as { tool_use_id: string }).tool_use_id)
+          }
+        }
+      }
+
+      // Trim orphan tool_use blocks; keep all non-tool_use blocks and
+      // tool_use blocks whose id has a matching tool_result.
+      const trimmed = (msg.content as ContentBlock[]).filter(b => {
+        if (b.type !== 'tool_use') return true
+        return matchedIds.has((b as { id: string }).id)
+      })
+
+      if (trimmed.length > 0) {
+        out.push({ role: 'assistant', content: trimmed as MessageParam['content'] })
+      }
+      // else: drop the now-empty assistant message
+      continue
+    }
+
+    if (msg.role === 'user' && Array.isArray(msg.content)) {
+      const toolResultBlocks = (msg.content as ContentBlock[]).filter(b => b.type === 'tool_result')
+
+      if (toolResultBlocks.length === 0) {
+        out.push(msg)
+        continue
+      }
+
+      // Look at the previous message in `out` (not messages[i-1]) so that
+      // repairs compound correctly when an assistant message was dropped.
+      const prev = out[out.length - 1]
+      const matchedIds = new Set<string>()
+      if (prev && prev.role === 'assistant' && Array.isArray(prev.content)) {
+        for (const block of prev.content as ContentBlock[]) {
+          if (block.type === 'tool_use' && typeof (block as { id?: string }).id === 'string') {
+            matchedIds.add((block as { id: string }).id)
+          }
+        }
+      }
+
+      // Trim orphan tool_result blocks; keep all non-tool_result blocks and
+      // tool_result blocks whose tool_use_id has a matching tool_use.
+      const trimmed = (msg.content as ContentBlock[]).filter(b => {
+        if (b.type !== 'tool_result') return true
+        return matchedIds.has((b as { tool_use_id: string }).tool_use_id)
+      })
+
+      if (trimmed.length > 0) {
+        out.push({ role: 'user', content: trimmed as MessageParam['content'] })
+      }
+      // else: drop the now-empty user message
+      continue
+    }
+
+    out.push(msg)
+  }
+
+  return out
 }
 
 // ── classifyRow ──────────────────────────────────────────────────
