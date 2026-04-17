@@ -10,8 +10,8 @@ import {
 } from '@/lib/ai/agent/managed/tools'
 
 describe('MANAGED_TOOLS', () => {
-  it('contains exactly 22 tools (9 read + 5 rules + 8 write)', () => {
-    expect(MANAGED_TOOLS).toHaveLength(22)
+  it('contains exactly 23 tools (10 read + 5 rules + 8 write)', () => {
+    expect(MANAGED_TOOLS).toHaveLength(23)
   })
 
   it('each tool has name, description, and input_schema', () => {
@@ -26,17 +26,18 @@ describe('MANAGED_TOOLS', () => {
   })
 
   it('MANAGED_TOOL_NAMES is a Set of all tool names', () => {
-    expect(MANAGED_TOOL_NAMES.size).toBe(22)
+    expect(MANAGED_TOOL_NAMES.size).toBe(23)
     for (const tool of MANAGED_TOOLS) {
       expect(MANAGED_TOOL_NAMES.has(tool.name)).toBe(true)
     }
   })
 
-  it('includes all 9 read tools', () => {
+  it('includes all 10 read tools', () => {
     const expected = [
       'search_calls', 'get_call_blueprint', 'retrieve_evidence',
       'get_application_state', 'list_sections', 'get_section',
       'get_validation_report', 'get_project_summary', 'list_uploaded_documents',
+      'get_document_content',
     ]
     for (const name of expected) {
       expect(MANAGED_TOOL_NAMES.has(name)).toBe(true)
@@ -89,8 +90,8 @@ describe('MANAGED_TOOLS', () => {
 })
 
 describe('tool name sets', () => {
-  it('READ_TOOL_NAMES has 9 entries', () => {
-    expect(READ_TOOL_NAMES.size).toBe(9)
+  it('READ_TOOL_NAMES has 10 entries', () => {
+    expect(READ_TOOL_NAMES.size).toBe(10)
   })
 
   it('RULE_TOOL_NAMES has 5 entries', () => {
@@ -117,14 +118,14 @@ describe('tool name sets', () => {
     }
   })
 
-  it('MANAGED_TOOL_NAMES is the union of READ + RULE + WRITE (22)', () => {
+  it('MANAGED_TOOL_NAMES is the union of READ + RULE + WRITE (23)', () => {
     const expected = new Set([
       ...READ_TOOL_NAMES,
       ...RULE_TOOL_NAMES,
       ...WRITE_TOOL_NAMES,
     ])
     expect(new Set(MANAGED_TOOL_NAMES)).toEqual(expected)
-    expect(MANAGED_TOOL_NAMES.size).toBe(22)
+    expect(MANAGED_TOOL_NAMES.size).toBe(23)
   })
 
   it('PHASE_4_BLOCKED_TOOL_NAMES is disjoint from MANAGED_TOOL_NAMES', () => {
@@ -135,15 +136,15 @@ describe('tool name sets', () => {
 })
 
 describe('getManagedTools', () => {
-  it('returns the full 22-tool surface when allowWrites=true', () => {
+  it('returns the full 23-tool surface when allowWrites=true', () => {
     const tools = getManagedTools(true)
-    expect(tools).toHaveLength(22)
+    expect(tools).toHaveLength(23)
     expect(tools).toBe(MANAGED_TOOLS)
   })
 
-  it('returns only 14 read+rules tools when allowWrites=false', () => {
+  it('returns only 15 read+rules tools when allowWrites=false', () => {
     const tools = getManagedTools(false)
-    expect(tools).toHaveLength(14)
+    expect(tools).toHaveLength(15)
     const names = new Set(tools.map((t) => t.name))
     for (const name of READ_TOOL_NAMES) expect(names.has(name)).toBe(true)
     for (const name of RULE_TOOL_NAMES) expect(names.has(name)).toBe(true)
