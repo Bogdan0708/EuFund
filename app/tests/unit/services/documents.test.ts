@@ -41,14 +41,14 @@ beforeEach(() => {
 })
 
 describe('getDocumentContent', () => {
-  it('returns extracted text up to maxChars', async () => {
-    setupSelect([mockRow('Hello world. '.repeat(100))])
+  it('truncates extracted text to maxChars', async () => {
+    setupSelect([mockRow('a'.repeat(1000))])
 
-    const result = await getDocumentContent(baseCtx, FILE_ID, { maxChars: 20 })
+    const result = await getDocumentContent(baseCtx, FILE_ID, { maxChars: 600 })
 
-    expect(result.extractedText.length).toBe(20)
+    expect(result.extractedText.length).toBe(600)
     expect(result.truncated).toBe(true)
-    expect(result.totalChars).toBeGreaterThan(20)
+    expect(result.totalChars).toBe(1000)
   })
 
   it('uses default 8000-char cap when maxChars omitted', async () => {

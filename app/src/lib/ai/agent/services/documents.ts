@@ -25,15 +25,10 @@ export interface DocumentContent {
   totalChars: number
 }
 
-function clampMaxChars(n: number | undefined, textLength: number): number {
-  const requested = n === undefined || !Number.isFinite(n) ? DEFAULT_MAX_CHARS : Math.trunc(n)
-  // Only enforce the [MIN_MAX_CHARS, MAX_MAX_CHARS] bounds when the text itself
-  // exceeds MAX_MAX_CHARS — for shorter texts, honour the caller's requested limit
-  // so that small maxChars values work naturally on small documents.
-  if (textLength > MAX_MAX_CHARS) {
-    return Math.min(Math.max(requested, MIN_MAX_CHARS), MAX_MAX_CHARS)
-  }
-  return Math.min(requested, MAX_MAX_CHARS)
+function clampMaxChars(n: number | undefined): number {
+  if (n === undefined) return DEFAULT_MAX_CHARS
+  if (!Number.isFinite(n)) return DEFAULT_MAX_CHARS
+  return Math.min(Math.max(Math.trunc(n), MIN_MAX_CHARS), MAX_MAX_CHARS)
 }
 
 export async function getDocumentContent(
@@ -68,7 +63,7 @@ export async function getDocumentContent(
   }
 
   const fullText = row.ocrText ?? ''
-  const maxChars = clampMaxChars(opts.maxChars, fullText.length)
+  const maxChars = clampMaxChars(opts.maxChars)
   const truncated = fullText.length > maxChars
   const extractedText = truncated ? fullText.slice(0, maxChars) : fullText
 
