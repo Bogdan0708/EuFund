@@ -168,7 +168,8 @@ class QdrantVectorStore implements VectorStore {
       limit: topK,
       with_payload: true,
     };
-    if (filter) body.filter = filter;
+    const qdrantFilter = toQdrantFilter(filter);
+    if (qdrantFilter) body.filter = qdrantFilter;
 
     const result = (await this.qdrantFetch(`/collections/${this.collection}/points/search`, {
       method: 'POST',
@@ -210,6 +211,23 @@ class QdrantVectorStore implements VectorStore {
     };
     return result.result.points_count;
   }
+}
+
+// ─── Qdrant Filter Translation ──────────────────────────────────
+// Qdrant's search and delete endpoints expect structured filter bodies —
+// `{ must: [{ key, match: { value } }] }` — not the flat `{ key: value }`
+// shape MemoryVectorStore accepts. Translate here so callers pass one
+// shape regardless of provider.
+
+export function toQdrantFilter(
+  filter?: Record<string, unknown>,
+): { must: Array<{ key: string; match: { value: unknown } }> } | undefined {
+  if (!filter) return undefined;
+  const entries = Object.entries(filter);
+  if (entries.length === 0) return undefined;
+  return {
+    must: entries.map(([key, value]) => ({ key, match: { value } })),
+  };
 }
 
 // ─── Cosine Similarity ──────────────────────────────────────────
