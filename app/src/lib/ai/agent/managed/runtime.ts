@@ -78,12 +78,21 @@ import {
   markTurnCompleted,
 } from './history'
 import { logger } from '@/lib/logger'
+import { addUsage, computeAnthropicCostMicros, type UsageLike } from '@/lib/ai/cost/anthropic-pricing'
 
 const log = logger.child({ component: 'managed-runtime' })
 
 const MODEL = 'claude-sonnet-4-6'
 const MAX_TOKENS_PER_TURN = 4096
 const ITERATION_CAP = 8
+
+// Prompt caching: the system prompt and the tool list are functionally
+// static across every turn in a session (system prompt changes only when
+// the phase or systemSummary shifts; tools change only when allowWrites
+// toggles). We mark them both as ephemeral so turns beyond the first
+// read them at ~10% of the base input price. See
+// https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching.
+const CACHE_CONTROL_EPHEMERAL = { type: 'ephemeral' as const }
 
 export interface ManagedRuntimeOptions {
   session: AgentSession
@@ -151,17 +160,39 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     allowWrites,
     systemSummary,
   )
-  const tools = getManagedTools(allowWrites)
+  // Apply prompt caching to the tool list. We clone once (not per-iteration)
+  // and stamp `cache_control: ephemeral` on the LAST tool so the whole tool
+  // block becomes one cacheable prefix. The SDK preserves extra properties.
+  const baseTools = getManagedTools(allowWrites)
+  const tools = baseTools.map((t, i) =>
+    i === baseTools.length - 1
+      ? ({ ...t, cache_control: CACHE_CONTROL_EPHEMERAL } as typeof t & { cache_control: typeof CACHE_CONTROL_EPHEMERAL })
+      : t,
+  )
+
+  // Same idea for the system prompt — wrap the string in a one-block array
+  // with a cache breakpoint. Repeated turns in the same session will hit
+  // the cache. When systemSummary or phase changes, Anthropic invalidates
+  // the entry and we pay cache_write once, then reads again.
+  const systemBlocks = [
+    { type: 'text' as const, text: systemPrompt, cache_control: CACHE_CONTROL_EPHEMERAL },
+  ]
 
   // 4. Tool loop
   const runningMessages: MessageParam[] = [...history]
+
+  // Accumulate usage across all iterations of this turn (tool loops run
+  // multiple streams). Cost is estimated from the final summed usage using
+  // the model the runtime advertises — tctx.messageModel is the ground
+  // truth, populated by translateAnthropicEvent when it sees message_start.
+  let aggregateUsage: UsageLike = {}
 
   while (iterationCount < ITERATION_CAP) {
     iterationCount += 1
 
     const stream = anthropic.messages.stream({
       model: MODEL,
-      system: systemPrompt,
+      system: systemBlocks,
       tools,
       messages: runningMessages,
       max_tokens: MAX_TOKENS_PER_TURN,
@@ -212,6 +243,12 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
       }
       if (event.type === 'message_delta') {
         stopReason = event.delta?.stop_reason ?? stopReason
+        // Anthropic attaches the usage block to message_delta events in
+        // streaming mode. Accumulate across tool-loop iterations.
+        const usage = (event as unknown as { usage?: UsageLike }).usage
+        if (usage) {
+          aggregateUsage = addUsage(aggregateUsage, usage)
+        }
       }
     }
 
@@ -322,13 +359,24 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     })
   }
 
+  // Compute per-turn cost from the summed usage. Unknown model → 0 (safe).
+  const modelUsed = tctx.messageModel ?? MODEL
+  const costUsdMicros = computeAnthropicCostMicros(modelUsed, aggregateUsage)
+
   // Mark the turn complete only if at least one durable output landed.
   // A turn that hit the iteration cap without producing any output (or
   // one where the stream produced zero blocks) stays uncompleted so the
   // route's catch branch or the daily reconciliation cron can classify
   // it as an empty orphan.
   if (firstOutputPersisted) {
-    await markTurnCompleted(turnId)
+    await markTurnCompleted(turnId, {
+      model: modelUsed,
+      inputTokens: aggregateUsage.input_tokens ?? null,
+      outputTokens: aggregateUsage.output_tokens ?? null,
+      cacheReadInputTokens: aggregateUsage.cache_read_input_tokens ?? null,
+      cacheCreationInputTokens: aggregateUsage.cache_creation_input_tokens ?? null,
+      costUsdMicros,
+    })
   }
 
   const finalState = buildUISnapshot(session, sections)
@@ -347,7 +395,9 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     durationMs: Date.now() - start,
     outcome: firstOutputPersisted ? 'completed' : 'no_output',
     degradedReason: null,
-    model: tctx.messageModel,
+    model: modelUsed,
+    usage: aggregateUsage,
+    costUsdMicros,
   }, 'managed_turn_complete')
 
   return {

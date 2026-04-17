@@ -588,9 +588,29 @@ export function classifyRow(row: typeof agentMessages.$inferSelect): RowClassifi
   return { kind: 'unknown_drop', reason: `unhandled role=${row.role} messageType=${row.messageType}` }
 }
 
-export async function markTurnCompleted(turnId: string): Promise<void> {
+export interface TurnTelemetry {
+  model?: string | null
+  inputTokens?: number | null
+  outputTokens?: number | null
+  cacheReadInputTokens?: number | null
+  cacheCreationInputTokens?: number | null
+  costUsdMicros?: number | null
+}
+
+export async function markTurnCompleted(
+  turnId: string,
+  telemetry: TurnTelemetry = {},
+): Promise<void> {
   await db
     .update(agentTurns)
-    .set({ completedAt: new Date() })
+    .set({
+      completedAt: new Date(),
+      model: telemetry.model ?? null,
+      inputTokens: telemetry.inputTokens ?? null,
+      outputTokens: telemetry.outputTokens ?? null,
+      cacheReadInputTokens: telemetry.cacheReadInputTokens ?? null,
+      cacheCreationInputTokens: telemetry.cacheCreationInputTokens ?? null,
+      costUsdMicros: telemetry.costUsdMicros ?? null,
+    })
     .where(eq(agentTurns.id, turnId))
 }

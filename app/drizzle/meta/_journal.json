@@ -218,6 +218,13 @@
       "when": 1776988800000,
       "tag": "0030_preselect_feature_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1776988800001,
+      "tag": "0031_agent_turns_usage_telemetry",
+      "breakpoints": true
     }
   ]
 }
