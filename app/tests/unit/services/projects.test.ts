@@ -16,12 +16,31 @@ vi.mock('@/lib/db/schema', () => ({
     createdBy: 'created_by',
     deletedAt: 'deleted_at',
   },
+  documents: {
+    id: 'doc_id',
+    projectId: 'project_id',
+    filename: 'filename',
+    mimeType: 'mime_type',
+    fileSize: 'file_size',
+    createdAt: 'created_at',
+    deletedAt: 'deleted_at',
+    docType: 'doc_type',
+    ocrText: 'ocr_text',
+  },
+  docTypeEnum: {
+    enumValues: [
+      'ghid_solicitant', 'bilant', 'certificat', 'aviz', 'studiu_fezabilitate',
+      'plan_afaceri', 'deviz', 'acord_parteneriat', 'declaratie', 'altul',
+    ],
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((col, val) => ({ col, val })),
   and: vi.fn((...conditions) => ({ conditions })),
   isNull: vi.fn(col => ({ isNull: col })),
+  desc: vi.fn(col => ({ desc: col })),
+  sql: vi.fn(() => ({ sql: 'mocked-sql' })),
 }))
 
 // Import AFTER mocks
@@ -149,17 +168,86 @@ describe('getProjectSummary', () => {
 // ── listUploadedDocuments tests ────────────────────────────────────────────
 
 describe('listUploadedDocuments', () => {
-  it('returns an empty array (documents integration pending)', async () => {
+  const DOC_ID = '22222222-2222-4222-8222-222222222222'
+  const UPLOADED_AT = new Date('2026-04-17T10:00:00Z')
+
+  function makeRawRow(overrides: Partial<{
+    fileId: string; filename: string; mimeType: string;
+    sizeBytes: number; uploadedAt: Date; docType: string; hasText: boolean
+  }> = {}) {
+    return {
+      fileId: DOC_ID,
+      filename: 'bilant.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      uploadedAt: UPLOADED_AT,
+      docType: 'bilant' as const,
+      hasText: true,
+      ...overrides,
+    }
+  }
+
+  function mockSelectChain(rows: ReturnType<typeof makeRawRow>[]) {
+    // db.select().from().innerJoin().where().orderBy().limit() → Promise<rows>
+    const limit = vi.fn(() => Promise.resolve(rows))
+    const orderBy = vi.fn(() => ({ limit }))
+    const where = vi.fn(() => ({ orderBy }))
+    const innerJoin = vi.fn(() => ({ where }))
+    const from = vi.fn(() => ({ innerJoin }))
+    vi.mocked(db.select).mockReturnValueOnce({ from } as unknown as ReturnType<typeof db.select>)
+    return { from, innerJoin, where, orderBy, limit }
+  }
+
+  it('maps rows into UploadedDocument shape', async () => {
+    mockSelectChain([makeRawRow()])
+
+    const docs = await listUploadedDocuments(baseCtx, PROJECT_ID)
+
+    expect(docs).toEqual([
+      {
+        fileId: DOC_ID,
+        filename: 'bilant.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        uploadedAt: UPLOADED_AT,
+        docType: 'bilant',
+        hasText: true,
+      },
+    ])
+  })
+
+  it('returns hasText=false for rows the mock reports as non-indexed', async () => {
+    mockSelectChain([makeRawRow({ hasText: false })])
+
+    const [doc] = await listUploadedDocuments(baseCtx, PROJECT_ID)
+    expect(doc.hasText).toBe(false)
+  })
+
+  it('returns empty array when the query returns nothing', async () => {
+    mockSelectChain([])
+
     const docs = await listUploadedDocuments(baseCtx, PROJECT_ID)
 
     expect(docs).toEqual([])
-    expect(Array.isArray(docs)).toBe(true)
   })
 
-  it('does not call db.select (no DB queries while pending)', async () => {
-    vi.clearAllMocks()
-    await listUploadedDocuments(baseCtx, PROJECT_ID)
+  it('coerces null filename / mimeType / size / uploadedAt / docType to safe defaults', async () => {
+    mockSelectChain([
+      makeRawRow({
+        filename: null as unknown as string,
+        mimeType: null as unknown as string,
+        sizeBytes: null as unknown as number,
+        uploadedAt: null as unknown as Date,
+        docType: null as unknown as 'bilant',
+      }),
+    ])
 
-    expect(db.select).not.toHaveBeenCalled()
+    const [doc] = await listUploadedDocuments(baseCtx, PROJECT_ID)
+
+    expect(doc.filename).toBe('')
+    expect(doc.mimeType).toBe('application/octet-stream')
+    expect(doc.sizeBytes).toBe(0)
+    expect(doc.uploadedAt).toBeInstanceOf(Date)
+    expect(doc.docType).toBe('altul')
   })
 })
