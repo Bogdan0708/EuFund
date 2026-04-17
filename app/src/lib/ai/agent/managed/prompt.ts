@@ -103,7 +103,7 @@ ${phaseBootstrapBlock}${modeBlock}
 
 ## Instrumentele tale
 
-- **Read** (citire): \`search_calls\`, \`get_call_blueprint\`, \`retrieve_evidence\`, \`get_application_state\`, \`list_sections\`, \`get_section\`, \`get_validation_report\`, \`get_project_summary\`, \`list_uploaded_documents\`
+- **Read** (citire): \`search_calls\`, \`get_call_blueprint\`, \`retrieve_evidence\`, \`get_application_state\`, \`list_sections\`, \`get_section\`, \`get_validation_report\`, \`get_project_summary\`, \`list_uploaded_documents\`, \`get_document_content\`
 - **Rules** (reguli deterministe): \`run_eligibility\`, \`score_fit\`, \`validate_section\`, \`validate_application\`, \`check_missing_annexes\`${writeToolsLine}
 
 Toate rezultatele regulilor sunt deterministe — prezintă-le ca fapte.
@@ -200,7 +200,7 @@ ${phaseBootstrapBlock}${modeBlock}
 
 ## Your tools
 
-- **Read**: \`search_calls\`, \`get_call_blueprint\`, \`retrieve_evidence\`, \`get_application_state\`, \`list_sections\`, \`get_section\`, \`get_validation_report\`, \`get_project_summary\`, \`list_uploaded_documents\`
+- **Read**: \`search_calls\`, \`get_call_blueprint\`, \`retrieve_evidence\`, \`get_application_state\`, \`list_sections\`, \`get_section\`, \`get_validation_report\`, \`get_project_summary\`, \`list_uploaded_documents\`, \`get_document_content\`
 - **Rules** (deterministic): \`run_eligibility\`, \`score_fit\`, \`validate_section\`, \`validate_application\`, \`check_missing_annexes\`${writeToolsLine}
 
 All rule results are deterministic — present them as facts.

@@ -21,6 +21,7 @@ import * as blueprint from '../services/blueprint'
 import * as application from '../services/application'
 import * as sections from '../services/sections'
 import * as projects from '../services/projects'
+import * as documents from '../services/documents'
 import * as eligibility from '../services/eligibility'
 
 // Zod schemas from Phase 1 handlers
@@ -33,6 +34,7 @@ import { inputSchema as getSectionSchema } from '../mcp/read/get-section'
 import { inputSchema as getValidationReportSchema } from '../mcp/read/get-validation-report'
 import { inputSchema as getProjectSummarySchema } from '../mcp/read/get-project-summary'
 import { inputSchema as listUploadedDocumentsSchema } from '../mcp/read/list-uploaded-documents'
+import { inputSchema as getDocumentContentSchema } from '../mcp/read/get-document-content'
 import { inputSchema as runEligibilitySchema } from '../mcp/rules/run-eligibility'
 import { inputSchema as scoreFitSchema } from '../mcp/rules/score-fit'
 import { inputSchema as validateSectionSchema } from '../mcp/rules/validate-section'
@@ -318,6 +320,10 @@ async function dispatchTool(
     case 'list_uploaded_documents': {
       const i = listUploadedDocumentsSchema.parse(rawInput)
       return projects.listUploadedDocuments(ctx, i.projectId)
+    }
+    case 'get_document_content': {
+      const i = getDocumentContentSchema.parse(rawInput)
+      return documents.getDocumentContent(ctx, i.fileId, { maxChars: i.maxChars })
     }
     case 'run_eligibility': {
       const i = runEligibilitySchema.parse(rawInput)
