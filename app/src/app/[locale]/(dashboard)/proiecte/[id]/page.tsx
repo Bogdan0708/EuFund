@@ -11,6 +11,7 @@ import { csrfFetch, bootstrapCSRFToken } from '@/lib/csrf/client';
 import { relativeTime } from '@/lib/utils';
 import type { SubmissionDocument } from '@/lib/ai/agent/types';
 import { SectionsTabContent } from './components/SectionsTabContent';
+import { UserUploadsSection } from '@/components/project/UserUploadsSection';
 
 /* ---------- types ---------- */
 interface ProjectDetail {
@@ -67,26 +68,12 @@ const STATUS_KEYS: Record<string, { labelKey: string; className: string }> = {
 };
 
 /* ---------- helpers ---------- */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('ro-RO', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
   });
-}
-
-function mimeTypeToIcon(mimeType: string): string {
-  if (mimeType === 'application/pdf') return 'picture_as_pdf';
-  if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType === 'text/csv') return 'table_chart';
-  if (mimeType.includes('word') || mimeType.includes('document')) return 'description';
-  if (mimeType.startsWith('image/')) return 'image';
-  return 'attach_file';
 }
 
 function formatBudget(val: string | null): string {
@@ -195,9 +182,6 @@ function DocumentsTabContent({
 }) {
   const proposalFiles = files.filter(f => f.storagePath?.includes('/propunere/'));
   const formFiles = files.filter(f => f.storagePath?.includes('/formulare/'));
-  const uploadedFiles = files.filter(
-    f => !f.storagePath?.includes('/propunere/') && !f.storagePath?.includes('/formulare/')
-  );
 
   return (
     <div className="space-y-8">
@@ -399,37 +383,6 @@ function DocumentsTabContent({
           </>
         ) : (
           <p className="text-sm text-on-surface-variant">{td('noFiles')}</p>
-        )}
-      </div>
-
-      {/* Documente incarcate */}
-      <div>
-        <h3 className="text-lg font-bold mb-4">{td('incarcare')}</h3>
-        {uploadedFiles.length === 0 ? (
-          <p className="text-sm text-on-surface-variant">{td('noFiles')}</p>
-        ) : (
-          <div className="space-y-2">
-            {uploadedFiles.map(file => (
-              <div
-                key={file.id}
-                className="flex items-center justify-between p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/10"
-              >
-                <div className="flex items-center gap-3">
-                  <Icon name={mimeTypeToIcon(file.mimeType)} size="sm" className="text-on-surface-variant" />
-                  <div>
-                    <span className="text-sm font-medium text-on-surface">{file.filename}</span>
-                    <span className="text-xs text-on-surface-variant ml-2">{formatBytes(file.sizeBytes)}</span>
-                  </div>
-                </div>
-                <a
-                  href={`/api/v1/projects/${projectId}/files/${file.id}`}
-                  className="px-3 py-1 text-xs font-bold rounded-full bg-primary-fixed text-primary hover:bg-primary-fixed/80 transition-colors"
-                >
-                  {td('download')}
-                </a>
-              </div>
-            ))}
-          </div>
         )}
       </div>
     </div>
@@ -838,11 +791,8 @@ export default function ProiectDetailPage() {
                   />
                 )}
 
-                {/* Upload area */}
-                <div className="mt-8 border-2 border-dashed border-outline-variant/30 rounded-lg p-12 text-center">
-                  <Icon name="cloud_upload" size="lg" className="text-primary/40 mx-auto mb-4" />
-                  <p className="font-bold text-on-surface mb-1">{t('uploadTitle')}</p>
-                  <p className="text-sm text-on-surface-variant">{t('uploadFormats')}</p>
+                <div className="mt-8">
+                  <UserUploadsSection projectId={id} locale={locale} />
                 </div>
               </motion.div>
             </Tabs.Content>
