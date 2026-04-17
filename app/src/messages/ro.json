@@ -935,6 +935,22 @@
       "draft": "Ciornă",
       "reviewed": "Revizuit",
       "approved": "Aprobat"
+    },
+    "userUploads": {
+      "title": "Documente încărcate de dvs.",
+      "description": "Documentele dvs. sunt stocate securizat și disponibile asistentului AI pentru a răspunde la întrebările dvs. despre acest proiect.",
+      "dropzoneTitle": "Încărcați un document",
+      "dropzoneHint": "PDF, DOCX, DOC sau TXT — maxim 50 MB",
+      "uploading": "Se încarcă...",
+      "uploadError": "Încărcarea a eșuat.",
+      "deleteError": "Ștergerea a eșuat.",
+      "loadError": "Nu s-a putut încărca lista.",
+      "empty": "Nu ați încărcat încă documente pentru acest proiect.",
+      "docTypeLabel": "Tip document:",
+      "badgeIndexed": "indexat",
+      "badgeNotIndexed": "neindexat",
+      "download": "Descarcă",
+      "delete": "Șterge"
     }
   },
   "calls": {
@@ -1340,5 +1356,17 @@
       "OUTLINE_FROZEN": "Outline-ul este înghețat, nu mai poți schimba apelul.",
       "CONCURRENCY_CONFLICT": "Starea sesiunii s-a schimbat între timp. Reîncearcă."
     }
+  },
+  "docType": {
+    "ghid_solicitant": "Ghidul solicitantului",
+    "bilant": "Bilanț contabil",
+    "certificat": "Certificat",
+    "aviz": "Aviz",
+    "studiu_fezabilitate": "Studiu de fezabilitate",
+    "plan_afaceri": "Plan de afaceri",
+    "deviz": "Deviz",
+    "acord_parteneriat": "Acord de parteneriat",
+    "declaratie": "Declarație",
+    "altul": "Altul"
   }
 }
