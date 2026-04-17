@@ -103,6 +103,10 @@ export async function POST(req: NextRequest, { params }: Params) {
         .set({
           aiSummary: result.analysis.summary || null,
           extractedData: result.analysis,
+          // NOTE: as of the document-uploads feature, /api/documents/upload pre-populates
+          // ocr_text at upload time with the same 50 000-char cap. This route updates
+          // ocr_text as a side-effect of AI analysis and is allowed to overwrite.
+          // If both paths grow, centralize the cap.
           ocrText: content.substring(0, 50000), // Store first 50k chars
         })
         .where(eq(documents.id, id));
