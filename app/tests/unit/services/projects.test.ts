@@ -45,7 +45,7 @@ vi.mock('drizzle-orm', () => ({
 
 // Import AFTER mocks
 import { db } from '@/lib/db'
-import { getProjectSummary, listUploadedDocuments } from '@/lib/ai/agent/services/projects'
+import { getProjectSummary, listUploadedDocuments, assertProjectOwnership } from '@/lib/ai/agent/services/projects'
 import { NotFoundError } from '@/lib/ai/agent/services/errors'
 import type { ServiceContext } from '@/lib/ai/agent/services/types'
 
@@ -162,6 +162,26 @@ describe('getProjectSummary', () => {
     const summary = await getProjectSummary(baseCtx, PROJECT_ID)
 
     expect(summary.status).toBe('ciorna')
+  })
+})
+
+// ── assertProjectOwnership tests ───────────────────────────────────────────
+
+describe('assertProjectOwnership', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('resolves when the user owns the project', async () => {
+    setupDbSelectLimit([{ id: PROJECT_ID }])
+
+    await expect(assertProjectOwnership(baseCtx, PROJECT_ID)).resolves.toBeUndefined()
+  })
+
+  it('throws NotFoundError when no row is returned', async () => {
+    setupDbSelectLimit([])
+
+    await expect(assertProjectOwnership(baseCtx, PROJECT_ID)).rejects.toBeInstanceOf(NotFoundError)
   })
 })
 
