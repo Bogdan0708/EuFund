@@ -44,14 +44,14 @@ export default async function LocaleLayout({
   const [messages, nonce] = await Promise.all([getMessages({ locale }), getNonce()]);
 
   return (
-    <html lang={locale} className={`${inter.variable} ${jetbrainsMono.variable}`}>
+    <html lang={locale} data-theme="light" style={{ colorScheme: 'light' }} className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <head>
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
         {nonce && (
           <meta name="csp-nonce" content={nonce} />
         )}
       </head>
-      <body className="min-h-screen bg-background text-on-surface antialiased">
+      <body className="min-h-screen bg-background text-on-surface antialiased" suppressHydrationWarning>
         <AuthSessionProvider>
           <NextIntlClientProvider locale={locale} messages={messages}>
             {children}

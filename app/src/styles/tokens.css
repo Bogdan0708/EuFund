@@ -3,18 +3,18 @@
    Usage in Tailwind config: rgb(var(--color) / <alpha-value>) */
 
 :root {
-  --surface: 215 215 222;             /* #d7d7de */
-  --surface-dim: 195 195 205;         /* #c3c3cd */
-  --surface-bright: 225 225 232;      /* #e1e1e8 */
+  --surface: 251 251 253;             /* #FBFBFD */
+  --surface-dim: 235 235 240;         /* #EBEBF0 */
+  --surface-bright: 255 255 255;      /* #ffffff */
   --surface-container-lowest: 255 255 255; /* #ffffff */
-  --surface-container-low: 225 225 232;    /* #e1e1e8 */
-  --surface-container: 218 218 226;        /* #dadae2 */
-  --surface-container-high: 210 210 218;   /* #d2d2da */
-  --surface-container-highest: 202 202 212;/* #cacad4 */
-  --background: 208 208 216;          /* #D0D0D8 */
-  --on-surface: 0 0 0;                /* #000000 */
-  --on-surface-variant: 0 0 0;        /* #000000 */
-  --on-background: 0 0 0;             /* #000000 */
+  --surface-container-low: 248 248 250;    /* #F8F8FA */
+  --surface-container: 240 240 243;        /* #F0F0F3 */
+  --surface-container-high: 232 232 237;   /* #E8E8ED */
+  --surface-container-highest: 224 224 230;/* #E0E0E6 */
+  --background: 245 245 247;          /* #F5F5F7 */
+  --on-surface: 29 29 31;             /* #1D1D1F */
+  --on-surface-variant: 110 110 115;  /* #6E6E73 */
+  --on-background: 29 29 31;          /* #1D1D1F */
   --primary: 0 89 181;                /* #0059b5 */
   --primary-container: 0 113 227;     /* #0071e3 */
   --primary-fixed: 215 226 255;       /* #d7e2ff */
@@ -35,7 +35,7 @@
   --error-container: 255 218 214;     /* #ffdad6 */
   --on-error: 255 255 255;            /* #ffffff */
   --on-error-container: 147 0 10;     /* #93000a */
-  --outline: 30 30 35;                /* #1e1e23 */
+  --outline: 210 210 215;             /* #D2D2D7 */
   --outline-variant: 193 198 214;     /* #c1c6d6 */
   --surface-tint: 0 92 187;           /* #005cbb */
   --surface-variant: 227 226 231;     /* #e3e2e7 */

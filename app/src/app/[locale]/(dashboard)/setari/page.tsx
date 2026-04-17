@@ -219,7 +219,7 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
                 {t('personalIdentity')}
               </span>
             </div>
-            <span className="text-[10px] font-medium text-on-surface-variant opacity-60 uppercase tracking-widest">
+            <span className="text-[10px] font-medium text-on-surface-variant uppercase tracking-widest">
               {t('languageInTopBar')}
             </span>
           </div>
@@ -283,7 +283,7 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
           <div className="space-y-6">
             {/* Model selector */}
             <div className="flex flex-col space-y-2">
-              <label className="text-xs font-bold text-on-surface-variant opacity-60 uppercase">
+              <label className="text-xs font-bold text-on-surface-variant uppercase">
                 {t('llmModel')}
               </label>
               <div className="relative">
@@ -309,7 +309,7 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
             </div>
             {/* Response style */}
             <div className="flex flex-col space-y-2">
-              <label className="text-xs font-bold text-on-surface-variant opacity-60 uppercase">
+              <label className="text-xs font-bold text-on-surface-variant uppercase">
                 {t('responseStyle')}
               </label>
               <div className="relative">
@@ -412,7 +412,7 @@ export default function SetariPage({ params }: { params: { locale: string } }) {
       </motion.div>
 
       {/* ── Footer Section ── */}
-      <div className="mt-32 flex flex-col md:flex-row justify-between items-center opacity-40 text-[12px] font-medium text-on-surface-variant uppercase tracking-widest gap-6">
+      <div className="mt-32 flex flex-col md:flex-row justify-between items-center text-[12px] font-medium text-on-surface-variant uppercase tracking-widest gap-6">
         <div className="flex space-x-8">
           <a
             className="hover:text-primary hover:opacity-100 transition-all"

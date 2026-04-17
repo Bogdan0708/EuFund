@@ -41,7 +41,7 @@ export function TopNav({ onMenuClick, sidebarCollapsed }: TopNavProps) {
 
   return (
     <header
-      className={`fixed top-0 right-0 left-0 z-50 bg-white/[0.72] backdrop-blur-xl shadow-[0_20px_40px_rgba(0,0,0,0.04)] transition-[left] duration-200 ease-in-out ${
+      className={`glass fixed top-0 right-0 left-0 z-50 transition-[left] duration-200 ease-in-out ${
         sidebarCollapsed ? 'md:left-[60px]' : 'md:left-[240px]'
       }`}
     >
