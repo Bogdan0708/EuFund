@@ -113,6 +113,10 @@ export async function GET(req: NextRequest, { params }: Params) {
         aiSummary: doc.aiSummary,
         extractedData: doc.extractedData,
         createdAt: doc.createdAt,
+        hasText: Boolean(doc.ocrText && doc.ocrText.length > 0),
+        // API-backed URL works for both GCS (redirects to signed URL) and local FS
+        // (streams buffer). Never expose raw storage paths.
+        downloadUrl: `/api/documents/${doc.id}?download=true`,
       },
     });
   } catch (error) {
