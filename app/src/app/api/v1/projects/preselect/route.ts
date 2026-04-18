@@ -131,20 +131,23 @@ async function handlePreselect(
   // before creating a session (spec §Request contract; §Error mapping 400
   // INVALID_CALL_ID).
   //
-  // Two-pronged probe because `searchCalls` emits each match's callId via a
-  // fallback chain `metadata.callId || metadata.sourceId || r.id` (see
-  // evidence.ts). A plain metadata.callId filter rejects valid candidates
-  // whose callId came from sourceId or the point id. So:
-  //   1. Fast path — filtered Qdrant search on metadata.callId. Any hit
-  //      confirms the call exists via canonical metadata.
-  //   2. Fallback — if the filter returns nothing, do an unfiltered search
-  //      with a larger limit and post-filter on the emitted callId (which
-  //      applies the same fallback chain). A confirmed candidate shown in
-  //      the ambiguous picker must be reachable this way, because that's
-  //      literally how the picker got the callId in the first place.
+  // `searchCalls` emits each match's callId via the fallback chain
+  // `metadata.callId || metadata.sourceId || r.id`, so a correct probe must
+  // be able to confirm on any of those three sources. Three authoritative
+  // prongs — each exits early on first match, no reliance on cosine-similarity
+  // ranking:
+  //   1. Filter on metadata.callId (canonical, covers the common case).
+  //   2. Filter on metadata.sourceId (covers ingest-paths that populate only
+  //      sourceId).
+  //   3. Reproducibility fallback: re-run the exact search the ambiguous
+  //      picker used — the client-supplied `description` — with a larger
+  //      limit (25) and post-filter on emitted callId. If the picker
+  //      surfaced this callId to the user, the description-based search
+  //      must be able to reach it via the same fallback chain. This covers
+  //      the rare case where the callId is rooted in point-id only.
   //
-  // Neither prong treats cosine-similarity top-N as an existence test; both
-  // demand an exact match on emitted callId before confirming.
+  // If all three prongs return no exact match on the target callId, the
+  // client sent something that isn't in the store — return 400.
   if (parsed.confirmCandidateId && !parsed.sessionId) {
     const ctx: ServiceContext = {
       userId: user.id,
@@ -153,17 +156,19 @@ async function handlePreselect(
     }
     const target = parsed.confirmCandidateId
     try {
-      // Fast path: filtered lookup on metadata.callId
-      const filtered = await searchCalls(ctx, target, { callId: target, maxResults: 1 })
-      if (filtered.matches.some(m => m.callId === target)) {
-        // Existence confirmed via metadata.callId
-      } else {
-        // Fallback: unfiltered search, post-filter on emitted callId
-        // (handles points where metadata.callId is missing but sourceId or
-        // point id resolves to the target via the fallback chain).
-        const { matches } = await searchCalls(ctx, target, { maxResults: 25 })
-        if (!matches.some(m => m.callId === target)) {
-          return err(400, 'INVALID_CALL_ID')
+      // Prong 1: filter on metadata.callId.
+      const p1 = await searchCalls(ctx, target, { callId: target, maxResults: 1 })
+      if (!p1.matches.some(m => m.callId === target)) {
+        // Prong 2: filter on metadata.sourceId.
+        const p2 = await searchCalls(ctx, target, { sourceId: target, maxResults: 1 })
+        if (!p2.matches.some(m => m.callId === target)) {
+          // Prong 3: reproducibility fallback — search with the user's own
+          // description, same query the picker used, larger limit. If the
+          // picker could reach this callId, this probe can too.
+          const p3 = await searchCalls(ctx, parsed.description, { maxResults: 25 })
+          if (!p3.matches.some(m => m.callId === target)) {
+            return err(400, 'INVALID_CALL_ID')
+          }
         }
       }
     } catch (e) {

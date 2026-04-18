@@ -26,11 +26,20 @@ export interface SearchCallsOptions {
   maxResults?: number
   /**
    * Authoritative callId filter. When set, Qdrant returns only points whose
-   * callId metadata matches exactly — the query string is still embedded,
+   * metadata.callId matches exactly — the query string is still embedded,
    * but the filter is the discriminator. Used by the preselect confirm-mode
-   * existence probe. `matches.length === 0` means the callId is not indexed.
+   * existence probe. `matches.length === 0` means no point carries that
+   * metadata.callId (the call may still exist via metadata.sourceId or
+   * point id — see `sourceId` and the ultra-fallback in the route).
    */
   callId?: string
+  /**
+   * Authoritative sourceId filter. Same semantics as callId, but matches on
+   * metadata.sourceId instead. Used as the second prong of the confirm-mode
+   * existence probe, since `searchCalls` emits callId via the fallback chain
+   * `metadata.callId || metadata.sourceId || r.id`.
+   */
+  sourceId?: string
 }
 
 export async function searchCalls(
@@ -56,6 +65,9 @@ export async function searchCalls(
   }
   if (opts.callId) {
     filter.callId = opts.callId
+  }
+  if (opts.sourceId) {
+    filter.sourceId = opts.sourceId
   }
 
   let results

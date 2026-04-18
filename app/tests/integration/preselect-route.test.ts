@@ -282,8 +282,10 @@ describe('POST /api/v1/projects/preselect — confirm mode', () => {
     }))
   })
 
-  it('returns 400 INVALID_CALL_ID when confirmCandidateId is not a real indexed call', async () => {
-    // Both probes (filtered + unfiltered fallback) return no matching callId.
+  it('returns 400 INVALID_CALL_ID when all three existence prongs reject', async () => {
+    // Prong 1 (callId filter), prong 2 (sourceId filter), and prong 3
+    // (description-based) all return no matching callId — the client sent
+    // a callId that genuinely isn't in the store.
     mockSearchCalls.mockResolvedValue({ matches: [] })
 
     const res = await POST(req({
@@ -294,17 +296,19 @@ describe('POST /api/v1/projects/preselect — confirm mode', () => {
 
     expect(res.status).toBe(400)
     expect((await res.json()).error.code).toBe('INVALID_CALL_ID')
+    expect(mockSearchCalls).toHaveBeenCalledTimes(3)
     expect(mockInitializeSession).not.toHaveBeenCalled()
   })
 
-  it('confirms callIds derived from metadata.sourceId via the unfiltered fallback probe', async () => {
+  it('confirms callIds via the metadata.sourceId authoritative prong', async () => {
     // Real-world: the ambiguous picker surfaced a candidate whose metadata
-    // had no callId — searchCalls emitted callId from sourceId. The filtered
-    // probe returns empty (no metadata.callId match), but the unfiltered
-    // fallback finds the same point and emits the target callId.
+    // had no callId — searchCalls emitted callId from sourceId. Prong 1
+    // (filter on metadata.callId) returns empty; prong 2 (filter on
+    // metadata.sourceId) finds the point and emits the target callId via
+    // the fallback chain. No need for the description-based prong 3.
     mockSearchCalls
-      .mockResolvedValueOnce({ matches: [] }) // filtered probe — empty
-      .mockResolvedValueOnce({
+      .mockResolvedValueOnce({ matches: [] }) // prong 1: metadata.callId filter
+      .mockResolvedValueOnce({                // prong 2: metadata.sourceId filter
         matches: [
           { callId: 'sourceid-call', title: 'From sourceId', program: 'P', score: 0.2, snippet: '', sourceUrl: undefined },
         ],
@@ -322,11 +326,41 @@ describe('POST /api/v1/projects/preselect — confirm mode', () => {
     expect(res.status).toBe(200)
     expect((await res.json()).kind).toBe('selected')
     expect(mockSearchCalls).toHaveBeenCalledTimes(2)
-    // First call was the filtered probe with callId filter.
     expect(mockSearchCalls.mock.calls[0][2]).toMatchObject({ callId: 'sourceid-call' })
-    // Second call was the unfiltered fallback (no callId in opts).
-    expect(mockSearchCalls.mock.calls[1][2]).not.toHaveProperty('callId')
+    expect(mockSearchCalls.mock.calls[1][2]).toMatchObject({ sourceId: 'sourceid-call' })
     expect(mockInitializeSession).toHaveBeenCalled()
+  })
+
+  it('confirms callIds via prong-3 reproducibility fallback using description search', async () => {
+    // Edge case: metadata.callId and metadata.sourceId both miss, but the
+    // point id is the callId (or ingest used a non-standard field). The
+    // picker found the candidate via the project description; prong 3
+    // reproduces that search with a larger limit and finds the same point.
+    mockSearchCalls
+      .mockResolvedValueOnce({ matches: [] })                        // prong 1
+      .mockResolvedValueOnce({ matches: [] })                        // prong 2
+      .mockResolvedValueOnce({                                       // prong 3: description search
+        matches: [
+          { callId: 'pointid-call', title: 'Via description', program: 'P', score: 0.5, snippet: '', sourceUrl: undefined },
+        ],
+      })
+    mockInitializeSession.mockResolvedValue({
+      sessionId: 'session-xyz', phase: 'structuring', blueprintKind: 'structured',
+    })
+
+    const res = await POST(req({
+      description: 'original project description that picker used',
+      locale: 'ro',
+      confirmCandidateId: 'pointid-call',
+    }))
+
+    expect(res.status).toBe(200)
+    expect(mockSearchCalls).toHaveBeenCalledTimes(3)
+    // Prong 3 uses the description as the query (not the callId) — this is
+    // the key property: the probe reproduces the picker's search path.
+    expect(mockSearchCalls.mock.calls[2][1]).toBe('original project description that picker used')
+    expect(mockSearchCalls.mock.calls[2][2]).not.toHaveProperty('callId')
+    expect(mockSearchCalls.mock.calls[2][2]).not.toHaveProperty('sourceId')
   })
 
   it('returns 503 PRESELECT_UNAVAILABLE when the existence check fails', async () => {

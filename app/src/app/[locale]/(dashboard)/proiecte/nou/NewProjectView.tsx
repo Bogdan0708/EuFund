@@ -150,6 +150,11 @@ export function NewProjectView({
         callTitle: result.candidates[0]?.title ?? result.selectedCallId,
         description,
       })
+      // Override mode bumped the session's stateVersion via setSelectedCall.
+      // Re-hydrate from /api/ai/agent/state so the next sendMessage carries
+      // the fresh stateVersion; otherwise the next managed turn will 409 on
+      // CAS check.
+      await agent.adoptSession(result.sessionId)
       return
     }
     if (result.kind === 'ambiguous') {

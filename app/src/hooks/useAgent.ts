@@ -203,8 +203,23 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
       })
 
       if (!response.ok) {
-        const errBody = await response.json().catch(() => ({ error: 'Request failed' }))
-        throw new Error(errBody.error || `HTTP ${response.status}`)
+        const errBody: unknown = await response.json().catch(() => ({ error: 'Request failed' }))
+        // /api/ai/agent returns { error: { code, messageRo, messageEn } } for
+        // managed-runtime errors; older paths return { error: 'string' }.
+        // Without this branch, the object shape renders as `[object Object]`
+        // when passed to new Error(). Prefer messageRo (default locale) then
+        // messageEn, then code, then a generic fallback.
+        const rawError = (errBody as { error?: unknown })?.error
+        let message: string
+        if (typeof rawError === 'string') {
+          message = rawError
+        } else if (rawError && typeof rawError === 'object') {
+          const e = rawError as { messageRo?: string; messageEn?: string; code?: string; message?: string }
+          message = e.messageRo || e.messageEn || e.message || e.code || `HTTP ${response.status}`
+        } else {
+          message = `HTTP ${response.status}`
+        }
+        throw new Error(message)
       }
 
       setStatus('streaming')

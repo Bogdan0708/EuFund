@@ -187,7 +187,14 @@ async function handler(req: NextRequest) {
   // feature remains broken in a visible way (vs. silently expensive).
   const preselectMarker =
     (session.planningArtifact as { preselect?: { version?: number } } | null)?.preselect
-  const isPreselected = preselectMarker?.version === 1
+  // Structured actions (approve_outline, accept_section, select_call, etc.)
+  // ALWAYS run through V3 — managed doesn't handle them yet (see
+  // hasStructuredAction above). Actions are post-discovery operations triggered
+  // by explicit UI clicks, so the preselect-runtime invariant ("no discovery
+  // on first turn") doesn't apply: there's no prompt here and no search_calls
+  // hazard. Without this exception, every preselected session would 503 the
+  // moment the user clicks an action button.
+  const isPreselected = preselectMarker?.version === 1 && !hasStructuredAction
 
   if (managedEnabled) {
     const { managedCircuitBreaker, recordManagedFailure } = await import(
