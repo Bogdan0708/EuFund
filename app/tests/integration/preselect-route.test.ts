@@ -98,3 +98,71 @@ describe('POST /api/v1/projects/preselect — rank mode', () => {
     expect(mockInitializeSession).not.toHaveBeenCalled()
   })
 })
+
+describe('POST /api/v1/projects/preselect — error paths', () => {
+  it('returns 401 when unauthenticated', async () => {
+    mockRequireAuth.mockRejectedValue(new Error('unauthorized'))
+    const res = await POST(req({ description: 'x'.repeat(50), locale: 'ro' }))
+    expect(res.status).toBe(401)
+    const body = await res.json()
+    expect(body.error.code).toBe('UNAUTHORIZED')
+  })
+
+  it('returns 404 PRESELECT_DISABLED when preselect flag off', async () => {
+    mockIsFeatureEnabled.mockImplementation(async (key) =>
+      key === 'managed_agent_writes_enabled',
+    )
+    const res = await POST(req({ description: 'x'.repeat(50), locale: 'ro' }))
+    expect(res.status).toBe(404)
+    expect((await res.json()).error.code).toBe('PRESELECT_DISABLED')
+  })
+
+  it('returns 404 PRESELECT_DISABLED when writes flag off', async () => {
+    mockIsFeatureEnabled.mockImplementation(async (key) =>
+      key === 'deterministic_preselect_enabled',
+    )
+    const res = await POST(req({ description: 'x'.repeat(50), locale: 'ro' }))
+    expect(res.status).toBe(404)
+    expect((await res.json()).error.code).toBe('PRESELECT_DISABLED')
+  })
+
+  it('returns 400 DESCRIPTION_TOO_SHORT when description below min length', async () => {
+    const res = await POST(req({ description: 'short', locale: 'ro' }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error.code).toBe('DESCRIPTION_TOO_SHORT')
+  })
+
+  it('returns 400 INVALID_REQUEST on malformed body', async () => {
+    const res = await POST(new NextRequest('http://localhost/x', {
+      method: 'POST', body: 'not json', headers: { 'content-type': 'application/json' },
+    }))
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 CONFLICTING_MODE when sessionId and confirmCandidateId both present', async () => {
+    const res = await POST(req({
+      description: 'x'.repeat(50), locale: 'ro',
+      sessionId: '00000000-0000-4000-8000-000000000000',
+      expectedStateVersion: 0,
+      confirmCandidateId: 'abc',
+    }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error.code).toBe('CONFLICTING_MODE')
+  })
+
+  it('returns 400 EXPECTED_STATE_VERSION_REQUIRED when sessionId without expectedStateVersion', async () => {
+    const res = await POST(req({
+      description: 'x'.repeat(50), locale: 'ro',
+      sessionId: '00000000-0000-4000-8000-000000000000',
+    }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error.code).toBe('EXPECTED_STATE_VERSION_REQUIRED')
+  })
+
+  it('returns 503 PRESELECT_UNAVAILABLE when rankCandidates throws', async () => {
+    mockRankCandidates.mockRejectedValue(new Error('qdrant down'))
+    const res = await POST(req({ description: 'x'.repeat(50), locale: 'ro' }))
+    expect(res.status).toBe(503)
+    expect((await res.json()).error.code).toBe('PRESELECT_UNAVAILABLE')
+  })
+})
