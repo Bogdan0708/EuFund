@@ -39,3 +39,18 @@ export interface PreselectArtifactV1 {
 
 // Re-export type for convenience in tests
 export type { CallMatch }
+
+export function decideSelection(candidates: Candidate[]): SelectionDecision {
+  if (candidates.length === 0) {
+    return { kind: 'no_match', reason: 'empty_results' }
+  }
+  if (candidates[0].score < SCORE_FLOOR) {
+    return { kind: 'no_match', reason: 'below_score_floor' }
+  }
+  const top = candidates[0]
+  const runner = candidates[1]
+  if (runner && top.score - runner.score < AMBIGUITY_EPSILON) {
+    return { kind: 'ambiguous', candidates: candidates.slice(0, 3) }
+  }
+  return { kind: 'selected', callId: top.callId, candidates: candidates.slice(0, 3) }
+}
