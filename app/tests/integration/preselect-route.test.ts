@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const { mockRequireAuth, mockIsFeatureEnabled, mockRankCandidates, mockInitializeSession, mockSearchCalls } = vi.hoisted(() => ({
+const { mockRequireAuth, mockIsFeatureEnabled, mockRankCandidates, mockInitializeSession, mockSearchCalls, mockSetSelectedCall } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockIsFeatureEnabled: vi.fn(),
   mockRankCandidates: vi.fn(),
   mockInitializeSession: vi.fn(),
   mockSearchCalls: vi.fn(),
+  mockSetSelectedCall: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/helpers', () => ({ requireAuth: mockRequireAuth }))
@@ -21,6 +22,9 @@ vi.mock('@/lib/ai/agent/services/preselect', async () => {
 })
 vi.mock('@/lib/ai/agent/services/evidence', () => ({
   searchCalls: mockSearchCalls,
+}))
+vi.mock('@/lib/ai/agent/services/application', () => ({
+  setSelectedCall: mockSetSelectedCall,
 }))
 vi.mock('@/lib/middleware/rate-limit', () => ({
   withRateLimit: (_opts: any, handler: any) => handler,
@@ -227,5 +231,96 @@ describe('POST /api/v1/projects/preselect — confirm mode', () => {
     expect(res.status).toBe(503)
     expect((await res.json()).error.code).toBe('PRESELECT_UNAVAILABLE')
     expect(mockInitializeSession).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/v1/projects/preselect — override mode', () => {
+  const SESSION_ID = '22222222-2222-4222-8222-222222222222'
+
+  it('re-ranks with excludeCallIds and mutates existing session via setSelectedCall', async () => {
+    mockRankCandidates.mockResolvedValue([
+      { callId: 'newtop', title: 'NewTop', score: 0.8 },
+      { callId: 'other', title: 'Other', score: 0.5 },
+    ])
+    mockSetSelectedCall.mockResolvedValue({ newStateVersion: 3 })
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      sessionId: SESSION_ID,
+      expectedStateVersion: 2,
+      excludeCallIds: ['oldcall'],
+    }))
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.kind).toBe('selected')
+    expect(body.sessionId).toBe(SESSION_ID)
+    expect(body.selectedCallId).toBe('newtop')
+    expect(mockSetSelectedCall).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        sessionId: SESSION_ID,
+        callId: 'newtop',
+        expectedStateVersion: 2,
+      }),
+    )
+    expect(mockInitializeSession).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 OUTLINE_FROZEN when setSelectedCall throws the policy error', async () => {
+    mockRankCandidates.mockResolvedValue([{ callId: 'x', title: 'X', score: 0.9 }])
+    mockSetSelectedCall.mockRejectedValue(
+      Object.assign(new Error('frozen'), {
+        code: 'VALIDATION',
+        policyCode: 'POLICY_OUTLINE_ALREADY_FROZEN',
+      }),
+    )
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      sessionId: SESSION_ID,
+      expectedStateVersion: 2,
+    }))
+    expect(res.status).toBe(409)
+    expect((await res.json()).error.code).toBe('OUTLINE_FROZEN')
+  })
+
+  it('returns 409 CONCURRENCY_CONFLICT on stateVersion mismatch', async () => {
+    mockRankCandidates.mockResolvedValue([{ callId: 'x', title: 'X', score: 0.9 }])
+    mockSetSelectedCall.mockRejectedValue(
+      Object.assign(new Error('stale'), { code: 'CONCURRENCY' }),
+    )
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      sessionId: SESSION_ID,
+      expectedStateVersion: 1,
+    }))
+    expect(res.status).toBe(409)
+    expect((await res.json()).error.code).toBe('CONCURRENCY_CONFLICT')
+  })
+
+  it('falls back from selected → ambiguous when excludeCallIds removes the clear winner', async () => {
+    mockRankCandidates.mockResolvedValue([
+      { callId: 'a', title: 'A', score: 0.75 },
+      { callId: 'b', title: 'B', score: 0.73 },
+      { callId: 'c', title: 'C', score: 0.5 },
+    ])
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      sessionId: SESSION_ID,
+      expectedStateVersion: 2,
+      excludeCallIds: ['oldcall'],
+    }))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.kind).toBe('ambiguous')
+    expect(body.candidates.map((c: any) => c.callId)).toEqual(['a', 'b', 'c'])
+    expect(mockSetSelectedCall).not.toHaveBeenCalled()
   })
 })

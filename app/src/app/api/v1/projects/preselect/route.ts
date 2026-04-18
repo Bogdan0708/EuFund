@@ -10,6 +10,7 @@ import {
   MIN_DESCRIPTION_LENGTH,
 } from '@/lib/ai/agent/services/preselect'
 import { searchCalls } from '@/lib/ai/agent/services/evidence'
+import { setSelectedCall } from '@/lib/ai/agent/services/application'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'preselect-route' })
@@ -107,9 +108,51 @@ async function handler(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // Override mode not yet implemented (arrives in Task 11)
+  // Override mode: existing session, re-rank and mutate via setSelectedCall
   if (parsed.sessionId) {
-    return err(501, 'NOT_IMPLEMENTED', 'override mode arrives in task 11')
+    const overrideCtx = {
+      userId: user.id,
+      sessionId: parsed.sessionId,
+      locale: parsed.locale,
+    }
+    let candidates
+    try {
+      candidates = await rankCandidates(overrideCtx as any, parsed.description, parsed.excludeCallIds ?? [])
+    } catch (e) {
+      log.error({ err: e, userId: user.id }, 'rankCandidates failed (override)')
+      return err(503, 'PRESELECT_UNAVAILABLE')
+    }
+    const decision = decideSelection(candidates)
+    if (decision.kind === 'no_match') {
+      return NextResponse.json({ kind: 'no_match', reason: decision.reason })
+    }
+    if (decision.kind === 'ambiguous') {
+      return NextResponse.json({ kind: 'ambiguous', candidates: decision.candidates })
+    }
+    try {
+      await setSelectedCall(overrideCtx as any, {
+        sessionId: parsed.sessionId,
+        callId: decision.callId,
+        expectedStateVersion: parsed.expectedStateVersion!,
+      })
+    } catch (e) {
+      const e_ = e as any
+      if (e_?.policyCode === 'POLICY_OUTLINE_ALREADY_FROZEN') return err(409, 'OUTLINE_FROZEN')
+      if (e_?.code === 'CONCURRENCY') return err(409, 'CONCURRENCY_CONFLICT')
+      log.error({ err: e, userId: user.id, sessionId: parsed.sessionId }, 'setSelectedCall failed')
+      return err(500, 'OVERRIDE_FAILED')
+    }
+    return NextResponse.json({
+      kind: 'selected',
+      sessionId: parsed.sessionId,
+      selectedCallId: decision.callId,
+      candidates: decision.candidates,
+      // blueprintKind/phase not returned on override — client already has the
+      // session state from the SSE resume path; placeholders kept for shape
+      // consistency with rank/confirm responses in Phase 1.
+      blueprintKind: 'structured',
+      phase: 'structuring',
+    })
   }
 
   const ctx = { userId: user.id, sessionId: '', locale: parsed.locale }
