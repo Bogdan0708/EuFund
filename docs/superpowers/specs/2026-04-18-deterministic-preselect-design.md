@@ -93,18 +93,18 @@ type PreselectResponse =
       kind: 'selected';
       sessionId: string;
       selectedCallId: string;
-      candidates: Candidate[];      // top-3, for UI caching
-      blueprintKind: 'structured' | 'raw_evidence' | 'none';
+      candidates: Candidate[];                // top-3, for UI caching / "Change" affordance
+      blueprintKind: 'structured' | 'raw_evidence' | 'none';  // selected call only
       phase: 'structuring' | 'research';
     }
   | {
       kind: 'ambiguous';
-      candidates: Candidate[];      // top-3 for picker
-      // no session created
+      candidates: Candidate[];                // top-3 for picker
+      // no session created, no blueprintKind (selected call is unknown at this point)
     }
   | {
       kind: 'no_match';
-      reason: string;               // machine code, e.g. 'below_score_floor'
+      reason: string;                         // machine code, e.g. 'below_score_floor'
       // no session created
     };
 
@@ -113,8 +113,15 @@ interface Candidate {
   title: string;
   score: number;
   program?: string;
-  blueprintKind: 'structured' | 'raw_evidence' | 'none';
   sourceUrl?: string;
+  // NOTE: no blueprintKind here in Phase 1.
+  // blueprintKind is a top-level field on the 'selected' response and applies only to
+  // the chosen call — we deliberately do not compute it per-candidate, because that
+  // would require an extra blueprint lookup for each of the top-5 candidates on every
+  // preselect call. The UI picker does not currently need per-candidate blueprintKind.
+  // If Phase 2 adds a "ready/needs-research" badge to the picker, it should use a
+  // cheap batch DB existence check against the blueprint cache table — NOT per-call
+  // lookupBlueprint().
 }
 ```
 
@@ -143,27 +150,24 @@ Route handler contains no business logic — strictly auth (via `requireAuth()` 
 
 ### Ranking (`rankCandidates`)
 
+`searchCalls()` in `app/src/lib/ai/agent/services/evidence.ts:65` already deduplicates by `callId` (Qdrant returns chunks in descending score order; the `seen` Set keeps the first — i.e. highest-scoring — chunk per call). Phase 1 uses that output directly. No separate per-chunk aggregation step is needed.
+
 ```ts
 async function rankCandidates(
   ctx: ServiceContext,
   description: string,
   excludeCallIds: string[] = [],
-): Promise<RankedCandidate[]> {
-  // 1. Vector search — overfetch to support aggregation
-  const rawResults = await searchCalls(ctx, description, { maxResults: 30 });
-
-  // 2. Aggregate by callId — pure max-score per call in Phase 1
-  const grouped = aggregateByCallId(rawResults);
-
-  // 3. Filter out excluded calls (override path)
-  const filtered = grouped.filter(c => !excludeCallIds.includes(c.callId));
-
-  // 4. Sort descending, keep top-5
-  return filtered.sort((a, b) => b.score - a.score).slice(0, 5);
+): Promise<CallMatch[]> {
+  // searchCalls already returns one CallMatch per callId, score-descending.
+  // Overfetch slightly (10) so exclusions don't leave us short.
+  const { matches } = await searchCalls(ctx, description, { maxResults: 10 });
+  return matches
+    .filter(m => !excludeCallIds.includes(m.callId))
+    .slice(0, 5);
 }
 ```
 
-Pure max-score per `callId` is the Phase 1 signal. No chunk-repeat bonus. Phase 2 may introduce a bonus if post-launch data shows single-chunk false positives — added with empirical justification, not anticipated.
+Pure max-score per `callId` is the Phase 1 signal. No chunk-repeat bonus, no extra aggregation layer. Phase 2 may introduce either — with empirical justification — but only if traces show a specific failure mode (single-chunk false positives, or rank inversions where the top-1 chunk wasn't the best signal for its call). Phase 2 changes would likely require a new lower-level raw-chunk search helper exposed underneath `searchCalls`.
 
 ### Decision (`decideSelection`)
 
@@ -258,7 +262,7 @@ A small dedicated helper — not a hook method, not in `useAgent`. Either inline
 
 Under `app/src/app/[locale]/(dashboard)/proiecte/nou/components/`:
 
-- **`SelectedCallBanner.tsx`** — pill above the composer. Reads from session state. "Change" button visible only when `session.currentPhase !== 'drafting'` (i.e., pre-freeze). Clicking triggers preselect in override mode with `excludeCallIds: [currentCallId]` and the session's `expectedStateVersion`.
+- **`SelectedCallBanner.tsx`** — pill above the composer. Reads from session state. "Change" button visible only when `session.outlineFrozen === false`. (Not `currentPhase !== 'drafting'` — phase can reach `review` post-freeze, and gating on phase would incorrectly re-open the change affordance. `outlineFrozen` is the authoritative freeze signal in the schema and the policy matrix.) Clicking triggers preselect in override mode with `excludeCallIds: [currentCallId]` and the session's `expectedStateVersion`.
 - **`CandidatePicker.tsx`** — renders `candidates[]` from an ambiguous response. Each row: title, program badge, score visualization (bar, not raw number). Click → preselect in confirm mode.
 - **`NoMatchGuidance.tsx`** — localized guidance. Pure presentation.
 
@@ -337,16 +341,21 @@ Non-whitespace density check is deferred to Phase 2. The error code `DESCRIPTION
 
 `deterministic_preselect_enabled` — DB-backed, default `false`. Targeting via existing `feature_flags.targeting` JSONB.
 
-- **Server-side check**: `/proiecte/nou` page (RSC) reads the flag via `isFeatureEnabled('deterministic_preselect_enabled', {userId})`, passes the boolean to the client component as a prop.
-- **Client behavior**: if flag off → first-message dispatch goes directly to `/api/ai/agent` (current cold-start path). If flag on → client calls preselect first.
+**Hard dependency: `managed_agent_writes_enabled` must also be enabled for the user.** The current managed prompt (`app/src/lib/ai/agent/managed/prompt.ts:51-57`) in read-only mode explicitly tells the model "only discovery and research are covered; structuring/drafting/review are handled by the standard workflow." If we preselect a session into `phase: 'structuring'` with writes disabled, the prompt contradicts the session state and the agent cannot progress regardless (write-gated tools like `freeze_outline` / `save_section_draft` return `POLICY_WRITES_DISABLED`). Enforcing this dependency keeps the preselect feature coherent with the runtime's actual capabilities.
+
+- **Server-side check**: `/proiecte/nou` page (RSC) reads BOTH flags via `isFeatureEnabled(...)`, passes the combined boolean `preselectEnabled = presElectFlag && writesFlag` to the client component as a single prop.
+- **Route enforcement**: `POST /api/v1/projects/preselect` also checks both flags at request time (defense-in-depth). If either is off, returns 404 `PRESELECT_DISABLED`.
+- **Client behavior**: if `preselectEnabled` false → first-message dispatch goes directly to `/api/ai/agent` (current cold-start path). If true → client calls preselect first.
 - **`bypassCache: true` not required** — this is a rollout flag, not a kill switch. 60s cache latency is acceptable.
 
 ### Ramp plan
 
 1. Admin-only (`targeting.userIds: [<admin ids>]`) — internal smoke test.
-2. 10% rollout (`targeting.rolloutPercentage: 10`) — canary window, 2-5 days.
-3. 50% rollout — scale test.
-4. 100% rollout — full enable.
+2. 10% rollout (`targeting.percentage: 10`) — canary window, 2-5 days.
+3. 50% rollout (`targeting.percentage: 50`) — scale test.
+4. 100% rollout (`targeting.percentage: 100`) — full enable.
+
+Targeting key name `percentage` matches the existing flag-evaluator contract in `app/src/lib/feature-flags/index.ts`. Do not use `rolloutPercentage` — the evaluator would silently ignore it.
 
 Per-org or per-tier ramps are not used in Phase 1. Percentage rollout with an admin canary is sufficient.
 
@@ -364,13 +373,12 @@ Grandfathered. The flag only gates new-session bootstrap. Any session already cr
 
 All new files under `app/tests/unit/preselect/` and one in `app/tests/unit/managed/`.
 
-**`rank-candidates.test.ts`**
-- Empty vector results → `[]`
-- Multiple chunks same `callId` → aggregated to one candidate with max score
-- Raw results order-invariance: same final ranking regardless of input chunk order
-- `excludeCallIds` filters correctly
-- Top-5 cutoff when >5 unique calls match
-- Output sorted by descending score
+**`rank-candidates.test.ts`** — `searchCalls()` is mocked to return `CallMatch[]`; tests exercise `rankCandidates`'s thin filter-and-slice logic.
+- `searchCalls` returns empty → `[]`
+- `excludeCallIds` filters correctly, including when it removes the top-1 match
+- Top-5 cutoff when `searchCalls` returns more than 5 `CallMatch` entries
+- Output preserves `searchCalls`'s score-descending order (no resorting bug)
+- (Chunk-aggregation tests are **not** part of this suite — `searchCalls` owns that responsibility; Phase 2 will add separate tests if a raw-chunk helper is introduced.)
 
 **`decide-selection.test.ts`**
 - Empty candidates → `kind: 'no_match'`, reason `below_score_floor`
