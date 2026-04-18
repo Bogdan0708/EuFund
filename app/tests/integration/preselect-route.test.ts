@@ -187,6 +187,27 @@ describe('POST /api/v1/projects/preselect — error paths', () => {
     )
   })
 
+  it('attaches X-RateLimit-* headers to successful responses', async () => {
+    mockEnforceRateLimit.mockResolvedValue({
+      ok: true,
+      headers: {
+        'X-RateLimit-Limit': '10',
+        'X-RateLimit-Remaining': '7',
+        'X-RateLimit-Reset': '1234567890',
+      },
+    })
+    mockRankCandidates.mockResolvedValue([{ callId: 'top', title: 'T', score: 0.8 }])
+    mockInitializeSession.mockResolvedValue({
+      sessionId: 's', phase: 'structuring', blueprintKind: 'structured',
+    })
+
+    const res = await POST(req({ description: 'x'.repeat(50), locale: 'ro' }))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('X-RateLimit-Limit')).toBe('10')
+    expect(res.headers.get('X-RateLimit-Remaining')).toBe('7')
+    expect(res.headers.get('X-RateLimit-Reset')).toBe('1234567890')
+  })
+
   it('returns 400 DESCRIPTION_TOO_SHORT when description below min length', async () => {
     const res = await POST(req({ description: 'short', locale: 'ro' }))
     expect(res.status).toBe(400)

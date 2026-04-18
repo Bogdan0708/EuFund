@@ -36,6 +36,29 @@ const err = (status: number, code: string, message?: string) =>
   NextResponse.json({ error: { code, message: message ?? code } }, { status })
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  // Rate-limit headers are applied uniformly at the exit. Since we call
+  // enforceRateLimit directly (to get a user-keyed bucket rather than the
+  // IP-keyed default), the route owns the attach step that the old
+  // withRateLimit HOF used to do for us — see withLimitHeaders call below.
+  let limitHeaders: Record<string, string> | undefined
+  const response = await handlePreselect(req, (h) => { limitHeaders = h })
+  if (limitHeaders) {
+    for (const [h, v] of Object.entries(limitHeaders)) {
+      try {
+        response.headers.set(h, v)
+      } catch {
+        // Some response types have immutable headers — swallow like
+        // withRateLimit does.
+      }
+    }
+  }
+  return response
+}
+
+async function handlePreselect(
+  req: NextRequest,
+  captureLimitHeaders: (h: Record<string, string>) => void,
+): Promise<NextResponse> {
   // Auth FIRST — we need user.id for the per-user rate-limit key.
   // Surfaces the auth class as 401 and any other throw as 500 (the catch-all
   // swallow here would mask infra failures).
@@ -62,6 +85,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     keySuffix: user.id,
   })
   if (!limit.ok) return limit.response as NextResponse
+  captureLimitHeaders(limit.headers)
 
   // Feature flags (all required). bypassCache per CLAUDE.md rollout-flag rule.
   //
