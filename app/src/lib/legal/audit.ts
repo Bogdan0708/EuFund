@@ -220,6 +220,7 @@ function inferLegalBasis(action: AuditAction): string {
   if (action.startsWith('auth.') || action.startsWith('user.')) return 'contract';
   if (action.startsWith('project.') || action.startsWith('organization.')) return 'contract';
   if (action.startsWith('section.')) return 'contract';
+  if (action.startsWith('session.')) return 'contract';
   if (action.startsWith('consent.')) return 'legal_obligation';
   if (action.startsWith('gdpr.')) return 'legal_obligation';
   if (action.startsWith('ai.')) return 'contract';
