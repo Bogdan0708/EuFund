@@ -85,3 +85,63 @@ describe('initializeSession — structured blueprint', () => {
     }))
   })
 })
+
+describe('initializeSession — raw-evidence blueprint', () => {
+  it('creates session with phase=research, blueprint null, blueprintKind=raw_evidence', async () => {
+    mockLookupBlueprint.mockResolvedValue({
+      cached: false,
+      blueprint: null,
+      rawEvidence: [
+        { id: 'x', content: 'some evidence', docType: 'ghid', source: 'doc.pdf', score: 0.5 },
+      ],
+    })
+
+    const result = await initializeSession({
+      userId: USER_ID,
+      description: 'a sufficiently long description of a project',
+      locale: 'ro',
+      selectedCallId: CALL_ID,
+      selectedScore: 0.6,
+      candidates: [{ callId: CALL_ID, title: 'X', score: 0.6 }],
+      excludeCallIdsApplied: [],
+    })
+
+    expect(result.phase).toBe('research')
+    expect(result.blueprintKind).toBe('raw_evidence')
+
+    const inserted = mockDb.insert.mock.results[0].value.values.mock.calls[0][0]
+    expect(inserted.currentPhase).toBe('research')
+    expect(inserted.blueprint).toBeNull()
+    expect(inserted.planningArtifact.preselect.blueprintKind).toBe('raw_evidence')
+  })
+})
+
+describe('initializeSession — blueprint lookup failure (degraded success)', () => {
+  it('creates session with phase=research, blueprintKind=none, audit flag set, warning logged', async () => {
+    mockLookupBlueprint.mockRejectedValue(new Error('vector store blew up'))
+
+    const result = await initializeSession({
+      userId: USER_ID,
+      description: 'a sufficiently long description of a project',
+      locale: 'ro',
+      selectedCallId: CALL_ID,
+      selectedScore: 0.6,
+      candidates: [{ callId: CALL_ID, title: 'X', score: 0.6 }],
+      excludeCallIdsApplied: [],
+    })
+
+    expect(result.phase).toBe('research')
+    expect(result.blueprintKind).toBe('none')
+
+    const inserted = mockDb.insert.mock.results[0].value.values.mock.calls[0][0]
+    expect(inserted.planningArtifact.preselect.blueprintKind).toBe('none')
+
+    expect(mockLogAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'session.preselect_completed',
+      metadata: expect.objectContaining({
+        blueprintLookupFailed: true,
+        blueprintKind: 'none',
+      }),
+    }))
+  })
+})
