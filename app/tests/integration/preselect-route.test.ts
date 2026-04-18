@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import { ConcurrencyError, ValidationError } from '@/lib/ai/agent/services/errors'
 
-const { mockRequireAuth, mockIsFeatureEnabled, mockRankCandidates, mockInitializeSession, mockSearchCalls, mockSetSelectedCall } = vi.hoisted(() => ({
+const { mockRequireAuth, mockIsFeatureEnabled, mockRankCandidates, mockInitializeSession, mockSearchCalls, mockSetSelectedCall, mockEnforceRateLimit } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockIsFeatureEnabled: vi.fn(),
   mockRankCandidates: vi.fn(),
   mockInitializeSession: vi.fn(),
   mockSearchCalls: vi.fn(),
   mockSetSelectedCall: vi.fn(),
+  mockEnforceRateLimit: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/helpers', () => ({ requireAuth: mockRequireAuth }))
@@ -27,7 +29,7 @@ vi.mock('@/lib/ai/agent/services/application', () => ({
   setSelectedCall: mockSetSelectedCall,
 }))
 vi.mock('@/lib/middleware/rate-limit', () => ({
-  withRateLimit: (_opts: any, handler: any) => handler,
+  enforceRateLimit: mockEnforceRateLimit,
 }))
 
 import { POST } from '@/app/api/v1/projects/preselect/route'
@@ -38,6 +40,12 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockRequireAuth.mockResolvedValue(USER)
   mockIsFeatureEnabled.mockResolvedValue(true)
+  // Default rate limit pass-through
+  mockEnforceRateLimit.mockResolvedValue({ ok: true, headers: {} })
+  // Route gates on MANAGED_RUNTIME_ENABLED env to prevent a DB flag flip
+  // from leaking managed-runtime traffic into production. Tests simulate the
+  // pilot environment where the env is set.
+  process.env.MANAGED_RUNTIME_ENABLED = 'true'
 })
 
 const req = (body: unknown) =>
@@ -134,6 +142,40 @@ describe('POST /api/v1/projects/preselect — error paths', () => {
     expect((await res.json()).error.code).toBe('PRESELECT_DISABLED')
   })
 
+  it('returns 404 PRESELECT_DISABLED when managed_agent_enabled flag off', async () => {
+    mockIsFeatureEnabled.mockImplementation(async (key) =>
+      key !== 'managed_agent_enabled',
+    )
+    const res = await POST(req({ description: 'x'.repeat(50), locale: 'ro' }))
+    expect(res.status).toBe(404)
+    expect((await res.json()).error.code).toBe('PRESELECT_DISABLED')
+  })
+
+  it('returns 404 PRESELECT_DISABLED when MANAGED_RUNTIME_ENABLED env is unset', async () => {
+    delete process.env.MANAGED_RUNTIME_ENABLED
+    const res = await POST(req({ description: 'x'.repeat(50), locale: 'ro' }))
+    expect(res.status).toBe(404)
+    expect((await res.json()).error.code).toBe('PRESELECT_DISABLED')
+  })
+
+  it('propagates the rate-limit response when enforceRateLimit rejects', async () => {
+    const limitResp = new Response(
+      JSON.stringify({ error: { code: 'RATE_LIMITED' } }),
+      { status: 429, headers: { 'content-type': 'application/json' } },
+    )
+    mockEnforceRateLimit.mockResolvedValue({ ok: false, response: limitResp })
+    const res = await POST(req({ description: 'x'.repeat(50), locale: 'ro' }))
+    expect(res.status).toBe(429)
+  })
+
+  it('rate-limits per user (passes keySuffix: user.id)', async () => {
+    await POST(req({ description: 'x'.repeat(50), locale: 'ro' }))
+    expect(mockEnforceRateLimit).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ keyPrefix: 'preselect', keySuffix: USER.id }),
+    )
+  })
+
   it('returns 400 DESCRIPTION_TOO_SHORT when description below min length', async () => {
     const res = await POST(req({ description: 'short', locale: 'ro' }))
     expect(res.status).toBe(400)
@@ -195,7 +237,12 @@ describe('POST /api/v1/projects/preselect — confirm mode', () => {
     expect(body.kind).toBe('selected')
     expect(body.selectedCallId).toBe('chosen-call-id')
     expect(mockRankCandidates).not.toHaveBeenCalled()
-    expect(mockSearchCalls).toHaveBeenCalledWith(expect.any(Object), 'chosen-call-id', expect.any(Object))
+    // Existence probe uses a filtered Qdrant search, not semantic similarity.
+    expect(mockSearchCalls).toHaveBeenCalledWith(
+      expect.any(Object),
+      'chosen-call-id',
+      expect.objectContaining({ callId: 'chosen-call-id' }),
+    )
     expect(mockInitializeSession).toHaveBeenCalledWith(expect.objectContaining({
       selectedCallId: 'chosen-call-id',
       candidates: [{ callId: 'chosen-call-id', title: 'chosen-call-id', score: 1 }],
@@ -204,9 +251,8 @@ describe('POST /api/v1/projects/preselect — confirm mode', () => {
   })
 
   it('returns 400 INVALID_CALL_ID when confirmCandidateId is not a real indexed call', async () => {
-    mockSearchCalls.mockResolvedValue({
-      matches: [{ callId: 'something-else', title: 'X', program: 'P', score: 0.2, snippet: '', sourceUrl: undefined }],
-    })
+    // Filtered search returns no matches for a bogus callId.
+    mockSearchCalls.mockResolvedValue({ matches: [] })
 
     const res = await POST(req({
       description: 'x'.repeat(50),
@@ -276,10 +322,7 @@ describe('POST /api/v1/projects/preselect — override mode', () => {
   it('returns 409 OUTLINE_FROZEN when setSelectedCall throws the policy error', async () => {
     mockRankCandidates.mockResolvedValue([{ callId: 'x', title: 'X', score: 0.9 }])
     mockSetSelectedCall.mockRejectedValue(
-      Object.assign(new Error('frozen'), {
-        code: 'VALIDATION',
-        policyCode: 'POLICY_OUTLINE_ALREADY_FROZEN',
-      }),
+      new ValidationError('outlineFrozen', 'outline frozen', 'POLICY_OUTLINE_ALREADY_FROZEN'),
     )
 
     const res = await POST(req({
@@ -294,9 +337,7 @@ describe('POST /api/v1/projects/preselect — override mode', () => {
 
   it('returns 409 CONCURRENCY_CONFLICT on stateVersion mismatch', async () => {
     mockRankCandidates.mockResolvedValue([{ callId: 'x', title: 'X', score: 0.9 }])
-    mockSetSelectedCall.mockRejectedValue(
-      Object.assign(new Error('stale'), { code: 'CONCURRENCY' }),
-    )
+    mockSetSelectedCall.mockRejectedValue(new ConcurrencyError(1, 3))
 
     const res = await POST(req({
       description: 'x'.repeat(50),

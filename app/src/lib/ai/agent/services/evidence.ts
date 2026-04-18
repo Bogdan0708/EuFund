@@ -24,6 +24,13 @@ const DOC_TYPE_PRIORITY: Record<string, number> = {
 export interface SearchCallsOptions {
   program?: string
   maxResults?: number
+  /**
+   * Authoritative callId filter. When set, Qdrant returns only points whose
+   * callId metadata matches exactly — the query string is still embedded,
+   * but the filter is the discriminator. Used by the preselect confirm-mode
+   * existence probe. `matches.length === 0` means the callId is not indexed.
+   */
+  callId?: string
 }
 
 export async function searchCalls(
@@ -46,6 +53,9 @@ export async function searchCalls(
   const filter: Record<string, unknown> = {}
   if (opts.program) {
     filter.program = opts.program
+  }
+  if (opts.callId) {
+    filter.callId = opts.callId
   }
 
   let results
