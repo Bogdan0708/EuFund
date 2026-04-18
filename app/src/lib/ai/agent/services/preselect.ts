@@ -2,7 +2,7 @@
 // Owns: rankCandidates, decideSelection, initializeSession.
 // Spec: docs/superpowers/specs/2026-04-18-deterministic-preselect-design.md
 
-import { db, withUserRLS } from '@/lib/db'
+import { withUserRLS } from '@/lib/db'
 import { agentSessions } from '@/lib/db/schema'
 import { logAudit } from '@/lib/legal/audit'
 import { logger } from '@/lib/logger'
