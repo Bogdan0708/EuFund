@@ -77,7 +77,7 @@ export type BlueprintKind = 'structured' | 'raw_evidence' | 'none'
 export type SelectionDecision =
   | { kind: 'selected'; callId: string; candidates: Candidate[] }
   | { kind: 'ambiguous'; candidates: Candidate[] }
-  | { kind: 'no_match'; reason: 'below_score_floor' | 'empty_results' }
+  | { kind: 'no_match'; reason: 'below_score_floor' }
 
 export interface PreselectArtifactV1 {
   version: 1
@@ -128,8 +128,8 @@ describe('decideSelection', () => {
     callId, title: `Call ${callId}`, score,
   })
 
-  it('returns no_match with reason=empty_results for empty input', () => {
-    expect(decideSelection([])).toEqual({ kind: 'no_match', reason: 'empty_results' })
+  it('returns no_match with reason=below_score_floor for empty input', () => {
+    expect(decideSelection([])).toEqual({ kind: 'no_match', reason: 'below_score_floor' })
   })
 
   it('returns no_match when top score is below floor', () => {
@@ -176,10 +176,7 @@ Append to `app/src/lib/ai/agent/services/preselect.ts`:
 
 ```ts
 export function decideSelection(candidates: Candidate[]): SelectionDecision {
-  if (candidates.length === 0) {
-    return { kind: 'no_match', reason: 'empty_results' }
-  }
-  if (candidates[0].score < SCORE_FLOOR) {
+  if (candidates.length === 0 || candidates[0].score < SCORE_FLOOR) {
     return { kind: 'no_match', reason: 'below_score_floor' }
   }
   const top = candidates[0]
