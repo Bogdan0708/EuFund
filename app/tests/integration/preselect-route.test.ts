@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const { mockRequireAuth, mockIsFeatureEnabled, mockRankCandidates, mockInitializeSession } = vi.hoisted(() => ({
+const { mockRequireAuth, mockIsFeatureEnabled, mockRankCandidates, mockInitializeSession, mockSearchCalls } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockIsFeatureEnabled: vi.fn(),
   mockRankCandidates: vi.fn(),
   mockInitializeSession: vi.fn(),
+  mockSearchCalls: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/helpers', () => ({ requireAuth: mockRequireAuth }))
@@ -18,6 +19,9 @@ vi.mock('@/lib/ai/agent/services/preselect', async () => {
     initializeSession: mockInitializeSession,
   }
 })
+vi.mock('@/lib/ai/agent/services/evidence', () => ({
+  searchCalls: mockSearchCalls,
+}))
 vi.mock('@/lib/middleware/rate-limit', () => ({
   withRateLimit: (_opts: any, handler: any) => handler,
 }))
@@ -169,6 +173,9 @@ describe('POST /api/v1/projects/preselect — error paths', () => {
 
 describe('POST /api/v1/projects/preselect — confirm mode', () => {
   it('creates session with the specified confirmCandidateId, skips ranker', async () => {
+    mockSearchCalls.mockResolvedValue({
+      matches: [{ callId: 'chosen-call-id', title: 'Chosen', program: 'P', score: 0.9, snippet: '', sourceUrl: undefined }],
+    })
     mockInitializeSession.mockResolvedValue({
       sessionId: 'session-confirm', phase: 'structuring', blueprintKind: 'structured',
     })
@@ -184,10 +191,41 @@ describe('POST /api/v1/projects/preselect — confirm mode', () => {
     expect(body.kind).toBe('selected')
     expect(body.selectedCallId).toBe('chosen-call-id')
     expect(mockRankCandidates).not.toHaveBeenCalled()
+    expect(mockSearchCalls).toHaveBeenCalledWith(expect.any(Object), 'chosen-call-id', expect.any(Object))
     expect(mockInitializeSession).toHaveBeenCalledWith(expect.objectContaining({
       selectedCallId: 'chosen-call-id',
       candidates: [{ callId: 'chosen-call-id', title: 'chosen-call-id', score: 1 }],
       excludeCallIdsApplied: [],
     }))
+  })
+
+  it('returns 400 INVALID_CALL_ID when confirmCandidateId is not a real indexed call', async () => {
+    mockSearchCalls.mockResolvedValue({
+      matches: [{ callId: 'something-else', title: 'X', program: 'P', score: 0.2, snippet: '', sourceUrl: undefined }],
+    })
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      confirmCandidateId: 'bogus-call-id',
+    }))
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error.code).toBe('INVALID_CALL_ID')
+    expect(mockInitializeSession).not.toHaveBeenCalled()
+  })
+
+  it('returns 503 PRESELECT_UNAVAILABLE when the existence check fails', async () => {
+    mockSearchCalls.mockRejectedValue(new Error('vector store down'))
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      confirmCandidateId: 'any',
+    }))
+
+    expect(res.status).toBe(503)
+    expect((await res.json()).error.code).toBe('PRESELECT_UNAVAILABLE')
+    expect(mockInitializeSession).not.toHaveBeenCalled()
   })
 })

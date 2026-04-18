@@ -9,6 +9,7 @@ import {
   initializeSession,
   MIN_DESCRIPTION_LENGTH,
 } from '@/lib/ai/agent/services/preselect'
+import { searchCalls } from '@/lib/ai/agent/services/evidence'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'preselect-route' })
@@ -62,8 +63,22 @@ async function handler(req: NextRequest): Promise<NextResponse> {
     return err(400, 'EXPECTED_STATE_VERSION_REQUIRED')
   }
 
-  // Confirm mode: skip ranker, trust the provided callId
+  // Confirm mode: skip ranker, but verify the callId is a real indexed call
+  // before creating a session (spec §Request contract; §Error mapping 400
+  // INVALID_CALL_ID). A cheap searchCalls probe with query=callId is enough —
+  // if the id exists in the vector store, at least one match will report the
+  // same callId back.
   if (parsed.confirmCandidateId && !parsed.sessionId) {
+    const ctx = { userId: user.id, sessionId: '', locale: parsed.locale }
+    try {
+      const { matches } = await searchCalls(ctx as any, parsed.confirmCandidateId, { maxResults: 5 })
+      if (!matches.some(m => m.callId === parsed.confirmCandidateId)) {
+        return err(400, 'INVALID_CALL_ID')
+      }
+    } catch (e) {
+      log.error({ err: e, userId: user.id }, 'confirm-mode call existence check failed')
+      return err(503, 'PRESELECT_UNAVAILABLE')
+    }
     try {
       const result = await initializeSession({
         userId: user.id,
