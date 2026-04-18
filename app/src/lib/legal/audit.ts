@@ -87,6 +87,7 @@ export type AuditAction =
   // Phase 3 managed-agent mutations (new narrow mutation services)
   | 'session.call_selected'
   | 'session.outline_frozen'
+  | 'session.preselect_completed'
   | 'section.marked_stale'
   | 'section.rejected';
 

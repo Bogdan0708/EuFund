@@ -2,6 +2,11 @@
 // Owns: rankCandidates, decideSelection, initializeSession.
 // Spec: docs/superpowers/specs/2026-04-18-deterministic-preselect-design.md
 
+import { db, withUserRLS } from '@/lib/db'
+import { agentSessions } from '@/lib/db/schema'
+import { logAudit } from '@/lib/legal/audit'
+import { logger } from '@/lib/logger'
+import { lookupBlueprint } from './blueprint'
 import { searchCalls } from './evidence'
 import type { CallMatch, ServiceContext } from './types'
 
@@ -77,3 +82,101 @@ export async function rankCandidates(
       sourceUrl: m.sourceUrl,
     }))
 }
+
+const log = logger.child({ component: 'preselect-service' })
+
+export interface InitializeSessionParams {
+  userId: string
+  description: string
+  locale: 'ro' | 'en'
+  selectedCallId: string
+  selectedScore: number
+  candidates: Candidate[]
+  excludeCallIdsApplied: string[]
+}
+
+export interface InitializeSessionResult {
+  sessionId: string
+  phase: 'structuring' | 'research'
+  blueprintKind: BlueprintKind
+}
+
+export async function initializeSession(
+  params: InitializeSessionParams,
+): Promise<InitializeSessionResult> {
+  const {
+    userId, description, locale, selectedCallId, selectedScore,
+    candidates, excludeCallIdsApplied,
+  } = params
+
+  // Blueprint prefetch (best-effort). Match the real BlueprintLookupResult shape:
+  //   cached=true  → structured, payload = result.blueprint
+  //   cached=false → raw_evidence, payload = null (agent will extract later)
+  //   throws       → none, payload = null, flag audit
+  let blueprintKind: BlueprintKind
+  let blueprintPayload: unknown = null
+  let blueprintLookupFailed = false
+
+  try {
+    const ctx = { userId, sessionId: '', locale } as const
+    const result = await lookupBlueprint(ctx as unknown as ServiceContext, selectedCallId)
+    if (result.cached) {
+      blueprintKind = 'structured'
+      blueprintPayload = result.blueprint
+    } else {
+      blueprintKind = 'raw_evidence'
+      // raw evidence chunks are not a structured blueprint — leave blueprint column null
+    }
+  } catch (err) {
+    blueprintLookupFailed = true
+    blueprintKind = 'none'
+    log.warn(
+      { userId, selectedCallId, error: err instanceof Error ? err.message : String(err) },
+      'blueprint_lookup_failed',
+    )
+  }
+
+  const phase: 'structuring' | 'research' =
+    blueprintKind === 'structured' ? 'structuring' : 'research'
+
+  const artifact: PreselectArtifactV1 = {
+    version: 1,
+    rankedAt: new Date().toISOString(),
+    description,
+    selectedCallId,
+    selectedScore,
+    candidates,
+    selectionKind: 'selected',
+    blueprintKind,
+    excludeCallIdsApplied,
+  }
+
+  const [row] = await withUserRLS(userId, (tx) =>
+    tx.insert(agentSessions).values({
+      userId,
+      locale,
+      selectedCallId,
+      currentPhase: phase,
+      blueprint: blueprintPayload,
+      planningArtifact: { preselect: artifact },
+    }).returning({ id: agentSessions.id }),
+  )
+
+  await logAudit({
+    userId,
+    action: 'session.preselect_completed',
+    resourceType: 'agent_session',
+    resourceId: row.id,
+    metadata: {
+      selectedCallId,
+      selectedScore,
+      candidateCount: candidates.length,
+      blueprintKind,
+      phase,
+      blueprintLookupFailed,
+    },
+  })
+
+  return { sessionId: row.id, phase, blueprintKind }
+}
+
