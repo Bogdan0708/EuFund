@@ -6,8 +6,8 @@ describe('decideSelection', () => {
     callId, title: `Call ${callId}`, score,
   })
 
-  it('returns no_match with reason=empty_results for empty input', () => {
-    expect(decideSelection([])).toEqual({ kind: 'no_match', reason: 'empty_results' })
+  it('returns no_match with reason=below_score_floor for empty input', () => {
+    expect(decideSelection([])).toEqual({ kind: 'no_match', reason: 'below_score_floor' })
   })
 
   it('returns no_match when top score is below floor', () => {
