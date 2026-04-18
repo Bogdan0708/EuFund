@@ -207,15 +207,18 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
         // /api/ai/agent returns { error: { code, messageRo, messageEn } } for
         // managed-runtime errors; older paths return { error: 'string' }.
         // Without this branch, the object shape renders as `[object Object]`
-        // when passed to new Error(). Prefer messageRo (default locale) then
-        // messageEn, then code, then a generic fallback.
+        // when passed to new Error(). Pick the message for the current
+        // locale (falling through to the other locale if only one is
+        // populated), then code, then a generic HTTP fallback.
         const rawError = (errBody as { error?: unknown })?.error
         let message: string
         if (typeof rawError === 'string') {
           message = rawError
         } else if (rawError && typeof rawError === 'object') {
           const e = rawError as { messageRo?: string; messageEn?: string; code?: string; message?: string }
-          message = e.messageRo || e.messageEn || e.message || e.code || `HTTP ${response.status}`
+          const primary = locale === 'ro' ? e.messageRo : e.messageEn
+          const secondary = locale === 'ro' ? e.messageEn : e.messageRo
+          message = primary || secondary || e.message || e.code || `HTTP ${response.status}`
         } else {
           message = `HTTP ${response.status}`
         }

@@ -189,11 +189,13 @@ async function handler(req: NextRequest) {
     (session.planningArtifact as { preselect?: { version?: number } } | null)?.preselect
   // Structured actions (approve_outline, accept_section, select_call, etc.)
   // ALWAYS run through V3 — managed doesn't handle them yet (see
-  // hasStructuredAction above). Actions are post-discovery operations triggered
-  // by explicit UI clicks, so the preselect-runtime invariant ("no discovery
-  // on first turn") doesn't apply: there's no prompt here and no search_calls
-  // hazard. Without this exception, every preselected session would 503 the
-  // moment the user clicks an action button.
+  // hasStructuredAction above). Actions are post-discovery operations
+  // triggered by explicit UI clicks; some of them (e.g. select_call,
+  // approve_outline) do continue into an LLM turn, but the user has already
+  // authored intent, so the "no silent re-run of discovery" invariant that
+  // the bootstrap-block guards is not at risk. Without this exception,
+  // every preselected session would 503 the moment the user clicks an
+  // action button.
   const isPreselected = preselectMarker?.version === 1 && !hasStructuredAction
 
   if (managedEnabled) {
