@@ -341,7 +341,12 @@ Non-whitespace density check is deferred to Phase 2. The error code `DESCRIPTION
 
 `deterministic_preselect_enabled` — DB-backed, default `false`. Targeting via existing `feature_flags.targeting` JSONB.
 
-**Hard dependency: `managed_agent_writes_enabled` must also be enabled for the user.** The current managed prompt (`app/src/lib/ai/agent/managed/prompt.ts:51-57`) in read-only mode explicitly tells the model "only discovery and research are covered; structuring/drafting/review are handled by the standard workflow." If we preselect a session into `phase: 'structuring'` with writes disabled, the prompt contradicts the session state and the agent cannot progress regardless (write-gated tools like `freeze_outline` / `save_section_draft` return `POLICY_WRITES_DISABLED`). Enforcing this dependency keeps the preselect feature coherent with the runtime's actual capabilities.
+**Hard dependency: `managed_agent_writes_enabled` must also be enabled for the user.** Two reinforcing reasons:
+
+1. The current managed prompt (`app/src/lib/ai/agent/managed/prompt.ts:51-57`) in read-only mode explicitly tells the model "only discovery and research are covered; structuring/drafting/review are handled by the standard workflow." Preselecting a session into `phase: 'structuring'` with writes off would contradict that prompt.
+2. With writes disabled, the managed runtime removes write tools from the advertised tool surface entirely (`getManagedTools(allowWrites)` returns 14 tools instead of 22; the executor has a defense-in-depth gate on top). So `freeze_outline` and `save_section_draft` are simply not visible to the model, and the session would have no way to advance past structuring regardless of how the prompt is worded.
+
+Enforcing this dependency keeps the preselect feature coherent with the runtime's actual capabilities.
 
 - **Server-side check**: `/proiecte/nou` page (RSC) reads BOTH flags via `isFeatureEnabled(...)`, passes the combined boolean `preselectEnabled = presElectFlag && writesFlag` to the client component as a single prop.
 - **Route enforcement**: `POST /api/v1/projects/preselect` also checks both flags at request time (defense-in-depth). If either is off, returns 404 `PRESELECT_DISABLED`.
