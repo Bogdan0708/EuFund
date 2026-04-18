@@ -323,4 +323,18 @@ describe('POST /api/v1/projects/preselect — override mode', () => {
     expect(body.candidates.map((c: any) => c.callId)).toEqual(['a', 'b', 'c'])
     expect(mockSetSelectedCall).not.toHaveBeenCalled()
   })
+
+  it('returns 500 OVERRIDE_FAILED on unclassified setSelectedCall errors', async () => {
+    mockRankCandidates.mockResolvedValue([{ callId: 'x', title: 'X', score: 0.9 }])
+    mockSetSelectedCall.mockRejectedValue(new Error('unexpected boom'))
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      sessionId: SESSION_ID,
+      expectedStateVersion: 2,
+    }))
+    expect(res.status).toBe(500)
+    expect((await res.json()).error.code).toBe('OVERRIDE_FAILED')
+  })
 })
