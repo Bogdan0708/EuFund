@@ -257,6 +257,11 @@ describe('POST /api/v1/projects/preselect — override mode', () => {
     expect(body.kind).toBe('selected')
     expect(body.sessionId).toBe(SESSION_ID)
     expect(body.selectedCallId).toBe('newtop')
+    // Override responses deliberately omit blueprintKind + phase —
+    // setSelectedCall does not change them and the client already has the real
+    // values from the session state. Pin this to prevent future drift.
+    expect(body).not.toHaveProperty('blueprintKind')
+    expect(body).not.toHaveProperty('phase')
     expect(mockSetSelectedCall).toHaveBeenCalledWith(
       expect.any(Object),
       expect.objectContaining({

@@ -142,16 +142,17 @@ async function handler(req: NextRequest): Promise<NextResponse> {
       log.error({ err: e, userId: user.id, sessionId: parsed.sessionId }, 'setSelectedCall failed')
       return err(500, 'OVERRIDE_FAILED')
     }
+    // Override deliberately omits blueprintKind + phase: setSelectedCall does
+    // not re-fetch the blueprint or change the session's currentPhase, and the
+    // client already has those fields from the SSE resume path. Fabricating
+    // them here would let a stale client render the wrong bootstrap state.
+    // Spec §Response contract treats override as a reselection, not a full
+    // session bootstrap.
     return NextResponse.json({
       kind: 'selected',
       sessionId: parsed.sessionId,
       selectedCallId: decision.callId,
       candidates: decision.candidates,
-      // blueprintKind/phase not returned on override — client already has the
-      // session state from the SSE resume path; placeholders kept for shape
-      // consistency with rank/confirm responses in Phase 1.
-      blueprintKind: 'structured',
-      phase: 'structuring',
     })
   }
 

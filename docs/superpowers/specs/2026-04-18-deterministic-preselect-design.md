@@ -94,8 +94,13 @@ type PreselectResponse =
       sessionId: string;
       selectedCallId: string;
       candidates: Candidate[];                // top-3, for UI caching / "Change" affordance
-      blueprintKind: 'structured' | 'raw_evidence' | 'none';  // selected call only
-      phase: 'structuring' | 'research';
+      // blueprintKind + phase are returned on rank / confirm modes (new-session
+      // bootstrap). On override mode they are OMITTED: setSelectedCall does not
+      // re-fetch the blueprint or change currentPhase, so the route would have to
+      // either do an extra DB read or fabricate values — both worse than leaving
+      // the client to read the real session state from the SSE resume path.
+      blueprintKind?: 'structured' | 'raw_evidence' | 'none';  // selected call only (rank/confirm)
+      phase?: 'structuring' | 'research';                       // (rank/confirm)
     }
   | {
       kind: 'ambiguous';
