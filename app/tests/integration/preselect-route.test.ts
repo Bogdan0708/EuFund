@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 import { ConcurrencyError, ValidationError } from '@/lib/ai/agent/services/errors'
+import { Errors } from '@/lib/errors'
 
 const { mockRequireAuth, mockIsFeatureEnabled, mockRankCandidates, mockInitializeSession, mockSearchCalls, mockSetSelectedCall, mockEnforceRateLimit } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
@@ -117,11 +118,21 @@ describe('POST /api/v1/projects/preselect — rank mode', () => {
 
 describe('POST /api/v1/projects/preselect — error paths', () => {
   it('returns 401 when unauthenticated', async () => {
-    mockRequireAuth.mockRejectedValue(new Error('unauthorized'))
+    // requireAuth() throws Errors.unauthorized() — a FondEUError with
+    // code='UNAUTHORIZED'. Must use the real class, not a plain Error
+    // (the route discriminates via instanceof + code).
+    mockRequireAuth.mockRejectedValue(Errors.unauthorized())
     const res = await POST(req({ description: 'x'.repeat(50), locale: 'ro' }))
     expect(res.status).toBe(401)
     const body = await res.json()
     expect(body.error.code).toBe('UNAUTHORIZED')
+  })
+
+  it('returns 500 AUTH_CHECK_FAILED when requireAuth throws a non-auth error', async () => {
+    mockRequireAuth.mockRejectedValue(new Error('db connection refused'))
+    const res = await POST(req({ description: 'x'.repeat(50), locale: 'ro' }))
+    expect(res.status).toBe(500)
+    expect((await res.json()).error.code).toBe('AUTH_CHECK_FAILED')
   })
 
   it('returns 404 PRESELECT_DISABLED when preselect flag off', async () => {
@@ -251,7 +262,7 @@ describe('POST /api/v1/projects/preselect — confirm mode', () => {
   })
 
   it('returns 400 INVALID_CALL_ID when confirmCandidateId is not a real indexed call', async () => {
-    // Filtered search returns no matches for a bogus callId.
+    // Both probes (filtered + unfiltered fallback) return no matching callId.
     mockSearchCalls.mockResolvedValue({ matches: [] })
 
     const res = await POST(req({
@@ -263,6 +274,38 @@ describe('POST /api/v1/projects/preselect — confirm mode', () => {
     expect(res.status).toBe(400)
     expect((await res.json()).error.code).toBe('INVALID_CALL_ID')
     expect(mockInitializeSession).not.toHaveBeenCalled()
+  })
+
+  it('confirms callIds derived from metadata.sourceId via the unfiltered fallback probe', async () => {
+    // Real-world: the ambiguous picker surfaced a candidate whose metadata
+    // had no callId — searchCalls emitted callId from sourceId. The filtered
+    // probe returns empty (no metadata.callId match), but the unfiltered
+    // fallback finds the same point and emits the target callId.
+    mockSearchCalls
+      .mockResolvedValueOnce({ matches: [] }) // filtered probe — empty
+      .mockResolvedValueOnce({
+        matches: [
+          { callId: 'sourceid-call', title: 'From sourceId', program: 'P', score: 0.2, snippet: '', sourceUrl: undefined },
+        ],
+      })
+    mockInitializeSession.mockResolvedValue({
+      sessionId: 'session-xyz', phase: 'structuring', blueprintKind: 'structured',
+    })
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      confirmCandidateId: 'sourceid-call',
+    }))
+
+    expect(res.status).toBe(200)
+    expect((await res.json()).kind).toBe('selected')
+    expect(mockSearchCalls).toHaveBeenCalledTimes(2)
+    // First call was the filtered probe with callId filter.
+    expect(mockSearchCalls.mock.calls[0][2]).toMatchObject({ callId: 'sourceid-call' })
+    // Second call was the unfiltered fallback (no callId in opts).
+    expect(mockSearchCalls.mock.calls[1][2]).not.toHaveProperty('callId')
+    expect(mockInitializeSession).toHaveBeenCalled()
   })
 
   it('returns 503 PRESELECT_UNAVAILABLE when the existence check fails', async () => {

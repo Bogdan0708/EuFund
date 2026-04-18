@@ -12,6 +12,7 @@ import {
 import { searchCalls } from '@/lib/ai/agent/services/evidence'
 import { setSelectedCall } from '@/lib/ai/agent/services/application'
 import { ConcurrencyError, ValidationError } from '@/lib/ai/agent/services/errors'
+import { FondEUError } from '@/lib/errors'
 import type { ServiceContext } from '@/lib/ai/agent/services/types'
 import { logger } from '@/lib/logger'
 
@@ -42,7 +43,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     user = await requireAuth()
   } catch (e) {
-    if (e instanceof Error && /unauthori[sz]ed/i.test(e.message)) {
+    // requireAuth throws Errors.unauthorized() which is a FondEUError with
+    // code='UNAUTHORIZED' and messageEn='Not authenticated.' — a message-regex
+    // check would miss it. Bind to the typed class + code instead.
+    if (e instanceof FondEUError && e.code === 'UNAUTHORIZED') {
       return err(401, 'UNAUTHORIZED')
     }
     log.error({ err: e }, 'requireAuth threw non-auth error')
@@ -101,24 +105,42 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // Confirm mode: skip ranker, but verify the callId is a real indexed call
   // before creating a session (spec §Request contract; §Error mapping 400
-  // INVALID_CALL_ID). Uses a FILTERED Qdrant lookup on callId — the embedding
-  // of the query string is still computed (cheap) but the filter is the
-  // authoritative discriminator. A prior semantic-similarity probe incorrectly
-  // treated "callId in top-5 by cosine similarity" as the existence check,
-  // which would reject valid IDs in any sufficiently large corpus.
+  // INVALID_CALL_ID).
+  //
+  // Two-pronged probe because `searchCalls` emits each match's callId via a
+  // fallback chain `metadata.callId || metadata.sourceId || r.id` (see
+  // evidence.ts). A plain metadata.callId filter rejects valid candidates
+  // whose callId came from sourceId or the point id. So:
+  //   1. Fast path — filtered Qdrant search on metadata.callId. Any hit
+  //      confirms the call exists via canonical metadata.
+  //   2. Fallback — if the filter returns nothing, do an unfiltered search
+  //      with a larger limit and post-filter on the emitted callId (which
+  //      applies the same fallback chain). A confirmed candidate shown in
+  //      the ambiguous picker must be reachable this way, because that's
+  //      literally how the picker got the callId in the first place.
+  //
+  // Neither prong treats cosine-similarity top-N as an existence test; both
+  // demand an exact match on emitted callId before confirming.
   if (parsed.confirmCandidateId && !parsed.sessionId) {
     const ctx: ServiceContext = {
       userId: user.id,
       requestId: crypto.randomUUID(),
       now: new Date(),
     }
+    const target = parsed.confirmCandidateId
     try {
-      const { matches } = await searchCalls(ctx, parsed.confirmCandidateId, {
-        callId: parsed.confirmCandidateId,
-        maxResults: 1,
-      })
-      if (matches.length === 0) {
-        return err(400, 'INVALID_CALL_ID')
+      // Fast path: filtered lookup on metadata.callId
+      const filtered = await searchCalls(ctx, target, { callId: target, maxResults: 1 })
+      if (filtered.matches.some(m => m.callId === target)) {
+        // Existence confirmed via metadata.callId
+      } else {
+        // Fallback: unfiltered search, post-filter on emitted callId
+        // (handles points where metadata.callId is missing but sourceId or
+        // point id resolves to the target via the fallback chain).
+        const { matches } = await searchCalls(ctx, target, { maxResults: 25 })
+        if (!matches.some(m => m.callId === target)) {
+          return err(400, 'INVALID_CALL_ID')
+        }
       }
     } catch (e) {
       log.error({ err: e, userId: user.id }, 'confirm-mode call existence check failed')
