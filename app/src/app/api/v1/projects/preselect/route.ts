@@ -11,6 +11,7 @@ import {
 } from '@/lib/ai/agent/services/preselect'
 import { searchCalls } from '@/lib/ai/agent/services/evidence'
 import { setSelectedCall } from '@/lib/ai/agent/services/application'
+import type { ServiceContext } from '@/lib/ai/agent/services/types'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'preselect-route' })
@@ -70,9 +71,13 @@ async function handler(req: NextRequest): Promise<NextResponse> {
   // if the id exists in the vector store, at least one match will report the
   // same callId back.
   if (parsed.confirmCandidateId && !parsed.sessionId) {
-    const ctx = { userId: user.id, sessionId: '', locale: parsed.locale }
+    const ctx: ServiceContext = {
+      userId: user.id,
+      requestId: crypto.randomUUID(),
+      now: new Date(),
+    }
     try {
-      const { matches } = await searchCalls(ctx as any, parsed.confirmCandidateId, { maxResults: 5 })
+      const { matches } = await searchCalls(ctx, parsed.confirmCandidateId, { maxResults: 5 })
       if (!matches.some(m => m.callId === parsed.confirmCandidateId)) {
         return err(400, 'INVALID_CALL_ID')
       }
@@ -110,14 +115,15 @@ async function handler(req: NextRequest): Promise<NextResponse> {
 
   // Override mode: existing session, re-rank and mutate via setSelectedCall
   if (parsed.sessionId) {
-    const overrideCtx = {
+    const overrideCtx: ServiceContext = {
       userId: user.id,
       sessionId: parsed.sessionId,
-      locale: parsed.locale,
+      requestId: crypto.randomUUID(),
+      now: new Date(),
     }
     let candidates
     try {
-      candidates = await rankCandidates(overrideCtx as any, parsed.description, parsed.excludeCallIds ?? [])
+      candidates = await rankCandidates(overrideCtx, parsed.description, parsed.excludeCallIds ?? [])
     } catch (e) {
       log.error({ err: e, userId: user.id }, 'rankCandidates failed (override)')
       return err(503, 'PRESELECT_UNAVAILABLE')
@@ -130,13 +136,13 @@ async function handler(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ kind: 'ambiguous', candidates: decision.candidates })
     }
     try {
-      await setSelectedCall(overrideCtx as any, {
+      await setSelectedCall(overrideCtx, {
         sessionId: parsed.sessionId,
         callId: decision.callId,
         expectedStateVersion: parsed.expectedStateVersion!,
       })
     } catch (e) {
-      const e_ = e as any
+      const e_ = e as { code?: string; policyCode?: string }
       if (e_?.policyCode === 'POLICY_OUTLINE_ALREADY_FROZEN') return err(409, 'OUTLINE_FROZEN')
       if (e_?.code === 'CONCURRENCY') return err(409, 'CONCURRENCY_CONFLICT')
       log.error({ err: e, userId: user.id, sessionId: parsed.sessionId }, 'setSelectedCall failed')
@@ -156,10 +162,14 @@ async function handler(req: NextRequest): Promise<NextResponse> {
     })
   }
 
-  const ctx = { userId: user.id, sessionId: '', locale: parsed.locale }
+  const ctx: ServiceContext = {
+    userId: user.id,
+    requestId: crypto.randomUUID(),
+    now: new Date(),
+  }
   let candidates
   try {
-    candidates = await rankCandidates(ctx as any, parsed.description, parsed.excludeCallIds ?? [])
+    candidates = await rankCandidates(ctx, parsed.description, parsed.excludeCallIds ?? [])
   } catch (e) {
     log.error({ err: e, userId: user.id }, 'rankCandidates failed')
     return err(503, 'PRESELECT_UNAVAILABLE')
