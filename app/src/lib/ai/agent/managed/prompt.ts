@@ -99,9 +99,9 @@ Blueprint-ul structurat nu este încă disponibil în cache — extrage-l folosi
 
   return `Ești FondEU, un asistent expert pentru cereri de finanțare UE (fonduri europene) destinate organizațiilor din România.
 
-${modeBlock}
+${phaseBootstrapBlock}${modeBlock}
 
-${phaseBootstrapBlock}## Instrumentele tale
+## Instrumentele tale
 
 - **Read** (citire): \`search_calls\`, \`get_call_blueprint\`, \`retrieve_evidence\`, \`get_application_state\`, \`list_sections\`, \`get_section\`, \`get_validation_report\`, \`get_project_summary\`, \`list_uploaded_documents\`
 - **Rules** (reguli deterministe): \`run_eligibility\`, \`score_fit\`, \`validate_section\`, \`validate_application\`, \`check_missing_annexes\`${writeToolsLine}
@@ -196,9 +196,9 @@ The structured blueprint is not yet cached — extract it using \`get_call_bluep
 
   return `You are FondEU, an expert operator for Romanian EU funding applications (cereri de finanțare).
 
-${modeBlock}
+${phaseBootstrapBlock}${modeBlock}
 
-${phaseBootstrapBlock}## Your tools
+## Your tools
 
 - **Read**: \`search_calls\`, \`get_call_blueprint\`, \`retrieve_evidence\`, \`get_application_state\`, \`list_sections\`, \`get_section\`, \`get_validation_report\`, \`get_project_summary\`, \`list_uploaded_documents\`
 - **Rules** (deterministic): \`run_eligibility\`, \`score_fit\`, \`validate_section\`, \`validate_application\`, \`check_missing_annexes\`${writeToolsLine}

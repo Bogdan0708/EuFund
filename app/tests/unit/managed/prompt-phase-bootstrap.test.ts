@@ -39,6 +39,22 @@ describe('phaseBootstrapBlock — Romanian', () => {
     )
     expect(p).not.toContain('## Punct de pornire')
   })
+
+  it('omits the block when phase=structuring but selectedCallId is null', () => {
+    const p = buildManagedSystemPrompt(
+      mkSession({ phase: 'structuring', selectedCallId: null }),
+      [], 'structuring', 'ro', true,
+    )
+    expect(p).not.toContain('## Punct de pornire')
+  })
+
+  it('omits the block when phase=research but selectedCallId is null', () => {
+    const p = buildManagedSystemPrompt(
+      mkSession({ phase: 'research', selectedCallId: null }),
+      [], 'research', 'ro', true,
+    )
+    expect(p).not.toContain('## Punct de pornire')
+  })
 })
 
 describe('phaseBootstrapBlock — English', () => {
@@ -66,6 +82,22 @@ describe('phaseBootstrapBlock — English', () => {
   it('omits the block when phase=discovery', () => {
     const p = buildManagedSystemPrompt(
       mkSession({ phase: 'discovery' }), [], 'discovery', 'en', true,
+    )
+    expect(p).not.toContain('## Starting point')
+  })
+
+  it('omits the block when phase=structuring but selectedCallId is null', () => {
+    const p = buildManagedSystemPrompt(
+      mkSession({ phase: 'structuring', selectedCallId: null }),
+      [], 'structuring', 'en', true,
+    )
+    expect(p).not.toContain('## Starting point')
+  })
+
+  it('omits the block when phase=research but selectedCallId is null', () => {
+    const p = buildManagedSystemPrompt(
+      mkSession({ phase: 'research', selectedCallId: null }),
+      [], 'research', 'en', true,
     )
     expect(p).not.toContain('## Starting point')
   })
