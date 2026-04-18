@@ -166,3 +166,28 @@ describe('POST /api/v1/projects/preselect — error paths', () => {
     expect((await res.json()).error.code).toBe('PRESELECT_UNAVAILABLE')
   })
 })
+
+describe('POST /api/v1/projects/preselect — confirm mode', () => {
+  it('creates session with the specified confirmCandidateId, skips ranker', async () => {
+    mockInitializeSession.mockResolvedValue({
+      sessionId: 'session-confirm', phase: 'structuring', blueprintKind: 'structured',
+    })
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      confirmCandidateId: 'chosen-call-id',
+    }))
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.kind).toBe('selected')
+    expect(body.selectedCallId).toBe('chosen-call-id')
+    expect(mockRankCandidates).not.toHaveBeenCalled()
+    expect(mockInitializeSession).toHaveBeenCalledWith(expect.objectContaining({
+      selectedCallId: 'chosen-call-id',
+      candidates: [{ callId: 'chosen-call-id', title: 'chosen-call-id', score: 1 }],
+      excludeCallIdsApplied: [],
+    }))
+  })
+})

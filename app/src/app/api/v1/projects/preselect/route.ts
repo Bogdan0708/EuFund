@@ -62,9 +62,39 @@ async function handler(req: NextRequest): Promise<NextResponse> {
     return err(400, 'EXPECTED_STATE_VERSION_REQUIRED')
   }
 
-  // Phase 1: rank mode only. Confirm + override added in later tasks.
-  if (parsed.confirmCandidateId || parsed.sessionId) {
-    return err(501, 'NOT_IMPLEMENTED', 'confirm and override modes arrive in later tasks')
+  // Confirm mode: skip ranker, trust the provided callId
+  if (parsed.confirmCandidateId && !parsed.sessionId) {
+    try {
+      const result = await initializeSession({
+        userId: user.id,
+        description: parsed.description,
+        locale: parsed.locale,
+        selectedCallId: parsed.confirmCandidateId,
+        selectedScore: 1,
+        candidates: [{
+          callId: parsed.confirmCandidateId,
+          title: parsed.confirmCandidateId,
+          score: 1,
+        }],
+        excludeCallIdsApplied: [],
+      })
+      return NextResponse.json({
+        kind: 'selected',
+        sessionId: result.sessionId,
+        selectedCallId: parsed.confirmCandidateId,
+        candidates: [{ callId: parsed.confirmCandidateId, title: parsed.confirmCandidateId, score: 1 }],
+        blueprintKind: result.blueprintKind,
+        phase: result.phase,
+      })
+    } catch (e) {
+      log.error({ err: e, userId: user.id }, 'initializeSession failed (confirm mode)')
+      return err(500, 'SESSION_INIT_FAILED')
+    }
+  }
+
+  // Override mode not yet implemented (arrives in Task 11)
+  if (parsed.sessionId) {
+    return err(501, 'NOT_IMPLEMENTED', 'override mode arrives in task 11')
   }
 
   const ctx = { userId: user.id, sessionId: '', locale: parsed.locale }
