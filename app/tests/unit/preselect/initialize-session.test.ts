@@ -117,7 +117,7 @@ describe('initializeSession — raw-evidence blueprint', () => {
 })
 
 describe('initializeSession — blueprint lookup failure (degraded success)', () => {
-  it('creates session with phase=research, blueprintKind=none, audit flag set, warning logged', async () => {
+  it('creates session with phase=research, blueprintKind=none, and audit flag set', async () => {
     mockLookupBlueprint.mockRejectedValue(new Error('vector store blew up'))
 
     const result = await initializeSession({
