@@ -25,7 +25,6 @@ type PreselectState =
       callId: string
       callTitle: string
       description: string
-      outlineFrozen: boolean
     }
   | { kind: 'ambiguous'; candidates: Candidate[]; description: string }
   | { kind: 'no_match'; reason: string }
@@ -80,12 +79,16 @@ export function NewProjectView({
         callId: result.selectedCallId,
         callTitle: result.candidates[0]?.title ?? result.selectedCallId,
         description,
-        outlineFrozen: false,
       })
       // Update URL so a refresh resumes into the created session
       if (typeof window !== 'undefined') {
         window.history.replaceState(null, '', `?session=${result.sessionId}`)
       }
+      // Teach useAgent about the sessionId the preselect endpoint just
+      // created BEFORE sending the first turn — otherwise useAgent's
+      // internal sessionId is null and /api/ai/agent would create a fresh
+      // discovery session instead of continuing the preselected one.
+      await agent.adoptSession(result.sessionId)
       await agent.sendMessage(description)
     },
     [preselectEnabled, initialSessionId, locale, agent, state.kind],
@@ -112,11 +115,11 @@ export function NewProjectView({
           callId: result.selectedCallId,
           callTitle: result.candidates[0]?.title ?? result.selectedCallId,
           description,
-          outlineFrozen: false,
         })
         if (typeof window !== 'undefined') {
           window.history.replaceState(null, '', `?session=${result.sessionId}`)
         }
+        await agent.adoptSession(result.sessionId)
         await agent.sendMessage(description)
       }
     },
@@ -146,7 +149,6 @@ export function NewProjectView({
         callId: result.selectedCallId,
         callTitle: result.candidates[0]?.title ?? result.selectedCallId,
         description,
-        outlineFrozen: false,
       })
       return
     }
@@ -195,7 +197,7 @@ export function NewProjectView({
           {state.kind === 'selected' && (
             <SelectedCallBanner
               callTitle={state.callTitle}
-              outlineFrozen={state.outlineFrozen}
+              outlineFrozen={agent.outlineFrozen}
               onChangeRequested={handleChangeRequested}
             />
           )}

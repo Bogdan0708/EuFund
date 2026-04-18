@@ -364,6 +364,7 @@ function buildUISnapshot(session: AgentSession, sections: AgentSection[]): UISta
     sessionId: session.id,
     phase: session.currentPhase,
     stateVersion: session.stateVersion,
+    outlineFrozen: session.outlineFrozen,
     warnings: session.warnings,
     sections: sections.map(s => ({
       sectionKey: s.sectionKey,

@@ -3,7 +3,14 @@ import { test, expect } from '@playwright/test'
 test.use({ storageState: 'e2e/.auth/user.json' })
 test.describe.configure({ mode: 'serial' })
 
-test('preselect: new project lands in selected state without a discovery loop', async ({ page }) => {
+// Phase 1 smoke: asserts the preselect UX renders ONE of the three valid
+// client-visible outcomes (selected banner / ambiguous picker / no-match
+// guidance) and, on the happy path, the assistant stream starts. This is a
+// shape check, NOT a proof that the first turn skipped discovery — that
+// invariant is guarded at the prompt layer (tests/unit/managed/
+// prompt-phase-bootstrap.test.ts) and a future integration test will pin it
+// at the runtime layer (see tests/integration/agent-bootstrap-phase.test.ts).
+test('preselect: first-message dispatch renders one of the three UX outcomes', async ({ page }) => {
   test.setTimeout(3 * 60_000)
 
   // Navigate
