@@ -9,3 +9,6 @@ out/
 node_modules/
 uploads/
 tmp/
+
+# Playwright auth state (symlinked from primary worktree in dev worktrees)
+e2e/.auth
