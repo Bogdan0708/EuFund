@@ -6,6 +6,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 FondEU (PlatformaFinantare.eu) — AI-powered platform for Romanian organizations to prepare EU funding applications. Built with Next.js 14 App Router, TypeScript, Drizzle ORM + PostgreSQL (postgres.js driver), NextAuth v5 beta, next-intl (ro/en).
 
+## Local development
+
+Docker compose brings up the dev stack (ports exposed to host):
+- `eu-funds-postgres-1` — postgres on `5433`
+- `eu-funds-redis-1` — redis on `6380` (required for `/api/ai/*`; fail-closed)
+- `eu-funds-qdrant-1` — optional, `6335` (only needed with `VECTOR_PROVIDER=qdrant`)
+
+Required env in `app/.env.local` for a working dev loop:
+- `DATABASE_URL`, `REDIS_URL`, `NEXTAUTH_URL`, `NEXTAUTH_SECRET`
+- `ADMIN_PASSWORD` — `seed-admin.ts` throws without it; same value must be in `PLAYWRIGHT_ADMIN_PASSWORD` for e2e
+- `ANTHROPIC_API_KEY` + `OPENAI_API_KEY` for AI flows
+- `VECTOR_PROVIDER=memory` is the default (no Qdrant needed for most dev work)
+
+Dev server: `cd app && npm run dev` binds port 3000. If another project is already on 3000, use `PORT=3002 npm run dev` and update `NEXTAUTH_URL` to match — auth callbacks break otherwise.
+
 ## Commands
 
 All commands run from the `app/` directory:
@@ -100,14 +115,13 @@ Tests live in `app/tests/` (not `src/`). Path alias: `@/*` maps to `app/src/*`.
 **Row-Level Security**: `withUserRLS(userId, fn)` wraps queries in a transaction that sets `app.current_user_id` session variable. RLS policies in `lib/db/rls.sql` enforce tenant isolation using this variable. The variable name must match exactly between code and SQL.
 
 **CSRF**: Double-submit cookie pattern. Middleware sets `csrf-token` httpOnly cookie and `X-CSRF-Token` response header. Clients send token back in `X-CSRF-Token` request header. Constant-time comparison.
+- **Client side**: state-changing POSTs from the browser (fetch to `/api/*`) must go through `csrfFetch` from `@/lib/csrf/client` — bare `fetch` returns 403 `CSRF_REQUIRED`. Example: `lib/preselect/client.ts`.
 
 **CSP nonce**: Middleware generates `crypto.randomUUID()`, passes via `x-nonce` request header. Server components read via `getNonce()` from `@/lib/security/nonce`.
 
 **Audit logging**: `logAudit()` from `@/lib/legal/audit`. Tamper-evident SHA-256 hash chain — each entry links to the previous via `previousHash`/`entryHash`. DLQ fallback ensures audit failures never crash requests. Verify chain with `verifyAuditChainIntegrity()`.
 
 **Feature flags**: `isFeatureEnabled(key, ctx)` from `@/lib/feature-flags`. DB-backed with 60s LRU cache (max 500 entries). Supports tier targeting, userId targeting, and deterministic percentage rollout (MD5 hash). Fail-closed: unknown flags return `false`.
-
-**Redis rate limiting**: Fail-closed for AI endpoints (503 if Redis unavailable), preventing unmetered AI usage.
 
 **Validation**: Zod for all request schemas, defined in `@/lib/validation/schemas.ts`. Key schemas: `extractedCallSchema`, `wizardMatchCallsSchema`. Types are inferred from schemas.
 
@@ -121,13 +135,17 @@ Tests live in `app/tests/` (not `src/`). Path alias: `@/*` maps to `app/src/*`.
 
 **Token TTLs**: Email verification = 24h, password reset = 1h.
 
+**Client-side agent state** (`@/hooks/useAgent`): a hook that streams `/api/ai/agent` SSE events and exposes `{ messages, sessionId, phase, stateVersion, outlineFrozen, sendMessage, sendAction, adoptSession }`. When a server endpoint creates a session out-of-band (e.g. preselect's `/api/v1/projects/preselect`), the caller MUST `await agent.adoptSession(newSessionId)` before `agent.sendMessage(...)` — the hook mirrors `sessionId` into a `sessionIdRef` that `sendMessage` reads synchronously, bypassing the stale-closure trap of React's setState.
+
+**`planning_artifact` versioning**: `agent_sessions.planning_artifact` is `jsonb` shared by V3 (`projectSummary`, `keyAssumptions`) and preselect (`preselect.version === 1`). Consumers must guard on the `version` field before reading a sub-object. Adding a new producer means bumping `version` (or adding a new top-level key) AND updating the narrow types in `lib/ai/knowledge/write-back.ts` / `lib/ai/agent/services/preselect.ts`.
+
 ### Agent Architecture
 
 The primary AI interaction path. Three runtimes coexist in source; master currently uses two.
 
 **V3 Agent** (`lib/ai/agent/`): state-machine agent with phases `discovery` → `research` → `structuring` → `drafting` → `review`. Each phase gates which MCP tools are available via the registry. Main entry: `POST /api/ai/agent`. Session state tracked in `agent_sessions` with `stateVersion` optimistic-concurrency tokens — all mutations use CAS. **Authoritative runtime today.**
 
-**Managed Agents** (`lib/ai/agent/managed/`): Phase 2 pilot, gated by `managed_agent_enabled` flag. Phase 3b in flight — PR-B (history normalizer) merged (#48); PR-A (write surface) is up for review (#49). PR-A lands 22 tools total (9 read + 5 rules + 8 write), plus a new `managed_agent_writes_enabled` rollout flag (default-off) that gates the tool surface, the system prompt, and the executor dispatch. A runtime-level parallel-write cap allows at most one write tool call per assistant message; additional writes receive a synthetic `PARALLEL_WRITE_BLOCKED` tool_result without dispatch. Phase 3c (structured-action bridge) and 3d (quality comparison harness) are still pending. Design spec: `docs/superpowers/specs/2026-04-10-managed-agents-phase3-design.md`.
+**Managed Agents** (`lib/ai/agent/managed/`): alternate runtime gated by `managed_agent_enabled` flag + `MANAGED_RUNTIME_ENABLED=true` env. Tool surface has four disjoint name sets in `tools.ts` — `READ_TOOL_NAMES` (9), `RULE_TOOL_NAMES` (5), `WRITE_TOOL_NAMES` (8), `PHASE_4_BLOCKED_TOOL_NAMES` (2). `getManagedTools(allowWrites)` returns 14 read+rules when writes are off, 22 when on. Writes are additionally gated by the `managed_agent_writes_enabled` rollout flag, which the runtime threads as `serviceCtx.allowWrites` to both the tool surface AND `buildManagedSystemPrompt`, so the model only sees writes when the flag is on. A runtime-level parallel-write cap allows at most one write tool call per assistant message; additional writes receive a synthetic `PARALLEL_WRITE_BLOCKED` tool_result without dispatch. The executor has an `allowWrites` gate as defense-in-depth. Design spec: `docs/superpowers/specs/2026-04-10-managed-agents-phase3-design.md`.
 
 **Deterministic preselect** (`lib/ai/agent/services/preselect.ts`, `POST /api/v1/projects/preselect`): server-side call selection + session bootstrap that replaces LLM-driven discovery for new projects. Four request modes: **rank** (no sessionId, no confirmCandidateId — runs the ranker), **confirm-new** (no sessionId + confirmCandidateId — creates a new session with the picked call), **override-rerank** (sessionId + expectedStateVersion — re-ranks on existing session), and **override-confirm** (sessionId + expectedStateVersion + confirmCandidateId — user picked from an override-mode ambiguous response; mutates the existing session, never creates a new one). Ranks top-5 calls by per-call vector similarity (pure max-score from `searchCalls`, which already dedupes). Three-branch decision policy: `selected` creates the session with `selectedCallId` + blueprint (when cached) + phase=`structuring` or `research`; `ambiguous` returns top-3 to the client without mutating state; `no_match` returns guidance without mutating state. Candidate list persists in `agent_sessions.planning_artifact` (versioned). Confirm modes validate the chosen callId via a three-prong existence probe before session creation/mutation (400 `INVALID_CALL_ID` on miss): filter on `metadata.callId`, filter on `metadata.sourceId`, then reproduce the picker's description-based search as the ultra-fallback. Override paths mutate via `setSelectedCall` (409 `OUTLINE_FROZEN` / `CONCURRENCY_CONFLICT` on policy/CAS failures); they omit `blueprintKind`/`phase` from the response because `setSelectedCall` does not change them. Feature-flagged on `deterministic_preselect_enabled` + `managed_agent_writes_enabled` + `managed_agent_enabled` + `MANAGED_RUNTIME_ENABLED=true` env var — any partial enablement would route to V3 silently, reintroducing discovery. Preselected sessions (`planning_artifact.preselect.version === 1`) fail closed with 503 `MANAGED_UNAVAILABLE` rather than degrade to V3 (structured actions are exempt — they bypass managed by design). Spec: `docs/superpowers/specs/2026-04-18-deterministic-preselect-design.md`.
 
@@ -137,9 +155,7 @@ The primary AI interaction path. Three runtimes coexist in source; master curren
 
 **MCP tools** (`lib/ai/agent/mcp/`): organized as `read/` (search-calls, get-call-blueprint, get-application-state, list-sections, get-section, get-validation-report, get-project-summary, list-uploaded-documents, retrieve-evidence), `rules/` (run-eligibility, validate-section, validate-application, check-missing-annexes, score-fit), `research/` (refresh-call-freshness, verify-deadline, check-call-page-updates). Tool availability is phase-gated by the registry.
 
-**Senior Review primitive** (planned, not yet implemented): runtime-owned escalation at 4 high-stakes gates (call selection, outline freeze, eligibility verdict, section recovery). Spec: `docs/superpowers/specs/2026-04-14-senior-review-primitive-design.md`. PR 1 plan: `docs/superpowers/plans/2026-04-14-senior-review-pr1-foundation.md`. Blocked on PR #49 (managed write surface) merging and rollout.
-
-**Managed tool surface gating** (`lib/ai/agent/managed/tools.ts`): four disjoint name sets — `READ_TOOL_NAMES` (9), `RULE_TOOL_NAMES` (5), `WRITE_TOOL_NAMES` (8), `PHASE_4_BLOCKED_TOOL_NAMES` (2: `create_export_snapshot`, `save_call_blueprint`). `MANAGED_TOOL_NAMES` is the union of the first three. `getManagedTools(allowWrites)` returns 14 tools when writes are off, 22 when on. Runtime derives `allowWrites = serviceCtx.allowWrites === true` from the `managed_agent_writes_enabled` flag and threads it to both the tool surface and `buildManagedSystemPrompt(..., allowWrites, summary?)` — so the model only sees writes when the flag is on. The executor also has an `allowWrites` gate as defense-in-depth (fires before dispatch when a write is somehow attempted with the flag off).
+**Senior Review primitive** (designed, not yet implemented): runtime-owned escalation at 4 high-stakes gates (call selection, outline freeze, eligibility verdict, section recovery). Spec: `docs/superpowers/specs/2026-04-14-senior-review-primitive-design.md`.
 
 ### Routing Conventions
 
@@ -209,27 +225,38 @@ This project is part of a cross-project knowledge system:
 - **Custom commands**: `/research`, `/review-drafts`, `/daily`, `/adr` — work across vault + NotebookLM
 - **NotebookLM notebooks**: 12 program-specific notebooks (FondEU-Architecture, FondEU-PEO, FondEU-PNRR, FondEU-POTJ, FondEU-POAT, FondEU-POCIDIF, FondEU-PDD, FondEU-PS, FondEU-POIM, FondEU-PR-NE, FondEU-POCU, FondEU-PoIDS). Registered via `mcp__notebooklm__add_notebook`, queryable via `/research`
 
-### Gotchas
+### Adding new code
 
-- `app/src/lib/db/rls.sql` is a **design reference, not an execution artifact** — the migrator only runs files under `app/drizzle/`. RLS policies for new tables must live in the drizzle migration file itself. Keep `rls.sql` in sync for human readability, but never assume it runs.
-- `rls.sql` variable must match `withUserRLS()`: both use `app.current_user_id`
-- This repo uses git worktrees heavily. `.worktrees/` is gitignored; sibling external worktrees (`~/Dev/EU-Funds-*`) are also common. Check `git worktree list` before assuming master state — the primary checkout may not be up to date. Root `/node_modules/` is gitignored as of PR #49 — previously only `app/node_modules/` was, which let vitest caches leak into tracked files.
-- `requirePlatformAdmin()` always hits DB — never trust session alone for admin checks
-- `logAudit()` only logs when a DB mutation actually occurs (no-op guard for consent)
-- `grantedAt` should NOT be set on withdraw-from-scratch consent records
-- Storage paths validated against directory traversal via `path.resolve()` check
-- ESLint `ignoreDuringBuilds: true` in `next.config.mjs` — pre-existing issues, fix incrementally
-- `withAIAuth()` caches user tiers in-memory (LRU, 5-min TTL, max 10k users) — stale tier after upgrade for up to 5 min
-- `instrumentationHook: true` in next.config.mjs enables Sentry — only active when `SENTRY_DSN` env var is set
-- Qdrant must have `QDRANT_API_KEY` set in production — unauthenticated Qdrant is a read/write security risk
-- `direct-ingest-guides.ts` is emergency-only — it bypasses API auth, audit logging, and review. Never use as a normal ingestion path
-- Vector store `MemoryVectorStore` treats filter as key-value equality; `QdrantVectorStore` passes filter raw to Qdrant API — not interchangeable for filtered searches
-- `seed-admin.ts` requires `ADMIN_PASSWORD` in the environment — no source-code fallback. Set it in `.env.local` locally or as the `CI_ADMIN_PASSWORD` secret in pipelines. The same value must be mirrored to `PLAYWRIGHT_ADMIN_PASSWORD` on any job that runs e2e login, otherwise `app/e2e/test-config.ts` throws at module load.
-- AI endpoints are fail-closed on Redis — `guardAIRequest` (`lib/middleware/auth.ts`) returns 503 `RATE_LIMIT_UNAVAILABLE` if `isRedisAvailable()` returns false. Local dev needs `REDIS_URL` set or every `/api/ai/*` call fails with 503.
-- Kill-switch / rollout-control feature flags must pass `bypassCache: true` to `isFeatureEnabled`. `feature-flags/index.ts:66-68` documents this — a cached read can delay an emergency disable by up to 60s on warm instances. The writes-surface flag (`managed_agent_writes_enabled`) is read with `bypassCache: true` at `api/ai/agent/route.ts`. New mutation rollout flags should follow the same pattern.
-- `npm run db:generate` is broken — `app/drizzle/meta/` is missing 18 of 25 snapshots (gaps at `0007–0009`, `0012–0024`), so drizzle-kit aborts before emitting new SQL. Until snapshots are rebuilt, new migrations must be hand-authored in the style of `0023`/`0024` and their entry manually appended to `meta/_journal.json`. See `0028_agent_sessions_project_and_outline_frozen.sql` for an example.
-- Vector store defaults to `VECTOR_PROVIDER=memory` for local dev (no Qdrant needed). Only production and explicit RAG-testing sessions need `VECTOR_PROVIDER=qdrant` + `QDRANT_URL` + `QDRANT_API_KEY`. Do not stand up a local Qdrant unless you are specifically testing RAG behavior.
-- `next dev` binds to port 3000 by default. If port 3000 is occupied by a parallel project on the same workstation, override with `PORT=3002 npm run dev` and update `NEXTAUTH_URL` in `.env.local` to match, otherwise auth callbacks break.
+- **New drizzle migration**: hand-author SQL in `app/drizzle/NNNN_name.sql` (next free number), append matching entry to `meta/_journal.json` with `idx: N`, `tag: "NNNN_name"`, `when` greater than the previous entry. `npm run db:generate` is broken — see Gotchas. Mirror any RLS policies into `lib/db/rls.sql` for human readability, but the migrator only executes files under `drizzle/`, so the RLS SQL must live IN the migration to actually apply.
+- **New feature flag**: seed via a new migration (see `0030_preselect_feature_flag.sql` for the canonical pattern: `INSERT ... ON CONFLICT (key) DO NOTHING`). Rollout/kill-switch flags must be read with `bypassCache: true` so an emergency disable isn't delayed by the 60s LRU cache.
+- **New `AuditAction`**: add the string to the union in `lib/legal/audit.ts`, AND update `inferLegalBasis` if the prefix doesn't already resolve to a correct GDPR basis. The `session.*` → `contract` branch (for example) was added retroactively; new prefixes need the same consideration.
+- **New V3 service mutation**: add a rule in `lib/ai/agent/policy/matrix.ts` and call `assertPolicy(...)` inside the service. Route handlers should discriminate errors via `instanceof ConcurrencyError` / `instanceof ValidationError` (and check `.policyCode`) rather than duck-typing on `.code` strings. Bypassing the service layer breaks the audit chain.
+- **New public API route**: auth before rate-limit so `keySuffix: user.id` can tie the bucket to the user (not their IP). Feature-flag reads inside the handler should pass `bypassCache: true` for any flag that gates the route itself. User-facing errors use `{ error: { code, messageRo, messageEn } }`.
+
+### Gotchas — surprising invariants
+
+- `app/src/lib/db/rls.sql` is a **design reference, not an execution artifact** — the migrator only runs files under `app/drizzle/`. RLS policies for new tables must live in the drizzle migration file itself.
+- `rls.sql` variable must match `withUserRLS()`: both use `app.current_user_id`.
+- `requirePlatformAdmin()` always hits DB — never trust session alone for admin checks.
+- `logAudit()` only logs when a DB mutation actually occurs (no-op guard for consent).
+- `grantedAt` should NOT be set on withdraw-from-scratch consent records.
+- `withAIAuth()` caches user tiers in-memory (LRU, 5-min TTL, max 10k users) — stale tier after upgrade for up to 5 min.
+- Vector store `MemoryVectorStore` treats filter as key-value equality; `QdrantVectorStore` passes filter raw to Qdrant — not interchangeable for filtered searches.
+- Storage paths validated against directory traversal via `path.resolve()` check.
+
+### Gotchas — production-only
+
+- Qdrant must have `QDRANT_API_KEY` set in production — unauthenticated Qdrant is a read/write security risk.
+- `instrumentationHook: true` in next.config.mjs enables Sentry — only active when `SENTRY_DSN` env var is set.
+- `direct-ingest-guides.ts` is emergency-only — it bypasses API auth, audit logging, and review. Never use as a normal ingestion path.
+- Kill-switch / rollout-control feature flags must pass `bypassCache: true` — a cached read can delay an emergency disable by up to 60s on warm instances.
+
+### Gotchas — dev-environment mechanics
+
+- This repo uses git worktrees heavily. `.worktrees/` is gitignored; sibling external worktrees (`~/Dev/EU-Funds-*`) are also common. Check `git worktree list` before assuming master state — the primary checkout may not be up to date.
+- `npm run db:generate` is broken — `app/drizzle/meta/` is missing 18 of 25 snapshots (gaps at `0007–0009`, `0012–0024`), so drizzle-kit aborts before emitting new SQL. Hand-author migrations until snapshots are rebuilt. See `0028_agent_sessions_project_and_outline_frozen.sql` and `0030_preselect_feature_flag.sql` for examples.
+- ESLint `ignoreDuringBuilds: true` in `next.config.mjs` — pre-existing issues, fix incrementally.
+- `seed-admin.ts` requires `ADMIN_PASSWORD` in the environment — no source-code fallback. `PLAYWRIGHT_ADMIN_PASSWORD` must mirror it for any job that runs e2e login.
 
 ## CI gate policy
 
