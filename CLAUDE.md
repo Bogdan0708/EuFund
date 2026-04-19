@@ -254,9 +254,11 @@ This project is part of a cross-project knowledge system:
 ### Gotchas — dev-environment mechanics
 
 - This repo uses git worktrees heavily. `.worktrees/` is gitignored; sibling external worktrees (`~/Dev/EU-Funds-*`) are also common. Check `git worktree list` before assuming master state — the primary checkout may not be up to date.
-- `npm run db:generate` is broken — `app/drizzle/meta/` is missing 18 of 25 snapshots (gaps at `0007–0009`, `0012–0024`), so drizzle-kit aborts before emitting new SQL. Hand-author migrations until snapshots are rebuilt. See `0028_agent_sessions_project_and_outline_frozen.sql` and `0030_preselect_feature_flag.sql` for examples.
+- `npm run db:generate` is broken — `app/drizzle/meta/` has only 9 of 31 snapshots (most indexes above `0006` are missing), so drizzle-kit aborts before emitting new SQL. Hand-author migrations until snapshots are rebuilt. See `0030_preselect_feature_flag.sql` for the canonical pattern.
 - ESLint `ignoreDuringBuilds: true` in `next.config.mjs` — pre-existing issues, fix incrementally.
 - `seed-admin.ts` requires `ADMIN_PASSWORD` in the environment — no source-code fallback. `PLAYWRIGHT_ADMIN_PASSWORD` must mirror it for any job that runs e2e login.
+- Codex inline reviews use the `[bot]`-suffixed login. The `chatgpt-codex-connector` bot reviews every PR via the ChatGPT Codex integration. When fetching review comments via REST API (`pulls/:n/comments`), the author login is `chatgpt-codex-connector[bot]` — with the suffix; `gh pr view --json reviews` (GraphQL) strips it to `chatgpt-codex-connector`. Filtering on the wrong variant silently returns zero and makes it look like the bot found nothing.
+- GitHub Actions billing block looks like a CI failure. If `quality` + `Scan for secrets` both fail with "The job was not started because recent account payments have failed" in the annotations — and no steps ran, no runner assigned — check billing at github.com/settings/billing before investigating code. Downstream CI jobs get SKIPPED via `needs:` dependency, which looks like a cascading failure but isn't.
 
 ## CI gate policy
 
@@ -266,7 +268,11 @@ New required CI checks must include a commit of record demonstrating them passin
 
 Use the `/browse` skill from gstack for all web browsing. Never use `mcp__claude-in-chrome__*` tools.
 
-Available skills: /office-hours, /plan-ceo-review, /plan-eng-review, /plan-design-review, /design-consultation, /design-shotgun, /design-html, /review, /ship, /land-and-deploy, /canary, /benchmark, /browse, /connect-chrome, /qa, /qa-only, /design-review, /setup-browser-cookies, /setup-deploy, /retro, /investigate, /document-release, /codex, /cso, /autoplan, /careful, /freeze, /guard, /unfreeze, /gstack-upgrade, /learn
+Available skills live in `~/.claude/skills/gstack/`. List the current set with:
+
+```bash
+find ~/.claude/skills/gstack -maxdepth 2 -name SKILL.md -printf '%h\n' | xargs -n1 basename | sort
+```
 
 If gstack skills aren't working, run `cd .claude/skills/gstack && ./setup` to build the binary and register skills.
 
