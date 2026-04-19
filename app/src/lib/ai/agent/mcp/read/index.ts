@@ -6,6 +6,7 @@ import { registerGetApplicationState } from './get-application-state'
 import { registerRetrieveEvidence } from './retrieve-evidence'
 import { registerGetProjectSummary } from './get-project-summary'
 import { registerListUploadedDocuments } from './list-uploaded-documents'
+import { registerGetDocumentContent } from './get-document-content'
 import { registerListSections } from './list-sections'
 import { registerGetSection } from './get-section'
 import { registerGetValidationReport } from './get-validation-report'
@@ -18,6 +19,7 @@ export function createReadServer(ctx: ServiceContext) {
   registerRetrieveEvidence(server, ctx)
   registerGetProjectSummary(server, ctx)
   registerListUploadedDocuments(server, ctx)
+  registerGetDocumentContent(server, ctx)
   registerListSections(server, ctx)
   registerGetSection(server, ctx)
   registerGetValidationReport(server, ctx)

@@ -935,6 +935,22 @@
       "draft": "Draft",
       "reviewed": "Reviewed",
       "approved": "Approved"
+    },
+    "userUploads": {
+      "title": "Your uploaded documents",
+      "description": "Your documents are stored securely and are available to the AI assistant when answering questions about this project.",
+      "dropzoneTitle": "Upload a document",
+      "dropzoneHint": "PDF, DOCX, DOC or TXT — max 50 MB",
+      "uploading": "Uploading...",
+      "uploadError": "Upload failed.",
+      "deleteError": "Delete failed.",
+      "loadError": "Could not load list.",
+      "empty": "You have not uploaded any documents for this project yet.",
+      "docTypeLabel": "Document type:",
+      "badgeIndexed": "indexed",
+      "badgeNotIndexed": "not indexed",
+      "download": "Download",
+      "delete": "Delete"
     }
   },
   "calls": {
@@ -1340,5 +1356,17 @@
       "OUTLINE_FROZEN": "The outline is frozen; you can no longer change the call.",
       "CONCURRENCY_CONFLICT": "The session state changed in the meantime. Please retry."
     }
+  },
+  "docType": {
+    "ghid_solicitant": "Applicant guide",
+    "bilant": "Balance sheet",
+    "certificat": "Certificate",
+    "aviz": "Opinion/authorization",
+    "studiu_fezabilitate": "Feasibility study",
+    "plan_afaceri": "Business plan",
+    "deviz": "Cost estimate",
+    "acord_parteneriat": "Partnership agreement",
+    "declaratie": "Declaration",
+    "altul": "Other"
   }
 }

@@ -17,6 +17,7 @@ import { inputSchema as getSectionSchema } from '../mcp/read/get-section'
 import { inputSchema as getValidationReportSchema } from '../mcp/read/get-validation-report'
 import { inputSchema as getProjectSummarySchema } from '../mcp/read/get-project-summary'
 import { inputSchema as listUploadedDocumentsSchema } from '../mcp/read/list-uploaded-documents'
+import { inputSchema as getDocumentContentSchema } from '../mcp/read/get-document-content'
 
 // Rules tools
 import { inputSchema as runEligibilitySchema } from '../mcp/rules/run-eligibility'
@@ -80,6 +81,11 @@ export const MANAGED_TOOLS: Tool[] = [
     name: 'list_uploaded_documents',
     description: 'List documents uploaded for a project with filename, type, upload date, and size. Read-only.',
     input_schema: zodToJsonSchema(listUploadedDocumentsSchema) as Tool['input_schema'],
+  },
+  {
+    name: 'get_document_content',
+    description: 'Fetch extracted text for an uploaded document by file ID. Returns up to maxChars characters of the ocr_text column (default 8000, valid range 500-50000). Call AFTER list_uploaded_documents to read files the user has attached. Returns empty text when the document is not indexed (scanned PDF with no text layer, or a legacy .doc file). The `truncated` field indicates whether text was cut off at maxChars. Read-only.',
+    input_schema: zodToJsonSchema(getDocumentContentSchema) as Tool['input_schema'],
   },
   {
     name: 'run_eligibility',
@@ -165,6 +171,7 @@ export const READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   'get_validation_report',
   'get_project_summary',
   'list_uploaded_documents',
+  'get_document_content',
 ])
 
 export const RULE_TOOL_NAMES: ReadonlySet<string> = new Set([

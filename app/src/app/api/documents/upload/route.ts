@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
 import { documents, docTypeEnum, projects } from '@/lib/db/schema';
+import { parseKnowledgeFile } from '@/lib/ai/knowledge/parser';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth } from '@/lib/auth/helpers';
 import { logAudit } from '@/lib/legal/audit';
@@ -141,6 +142,29 @@ export async function POST(req: NextRequest) {
       throw Errors.internal('Nu s-a putut salva documentul.');
     }
 
+    const EXTRACT_CAP = 50_000 // matches /api/documents/[id]/analyze cap (route.ts:106)
+    let hasText = false
+    try {
+      // Best-effort post-insert enrichment. Not part of the insert transaction.
+      // Upload success does not depend on extraction success.
+      const parsed = await parseKnowledgeFile(buffer, safeName, file.type)
+      const truncated = parsed.text.slice(0, EXTRACT_CAP)
+      if (truncated.length > 0) {
+        await withUserRLS(user.id, async (tx) => {
+          await tx
+            .update(documents)
+            .set({ ocrText: truncated })
+            .where(eq(documents.id, doc!.id))
+        })
+        hasText = true
+      }
+    } catch (extractError) {
+      log.warn(
+        { documentId: doc.id, filename: safeName, mimeType: file.type, error: extractError },
+        '[documents:upload] extraction skipped (unsupported format or parse error)',
+      )
+    }
+
     await logAudit({
       userId: user.id,
       action: 'document.upload',
@@ -158,6 +182,7 @@ export async function POST(req: NextRequest) {
         fileSize: doc.fileSize,
         docType: doc.docType,
         createdAt: doc.createdAt,
+        hasText,
       },
     }, { status: 201 });
   } catch (error) {

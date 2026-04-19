@@ -278,12 +278,28 @@ export interface ProjectSummary {
 
 // --- Documents ---
 
+// Must stay in sync with app/src/lib/db/schema.ts docTypeEnum enumValues.
+// services/projects.ts has a compile-time `satisfies` check that enforces this.
+export type DocumentType =
+  | 'ghid_solicitant'
+  | 'bilant'
+  | 'certificat'
+  | 'aviz'
+  | 'studiu_fezabilitate'
+  | 'plan_afaceri'
+  | 'deviz'
+  | 'acord_parteneriat'
+  | 'declaratie'
+  | 'altul'
+
 export interface UploadedDocument {
   fileId: string
   filename: string
   mimeType: string
   sizeBytes: number
   uploadedAt: Date
+  docType: DocumentType
+  hasText: boolean
   extractedText?: string
 }
 

@@ -907,6 +907,15 @@ export const agentTurns = pgTable('agent_turns', {
   runtimeMode: runtimeModeEnum('runtime_mode').notNull(),
   startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp('completed_at', { withTimezone: true }),
+  // Per-turn cost telemetry (nullable; populated by the managed runtime after
+  // the stream completes). cost_usd_micros is dollars × 1_000_000 to avoid
+  // float drift in SUM queries. See migration 0030.
+  model: varchar('model', { length: 100 }),
+  inputTokens: integer('input_tokens'),
+  outputTokens: integer('output_tokens'),
+  cacheReadInputTokens: integer('cache_read_input_tokens'),
+  cacheCreationInputTokens: integer('cache_creation_input_tokens'),
+  costUsdMicros: bigint('cost_usd_micros', { mode: 'number' }),
 }, (table) => ({
   sessionRequestUnique: unique('agent_turns_session_request_unique').on(table.sessionId, table.requestId),
   idxSessionStarted: index('idx_agent_turns_session_started').on(table.sessionId, desc(table.startedAt)),
