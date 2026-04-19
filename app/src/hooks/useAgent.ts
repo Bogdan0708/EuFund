@@ -36,6 +36,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [phase, setPhase] = useState<Phase>('discovery')
   const [stateVersion, setStateVersion] = useState(0)
+  const [outlineFrozen, setOutlineFrozen] = useState(false)
   const [warnings, setWarnings] = useState<Warning[]>([])
   const [sections, setSections] = useState<AgentSectionState[]>([])
   const [blueprint, setBlueprint] = useState<unknown>(null)
@@ -44,13 +45,20 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   const abortRef = useRef<AbortController | null>(null)
   const stateVersionRef = useRef(0)
   stateVersionRef.current = stateVersion
+  // Mirror sessionId in a ref so sendRequest can observe synchronous updates
+  // from adoptSession() within the same event-loop tick (state updates from
+  // setState don't propagate to the current closure).
+  const sessionIdRef = useRef<string | null>(null)
+  sessionIdRef.current = sessionId
 
   // ── Event handler ──────────────────────────────────────────
 
   const applyFinalState = useCallback((state: UIStateSnapshot) => {
     setSessionId(state.sessionId)
+    sessionIdRef.current = state.sessionId
     setPhase(state.phase)
     setStateVersion(state.stateVersion)
+    setOutlineFrozen(state.outlineFrozen)
     setWarnings(state.warnings)
     setSections(state.sections)
     setBlueprint(state.blueprint)
@@ -120,6 +128,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
           setStateVersion(event.patch.stateVersion)
           stateVersionRef.current = event.patch.stateVersion
         }
+        if (event.patch.outlineFrozen !== undefined) setOutlineFrozen(event.patch.outlineFrozen)
         if (event.patch.warnings) setWarnings(event.patch.warnings)
         if (event.patch.sections) setSections(event.patch.sections)
         break
@@ -164,7 +173,10 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     setError(null)
 
     const fullRequest: AgentRequest = {
-      sessionId: sessionId ?? undefined,
+      // Read from the ref so a synchronous adoptSession() call made right
+      // before sendMessage() (e.g. from the preselect flow) is observed
+      // immediately, without waiting for the next render cycle.
+      sessionId: sessionIdRef.current ?? undefined,
       message: request.message,
       action: request.action,
       requestId: `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -191,8 +203,26 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
       })
 
       if (!response.ok) {
-        const errBody = await response.json().catch(() => ({ error: 'Request failed' }))
-        throw new Error(errBody.error || `HTTP ${response.status}`)
+        const errBody: unknown = await response.json().catch(() => ({ error: 'Request failed' }))
+        // /api/ai/agent returns { error: { code, messageRo, messageEn } } for
+        // managed-runtime errors; older paths return { error: 'string' }.
+        // Without this branch, the object shape renders as `[object Object]`
+        // when passed to new Error(). Pick the message for the current
+        // locale (falling through to the other locale if only one is
+        // populated), then code, then a generic HTTP fallback.
+        const rawError = (errBody as { error?: unknown })?.error
+        let message: string
+        if (typeof rawError === 'string') {
+          message = rawError
+        } else if (rawError && typeof rawError === 'object') {
+          const e = rawError as { messageRo?: string; messageEn?: string; code?: string; message?: string }
+          const primary = locale === 'ro' ? e.messageRo : e.messageEn
+          const secondary = locale === 'ro' ? e.messageEn : e.messageRo
+          message = primary || secondary || e.message || e.code || `HTTP ${response.status}`
+        } else {
+          message = `HTTP ${response.status}`
+        }
+        throw new Error(message)
       }
 
       setStatus('streaming')
@@ -332,6 +362,26 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     return sendRequest({ action })
   }, [sendRequest])
 
+  // Adopt an externally-created session (e.g. one the deterministic preselect
+  // endpoint just created). Updates the ref synchronously so a follow-up
+  // sendMessage() in the same click handler sends with the new sessionId, and
+  // fetches the real session state so consumers get the correct outlineFrozen,
+  // phase, stateVersion, blueprint, etc.
+  const adoptSession = useCallback(async (newSessionId: string) => {
+    sessionIdRef.current = newSessionId
+    setSessionId(newSessionId)
+    try {
+      const res = await csrfFetch(`/api/ai/agent/state?sessionId=${newSessionId}`)
+      if (res.ok) {
+        const state: UIStateSnapshot = await res.json()
+        applyFinalState(state)
+      }
+    } catch {
+      // Best effort — the next turn will still carry the correct sessionId
+      // because we set the ref synchronously above.
+    }
+  }, [applyFinalState])
+
   return {
     // State
     messages,
@@ -340,6 +390,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     sessionId,
     phase,
     stateVersion,
+    outlineFrozen,
     warnings,
     sections,
     blueprint,
@@ -348,5 +399,6 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     sendMessage,
     sendAction,
     reconnect,
+    adoptSession,
   }
 }

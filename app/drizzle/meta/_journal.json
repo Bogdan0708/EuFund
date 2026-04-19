@@ -211,6 +211,13 @@
       "when": 1776902400000,
       "tag": "0029_managed_agent_writes_enabled_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1776988800000,
+      "tag": "0030_preselect_feature_flag",
+      "breakpoints": true
     }
   ]
 }

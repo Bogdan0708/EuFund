@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
     sessionId: session.id,
     phase: session.currentPhase,
     stateVersion: session.stateVersion,
+    outlineFrozen: session.outlineFrozen,
     warnings: (session.warnings as UIStateSnapshot['warnings']) || [],
     sections: sectionRows.map(s => ({
       sectionKey: s.sectionKey,

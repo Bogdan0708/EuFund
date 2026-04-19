@@ -1316,5 +1316,29 @@
     "pilotBadge": "Pilot — mod asistent gestionat",
     "degraded": "Asistentul gestionat este temporar indisponibil. Am revenit la modul standard.",
     "notAvailable": "Asistentul gestionat nu este disponibil pentru contul tău în Faza 2."
+  },
+  "preselect": {
+    "placeholder": "Descrie proiectul tău…",
+    "matching": "Caut cel mai potrivit apel…",
+    "banner": {
+      "label": "Apel selectat",
+      "change": "Schimbă"
+    },
+    "picker": {
+      "title": "Alege apelul potrivit",
+      "subtitle": "Am găsit mai multe apeluri similare. Alege unul pentru a continua.",
+      "select": "Alege"
+    },
+    "noMatch": {
+      "title": "Nu am găsit un apel suficient de potrivit",
+      "hint": "Adaugă mai multe detalii: tipul organizației, domeniul proiectului, buget aproximativ.",
+      "retry": "Încearcă din nou"
+    },
+    "errors": {
+      "PRESELECT_UNAVAILABLE": "Sistemul de căutare este momentan indisponibil. Încearcă din nou în câteva momente.",
+      "DESCRIPTION_TOO_SHORT": "Descrie proiectul mai în detaliu (cel puțin 40 de caractere).",
+      "OUTLINE_FROZEN": "Outline-ul este înghețat, nu mai poți schimba apelul.",
+      "CONCURRENCY_CONFLICT": "Starea sesiunii s-a schimbat între timp. Reîncearcă."
+    }
   }
 }

@@ -80,9 +80,26 @@ Instrumentele de scriere modifică starea sesiunii. Respectă aceste reguli:
 4. **Recuperare după coduri de politică.** Dacă o scriere returnează o eroare cu prefix \`POLICY_*\` (ex. \`POLICY_OUTLINE_NOT_FROZEN\`, \`POLICY_ELIGIBILITY_NOT_PASSED\`), citește mesajul și rezolvă precondiția înainte de reîncercare. Pentru \`POLICY_OUTLINE_NOT_FROZEN\`, apelează \`freeze_outline\` mai întâi. Pentru \`POLICY_ELIGIBILITY_NOT_PASSED\`, rulează \`run_eligibility\`. Pentru \`POLICY_VALIDATION_NOT_PASSED\` la \`set_application_status('completed')\`, rulează \`validate_application\` și rezolvă problemele raportate.`
     : ''
 
+  const phaseBootstrapBlock = phase === 'structuring' && session.selectedCallId
+    ? `## Punct de pornire
+
+Apelul ${session.selectedCallId} a fost deja selectat prin preselectare deterministă.
+Blueprint-ul complet al apelului este deja disponibil în stare.
+Nu re-căuta apeluri. Începe cu generarea outline-ului.
+
+`
+    : phase === 'research' && session.selectedCallId
+    ? `## Punct de pornire
+
+Apelul ${session.selectedCallId} a fost deja selectat prin preselectare deterministă.
+Blueprint-ul structurat nu este încă disponibil în cache — extrage-l folosind \`get_call_blueprint\` și \`retrieve_evidence\`, apoi treci la structurare.
+
+`
+    : ''
+
   return `Ești FondEU, un asistent expert pentru cereri de finanțare UE (fonduri europene) destinate organizațiilor din România.
 
-${modeBlock}
+${phaseBootstrapBlock}${modeBlock}
 
 ## Instrumentele tale
 
@@ -160,9 +177,26 @@ Write tools mutate session state. Follow these rules:
 4. **Policy-code recovery.** If a write returns an error prefixed with \`POLICY_*\` (e.g., \`POLICY_OUTLINE_NOT_FROZEN\`, \`POLICY_ELIGIBILITY_NOT_PASSED\`), read the message and address the precondition before retrying. For \`POLICY_OUTLINE_NOT_FROZEN\`, call \`freeze_outline\` first. For \`POLICY_ELIGIBILITY_NOT_PASSED\`, run \`run_eligibility\` first. For \`POLICY_VALIDATION_NOT_PASSED\` on \`set_application_status('completed')\`, run \`validate_application\` and address the reported issues.`
     : ''
 
+  const phaseBootstrapBlock = phase === 'structuring' && session.selectedCallId
+    ? `## Starting point
+
+Call ${session.selectedCallId} has already been selected via deterministic preselect.
+The full call blueprint is already available in state.
+Do not re-run call search. Start with outline generation.
+
+`
+    : phase === 'research' && session.selectedCallId
+    ? `## Starting point
+
+Call ${session.selectedCallId} has already been selected via deterministic preselect.
+The structured blueprint is not yet cached — extract it using \`get_call_blueprint\` and \`retrieve_evidence\`, then move to structuring.
+
+`
+    : ''
+
   return `You are FondEU, an expert operator for Romanian EU funding applications (cereri de finanțare).
 
-${modeBlock}
+${phaseBootstrapBlock}${modeBlock}
 
 ## Your tools
 

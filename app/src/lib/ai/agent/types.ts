@@ -259,6 +259,7 @@ export interface UIStateSnapshot {
   sessionId: string
   phase: Phase
   stateVersion: number
+  outlineFrozen: boolean
   warnings: Warning[]
   sections: { sectionKey: string; title: string; status: SectionStatus; documentOrder: number }[]
   blueprint: CallBlueprint | null

@@ -590,6 +590,7 @@ function buildStatePatch(session: AgentSession, sections: AgentSection[]): Parti
   return {
     phase: session.currentPhase,
     stateVersion: session.stateVersion,
+    outlineFrozen: session.outlineFrozen,
     warnings: session.warnings,
     sections: sections.map(s => ({
       sectionKey: s.sectionKey,
@@ -605,6 +606,7 @@ function buildUISnapshot(session: AgentSession, sections: AgentSection[]): impor
     sessionId: session.id,
     phase: session.currentPhase,
     stateVersion: session.stateVersion,
+    outlineFrozen: session.outlineFrozen,
     warnings: session.warnings,
     sections: sections.map(s => ({
       sectionKey: s.sectionKey,

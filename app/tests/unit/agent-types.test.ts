@@ -83,7 +83,7 @@ describe('Agent V3 Types', () => {
       { type: 'state_update', patch: { phase: 'research' } },
       { type: 'policy_violation', gate: 'pre_generate', reason: 'outline not approved' },
       { type: 'error', message: 'timeout', retryable: true },
-      { type: 'done', finalState: { sessionId: '1', phase: 'drafting', stateVersion: 5, warnings: [], sections: [], blueprint: null, eligibility: null } },
+      { type: 'done', finalState: { sessionId: '1', phase: 'drafting', stateVersion: 5, outlineFrozen: false, warnings: [], sections: [], blueprint: null, eligibility: null } },
     ]
     expect(events).toHaveLength(10)
   })

@@ -176,6 +176,28 @@ async function handler(req: NextRequest) {
     }
   }
 
+  // Preselected sessions (those created via /api/v1/projects/preselect) carry
+  // a `planning_artifact.preselect.version` marker. Such sessions were seeded
+  // with phase=structuring/research and a selectedCallId on the assumption
+  // that the managed runtime's bootstrap block will steer the agent past
+  // discovery. V3 has no such block and would call search_calls on its first
+  // turn, silently reintroducing the cost the preselect feature was meant to
+  // eliminate. So preselected sessions must NEVER degrade to V3 — they fail
+  // closed with 503, the user retries, and if managed stays unavailable the
+  // feature remains broken in a visible way (vs. silently expensive).
+  const preselectMarker =
+    (session.planningArtifact as { preselect?: { version?: number } } | null)?.preselect
+  // Structured actions (approve_outline, accept_section, select_call, etc.)
+  // ALWAYS run through V3 — managed doesn't handle them yet (see
+  // hasStructuredAction above). Actions are post-discovery operations
+  // triggered by explicit UI clicks; some of them (e.g. select_call,
+  // approve_outline) do continue into an LLM turn, but the user has already
+  // authored intent, so the "no silent re-run of discovery" invariant that
+  // the bootstrap-block guards is not at risk. Without this exception,
+  // every preselected session would 503 the moment the user clicks an
+  // action button.
+  const isPreselected = preselectMarker?.version === 1 && !hasStructuredAction
+
   if (managedEnabled) {
     const { managedCircuitBreaker, recordManagedFailure } = await import(
       '@/lib/ai/agent/managed/circuit-breaker'
@@ -192,8 +214,9 @@ async function handler(req: NextRequest) {
             sessionId: session.id,
             userId: user.id,
             error: err instanceof Error ? err.message : String(err),
+            isPreselected,
           },
-          'managed setup failed, degrading to V3',
+          'managed setup failed',
         )
         // Lazy-create the app_agent_sessions row and mark it degraded
         // BEFORE falling back to V3, so the DB reflects that a managed
@@ -218,6 +241,18 @@ async function handler(req: NextRequest) {
               err: metaErr instanceof Error ? metaErr.message : String(metaErr),
             },
             'markDegraded failed (pre-stream fallback)',
+          )
+        }
+        if (isPreselected) {
+          return NextResponse.json(
+            {
+              error: {
+                code: 'MANAGED_UNAVAILABLE',
+                messageRo: 'Asistentul gestionat este temporar indisponibil. Reîncearcă în câteva momente.',
+                messageEn: 'The managed assistant is temporarily unavailable. Please retry in a moment.',
+              },
+            },
+            { status: 503 },
           )
         }
         return runV3WithSSE(session, sections, body, user)
@@ -250,10 +285,43 @@ async function handler(req: NextRequest) {
       }
       return runManagedWithSSE(session, sections, body, user, claim.turnId)
     }
-    // Breaker is open — degrade to V3
+    // Breaker is open — degrade to V3 (unless this is a preselected session,
+    // in which case V3 would ignore the bootstrap context and re-run discovery).
+    log.warn(
+      { sessionId: session.id, userId: user.id, isPreselected, breakerOpen: true },
+      'managed circuit breaker open',
+    )
+    if (isPreselected) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'MANAGED_UNAVAILABLE',
+            messageRo: 'Asistentul gestionat este temporar indisponibil. Reîncearcă în câteva momente.',
+            messageEn: 'The managed assistant is temporarily unavailable. Please retry in a moment.',
+          },
+        },
+        { status: 503 },
+      )
+    }
+  }
+
+  // Final fallback to V3. If the session was preselected but we ended up
+  // here (e.g. managedEnabled was false), fail closed — the bootstrap context
+  // assumes the managed runtime.
+  if (isPreselected) {
     log.warn(
       { sessionId: session.id, userId: user.id },
-      'managed circuit breaker open, routing to V3',
+      'preselected session would fall through to V3 — refusing',
+    )
+    return NextResponse.json(
+      {
+        error: {
+          code: 'MANAGED_UNAVAILABLE',
+          messageRo: 'Asistentul gestionat este temporar indisponibil. Reîncearcă în câteva momente.',
+          messageEn: 'The managed assistant is temporarily unavailable. Please retry in a moment.',
+        },
+      },
+      { status: 503 },
     )
   }
 

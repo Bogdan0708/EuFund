@@ -1316,5 +1316,29 @@
     "pilotBadge": "Pilot — managed assistant mode",
     "degraded": "The managed assistant is temporarily unavailable. We switched back to the standard mode.",
     "notAvailable": "The managed assistant is not available for your account in Phase 2."
+  },
+  "preselect": {
+    "placeholder": "Describe your project…",
+    "matching": "Finding the best matching call…",
+    "banner": {
+      "label": "Selected call",
+      "change": "Change"
+    },
+    "picker": {
+      "title": "Choose the right call",
+      "subtitle": "We found several similar calls. Pick one to continue.",
+      "select": "Select"
+    },
+    "noMatch": {
+      "title": "No sufficiently strong match was found",
+      "hint": "Add more detail: organization type, project domain, approximate budget.",
+      "retry": "Try again"
+    },
+    "errors": {
+      "PRESELECT_UNAVAILABLE": "The search system is temporarily unavailable. Try again in a moment.",
+      "DESCRIPTION_TOO_SHORT": "Describe your project in more detail (at least 40 characters).",
+      "OUTLINE_FROZEN": "The outline is frozen; you can no longer change the call.",
+      "CONCURRENCY_CONFLICT": "The session state changed in the meantime. Please retry."
+    }
   }
 }
