@@ -221,16 +221,10 @@ describe('POST /api/v1/projects/preselect — error paths', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 400 CONFLICTING_MODE when sessionId and confirmCandidateId both present', async () => {
-    const res = await POST(req({
-      description: 'x'.repeat(50), locale: 'ro',
-      sessionId: '00000000-0000-4000-8000-000000000000',
-      expectedStateVersion: 0,
-      confirmCandidateId: 'abc',
-    }))
-    expect(res.status).toBe(400)
-    expect((await res.json()).error.code).toBe('CONFLICTING_MODE')
-  })
+  // Historical note: sessionId + confirmCandidateId was previously rejected
+  // as CONFLICTING_MODE. That turned out to be wrong — it blocked the
+  // legitimate "user picked a candidate from an override-mode ambiguous
+  // response" flow. See the confirm-override tests below.
 
   it('returns 400 EXPECTED_STATE_VERSION_REQUIRED when sessionId without expectedStateVersion', async () => {
     const res = await POST(req({
@@ -480,5 +474,116 @@ describe('POST /api/v1/projects/preselect — override mode', () => {
     }))
     expect(res.status).toBe(500)
     expect((await res.json()).error.code).toBe('OVERRIDE_FAILED')
+  })
+})
+
+describe('POST /api/v1/projects/preselect — confirm-override mode', () => {
+  const SESSION_ID = '33333333-3333-4333-8333-333333333333'
+
+  it('validates + mutates existing session when sessionId + confirmCandidateId both present', async () => {
+    // Prong 1 of the existence probe finds the call.
+    mockSearchCalls.mockResolvedValueOnce({
+      matches: [{ callId: 'picked-call', title: 'Picked', program: 'P', score: 0.9, snippet: '', sourceUrl: undefined }],
+    })
+    mockSetSelectedCall.mockResolvedValue({ newStateVersion: 7 })
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      sessionId: SESSION_ID,
+      expectedStateVersion: 5,
+      confirmCandidateId: 'picked-call',
+    }))
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.kind).toBe('selected')
+    expect(body.sessionId).toBe(SESSION_ID)
+    expect(body.selectedCallId).toBe('picked-call')
+    // Override semantics: blueprintKind/phase are NOT returned because
+    // setSelectedCall doesn't change them — same contract as plain override.
+    expect(body).not.toHaveProperty('blueprintKind')
+    expect(body).not.toHaveProperty('phase')
+
+    // Mutated the existing session, did NOT create a new one.
+    expect(mockSetSelectedCall).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        sessionId: SESSION_ID,
+        callId: 'picked-call',
+        expectedStateVersion: 5,
+      }),
+    )
+    expect(mockInitializeSession).not.toHaveBeenCalled()
+    expect(mockRankCandidates).not.toHaveBeenCalled()
+  })
+
+  it('returns 400 INVALID_CALL_ID when confirm-override sends an unindexed callId', async () => {
+    mockSearchCalls.mockResolvedValue({ matches: [] })
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      sessionId: SESSION_ID,
+      expectedStateVersion: 5,
+      confirmCandidateId: 'bogus',
+    }))
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error.code).toBe('INVALID_CALL_ID')
+    expect(mockSetSelectedCall).not.toHaveBeenCalled()
+    expect(mockInitializeSession).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 OUTLINE_FROZEN when confirm-override hits the policy gate', async () => {
+    mockSearchCalls.mockResolvedValueOnce({
+      matches: [{ callId: 'picked', title: 'P', program: 'P', score: 0.9, snippet: '', sourceUrl: undefined }],
+    })
+    mockSetSelectedCall.mockRejectedValue(
+      new ValidationError('outlineFrozen', 'outline frozen', 'POLICY_OUTLINE_ALREADY_FROZEN'),
+    )
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      sessionId: SESSION_ID,
+      expectedStateVersion: 5,
+      confirmCandidateId: 'picked',
+    }))
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).error.code).toBe('OUTLINE_FROZEN')
+  })
+
+  it('returns 409 CONCURRENCY_CONFLICT when confirm-override has stale stateVersion', async () => {
+    mockSearchCalls.mockResolvedValueOnce({
+      matches: [{ callId: 'picked', title: 'P', program: 'P', score: 0.9, snippet: '', sourceUrl: undefined }],
+    })
+    mockSetSelectedCall.mockRejectedValue(new ConcurrencyError(5, 7))
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      sessionId: SESSION_ID,
+      expectedStateVersion: 5,
+      confirmCandidateId: 'picked',
+    }))
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).error.code).toBe('CONCURRENCY_CONFLICT')
+  })
+
+  it('still requires expectedStateVersion on confirm-override', async () => {
+    // Without expectedStateVersion, we can't issue a CAS mutation — the
+    // EXPECTED_STATE_VERSION_REQUIRED guard fires before the mode dispatch.
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      sessionId: SESSION_ID,
+      confirmCandidateId: 'picked',
+    }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error.code).toBe('EXPECTED_STATE_VERSION_REQUIRED')
+    expect(mockSetSelectedCall).not.toHaveBeenCalled()
   })
 })

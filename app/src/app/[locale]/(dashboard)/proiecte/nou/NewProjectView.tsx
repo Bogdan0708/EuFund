@@ -26,7 +26,19 @@ type PreselectState =
       callTitle: string
       description: string
     }
-  | { kind: 'ambiguous'; candidates: Candidate[]; description: string }
+  | {
+      kind: 'ambiguous'
+      candidates: Candidate[]
+      description: string
+      // Populated when the ambiguous response came from override-mode
+      // rerank (the user clicked "Change" on an existing session).
+      // When present, picking a candidate must mutate the existing
+      // session via confirm-override, NOT create a new session.
+      overrideContext?: {
+        sessionId: string
+        expectedStateVersion: number
+      }
+    }
   | { kind: 'no_match'; reason: string }
   | { kind: 'error'; code: string; message: string }
 
@@ -98,11 +110,19 @@ export function NewProjectView({
     async (callId: string) => {
       if (state.kind !== 'ambiguous') return
       const description = state.description
+      const overrideCtx = state.overrideContext
       setState({ kind: 'matching' })
+      // If this ambiguous came from override-mode rerank, pick routes
+      // through confirm-override (mutates the existing session). Otherwise,
+      // it's a first-dispatch ambiguous and pick creates a new session.
       const result = await preselect({
         description,
         locale,
         confirmCandidateId: callId,
+        ...(overrideCtx && {
+          sessionId: overrideCtx.sessionId,
+          expectedStateVersion: overrideCtx.expectedStateVersion,
+        }),
       })
       if ('kind' in result && result.kind === 'error') {
         setState({ kind: 'error', code: result.code, message: result.message })
@@ -116,6 +136,13 @@ export function NewProjectView({
           callTitle: result.candidates[0]?.title ?? result.selectedCallId,
           description,
         })
+        if (overrideCtx) {
+          // Existing session was mutated — refresh its state (stateVersion
+          // bumped via setSelectedCall). Do NOT touch URL; sessionId is
+          // unchanged.
+          await agent.adoptSession(result.sessionId)
+          return
+        }
         if (typeof window !== 'undefined') {
           window.history.replaceState(null, '', `?session=${result.sessionId}`)
         }
@@ -158,7 +185,17 @@ export function NewProjectView({
       return
     }
     if (result.kind === 'ambiguous') {
-      setState({ kind: 'ambiguous', candidates: result.candidates, description })
+      // Attach override context so a subsequent candidate pick targets
+      // the EXISTING session via confirm-override, not a fresh session.
+      setState({
+        kind: 'ambiguous',
+        candidates: result.candidates,
+        description,
+        overrideContext: {
+          sessionId: agent.sessionId,
+          expectedStateVersion: agent.stateVersion,
+        },
+      })
       return
     }
     if (result.kind === 'no_match') {

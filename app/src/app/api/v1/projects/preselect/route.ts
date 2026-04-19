@@ -119,18 +119,15 @@ async function handlePreselect(
     return err(400, 'DESCRIPTION_TOO_SHORT')
   }
 
-  // Disallow conflicting modes
-  if (parsed.sessionId && parsed.confirmCandidateId) {
-    return err(400, 'CONFLICTING_MODE', 'sessionId and confirmCandidateId are mutually exclusive')
-  }
+  // sessionId presence always requires expectedStateVersion — the managed
+  // route is CAS-guarded and the route has to know what version the client
+  // saw. (Previously this section also rejected sessionId + confirmCandidateId
+  // as CONFLICTING_MODE; that was wrong — see confirm-override below.)
   if (parsed.sessionId && parsed.expectedStateVersion === undefined) {
     return err(400, 'EXPECTED_STATE_VERSION_REQUIRED')
   }
 
-  // Confirm mode: skip ranker, but verify the callId is a real indexed call
-  // before creating a session (spec §Request contract; §Error mapping 400
-  // INVALID_CALL_ID).
-  //
+  // Shared existence probe used by both confirm-new and confirm-override.
   // `searchCalls` emits each match's callId via the fallback chain
   // `metadata.callId || metadata.sourceId || r.id`, so a correct probe must
   // be able to confirm on any of those three sources. Three authoritative
@@ -145,9 +142,67 @@ async function handlePreselect(
   //      surfaced this callId to the user, the description-based search
   //      must be able to reach it via the same fallback chain. This covers
   //      the rare case where the callId is rooted in point-id only.
-  //
-  // If all three prongs return no exact match on the target callId, the
-  // client sent something that isn't in the store — return 400.
+  async function confirmCallExists(
+    ctx: ServiceContext,
+    target: string,
+    description: string,
+  ): Promise<boolean> {
+    const p1 = await searchCalls(ctx, target, { callId: target, maxResults: 1 })
+    if (p1.matches.some(m => m.callId === target)) return true
+    const p2 = await searchCalls(ctx, target, { sourceId: target, maxResults: 1 })
+    if (p2.matches.some(m => m.callId === target)) return true
+    const p3 = await searchCalls(ctx, description, { maxResults: 25 })
+    return p3.matches.some(m => m.callId === target)
+  }
+
+  // Confirm-override mode: existing sessionId + confirmCandidateId. The user
+  // picked a candidate out of an override-mode ambiguous response. Validate
+  // the callId exists, then mutate the EXISTING session via setSelectedCall
+  // — never create a new session in this path.
+  if (parsed.sessionId && parsed.confirmCandidateId) {
+    const ctx: ServiceContext = {
+      userId: user.id,
+      sessionId: parsed.sessionId,
+      requestId: crypto.randomUUID(),
+      now: new Date(),
+    }
+    const target = parsed.confirmCandidateId
+    try {
+      const exists = await confirmCallExists(ctx, target, parsed.description)
+      if (!exists) return err(400, 'INVALID_CALL_ID')
+    } catch (e) {
+      log.error({ err: e, userId: user.id }, 'confirm-override existence check failed')
+      return err(503, 'PRESELECT_UNAVAILABLE')
+    }
+    try {
+      await setSelectedCall(ctx, {
+        sessionId: parsed.sessionId,
+        callId: target,
+        expectedStateVersion: parsed.expectedStateVersion!,
+      })
+    } catch (e) {
+      if (e instanceof ValidationError && e.policyCode === 'POLICY_OUTLINE_ALREADY_FROZEN') {
+        return err(409, 'OUTLINE_FROZEN')
+      }
+      if (e instanceof ConcurrencyError) {
+        return err(409, 'CONCURRENCY_CONFLICT')
+      }
+      log.error({ err: e, userId: user.id, sessionId: parsed.sessionId }, 'setSelectedCall failed (confirm-override)')
+      return err(500, 'OVERRIDE_FAILED')
+    }
+    // Same omission rationale as override-rerank: setSelectedCall does not
+    // re-fetch the blueprint or change currentPhase. Client re-adopts
+    // session state from /api/ai/agent/state on the next turn.
+    return NextResponse.json({
+      kind: 'selected',
+      sessionId: parsed.sessionId,
+      selectedCallId: target,
+      candidates: [{ callId: target, title: target, score: 1 }],
+    })
+  }
+
+  // Confirm-new mode: no sessionId + confirmCandidateId. Validate, then
+  // initialize a brand-new session.
   if (parsed.confirmCandidateId && !parsed.sessionId) {
     const ctx: ServiceContext = {
       userId: user.id,
@@ -156,23 +211,10 @@ async function handlePreselect(
     }
     const target = parsed.confirmCandidateId
     try {
-      // Prong 1: filter on metadata.callId.
-      const p1 = await searchCalls(ctx, target, { callId: target, maxResults: 1 })
-      if (!p1.matches.some(m => m.callId === target)) {
-        // Prong 2: filter on metadata.sourceId.
-        const p2 = await searchCalls(ctx, target, { sourceId: target, maxResults: 1 })
-        if (!p2.matches.some(m => m.callId === target)) {
-          // Prong 3: reproducibility fallback — search with the user's own
-          // description, same query the picker used, larger limit. If the
-          // picker could reach this callId, this probe can too.
-          const p3 = await searchCalls(ctx, parsed.description, { maxResults: 25 })
-          if (!p3.matches.some(m => m.callId === target)) {
-            return err(400, 'INVALID_CALL_ID')
-          }
-        }
-      }
+      const exists = await confirmCallExists(ctx, target, parsed.description)
+      if (!exists) return err(400, 'INVALID_CALL_ID')
     } catch (e) {
-      log.error({ err: e, userId: user.id }, 'confirm-mode call existence check failed')
+      log.error({ err: e, userId: user.id }, 'confirm-new existence check failed')
       return err(503, 'PRESELECT_UNAVAILABLE')
     }
     try {
