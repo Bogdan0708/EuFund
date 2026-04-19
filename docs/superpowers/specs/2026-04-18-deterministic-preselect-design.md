@@ -69,8 +69,9 @@ Three request modes:
 | Mode | Distinguished by | Behavior |
 |---|---|---|
 | **rank** | `sessionId` absent, `confirmCandidateId` absent | Runs full ranker + decision. Creates a session on `kind: 'selected'`. Returns `candidates[]` only on `ambiguous`. Returns guidance on `no_match`. |
-| **confirm** | `sessionId` absent, `confirmCandidateId` present | Skips ranking. Server validates that `confirmCandidateId` is a real indexed call. Creates session with that call selected. Used by the ambiguous-picker UI after user picks. |
-| **override** | `sessionId` present, `expectedStateVersion` required | Re-runs ranker (with `excludeCallIds` applied). On `kind: 'selected'`, calls `setSelectedCall(sessionId, newCallId, expectedStateVersion)` on the existing session. Policy matrix's `outlineFrozen` lock applies unchanged. |
+| **confirm (new)** | `sessionId` absent, `confirmCandidateId` present | Skips ranking. Server validates that `confirmCandidateId` is a real indexed call. Creates a NEW session with that call selected. Used by the ambiguous-picker UI after the user picks from a RANK-mode ambiguous response. |
+| **override (rerank)** | `sessionId` present, `expectedStateVersion` required, `confirmCandidateId` absent | Re-runs ranker (with `excludeCallIds` applied). On `kind: 'selected'`, calls `setSelectedCall(sessionId, newCallId, expectedStateVersion)` on the EXISTING session. Policy matrix's `outlineFrozen` lock applies unchanged. |
+| **override (confirm)** | `sessionId` present, `expectedStateVersion` required, `confirmCandidateId` present | Skips ranking. Server validates the callId, then calls `setSelectedCall` on the EXISTING session. Used when an override-mode rerank returned `ambiguous` and the user picked from that picker — the session must be preserved, not replaced. Same policy/concurrency semantics as override (rerank). |
 
 ### Request contract
 
@@ -78,10 +79,11 @@ Three request modes:
 interface PreselectRequest {
   description: string;              // user's project description, min length enforced
   locale: 'ro' | 'en';
-  sessionId?: string;               // present → override mode
+  sessionId?: string;               // present → override path (rerank or confirm)
   expectedStateVersion?: number;    // required when sessionId present
-  confirmCandidateId?: string;      // present (without sessionId) → confirm mode
-  excludeCallIds?: string[];        // used by override path to re-rank without rejected calls
+  confirmCandidateId?: string;      // present → skip ranker. Absent sessionId = new-session confirm;
+                                    // present with sessionId = override-confirm (mutate existing session).
+  excludeCallIds?: string[];        // used by override (rerank) to re-rank without rejected calls
 }
 ```
 
@@ -420,13 +422,14 @@ Happy paths:
 - Rank mode → `kind: 'selected'`, session created, `planningArtifact` persisted
 - Rank mode with ambiguous fixtures → `kind: 'ambiguous'`, no session created
 - Rank mode with low-score fixtures → `kind: 'no_match'`, no session created
-- Confirm mode → session created with `confirmCandidateId`, ranker not invoked
-- Override mode (existing session, pre-freeze) → `setSelectedCall` invoked, session mutated, `planningArtifact.preselect.excludeCallIdsApplied` updated
+- Confirm-new mode → NEW session created with `confirmCandidateId`, ranker not invoked
+- Override (rerank) — existing session pre-freeze → `setSelectedCall` invoked, session mutated, `planningArtifact.preselect.excludeCallIdsApplied` updated
+- Override (confirm) — existing session + `confirmCandidateId` → existence probe then `setSelectedCall`, no new session, URL unchanged
 
 Request-mode validation:
-- `confirmCandidateId` with `sessionId` absent → confirm mode behavior
-- `sessionId` present without `expectedStateVersion` → 400
-- Conflicting combinations (e.g. `sessionId` + `confirmCandidateId`) → 400 with stable code
+- `confirmCandidateId` with `sessionId` absent → confirm-new behavior (creates session)
+- `confirmCandidateId` with `sessionId` + `expectedStateVersion` → confirm-override behavior (mutates existing session)
+- `sessionId` present without `expectedStateVersion` → 400 `EXPECTED_STATE_VERSION_REQUIRED` (applies to both override paths)
 
 Edge cases:
 - `excludeCallIds` removes the only strong candidate → result transitions from `selected` to `ambiguous` or `no_match` depending on runner-up score
