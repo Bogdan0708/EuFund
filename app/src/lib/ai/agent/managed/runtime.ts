@@ -202,6 +202,12 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     const toolBlocksToExecute: ToolUseBlock[] = []
     const inputJsonAccumulators = new Map<number, string>()
     let stopReason: string | null = null
+    // Per-stream usage. `message_start.message.usage` seeds input/cache/output;
+    // `message_delta.usage` is cumulative for the current message and replaces
+    // prior fields (NOT additive — each delta carries the running total). We
+    // fold this into aggregateUsage once, after the stream ends, so multi-
+    // delta streams don't double-count the way an add-per-delta loop does.
+    let currentStreamUsage: UsageLike = {}
 
     for await (const event of stream as unknown as AsyncIterable<RawMessageStreamEvent>) {
       // Translate and emit
@@ -241,16 +247,31 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
           toolBlocksToExecute.push(block as ToolUseBlock)
         }
       }
+      if (event.type === 'message_start') {
+        // message_start.message.usage seeds input_tokens + cache_* for this
+        // stream (output_tokens is typically 1 at this point). Capture it
+        // before the delta stream begins updating output_tokens.
+        const startUsage = (event as unknown as { message?: { usage?: UsageLike } }).message?.usage
+        if (startUsage) {
+          currentStreamUsage = { ...currentStreamUsage, ...startUsage }
+        }
+      }
       if (event.type === 'message_delta') {
         stopReason = event.delta?.stop_reason ?? stopReason
-        // Anthropic attaches the usage block to message_delta events in
-        // streaming mode. Accumulate across tool-loop iterations.
+        // message_delta.usage is cumulative for the current message — each
+        // delta carries the running total, not an increment. Merge (latest
+        // wins per field) rather than add, otherwise multi-delta streams
+        // inflate tokens and cost. addUsage across iterations still sums
+        // final per-message totals across tool-loop iterations.
         const usage = (event as unknown as { usage?: UsageLike }).usage
         if (usage) {
-          aggregateUsage = addUsage(aggregateUsage, usage)
+          currentStreamUsage = { ...currentStreamUsage, ...usage }
         }
       }
     }
+    // End of this stream iteration — fold the message's final usage into
+    // the turn-level aggregate.
+    aggregateUsage = addUsage(aggregateUsage, currentStreamUsage)
 
     // Persist the assistant message. The FIRST durable output in the
     // turn is flushed in a single transaction alongside the user

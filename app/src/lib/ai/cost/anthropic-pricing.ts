@@ -30,6 +30,24 @@ export interface UsageLike {
 }
 
 /**
+ * Normalize an Anthropic model identifier to a key in ANTHROPIC_PRICES.
+ * The API can return dated IDs (e.g. `claude-opus-4-7-20260115`) or
+ * aliases (e.g. `claude-opus-4-7`); the pricing table only keys on
+ * aliases. Match longest-prefix first so `claude-opus-4-7-20260115`
+ * doesn't accidentally normalize to a shorter `claude-opus-4` alias.
+ * Returns the original model string if nothing matches so the caller's
+ * unknown-model → 0 branch still fires.
+ */
+export function normalizeModelForPricing(model: string): string {
+  const keys = Object.keys(ANTHROPIC_PRICES).sort((a, b) => b.length - a.length)
+  for (const k of keys) {
+    if (model === k) return k
+    if (model.startsWith(k + '-') || model.startsWith(k + '@')) return k
+  }
+  return model
+}
+
+/**
  * Compute the USD cost of a single Anthropic API call from its usage
  * block. Returns 0 for unknown models and logs nothing (caller decides
  * whether unknown-model is worth a warning).
@@ -46,7 +64,7 @@ export interface UsageLike {
  *        + output_tokens  × output_rate
  */
 export function computeAnthropicCostMicros(model: string, usage: UsageLike): number {
-  const rates = ANTHROPIC_PRICES[model]
+  const rates = ANTHROPIC_PRICES[normalizeModelForPricing(model)]
   if (!rates) return 0
 
   const input = usage.input_tokens ?? 0
