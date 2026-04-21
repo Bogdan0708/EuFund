@@ -649,6 +649,8 @@ Note the current `generate()` signature and body.
 
 - [ ] **Step 2: Write the failing tests**
 
+Context: `app/src/lib/ai/providers/google.ts` uses the OpenAI SDK against Google's OpenAI-compatible endpoint (`generativelanguage.googleapis.com/v1beta/openai/`). Mock `openai` the same way as the OpenAI and Perplexity tests.
+
 Create `app/tests/unit/ai/providers/google.test.ts`:
 
 ```typescript
@@ -656,25 +658,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { UnsupportedOperationError } from '@/lib/errors'
 import type { GenerateRequest } from '@/lib/ai/providers/types'
 
-// Mock the underlying Google SDK call surface used by providers/google.ts.
-// Replace with the real mock points when Step 3 inspection reveals them.
-vi.mock('@google/generative-ai', () => ({
-  GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
-    getGenerativeModel: () => ({
-      generateContent: vi.fn().mockResolvedValue({
-        response: {
-          text: () => 'mocked',
-          usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
-        },
-      }),
-    }),
-  })),
+const createMock = vi.fn()
+
+vi.mock('openai', () => ({
+  default: vi.fn().mockImplementation(() => ({ chat: { completions: { create: createMock } } })),
 }))
 
 describe('googleProvider.generate', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    createMock.mockReset()
+    createMock.mockResolvedValue({
+      choices: [{ message: { content: 'ok' } }],
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+    })
+  })
 
-  it('returns cacheUsage.supported=false when cache is enabled', async () => {
+  it('cache.enabled=true returns cacheUsage with supported:false, hit:unsupported', async () => {
     const { googleProvider } = await import('@/lib/ai/providers/google')
     const req: GenerateRequest = {
       provider: 'google',
@@ -686,8 +685,21 @@ describe('googleProvider.generate', () => {
     expect(result.cacheUsage).toBeDefined()
     expect(result.cacheUsage!.supported).toBe(false)
     expect(result.cacheUsage!.hit).toBe('unsupported')
+    expect(result.cacheUsage!.enabled).toBe(true)
+    expect(result.cacheUsage!.disabledReason).toBe('none')
     expect(result.cacheUsage!.reads).toBe(0)
     expect(result.cacheUsage!.writes).toBe(0)
+  })
+
+  it('cache.enabled=false does NOT emit cacheUsage (router owns disabled presence, §5.2/§5.4)', async () => {
+    const { googleProvider } = await import('@/lib/ai/providers/google')
+    const result = await googleProvider.generate({
+      provider: 'google',
+      model: 'gemini-3-flash',
+      messages: [{ role: 'user', content: 'hi' }],
+      cache: { enabled: false },
+    })
+    expect(result.cacheUsage).toBeUndefined()
   })
 
   it('throws UnsupportedOperationError when messages contain tool_calls', async () => {
@@ -704,14 +716,13 @@ describe('googleProvider.generate', () => {
     await expect(googleProvider.generate(req)).rejects.toBeInstanceOf(UnsupportedOperationError)
   })
 
-  it('omits cacheUsage when req.cache was not provided (§5.4)', async () => {
+  it('omits cacheUsage when req.cache was not provided', async () => {
     const { googleProvider } = await import('@/lib/ai/providers/google')
-    const req: GenerateRequest = {
+    const result = await googleProvider.generate({
       provider: 'google',
       model: 'gemini-3-flash',
       messages: [{ role: 'user', content: 'hi' }],
-    }
-    const result = await googleProvider.generate(req)
+    })
     expect(result.cacheUsage).toBeUndefined()
   })
 })
@@ -724,24 +735,26 @@ Expected: FAIL (`UnsupportedOperationError` not thrown, `cacheUsage` not set).
 
 - [ ] **Step 4: Modify `google.ts`**
 
-Open `app/src/lib/ai/providers/google.ts`. Before the network call, add:
+Open `app/src/lib/ai/providers/google.ts`. Add the imports and two code additions:
 
 ```typescript
 import { UnsupportedOperationError } from '@/lib/errors'
+import { deriveIdentityKey } from './cache-key'
 
-// …inside generate(req)…
+// …at the very top of generate(req), before any network work…
 if (req.messages.some((m) => m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0)) {
   throw new UnsupportedOperationError('google', 'tool_calls in messages')
 }
 
-// …after computing result…
-if (req.cache) {
-  const identityKey = (await import('./cache-key')).deriveIdentityKey(req)
+// …after constructing result and before returning…
+// Adapter only emits cacheUsage when caller opted in with cache.enabled === true.
+// Router owns the disabled presence (§5.2) for cache.enabled === false / omitted.
+if (req.cache?.enabled === true) {
   result.cacheUsage = {
-    requested: req.cache.enabled,
-    enabled: req.cache.enabled,
+    requested: true,
+    enabled: true,
     disabledReason: 'none',
-    identityKey,
+    identityKey: deriveIdentityKey(req),
     supported: false,
     reads: 0,
     writes: 0,
@@ -751,7 +764,7 @@ if (req.cache) {
 }
 ```
 
-(Adjust integration points to match the current `google.ts` structure discovered in Step 1.)
+(Preserve the existing OpenAI-SDK mechanics from `google.ts`; only add the guard and the cacheUsage block.)
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -775,7 +788,7 @@ git commit -m "feat(ai/providers/google): reject tool_calls in messages; emit ca
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `app/tests/unit/ai/providers/perplexity.test.ts`. Mirror the Google test file verbatim, substituting `perplexityProvider`, `provider: 'perplexity'`, and `model: 'sonar-pro'`. Mock the OpenAI SDK (Perplexity uses the OpenAI-compat SDK today).
+Create `app/tests/unit/ai/providers/perplexity.test.ts`. Mirror the Google test file from Task 6 verbatim (same `openai` SDK mock pattern — Perplexity uses the OpenAI-compat SDK), substituting `perplexityProvider`, `provider: 'perplexity'`, and `model: 'sonar-pro'`. All six test cases carry over (cache on → cacheUsage present with supported:false, cache off → cacheUsage undefined, cache omitted → cacheUsage undefined, tool_calls in messages → throw).
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -784,7 +797,7 @@ Expected: FAIL.
 
 - [ ] **Step 3: Modify `perplexity.ts`**
 
-Apply the same pattern as Task 6 Step 4, substituting `'perplexity'` as the provider string.
+Apply the same code pattern as Task 6 Step 4, substituting `'perplexity'` as the provider string. The `req.cache?.enabled === true` guard is identical — router still owns the disabled-presence case.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -925,6 +938,17 @@ describe('openaiProvider.generate', () => {
     expect(assistantMsg.tool_calls[0].id).toBe('c1')
   })
 
+  it('omits cacheUsage at the adapter level when cache.enabled=false (router owns disabled presence)', async () => {
+    const { openaiProvider } = await import('@/lib/ai/providers/openai')
+    const result = await openaiProvider.generate({
+      provider: 'openai',
+      model: 'gpt-5.4',
+      messages: [{ role: 'user', content: 'hi' }],
+      cache: { enabled: false },
+    })
+    expect(result.cacheUsage).toBeUndefined()
+  })
+
   it('omits cacheUsage when req.cache not provided (§5.4)', async () => {
     const { openaiProvider } = await import('@/lib/ai/providers/openai')
     const result = await openaiProvider.generate({
@@ -1008,11 +1032,13 @@ export const openaiProvider: ProviderClient = {
         .map((tc) => ({ id: tc.id, name: tc.function.name, arguments: tc.function.arguments })),
     }
 
-    if (req.cache && identityKey) {
+    // Adapter emits cacheUsage only when the caller opted in (§5.2, §5.4).
+    // Router owns the disabled presence for cache.enabled=false and kill-switch cases.
+    if (req.cache?.enabled === true && identityKey) {
       const cachedTokens = response.usage?.prompt_tokens_details?.cached_tokens ?? 0
       result.cacheUsage = {
-        requested: req.cache.enabled,
-        enabled: req.cache.enabled,
+        requested: true,
+        enabled: true,
         disabledReason: 'none',
         identityKey,
         supported: true,
@@ -1575,12 +1601,15 @@ export function translateResponseFromAnthropic(
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
   }
 
-  if (ctx.cacheRequested && ctx.identityKey) {
+  // Defensive guard: the native path is only reached when cache.enabled === true
+  // (per the Anthropic adapter branch), but we assert the invariant here so a
+  // mis-wired caller cannot leak a disabled-shape cacheUsage from this code path.
+  if (ctx.cacheRequested?.enabled === true && ctx.identityKey) {
     const reads = resp.usage.cache_read_input_tokens ?? 0
     const writes = resp.usage.cache_creation_input_tokens ?? 0
     result.cacheUsage = {
-      requested: ctx.cacheRequested.enabled,
-      enabled: ctx.cacheRequested.enabled,
+      requested: true,
+      enabled: true,
       disabledReason: 'none',
       identityKey: ctx.identityKey,
       supported: true,
@@ -2591,6 +2620,8 @@ git commit -m "feat(ai/cost): OpenAI cost helper with cached_tokens discount"
 - Modify: `app/src/lib/monitoring/metrics.ts`
 - Test: `app/tests/unit/ai/providers/router-telemetry.test.ts` (new)
 
+Context: `app/src/lib/monitoring/metrics.ts` is a custom in-memory registry (`metrics.counter(name, help)` / `metrics.inc(name, labels, value)`), not `prom-client`. Task 20 adds wrapper functions (`trackAiCacheCall`, etc.) in the same style as the existing `trackRequest` / `trackExternalAPI` exports.
+
 - [ ] **Step 1: Write the failing tests**
 
 Create `app/tests/unit/ai/providers/router-telemetry.test.ts`:
@@ -2603,15 +2634,16 @@ vi.mock('@/lib/logger', () => ({
   logger: { child: () => ({ info: logInfoMock, warn: vi.fn(), error: vi.fn() }) },
 }))
 
-const cacheCallsMock = vi.fn()
-const cacheReadsMock = vi.fn()
-const cacheWritesMock = vi.fn()
-const cacheDisabledMock = vi.fn()
+const trackCall = vi.fn()
+const trackReads = vi.fn()
+const trackWrites = vi.fn()
+const trackDisabled = vi.fn()
 vi.mock('@/lib/monitoring/metrics', () => ({
-  aiCacheCalls: { inc: cacheCallsMock },
-  aiCacheReadsTokens: { inc: cacheReadsMock },
-  aiCacheWritesTokens: { inc: cacheWritesMock },
-  aiCacheDisabled: { inc: cacheDisabledMock },
+  metrics: { counter: vi.fn(), inc: vi.fn() },
+  trackAiCacheCall: trackCall,
+  trackAiCacheReadTokens: trackReads,
+  trackAiCacheWriteTokens: trackWrites,
+  trackAiCacheDisabled: trackDisabled,
 }))
 
 vi.mock('@/lib/feature-flags', () => ({ isFeatureEnabled: vi.fn(async () => true) }))
@@ -2641,10 +2673,10 @@ vi.mock('@/lib/ai/providers/retry', () => ({ withRetry: (fn: () => Promise<unkno
 describe('router telemetry', () => {
   beforeEach(() => {
     logInfoMock.mockReset()
-    cacheCallsMock.mockReset()
-    cacheReadsMock.mockReset()
-    cacheWritesMock.mockReset()
-    cacheDisabledMock.mockReset()
+    trackCall.mockReset()
+    trackReads.mockReset()
+    trackWrites.mockReset()
+    trackDisabled.mockReset()
   })
 
   it('logs a cache object on every call, even when cache is omitted', async () => {
@@ -2665,18 +2697,18 @@ describe('router telemetry', () => {
     })
   })
 
-  it('increments the hit=read counter on a cache read', async () => {
+  it('records the hit=read counter on a cache read', async () => {
     const { generate } = await import('@/lib/ai/providers/router')
     await generate({
       provider: 'anthropic', model: 'claude-opus-4-6',
       messages: [{ role: 'user', content: 'hi' }],
       cache: { enabled: true },
     })
-    expect(cacheCallsMock).toHaveBeenCalledWith({ provider: 'anthropic', model: 'claude-opus-4-6', hit: 'read' })
-    expect(cacheReadsMock).toHaveBeenCalledWith({ provider: 'anthropic', model: 'claude-opus-4-6', task: 'unspecified' }, 80)
+    expect(trackCall).toHaveBeenCalledWith('anthropic', 'claude-opus-4-6', 'read')
+    expect(trackReads).toHaveBeenCalledWith('anthropic', 'claude-opus-4-6', 'unspecified', 80)
   })
 
-  it('increments the disabled counter with the correct reason', async () => {
+  it('records the disabled counter with the correct reason', async () => {
     const ff = await import('@/lib/feature-flags')
     vi.mocked(ff.isFeatureEnabled).mockResolvedValueOnce(false)
     const { generate } = await import('@/lib/ai/providers/router')
@@ -2685,7 +2717,7 @@ describe('router telemetry', () => {
       messages: [{ role: 'user', content: 'hi' }],
       cache: { enabled: true },
     })
-    expect(cacheDisabledMock).toHaveBeenCalledWith({ reason: 'global_kill_switch' })
+    expect(trackDisabled).toHaveBeenCalledWith('global_kill_switch')
   })
 })
 ```
@@ -2695,52 +2727,57 @@ describe('router telemetry', () => {
 Run: `cd app && npx vitest run tests/unit/ai/providers/router-telemetry.test.ts`
 Expected: FAIL — metric exports and log fields don't exist yet.
 
-- [ ] **Step 3: Add the counters**
+- [ ] **Step 3: Register counters and expose wrapper functions**
 
-Open `app/src/lib/monitoring/metrics.ts`. Add (using the file's existing counter pattern — inspect it first with `cat`):
+Open `app/src/lib/monitoring/metrics.ts`. Just below the existing counter registrations (near `metrics.counter('ai_requests_total', ...)`), add:
 
 ```typescript
-// In the same style as existing counters in this file:
-export const aiCacheCalls = new Counter({
-  name: 'ai_cache_calls_total',
-  help: 'Router AI cache call outcomes',
-  labelNames: ['provider', 'model', 'hit'] as const,
-})
-
-export const aiCacheReadsTokens = new Counter({
-  name: 'ai_cache_reads_tokens_total',
-  help: 'Router AI cache read tokens',
-  labelNames: ['provider', 'model', 'task'] as const,
-})
-
-export const aiCacheWritesTokens = new Counter({
-  name: 'ai_cache_writes_tokens_total',
-  help: 'Router AI cache write tokens',
-  labelNames: ['provider', 'model', 'task'] as const,
-})
-
-export const aiCacheDisabled = new Counter({
-  name: 'ai_cache_disabled_total',
-  help: 'Router AI cache disable reasons',
-  labelNames: ['reason'] as const,
-})
+metrics.counter('ai_cache_calls_total', 'Router AI cache call outcomes');
+metrics.counter('ai_cache_reads_tokens_total', 'Router AI cache read tokens');
+metrics.counter('ai_cache_writes_tokens_total', 'Router AI cache write tokens');
+metrics.counter('ai_cache_disabled_total', 'Router AI cache disable reasons');
 ```
 
-If the existing file uses a different registration idiom, match it.
+And below the existing `trackExternalAPI` export (matching its style), add:
+
+```typescript
+export function trackAiCacheCall(provider: string, model: string, hit: string): void {
+  metrics.inc('ai_cache_calls_total', { provider, model, hit });
+}
+
+export function trackAiCacheReadTokens(provider: string, model: string, task: string, tokens: number): void {
+  if (tokens > 0) metrics.inc('ai_cache_reads_tokens_total', { provider, model, task }, tokens);
+}
+
+export function trackAiCacheWriteTokens(provider: string, model: string, task: string, tokens: number): void {
+  if (tokens > 0) metrics.inc('ai_cache_writes_tokens_total', { provider, model, task }, tokens);
+}
+
+export function trackAiCacheDisabled(reason: 'global_kill_switch' | 'request_disabled'): void {
+  metrics.inc('ai_cache_disabled_total', { reason });
+}
+```
 
 - [ ] **Step 4: Wire telemetry into the router**
 
-Modify `app/src/lib/ai/providers/router.ts`. Inside `generate()`, before returning:
+Modify `app/src/lib/ai/providers/router.ts`. Add imports:
 
 ```typescript
 import { logger } from '@/lib/logger'
-import { aiCacheCalls, aiCacheReadsTokens, aiCacheWritesTokens, aiCacheDisabled } from '@/lib/monitoring/metrics'
+import {
+  trackAiCacheCall,
+  trackAiCacheReadTokens,
+  trackAiCacheWriteTokens,
+  trackAiCacheDisabled,
+} from '@/lib/monitoring/metrics'
 
 const log = logger.child({ component: 'ai-router' })
+```
 
-// ...inside generate() after computing result and before returning:
+Inside `generate()`, after computing `result` and before returning:
 
-const identityKeyForLog = req.cache ? (result.cacheUsage?.identityKey ?? deriveIdentityKey(req)) : deriveIdentityKey(req)
+```typescript
+const identityKeyForLog = result.cacheUsage?.identityKey ?? deriveIdentityKey(req)
 const loggedCache = result.cacheUsage ?? {
   requested: false,
   enabled: false,
@@ -2761,11 +2798,11 @@ log.info({
   },
 }, 'ai_call_completed')
 
-aiCacheCalls.inc({ provider: config.provider, model: req.model, hit: loggedCache.hit })
-if (loggedCache.reads > 0) aiCacheReadsTokens.inc({ provider: config.provider, model: req.model, task: 'unspecified' }, loggedCache.reads)
-if (loggedCache.writes > 0) aiCacheWritesTokens.inc({ provider: config.provider, model: req.model, task: 'unspecified' }, loggedCache.writes)
+trackAiCacheCall(config.provider, req.model, loggedCache.hit)
+trackAiCacheReadTokens(config.provider, req.model, 'unspecified', loggedCache.reads)
+trackAiCacheWriteTokens(config.provider, req.model, 'unspecified', loggedCache.writes)
 if (loggedCache.disabledReason === 'global_kill_switch' || loggedCache.disabledReason === 'request_disabled') {
-  aiCacheDisabled.inc({ reason: loggedCache.disabledReason })
+  trackAiCacheDisabled(loggedCache.disabledReason)
 }
 ```
 
@@ -3396,7 +3433,7 @@ Expected:
 
 - [ ] **Step 5: Flip the feature flag to true via admin API (or directly in DB for the smoke)**
 
-Run: `docker exec eu-funds-postgres-1 psql -U postgres -d eufunds -c "UPDATE feature_flags SET enabled=true WHERE key='prompt_cache_enabled';"`
+Run: `docker exec eu-funds-postgres-1 psql -U fondeu -d fondeu -c "UPDATE feature_flags SET enabled=true WHERE key='prompt_cache_enabled';"`
 
 - [ ] **Step 6: Hit the endpoint again**
 
@@ -3404,7 +3441,7 @@ Expected: telemetry still shows `cache.requested: false` (no caller opts in). No
 
 - [ ] **Step 7: Flip the flag back to false**
 
-Run: `docker exec eu-funds-postgres-1 psql -U postgres -d eufunds -c "UPDATE feature_flags SET enabled=false WHERE key='prompt_cache_enabled';"`
+Run: `docker exec eu-funds-postgres-1 psql -U fondeu -d fondeu -c "UPDATE feature_flags SET enabled=false WHERE key='prompt_cache_enabled';"`
 
 - [ ] **Step 8: Stop dev server**
 
