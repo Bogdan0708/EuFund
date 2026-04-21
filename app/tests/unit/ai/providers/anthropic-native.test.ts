@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { translateRequestToAnthropic } from '@/lib/ai/providers/anthropic-native'
+import { translateRequestToAnthropic, translateResponseFromAnthropic, clampTtl } from '@/lib/ai/providers/anthropic-native'
 import type { GenerateRequest } from '@/lib/ai/providers/types'
 
 const baseReq: GenerateRequest = {
@@ -154,5 +154,80 @@ describe('translateRequestToAnthropic — messages', () => {
   it('throws when a system-role message appears (system lives in req.system)', () => {
     expect(() => translateRequestToAnthropic(withMessages([{ role: 'system', content: 'no' }])))
       .toThrow(/system.*req\.system/i)
+  })
+})
+
+describe('translateResponseFromAnthropic', () => {
+  it('extracts text content from text blocks', () => {
+    const result = translateResponseFromAnthropic({
+      content: [{ type: 'text', text: 'hello' }],
+      usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+    }, { model: 'claude-opus-4-6' })
+    expect(result.content).toBe('hello')
+    expect(result.toolCalls).toBeUndefined()
+  })
+
+  it('extracts tool_use blocks into router toolCalls shape', () => {
+    const result = translateResponseFromAnthropic({
+      content: [
+        { type: 'text', text: 'calling' },
+        { type: 'tool_use', id: 'toolu_1', name: 'search', input: { q: 'x' } },
+      ],
+      usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+    }, { model: 'claude-opus-4-6' })
+    expect(result.content).toBe('calling')
+    expect(result.toolCalls).toEqual([{ id: 'toolu_1', name: 'search', arguments: '{"q":"x"}' }])
+  })
+
+  it('populates cacheUsage when request.cache is present', () => {
+    const result = translateResponseFromAnthropic({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 100, output_tokens: 20, cache_creation_input_tokens: 500, cache_read_input_tokens: 1200 },
+    }, {
+      model: 'claude-opus-4-6',
+      cacheRequested: { enabled: true },
+      identityKey: 'a'.repeat(64),
+    })
+    expect(result.cacheUsage).toEqual({
+      requested: true,
+      enabled: true,
+      disabledReason: 'none',
+      identityKey: 'a'.repeat(64),
+      supported: true,
+      reads: 1200,
+      writes: 500,
+      hit: 'read',
+    })
+  })
+
+  it('hit=miss when reads is zero', () => {
+    const result = translateResponseFromAnthropic({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 100, output_tokens: 20, cache_creation_input_tokens: 500, cache_read_input_tokens: 0 },
+    }, { model: 'claude-opus-4-6', cacheRequested: { enabled: true }, identityKey: 'b'.repeat(64) })
+    expect(result.cacheUsage!.hit).toBe('miss')
+  })
+
+  it('no cacheUsage when cacheRequested omitted', () => {
+    const result = translateResponseFromAnthropic({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 100, output_tokens: 20 },
+    }, { model: 'claude-opus-4-6' })
+    expect(result.cacheUsage).toBeUndefined()
+  })
+})
+
+describe('clampTtl', () => {
+  it('returns the input when <= 300', () => {
+    expect(clampTtl(120)).toEqual({ effective: 120, clamped: false })
+    expect(clampTtl(300)).toEqual({ effective: 300, clamped: false })
+  })
+
+  it('clamps to 300 and flags when > 300', () => {
+    expect(clampTtl(600)).toEqual({ effective: 300, clamped: true })
+  })
+
+  it('returns undefined effective when input is undefined', () => {
+    expect(clampTtl(undefined)).toEqual({ effective: undefined, clamped: false })
   })
 })

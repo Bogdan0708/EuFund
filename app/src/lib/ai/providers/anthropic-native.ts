@@ -1,4 +1,4 @@
-import type { GenerateRequest } from './types'
+import type { GenerateRequest, GenerateResult, CacheOptions } from './types'
 
 const CACHE_CONTROL_EPHEMERAL = { type: 'ephemeral' as const }
 
@@ -112,3 +112,85 @@ export function translateRequestToAnthropic(req: GenerateRequest): AnthropicNati
 
   return out
 }
+
+export interface AnthropicNativeResponse {
+  content: AnthropicContentBlock[]
+  usage: {
+    input_tokens: number
+    output_tokens: number
+    cache_creation_input_tokens?: number
+    cache_read_input_tokens?: number
+  }
+}
+
+export interface TranslateResponseContext {
+  model: string
+  cacheRequested?: CacheOptions
+  identityKey?: string
+  effectiveTtlSeconds?: number
+}
+
+export function translateResponseFromAnthropic(
+  resp: AnthropicNativeResponse,
+  ctx: TranslateResponseContext,
+): GenerateResult {
+  let text = ''
+  const toolCalls: { id: string; name: string; arguments: string }[] = []
+
+  for (const block of resp.content) {
+    if (block.type === 'text') {
+      text += block.text
+    } else if (block.type === 'tool_use') {
+      toolCalls.push({
+        id: block.id,
+        name: block.name,
+        arguments: JSON.stringify(block.input ?? {}),
+      })
+    }
+  }
+
+  const result: GenerateResult = {
+    content: text,
+    tokensUsed: { input: resp.usage.input_tokens, output: resp.usage.output_tokens },
+    model: ctx.model,
+    provider: 'anthropic',
+    ...(toolCalls.length > 0 ? { toolCalls } : {}),
+  }
+
+  // Defensive guard: the native path is only reached when cache.enabled === true
+  // (per the Anthropic adapter branch), but we assert the invariant here so a
+  // mis-wired caller cannot leak a disabled-shape cacheUsage from this code path.
+  if (ctx.cacheRequested?.enabled === true && ctx.identityKey) {
+    const reads = resp.usage.cache_read_input_tokens ?? 0
+    const writes = resp.usage.cache_creation_input_tokens ?? 0
+    result.cacheUsage = {
+      requested: true,
+      enabled: true,
+      disabledReason: 'none',
+      identityKey: ctx.identityKey,
+      supported: true,
+      reads,
+      writes,
+      hit: reads > 0 ? 'read' : 'miss',
+      ...(ctx.effectiveTtlSeconds !== undefined ? { effectiveTtlSeconds: ctx.effectiveTtlSeconds } : {}),
+    }
+  }
+
+  return result
+}
+
+let ttlClampWarned = false
+
+export function clampTtl(input: number | undefined): { effective: number | undefined; clamped: boolean } {
+  if (input === undefined) return { effective: undefined, clamped: false }
+  if (input <= 300) return { effective: input, clamped: false }
+  if (!ttlClampWarned) {
+    // eslint-disable-next-line no-console
+    console.warn('[anthropic-native] ttlSeconds > 300 requested; clamping to 300. Subsequent clamps silent.')
+    ttlClampWarned = true
+  }
+  return { effective: 300, clamped: true }
+}
+
+// Test-only reset.
+export function __resetTtlClampWarningForTests() { ttlClampWarned = false }
