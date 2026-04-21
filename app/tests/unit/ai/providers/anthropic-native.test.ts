@@ -1,6 +1,17 @@
-import { describe, it, expect } from 'vitest'
-import { translateRequestToAnthropic, translateResponseFromAnthropic, clampTtl } from '@/lib/ai/providers/anthropic-native'
+import { describe, it, expect, vi } from 'vitest'
+import { translateRequestToAnthropic, translateResponseFromAnthropic, clampTtl, anthropicNativeGenerate } from '@/lib/ai/providers/anthropic-native'
 import type { GenerateRequest } from '@/lib/ai/providers/types'
+
+vi.mock('@/lib/ai/anthropic-client', () => ({
+  getAnthropicClient: vi.fn(() => ({
+    messages: {
+      create: vi.fn(async () => ({
+        content: [{ type: 'text', text: 'hi' }],
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      })),
+    },
+  })),
+}))
 
 const baseReq: GenerateRequest = {
   provider: 'anthropic',
@@ -229,5 +240,31 @@ describe('clampTtl', () => {
 
   it('returns undefined effective when input is undefined', () => {
     expect(clampTtl(undefined)).toEqual({ effective: undefined, clamped: false })
+  })
+})
+
+describe('anthropicNativeGenerate — end to end', () => {
+  it('sends the translated request and returns router-shape result with cacheUsage', async () => {
+    const result = await anthropicNativeGenerate({
+      provider: 'anthropic',
+      model: 'claude-opus-4-6',
+      system: 'You are helpful.',
+      messages: [{ role: 'user', content: 'hi' }],
+      cache: { enabled: true, breakpoints: ['system'] },
+    })
+    expect(result.content).toBe('hi')
+    expect(result.cacheUsage).toBeDefined()
+    expect(result.cacheUsage!.supported).toBe(true)
+  })
+
+  it('passes effectiveTtlSeconds back when caller provided ttlSeconds', async () => {
+    const result = await anthropicNativeGenerate({
+      provider: 'anthropic',
+      model: 'claude-opus-4-6',
+      system: 'You are helpful.',
+      messages: [{ role: 'user', content: 'hi' }],
+      cache: { enabled: true, breakpoints: ['system'], ttlSeconds: 600 },
+    })
+    expect(result.cacheUsage!.effectiveTtlSeconds).toBe(300)
   })
 })

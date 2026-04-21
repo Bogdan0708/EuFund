@@ -1,3 +1,5 @@
+import { getAnthropicClient } from '@/lib/ai/anthropic-client'
+import { deriveIdentityKey } from './cache-key'
 import type { GenerateRequest, GenerateResult, CacheOptions } from './types'
 
 const CACHE_CONTROL_EPHEMERAL = { type: 'ephemeral' as const }
@@ -194,3 +196,26 @@ export function clampTtl(input: number | undefined): { effective: number | undef
 
 // Test-only reset.
 export function __resetTtlClampWarningForTests() { ttlClampWarned = false }
+
+export async function anthropicNativeGenerate(req: GenerateRequest): Promise<GenerateResult> {
+  const anthropic = getAnthropicClient()
+  const translated = translateRequestToAnthropic(req)
+  const { effective: effectiveTtlSeconds } = clampTtl(req.cache?.ttlSeconds)
+  const identityKey = req.cache ? deriveIdentityKey(req) : undefined
+
+  const response = await anthropic.messages.create({
+    model: req.model,
+    max_tokens: req.maxTokens ?? 4096,
+    temperature: req.temperature,
+    ...(translated.system ? { system: translated.system } : {}),
+    ...(translated.tools ? { tools: translated.tools } : {}),
+    messages: translated.messages,
+  } as unknown as Parameters<typeof anthropic.messages.create>[0])
+
+  return translateResponseFromAnthropic(response as unknown as AnthropicNativeResponse, {
+    model: req.model,
+    cacheRequested: req.cache,
+    identityKey,
+    effectiveTtlSeconds,
+  })
+}
