@@ -129,7 +129,12 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     const phaseTools = getToolsForPhase(session.currentPhase)
 
     // Build messages array for LLM
-    const llmMessages: { role: 'user' | 'assistant' | 'system' | 'tool'; content: string; tool_call_id?: string }[] = []
+    const llmMessages: {
+      role: 'user' | 'assistant' | 'system' | 'tool'
+      content: string
+      tool_call_id?: string
+      tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[]
+    }[] = []
     if (history.summary) {
       llmMessages.push({ role: 'system', content: `Previous conversation summary:\n${history.summary}` })
     }
@@ -167,22 +172,44 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
         tools: toolSchemas.length > 0 ? toolSchemas : undefined,
       })
 
+      // Single assistant-message push per iteration, including tool_calls when present.
+      // Task 21 consolidation: fixes the latent shim bug (old sites dropped tool_calls,
+      // plus the text+tool_calls branch pushed twice) and enables native tool replay.
+      const assistantMessage: {
+        role: 'assistant'
+        content: string
+        tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[]
+      } = {
+        role: 'assistant',
+        content: response.content ?? '',
+        ...(response.toolCalls && response.toolCalls.length > 0
+          ? {
+              tool_calls: response.toolCalls.map((tc) => ({
+                id: tc.id,
+                type: 'function' as const,
+                function: { name: tc.name, arguments: tc.arguments },
+              })),
+            }
+          : {}),
+      }
+      llmMessages.push(assistantMessage)
+
       // If text response with no tool calls — we're done
-      if (response.content && (!response.toolCalls || response.toolCalls.length === 0)) {
-        emit({ type: 'text_delta', content: response.content })
-        await appendMessage(session.id, {
-          role: 'assistant',
-          messageType: 'text',
-          content: response.content,
-        })
-        llmMessages.push({ role: 'assistant', content: response.content })
+      if (!response.toolCalls || response.toolCalls.length === 0) {
+        if (response.content) {
+          emit({ type: 'text_delta', content: response.content })
+          await appendMessage(session.id, {
+            role: 'assistant',
+            messageType: 'text',
+            content: response.content,
+          })
+        }
         break
       }
 
-      // If text + tool calls, emit text first
+      // Otherwise emit any text and continue to tool processing.
       if (response.content) {
         emit({ type: 'text_delta', content: response.content })
-        llmMessages.push({ role: 'assistant', content: response.content })
       }
 
       // Handle tool calls
