@@ -7,6 +7,15 @@ import { perplexityProvider } from './perplexity'
 import { withRetry } from './retry'
 import { deriveIdentityKey } from './cache-key'
 import { isFeatureEnabled } from '@/lib/feature-flags'
+import { logger } from '@/lib/logger'
+import {
+  trackAiCacheCall,
+  trackAiCacheReadTokens,
+  trackAiCacheWriteTokens,
+  trackAiCacheDisabled,
+} from '@/lib/monitoring/metrics'
+
+const log = logger.child({ component: 'ai-router' })
 
 const PROVIDERS: Record<ProviderName, ProviderClient> = {
   openai: openaiProvider,
@@ -88,6 +97,34 @@ export async function generate(req: GenerateRequest): Promise<GenerateResult> {
 
   if (req.cache === undefined) {
     delete result.cacheUsage
+  }
+
+  const identityKeyForLog = result.cacheUsage?.identityKey ?? deriveIdentityKey(req)
+  const loggedCache = result.cacheUsage ?? {
+    requested: false,
+    enabled: false,
+    disabledReason: 'request_disabled' as const,
+    identityKey: identityKeyForLog,
+    supported: false,
+    reads: 0,
+    writes: 0,
+    hit: 'disabled' as const,
+  }
+
+  log.info({
+    provider: config.provider,
+    model: req.model,
+    cache: {
+      ...loggedCache,
+      identityKey: loggedCache.identityKey.slice(0, 16),
+    },
+  }, 'ai_call_completed')
+
+  trackAiCacheCall(config.provider, req.model, loggedCache.hit)
+  trackAiCacheReadTokens(config.provider, req.model, 'unspecified', loggedCache.reads)
+  trackAiCacheWriteTokens(config.provider, req.model, 'unspecified', loggedCache.writes)
+  if (loggedCache.disabledReason === 'global_kill_switch' || loggedCache.disabledReason === 'request_disabled') {
+    trackAiCacheDisabled(loggedCache.disabledReason)
   }
 
   return result
