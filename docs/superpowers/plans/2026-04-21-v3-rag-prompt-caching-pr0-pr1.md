@@ -2200,6 +2200,59 @@ describe('router.generate — cache resolution + presence', () => {
     })
     expect(result.cacheUsage).toBeUndefined()
   })
+
+  it('router presence OVERRIDES a misbehaving adapter cacheUsage on kill-switched calls', async () => {
+    isFeatureEnabledMock.mockResolvedValue(false)
+    // Simulate an adapter that wrongly reports success-shaped cacheUsage on a
+    // call the router has forced to cache.enabled=false (e.g. adapter code drift).
+    anthropicMock.mockResolvedValueOnce({
+      content: 'ok',
+      tokensUsed: { input: 10, output: 5 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      cacheUsage: {
+        requested: true,
+        enabled: true,
+        disabledReason: 'none',
+        identityKey: 'bogus',
+        supported: true,
+        reads: 999,
+        writes: 0,
+        hit: 'read',
+      },
+    })
+    const { generate } = await import('@/lib/ai/providers/router')
+    const result = await generate({
+      provider: 'anthropic', model: 'claude-opus-4-6',
+      messages: [{ role: 'user', content: 'hi' }],
+      cache: { enabled: true },
+    })
+    expect(result.cacheUsage!.enabled).toBe(false)
+    expect(result.cacheUsage!.disabledReason).toBe('global_kill_switch')
+    expect(result.cacheUsage!.hit).toBe('disabled')
+    expect(result.cacheUsage!.reads).toBe(0)
+  })
+
+  it('router presence OVERRIDES a misbehaving adapter cacheUsage on request-disabled calls', async () => {
+    anthropicMock.mockResolvedValueOnce({
+      content: 'ok',
+      tokensUsed: { input: 10, output: 5 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      cacheUsage: {
+        requested: true, enabled: true, disabledReason: 'none',
+        identityKey: 'bogus', supported: true, reads: 42, writes: 0, hit: 'read',
+      },
+    })
+    const { generate } = await import('@/lib/ai/providers/router')
+    const result = await generate({
+      provider: 'anthropic', model: 'claude-opus-4-6',
+      messages: [{ role: 'user', content: 'hi' }],
+      cache: { enabled: false },
+    })
+    expect(result.cacheUsage!.disabledReason).toBe('request_disabled')
+    expect(result.cacheUsage!.reads).toBe(0)
+  })
 })
 ```
 
@@ -2293,7 +2346,11 @@ export async function generate(req: GenerateRequest): Promise<GenerateResult> {
     effectiveReq,
   )
 
-  if (req.cache !== undefined && result.cacheUsage === undefined && presence !== null) {
+  // Router owns disabled cases by contract (§5.2). When resolveCacheState
+  // returned a presence object, it wins over any cacheUsage the adapter may
+  // have emitted — this prevents a misbehaving adapter from reporting
+  // disabledReason: 'none' on a kill-switched call.
+  if (req.cache !== undefined && presence !== null) {
     result.cacheUsage = presence
   }
 
@@ -2655,9 +2712,12 @@ vi.mock('@/lib/ai/providers/anthropic', () => ({
       tokensUsed: { input: 100, output: 20 },
       model: req.model,
       provider: 'anthropic',
-      ...(req.cache ? {
+      // Mirror the real adapter contract: emit cacheUsage only when the
+      // router has resolved cache.enabled === true. On kill-switched or
+      // request-disabled calls, the router (not the adapter) owns presence.
+      ...(req.cache?.enabled === true ? {
         cacheUsage: {
-          requested: true, enabled: req.cache.enabled, disabledReason: 'none', identityKey: 'x'.repeat(64),
+          requested: true, enabled: true, disabledReason: 'none', identityKey: 'x'.repeat(64),
           supported: true, reads: 80, writes: 0, hit: 'read',
         },
       } : {}),
