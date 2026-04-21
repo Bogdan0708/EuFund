@@ -1,11 +1,12 @@
 export interface GenerateRequest {
   system?: string
-  messages: { role: 'user' | 'assistant' | 'system' | 'tool'; content: string; tool_call_id?: string }[]
+  messages: RouterMessage[]
   provider: ProviderName
   model: string
   maxTokens?: number
   temperature?: number
   tools?: ToolSchema[]
+  cache?: CacheOptions
 }
 
 export interface GenerateResult {
@@ -14,6 +15,20 @@ export interface GenerateResult {
   model: string
   provider: ProviderName
   toolCalls?: ToolCallResult[]
+  cacheUsage?: CacheUsage
+}
+
+export interface RouterMessage {
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  content: string
+  tool_call_id?: string
+  tool_calls?: RouterToolCall[]
+}
+
+export interface RouterToolCall {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
 }
 
 export interface ToolSchema {
@@ -45,23 +60,40 @@ export interface ModelConfig {
   fallback?: { provider: ProviderName; model: string }
 }
 
+export interface CacheOptions {
+  enabled: boolean
+  key?: string
+  breakpoints?: Array<'system' | 'tools'>
+  ttlSeconds?: number
+}
+
+export type CacheDisabledReason = 'global_kill_switch' | 'request_disabled' | 'none'
+export type CacheHit = 'read' | 'miss' | 'disabled' | 'unsupported'
+
+export interface CacheUsage {
+  requested: boolean
+  enabled: boolean
+  disabledReason: CacheDisabledReason
+  identityKey: string
+  supported: boolean
+  reads: number
+  writes: number
+  hit: CacheHit
+  effectiveTtlSeconds?: number
+}
+
 export const MODEL_CONFIGS: Record<string, ModelConfig> = {
-  // Anthropic
   'claude-opus-4-6': { provider: 'anthropic', model: 'claude-opus-4-6', timeout: 180_000, fallback: { provider: 'openai', model: 'gpt-5.4' } },
   'claude-sonnet-4-6': { provider: 'anthropic', model: 'claude-sonnet-4-6', timeout: 90_000, fallback: { provider: 'openai', model: 'gpt-5.4' } },
   'claude-haiku-4-5': { provider: 'anthropic', model: 'claude-haiku-4-5', timeout: 30_000, fallback: { provider: 'openai', model: 'gpt-5.4-mini' } },
-  // OpenAI
   'gpt-5.4': { provider: 'openai', model: 'gpt-5.4', timeout: 60_000, fallback: { provider: 'anthropic', model: 'claude-sonnet-4-6' } },
   'gpt-5.4-mini': { provider: 'openai', model: 'gpt-5.4-mini', timeout: 45_000, fallback: { provider: 'anthropic', model: 'claude-haiku-4-5' } },
   'gpt-5.4-nano': { provider: 'openai', model: 'gpt-5.4-nano', timeout: 30_000, fallback: { provider: 'google', model: 'gemini-3-flash' } },
-  // Google
   'gemini-3.1-pro': { provider: 'google', model: 'gemini-3.1-pro', timeout: 90_000, fallback: { provider: 'openai', model: 'gpt-5.4' } },
   'gemini-3-flash': { provider: 'google', model: 'gemini-3-flash', timeout: 30_000, fallback: { provider: 'openai', model: 'gpt-5.4-mini' } },
   'nano-banana': { provider: 'google', model: 'nano-banana', timeout: 60_000, fallback: { provider: 'openai', model: 'gpt-5.4' } },
-  // Perplexity
   'sonar': { provider: 'perplexity', model: 'sonar', timeout: 30_000, fallback: { provider: 'google', model: 'gemini-3-flash' } },
   'sonar-pro': { provider: 'perplexity', model: 'sonar-pro', timeout: 30_000, fallback: { provider: 'google', model: 'gemini-3-flash' } },
 }
 
-// Re-exported from the single source of truth in model-routing.ts
 export { SECTION_MODEL_ROUTING, type RoutingTier } from '../model-routing'
