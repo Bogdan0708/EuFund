@@ -34,8 +34,12 @@ export interface AnthropicNativeRequest {
   messages: AnthropicMessage[]
 }
 
-function translateMessages(msgs: GenerateRequest['messages']): AnthropicMessage[] {
+function translateMessages(msgs: GenerateRequest['messages']): {
+  messages: AnthropicMessage[]
+  extraSystemTexts: string[]
+} {
   const out: AnthropicMessage[] = []
+  const extraSystemTexts: string[] = []
   let currentToolGroup: AnthropicToolResultBlock[] | null = null
 
   const flushToolGroup = () => {
@@ -47,7 +51,11 @@ function translateMessages(msgs: GenerateRequest['messages']): AnthropicMessage[
 
   for (const m of msgs) {
     if (m.role === 'system') {
-      throw new Error('System-role messages must be passed via req.system, not req.messages')
+      // Anthropic native has no message-level system role; hoist the content to
+      // an additional top-level system block (uncached — only req.system is the
+      // stable cached prefix). V3's history-summary pattern uses this.
+      extraSystemTexts.push(m.content)
+      continue
     }
 
     if (m.role === 'tool') {
@@ -83,21 +91,29 @@ function translateMessages(msgs: GenerateRequest['messages']): AnthropicMessage[
   }
 
   flushToolGroup()
-  return out
+  return { messages: out, extraSystemTexts }
 }
 
 export function translateRequestToAnthropic(req: GenerateRequest): AnthropicNativeRequest {
   const cacheSystem = req.cache?.enabled === true && (req.cache.breakpoints ?? []).includes('system')
   const cacheTools = req.cache?.enabled === true && (req.cache.breakpoints ?? []).includes('tools')
 
-  const out: AnthropicNativeRequest = { messages: translateMessages(req.messages) }
+  const { messages, extraSystemTexts } = translateMessages(req.messages)
+  const out: AnthropicNativeRequest = { messages }
 
+  const systemBlocks: AnthropicNativeSystemBlock[] = []
   if (req.system !== undefined) {
-    out.system = [{
+    systemBlocks.push({
       type: 'text',
       text: req.system,
       ...(cacheSystem ? { cache_control: CACHE_CONTROL_EPHEMERAL } : {}),
-    }]
+    })
+  }
+  for (const text of extraSystemTexts) {
+    systemBlocks.push({ type: 'text', text })
+  }
+  if (systemBlocks.length > 0) {
+    out.system = systemBlocks
   }
 
   if (req.tools && req.tools.length > 0) {
@@ -205,8 +221,8 @@ export async function anthropicNativeGenerate(req: GenerateRequest): Promise<Gen
 
   const response = await anthropic.messages.create({
     model: req.model,
-    max_tokens: req.maxTokens ?? 4096,
-    temperature: req.temperature,
+    max_tokens: req.maxTokens ?? 20_000,
+    temperature: req.temperature ?? 0.7,
     ...(translated.system ? { system: translated.system } : {}),
     ...(translated.tools ? { tools: translated.tools } : {}),
     messages: translated.messages,

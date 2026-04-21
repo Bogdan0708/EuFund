@@ -162,9 +162,42 @@ describe('translateRequestToAnthropic — messages', () => {
     })
   })
 
-  it('throws when a system-role message appears (system lives in req.system)', () => {
-    expect(() => translateRequestToAnthropic(withMessages([{ role: 'system', content: 'no' }])))
-      .toThrow(/system.*req\.system/i)
+  it('hoists a system-role message to an additional (uncached) top-level system block', () => {
+    const out = translateRequestToAnthropic({
+      ...baseReq,
+      system: 'Main system prompt.',
+      messages: [
+        { role: 'system', content: 'Previous conversation summary:\nfoo' },
+        { role: 'user', content: 'hi' },
+      ],
+      tools: undefined,
+      cache: { enabled: true, breakpoints: ['system'] },
+    })
+    // Main system block is cached; hoisted history summary is appended uncached.
+    expect(out.system).toEqual([
+      { type: 'text', text: 'Main system prompt.', cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: 'Previous conversation summary:\nfoo' },
+    ])
+    // The system-role message is removed from messages.
+    expect(out.messages).toEqual([{ role: 'user', content: 'hi' }])
+  })
+
+  it('hoists multiple system-role messages in order, after the req.system block', () => {
+    const out = translateRequestToAnthropic({
+      ...baseReq,
+      system: undefined,
+      messages: [
+        { role: 'system', content: 'first' },
+        { role: 'user', content: 'hi' },
+        { role: 'system', content: 'second' },
+      ],
+      tools: undefined,
+      cache: { enabled: false },
+    })
+    expect(out.system).toEqual([
+      { type: 'text', text: 'first' },
+      { type: 'text', text: 'second' },
+    ])
   })
 })
 

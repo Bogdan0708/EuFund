@@ -110,7 +110,7 @@ exports[`contract — Anthropic OpenAI-compat shim request body > matches the sn
 
 exports[`contract — Anthropic native request body > matches the snapshot when cache is enabled 1`] = `
 {
-  "max_tokens": 4096,
+  "max_tokens": 20000,
   "messages": [
     {
       "content": "find X",
@@ -154,7 +154,7 @@ exports[`contract — Anthropic native request body > matches the snapshot when 
       "type": "text",
     },
   ],
-  "temperature": undefined,
+  "temperature": 0.7,
   "tools": [
     {
       "cache_control": {
