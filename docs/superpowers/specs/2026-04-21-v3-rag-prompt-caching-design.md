@@ -33,7 +33,7 @@ Managed Agents is **not** migrated onto the router. It remains on direct SDK str
 
 - **Router streaming**. Managed runtime stays on direct Anthropic SDK because it multiplexes SSE + tool loops. Unifying later is its own spec.
 - **Gemini explicit context caching**. v1 ships the capability plumbing; the stateful "create cache resource → reference → invalidate" lifecycle is deferred to a dedicated spec. The router contract must not block it.
-- **RAG retrieved-context caching**. Retrieved chunks vary per query and are not a stable prefix. v1 only caches the RAG system prompt (itself subject to a stability audit — see §10.5).
+- **RAG retrieved-context caching**. Retrieved chunks vary per query and are not a stable prefix. v1 only caches the RAG system prompt (itself subject to a per-caller stability audit following the V3 template in §8.3).
 - **Embeddings / reranker / eval harness**. Tracks 2–3.
 - **Grafana dashboards, cost budgets, finance reporting**. Dashboard work belongs to Track 3.
 - **Anthropic 1h extended cache beta**. Follow-up after 5-min ephemeral baselines stabilize.
@@ -120,21 +120,20 @@ export interface GenerateResult {
   model: string
   provider: ProviderName
   toolCalls?: ToolCallResult[]
-  cacheUsage?: CacheUsage                               // present whenever cache was attempted
+  cacheUsage?: CacheUsage                               // present only when req.cache was provided; see §5.4
 }
 ```
 
 ### 5.2 Resolution flow (`lib/ai/providers/router.ts`)
 
-1. Compute `identityKey = deriveIdentityKey(req)` — always, even when caching is off (telemetry correlation).
-2. Resolve `enabled`:
-   - Read feature flag: `isFeatureEnabled('prompt_cache_enabled', { bypassCache: true })`.
-   - If flag is false → force `enabled = false`, `disabledReason = 'global_kill_switch'`.
-   - Else if caller passed `cache.enabled === true` → `enabled = true`, `disabledReason = 'none'`.
-   - Else → `enabled = false`, `disabledReason = 'request_disabled'`.
-3. Build provider dispatch call with resolved cache state.
-4. Adapter receives `{ ...req, cache: { enabled, key, breakpoints, ttlSeconds }, _identityKey }` and populates `cacheUsage.reads/writes/supported/hit/effectiveTtlSeconds`.
-5. Router assembles final `GenerateResult.cacheUsage` by merging its resolution fields with the adapter's telemetry.
+1. Compute `identityKey = deriveIdentityKey(req)` — always (cheap, no I/O; telemetry correlation).
+2. **If `req.cache?.enabled !== true`**: skip the feature-flag read. Set `requested = false`, `enabled = false`, `disabledReason = 'request_disabled'`. No DB hit on this path. This makes PR 1 truly zero-behavior-change for non-opted-in callers — the router does not poll the flag on every `generate()` call.
+3. **If `req.cache?.enabled === true`**: read `isFeatureEnabled('prompt_cache_enabled', { bypassCache: true })`.
+   - Flag is `false` → `requested = true`, `enabled = false`, `disabledReason = 'global_kill_switch'`.
+   - Flag is `true` → `requested = true`, `enabled = true`, `disabledReason = 'none'`.
+4. Build provider dispatch call with resolved cache state.
+5. Adapter receives `{ ...req, cache: { enabled, key, breakpoints, ttlSeconds }, _identityKey }` and populates `cacheUsage.reads/writes/supported/hit/effectiveTtlSeconds`.
+6. Router assembles final `GenerateResult.cacheUsage` by merging its resolution fields with the adapter's telemetry — **only when `req.cache` was provided** (see §5.4).
 
 ### 5.3 Identity key derivation
 
@@ -160,13 +159,19 @@ Rules:
 - Caller-provided `cache.key` wins over `identityKey` for any adapter that consumes keys (OpenAI `prompt_cache_key`). `identityKey` is always logged for telemetry correlation, regardless.
 - Helper is ~20 LOC hand-rolled; no new dependency.
 
-### 5.4 Invalidation rules (documented, not enforced)
+### 5.4 `cacheUsage` presence rule
+
+- `GenerateResult.cacheUsage` is populated **only when the caller provided `req.cache`** (either `enabled: true` or `enabled: false`). If the caller omits `req.cache` entirely, `GenerateResult.cacheUsage` is `undefined` — the result shape respects caller intent and legacy callers do not sprout a new field pre-migration.
+- **Structured logs always include a normalized cache object** (§9.1), regardless of whether `req.cache` was provided. For non-opted-in calls the log emits `{ requested: false, enabled: false, disabledReason: 'request_disabled', identityKey, supported: false, reads: 0, writes: 0, hit: 'disabled' }`. Telemetry completeness is decoupled from the result API surface.
+- PR 2 (V3), PR 3 (RAG), and PR 4 (one-shots) all pass `req.cache`, so every post-migration result carries `cacheUsage`.
+
+### 5.5 Invalidation rules (documented, not enforced)
 
 - **Anthropic**: byte change in the cached prefix invalidates naturally; phase change rewrites V3's system; tool-list change naturally invalidates.
 - **OpenAI**: prefix-ordering change or `prompt_cache_key` change → new cache entry.
 - Caller responsibility: produce stable prefix content. Router does not enforce stability; it just doesn't break it.
 
-### 5.5 Retry & fallback interaction
+### 5.6 Retry & fallback interaction
 
 - `lib/ai/providers/retry.ts` wraps the adapter call. Cache options flow unchanged on same-provider retry. Anthropic re-reads cache on retry.
 - Cross-provider fallback (`MODEL_CONFIGS[model].fallback`): the `cache` option travels unchanged; each adapter honors its own slice. Anthropic-native `cache_control` blocks are never constructed for an OpenAI adapter call.
@@ -191,7 +196,7 @@ Request translation:
   - `role: 'user'` → `{ role: 'user', content: msg.content }`.
   - `role: 'assistant'` with no `tool_calls` → `{ role: 'assistant', content: msg.content }`.
   - `role: 'assistant'` with `tool_calls` → `{ role: 'assistant', content: [ ...(msg.content ? [{ type: 'text', text: msg.content }] : []), ...tool_calls.map(tc => ({ type: 'tool_use', id: tc.id, name: tc.function.name, input: JSON.parse(tc.function.arguments) })) ] }`.
-  - `role: 'tool'` → `{ role: 'user', content: [{ type: 'tool_result', tool_use_id: msg.tool_call_id, content: msg.content }] }`.
+  - **Contiguous `role: 'tool'` messages are grouped into a single Anthropic user message** with `tool_result` blocks emitted in message order: `{ role: 'user', content: [{ type: 'tool_result', tool_use_id: msg.tool_call_id, content: msg.content }, ...] }`. Matches the two-tool unit test in §10.3 and preserves Anthropic's `tool_use` ↔ `tool_result` ordering invariant. A non-tool message between two tool messages breaks the grouping (translator starts a new user message at the next tool block).
   - `role: 'system'` messages must not appear (router asserts): system lives only in `req.system`.
 
 Response parse:
@@ -430,7 +435,7 @@ Concrete rate values are filled from provider pricing pages when PR 1 is authore
 
 ### 9.4 Cost helper updates
 
-- `lib/ai/cost/anthropic-pricing.ts`: `computeAnthropicCostMicros(usage, model)` becomes cache-aware. Net cost = base `input * rate + output * rate + cache_creation * rate * 1.25 + cache_read * rate * 0.10`, with base-input token count excluding cache tokens.
+- `lib/ai/cost/anthropic-pricing.ts`: `computeAnthropicCostMicros(usage, model)` becomes cache-aware. Anthropic reports `input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, and `output_tokens` as **non-overlapping** fields — `input_tokens` is already net of cache tokens. Net cost = `input_tokens * inputRate + cache_creation_input_tokens * inputRate * 1.25 + cache_read_input_tokens * inputRate * 0.10 + output_tokens * outputRate`. PR 1 verifies the current helper's field names against Anthropic's usage schema (the existing helper predates cache awareness) and updates code + this spec together if they diverge.
 - New `lib/ai/cost/openai-pricing.ts` (mirror shape): applies `cachedInputDiscount` to `prompt_tokens_details.cached_tokens`.
 
 ## 10. Testing
@@ -523,8 +528,10 @@ Normalization strips cache metadata (`cache_control` blocks, `prompt_cache_key`,
 
 `tests/unit/ai/cost/anthropic-pricing.test.ts`:
 
-- Given `usage = { input: 1000, output: 500, cache_creation: 800, cache_read: 400 }` and `PRICING_V1.anthropic['claude-opus-4-6']`, assert computed cost matches `(input - cache_creation - cache_read) * inputRate + cache_creation * inputRate * 1.25 + cache_read * inputRate * 0.10 + output * outputRate`, using table values (no hardcoded numbers in test prose).
-- Zero cache fields → cost equals the pre-PR-1 formula (no regression).
+- Anthropic's usage schema returns `input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, and `output_tokens` as non-overlapping fields. `input_tokens` is already net of cache tokens — **do not subtract**.
+- Given `usage = { input_tokens: 1000, output_tokens: 500, cache_creation_input_tokens: 800, cache_read_input_tokens: 400 }` and `PRICING_V1.anthropic['claude-opus-4-6']`, assert computed cost matches `input_tokens * inputRate + cache_creation_input_tokens * inputRate * 1.25 + cache_read_input_tokens * inputRate * 0.10 + output_tokens * outputRate`, using table values (no hardcoded numbers in test prose).
+- Zero cache fields → cost equals `input_tokens * inputRate + output_tokens * outputRate` — identical to the pre-PR-1 formula (no regression).
+- PR 1 verifies the actual field names returned by the Anthropic SDK against the existing `computeAnthropicCostMicros` helper and updates both helper and this spec if they differ.
 
 `tests/unit/ai/cost/openai-pricing.test.ts`:
 - `prompt_tokens_details.cached_tokens = N` → input cost reduced by `N * cachedInputDiscount`.
