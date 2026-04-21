@@ -56,3 +56,103 @@ describe('translateRequestToAnthropic — tools', () => {
     for (const t of out.tools!) expect(t.cache_control).toBeUndefined()
   })
 })
+
+describe('translateRequestToAnthropic — messages', () => {
+  const withMessages = (messages: GenerateRequest['messages']): GenerateRequest => ({
+    ...baseReq,
+    messages,
+    tools: undefined,
+    cache: { enabled: false },
+  })
+
+  it('passes plain user message through', () => {
+    const out = translateRequestToAnthropic(withMessages([{ role: 'user', content: 'hello' }]))
+    expect(out.messages).toEqual([{ role: 'user', content: 'hello' }])
+  })
+
+  it('passes plain assistant message (no tool_calls) through as string content', () => {
+    const out = translateRequestToAnthropic(withMessages([{ role: 'assistant', content: 'hi back' }]))
+    expect(out.messages).toEqual([{ role: 'assistant', content: 'hi back' }])
+  })
+
+  it('translates assistant with tool_calls to content blocks (text + tool_use)', () => {
+    const out = translateRequestToAnthropic(withMessages([
+      {
+        role: 'assistant',
+        content: 'calling tool',
+        tool_calls: [{
+          id: 'toolu_1',
+          type: 'function',
+          function: { name: 'search', arguments: '{"q":"x"}' },
+        }],
+      },
+    ]))
+    expect(out.messages).toEqual([{
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'calling tool' },
+        { type: 'tool_use', id: 'toolu_1', name: 'search', input: { q: 'x' } },
+      ],
+    }])
+  })
+
+  it('omits the text block when assistant content is empty alongside tool_calls', () => {
+    const out = translateRequestToAnthropic(withMessages([
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 't1', type: 'function', function: { name: 's', arguments: '{}' } }],
+      },
+    ]))
+    expect(out.messages[0]).toEqual({
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: 't1', name: 's', input: {} }],
+    })
+  })
+
+  it('wraps a single tool-role message into a user message with a single tool_result block', () => {
+    const out = translateRequestToAnthropic(withMessages([
+      { role: 'tool', content: '{"ok":true}', tool_call_id: 'toolu_1' },
+    ]))
+    expect(out.messages).toEqual([{
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '{"ok":true}' }],
+    }])
+  })
+
+  it('groups contiguous tool messages into one user message with ordered tool_result blocks (§6.1)', () => {
+    const out = translateRequestToAnthropic(withMessages([
+      { role: 'tool', content: 'first', tool_call_id: 'toolu_a' },
+      { role: 'tool', content: 'second', tool_call_id: 'toolu_b' },
+    ]))
+    expect(out.messages).toEqual([{
+      role: 'user',
+      content: [
+        { type: 'tool_result', tool_use_id: 'toolu_a', content: 'first' },
+        { type: 'tool_result', tool_use_id: 'toolu_b', content: 'second' },
+      ],
+    }])
+  })
+
+  it('starts a new user group when a non-tool message breaks contiguity', () => {
+    const out = translateRequestToAnthropic(withMessages([
+      { role: 'tool', content: 'a', tool_call_id: 't_a' },
+      { role: 'assistant', content: 'thinking' },
+      { role: 'tool', content: 'b', tool_call_id: 't_b' },
+    ]))
+    expect(out.messages).toHaveLength(3)
+    expect(out.messages[0]).toEqual({
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: 't_a', content: 'a' }],
+    })
+    expect(out.messages[2]).toEqual({
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: 't_b', content: 'b' }],
+    })
+  })
+
+  it('throws when a system-role message appears (system lives in req.system)', () => {
+    expect(() => translateRequestToAnthropic(withMessages([{ role: 'system', content: 'no' }])))
+      .toThrow(/system.*req\.system/i)
+  })
+})
