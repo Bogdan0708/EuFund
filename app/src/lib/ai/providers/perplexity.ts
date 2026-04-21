@@ -1,4 +1,6 @@
 import OpenAI from 'openai'
+import { UnsupportedOperationError } from '@/lib/errors'
+import { deriveIdentityKey } from './cache-key'
 import type { ProviderClient, GenerateRequest, GenerateResult } from './types'
 
 let client: OpenAI | null = null
@@ -15,6 +17,9 @@ function getClient(): OpenAI {
 
 export const perplexityProvider: ProviderClient = {
   async generate(req: GenerateRequest): Promise<GenerateResult> {
+    if (req.messages.some((m) => m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0)) {
+      throw new UnsupportedOperationError('perplexity', 'tool_calls in messages')
+    }
     const c = getClient()
     const messages = [
       ...(req.system ? [{ role: 'system' as const, content: req.system }] : []),
@@ -31,7 +36,7 @@ export const perplexityProvider: ProviderClient = {
       ...(req.tools ? { tools: req.tools } : {}),
     })
     const choice = response.choices[0]
-    return {
+    const result: GenerateResult = {
       content: choice.message.content ?? '',
       tokensUsed: { input: response.usage?.prompt_tokens ?? 0, output: response.usage?.completion_tokens ?? 0 },
       model: req.model,
@@ -40,5 +45,23 @@ export const perplexityProvider: ProviderClient = {
         ?.filter((tc): tc is Extract<typeof tc, { type: 'function' }> => tc.type === 'function')
         .map(tc => ({ id: tc.id, name: tc.function.name, arguments: tc.function.arguments })),
     }
+
+    // Adapter only emits cacheUsage when caller opted in with cache.enabled === true.
+    // Router owns the disabled presence (§5.2) for cache.enabled === false / omitted.
+    if (req.cache?.enabled === true) {
+      result.cacheUsage = {
+        requested: true,
+        enabled: true,
+        disabledReason: 'none',
+        identityKey: deriveIdentityKey(req),
+        supported: false,
+        reads: 0,
+        writes: 0,
+        hit: 'unsupported',
+        ...(req.cache.ttlSeconds !== undefined ? { effectiveTtlSeconds: req.cache.ttlSeconds } : {}),
+      }
+    }
+
+    return result
   },
 }
