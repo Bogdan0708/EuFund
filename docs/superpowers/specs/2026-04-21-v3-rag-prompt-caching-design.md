@@ -514,6 +514,16 @@ Normalization strips cache metadata (`cache_control` blocks, `prompt_cache_key`,
 | `ttlSeconds: 300` | `effectiveTtlSeconds: 300`, no warning |
 | `ttlSeconds: 120` | `effectiveTtlSeconds: 120`, no warning |
 
+**`cacheUsage` presence on `GenerateResult` (enforces §5.4):**
+
+| Scenario | `GenerateResult.cacheUsage` |
+|---|---|
+| Caller passes `cache: { enabled: true }` | **present**, populated per resolution |
+| Caller passes `cache: { enabled: false }` | **present**, with `requested: false`, `enabled: false`, `disabledReason: 'request_disabled'` |
+| Caller omits `cache` entirely | **undefined** (legacy result shape) |
+
+Structured logs always include a normalized cache object across all three scenarios (asserted via a log-spy assertion in the same test).
+
 ### 10.5 Identity key stability
 
 `tests/unit/ai/providers/cache-key.test.ts`:
