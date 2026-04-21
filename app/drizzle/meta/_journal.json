@@ -225,6 +225,13 @@
       "when": 1776988800001,
       "tag": "0031_agent_turns_usage_telemetry",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1776988800002,
+      "tag": "0032_prompt_cache_flag",
+      "breakpoints": true
     }
   ]
 }
