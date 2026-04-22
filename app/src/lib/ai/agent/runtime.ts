@@ -14,6 +14,7 @@ import { db } from '@/lib/db'
 import { agentSessions, agentCheckpoints, agentSections } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { onSectionAccepted, onPhaseTransition } from '@/lib/ai/knowledge/write-back'
+import { isFeatureEnabled } from '@/lib/feature-flags'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'agent-runtime' })
@@ -156,6 +157,14 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     // 5. Call LLM with tool loop (max iterations to prevent runaway)
     const { generate } = await import('@/lib/ai/providers/router')
 
+    // V3 cache opt-in — resolved once per turn; constant across tool-loop iterations
+    // within a single turn. Percentage-targeted on session.userId via targeting.percentage.
+    // Global kill switch prompt_cache_enabled still gates at the router level (PR 1).
+    // See docs/superpowers/plans/2026-04-22-v3-rag-prompt-caching-pr2-v3-optin.md §D4.
+    const v3CacheEnabled = await isFeatureEnabled('v3_prompt_cache_enabled', {
+      userId: session.userId,
+    })
+
     const toolSchemas = phaseTools.map(tool => ({
       type: 'function' as const,
       function: {
@@ -177,6 +186,11 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
         system: systemPrompt,
         messages: llmMessages,
         tools: toolSchemas.length > 0 ? toolSchemas : undefined,
+        // Omit cache entirely when the V3 flag resolves false — the router
+        // skips the global-flag read on that path (router.ts:33-35).
+        ...(v3CacheEnabled
+          ? { cache: { enabled: true as const, breakpoints: ['system', 'tools'] as Array<'system' | 'tools'> } }
+          : {}),
       })
 
       // Single assistant-message push per iteration, including tool_calls when present.
