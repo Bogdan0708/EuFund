@@ -1,0 +1,285 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`contract — Anthropic OpenAI-compat shim request body > matches the snapshot when cache is absent 1`] = `
+{
+  "max_completion_tokens": 20000,
+  "messages": [
+    {
+      "content": "You are helpful.",
+      "role": "system",
+    },
+    {
+      "content": "find X",
+      "role": "user",
+    },
+    {
+      "content": "calling",
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "function": {
+            "arguments": "{"q":"X"}",
+            "name": "search",
+          },
+          "id": "c1",
+          "type": "function",
+        },
+      ],
+    },
+    {
+      "content": "{"hit":1}",
+      "role": "tool",
+      "tool_call_id": "c1",
+    },
+  ],
+  "model": "claude-opus-4-6",
+  "temperature": 0.7,
+  "tools": [
+    {
+      "function": {
+        "description": "search tool",
+        "name": "search",
+        "parameters": {
+          "properties": {
+            "q": {
+              "type": "string",
+            },
+          },
+          "type": "object",
+        },
+      },
+      "type": "function",
+    },
+  ],
+}
+`;
+
+exports[`contract — Anthropic OpenAI-compat shim request body > matches the snapshot when cache.enabled=false 1`] = `
+{
+  "max_completion_tokens": 20000,
+  "messages": [
+    {
+      "content": "You are helpful.",
+      "role": "system",
+    },
+    {
+      "content": "find X",
+      "role": "user",
+    },
+    {
+      "content": "calling",
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "function": {
+            "arguments": "{"q":"X"}",
+            "name": "search",
+          },
+          "id": "c1",
+          "type": "function",
+        },
+      ],
+    },
+    {
+      "content": "{"hit":1}",
+      "role": "tool",
+      "tool_call_id": "c1",
+    },
+  ],
+  "model": "claude-opus-4-6",
+  "temperature": 0.7,
+  "tools": [
+    {
+      "function": {
+        "description": "search tool",
+        "name": "search",
+        "parameters": {
+          "properties": {
+            "q": {
+              "type": "string",
+            },
+          },
+          "type": "object",
+        },
+      },
+      "type": "function",
+    },
+  ],
+}
+`;
+
+exports[`contract — Anthropic native request body > matches the snapshot when cache is enabled 1`] = `
+{
+  "max_tokens": 20000,
+  "messages": [
+    {
+      "content": "find X",
+      "role": "user",
+    },
+    {
+      "content": [
+        {
+          "text": "calling",
+          "type": "text",
+        },
+        {
+          "id": "c1",
+          "input": {
+            "q": "X",
+          },
+          "name": "search",
+          "type": "tool_use",
+        },
+      ],
+      "role": "assistant",
+    },
+    {
+      "content": [
+        {
+          "content": "{"hit":1}",
+          "tool_use_id": "c1",
+          "type": "tool_result",
+        },
+      ],
+      "role": "user",
+    },
+  ],
+  "model": "claude-opus-4-6",
+  "system": [
+    {
+      "cache_control": {
+        "type": "ephemeral",
+      },
+      "text": "You are helpful.",
+      "type": "text",
+    },
+  ],
+  "temperature": 0.7,
+  "tools": [
+    {
+      "cache_control": {
+        "type": "ephemeral",
+      },
+      "description": "search tool",
+      "input_schema": {
+        "properties": {
+          "q": {
+            "type": "string",
+          },
+        },
+        "type": "object",
+      },
+      "name": "search",
+    },
+  ],
+}
+`;
+
+exports[`contract — OpenAI request body > matches the snapshot when cache is absent 1`] = `
+{
+  "max_completion_tokens": 20000,
+  "messages": [
+    {
+      "content": "You are helpful.",
+      "role": "system",
+    },
+    {
+      "content": "find X",
+      "role": "user",
+    },
+    {
+      "content": "calling",
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "function": {
+            "arguments": "{"q":"X"}",
+            "name": "search",
+          },
+          "id": "c1",
+          "type": "function",
+        },
+      ],
+    },
+    {
+      "content": "{"hit":1}",
+      "role": "tool",
+      "tool_call_id": "c1",
+    },
+  ],
+  "model": "gpt-5.4",
+  "temperature": 0.7,
+  "tools": [
+    {
+      "function": {
+        "description": "search tool",
+        "name": "search",
+        "parameters": {
+          "properties": {
+            "q": {
+              "type": "string",
+            },
+          },
+          "type": "object",
+        },
+      },
+      "type": "function",
+    },
+  ],
+}
+`;
+
+exports[`contract — OpenAI request body > matches the snapshot when cache is enabled 1`] = `
+{
+  "max_completion_tokens": 20000,
+  "messages": [
+    {
+      "content": "You are helpful.",
+      "role": "system",
+    },
+    {
+      "content": "find X",
+      "role": "user",
+    },
+    {
+      "content": "calling",
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "function": {
+            "arguments": "{"q":"X"}",
+            "name": "search",
+          },
+          "id": "c1",
+          "type": "function",
+        },
+      ],
+    },
+    {
+      "content": "{"hit":1}",
+      "role": "tool",
+      "tool_call_id": "c1",
+    },
+  ],
+  "model": "gpt-5.4",
+  "prompt_cache_key": "test-key",
+  "temperature": 0.7,
+  "tools": [
+    {
+      "function": {
+        "description": "search tool",
+        "name": "search",
+        "parameters": {
+          "properties": {
+            "q": {
+              "type": "string",
+            },
+          },
+          "type": "object",
+        },
+      },
+      "type": "function",
+    },
+  ],
+}
+`;

@@ -188,6 +188,7 @@ Multi-provider setup using direct SDK calls — no external gateway. Configurati
 - **Managed Agents** (`lib/ai/agent/managed/runtime.ts`): calls Anthropic SDK directly for streaming tool-use loops.
 - **Discovery** (`lib/discovery/pipeline.ts`): uses the in-app `lib/ai/gateway.ts` adapter which instantiates provider SDKs — not an HTTP hop to an external service.
 - **Embeddings**: always OpenAI `text-embedding-3-small` via direct SDK.
+- **Prompt caching (router-level)**: `GenerateRequest.cache?: CacheOptions` and `GenerateResult.cacheUsage?: CacheUsage` are the provider-neutral handles. The Anthropic adapter branches: `cache.enabled=true` uses native `@anthropic-ai/sdk` via `providers/anthropic-native.ts`; `cache.enabled=false` (or omitted) stays on the OpenAI-compat shim. OpenAI gets `prompt_cache_key` when enabled. Google/Perplexity accept the option but only report `supported: false` and throw `UnsupportedOperationError` if `messages[]` contains `tool_calls`. See `docs/superpowers/specs/2026-04-21-v3-rag-prompt-caching-design.md` for the full contract. Global kill-switch: `prompt_cache_enabled` feature flag (seeded `false`). The router only reads the flag when `req.cache?.enabled === true` — PR 1 introduces zero DB traffic for non-opted-in callers.
 
 ### External Integrations
 

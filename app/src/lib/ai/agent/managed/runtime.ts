@@ -382,7 +382,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
 
   // Compute per-turn cost from the summed usage. Unknown model → 0 (safe).
   const modelUsed = tctx.messageModel ?? MODEL
-  const costUsdMicros = computeAnthropicCostMicros(modelUsed, aggregateUsage)
+  const costUsdMicros = computeAnthropicCostMicros(aggregateUsage, modelUsed)
 
   // Mark the turn complete only if at least one durable output landed.
   // A turn that hit the iteration cap without producing any output (or

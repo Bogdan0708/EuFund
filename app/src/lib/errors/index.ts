@@ -258,3 +258,14 @@ export class CircuitBreaker {
     return this.state;
   }
 }
+
+export class UnsupportedOperationError extends Error {
+  readonly provider: string;
+  readonly feature: string;
+  constructor(provider: string, feature: string) {
+    super(`Provider "${provider}" does not support: ${feature}`);
+    this.name = 'UnsupportedOperationError';
+    this.provider = provider;
+    this.feature = feature;
+  }
+}

@@ -96,6 +96,11 @@ metrics.counter('external_api_errors_total', 'Total external API errors');
 metrics.counter('ai_requests_total', 'Total AI requests');
 metrics.counter('proposals_generated_total', 'Total proposals generated');
 
+metrics.counter('ai_cache_calls_total', 'Router AI cache call outcomes');
+metrics.counter('ai_cache_reads_tokens_total', 'Router AI cache read tokens');
+metrics.counter('ai_cache_writes_tokens_total', 'Router AI cache write tokens');
+metrics.counter('ai_cache_disabled_total', 'Router AI cache disable reasons');
+
 function normalizePath(path: string): string {
   return path
     .replace(/\/[0-9a-f-]{36}/g, '/:id')
@@ -115,4 +120,20 @@ export function trackExternalAPI(api: string, success: boolean, durationMs: numb
   metrics.inc('external_api_calls_total', { api });
   metrics.observe('external_api_duration_seconds', { api }, durationMs / 1000);
   if (!success) metrics.inc('external_api_errors_total', { api });
+}
+
+export function trackAiCacheCall(provider: string, model: string, hit: string): void {
+  metrics.inc('ai_cache_calls_total', { provider, model, hit });
+}
+
+export function trackAiCacheReadTokens(provider: string, model: string, task: string, tokens: number): void {
+  if (tokens > 0) metrics.inc('ai_cache_reads_tokens_total', { provider, model, task }, tokens);
+}
+
+export function trackAiCacheWriteTokens(provider: string, model: string, task: string, tokens: number): void {
+  if (tokens > 0) metrics.inc('ai_cache_writes_tokens_total', { provider, model, task }, tokens);
+}
+
+export function trackAiCacheDisabled(reason: 'global_kill_switch' | 'request_disabled'): void {
+  metrics.inc('ai_cache_disabled_total', { reason });
 }
