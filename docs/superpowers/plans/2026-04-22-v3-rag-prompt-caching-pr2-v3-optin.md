@@ -1882,7 +1882,7 @@ Resume canary at 1% and continue with Task 17 Step 3.
 - [x] **Behavior-parity caveat surfaced:** §D3 acknowledges the system-block ordering change (persona/state/rules/phase → persona/rules/phase/state). Parity test is structural, not textual output comparison.
 - [x] **Cohort monitoring caveat surfaced:** §D5 acknowledges Prometheus counters lack cohort labels; tripwires are computed from structured logs using the `cache.requested=true AND cache.enabled=true AND model=claude-opus-4-6` predicate, which isolates V3 caching traffic since no other caller opts in during PR 2c's ramp window.
 - [x] **Spec conflict:** §7.2 example includes `cache.key = 'v3:${sessionId}:${phase}'`; this plan deviates for reasons in §D1. Decision documented.
-- [ ] **Plan tracked in git:** Commit the plan file to master before branching for Task 1 — see the "Committing this plan to master" section below. Check this off once the commit lands.
+- [x] **Plan tracked in git:** committed to master as `e9a8629` before any PR 2a branch.
 
 ## Committing this plan to master
 
