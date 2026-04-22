@@ -45,7 +45,10 @@ vi.mock('@/lib/ai/agent/history', () => ({
   appendMessage: vi.fn().mockResolvedValue(0),
   compactIfNeeded: vi.fn().mockResolvedValue({ compacted: false }),
 }))
-vi.mock('@/lib/ai/agent/prompt', () => ({ buildSystemPrompt: () => 'system' }))
+vi.mock('@/lib/ai/agent/prompt', () => ({
+  buildSystemPrompt: () => 'system',
+  buildSessionStateBlock: () => '## Current Session State\n- stub for tests\n',
+}))
 vi.mock('@/lib/ai/knowledge/session-knowledge', () => ({ getSessionKnowledge: async () => [] }))
 vi.mock('@/lib/ai/knowledge/write-back', () => ({
   onSectionAccepted: vi.fn(),
