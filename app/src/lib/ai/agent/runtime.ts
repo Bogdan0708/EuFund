@@ -4,7 +4,7 @@ import type {
   StateTransition, ToolContext, ToolResult,
 } from './types'
 import { applyTransition } from './transitions'
-import { buildSystemPrompt } from './prompt'
+import { buildSystemPrompt, buildSessionStateBlock } from './prompt'
 import { checkPolicyGate } from './policies'
 import { getToolsForPhase } from './tools/registry'
 import './tools/index' // Side-effect: registers all tools
@@ -126,6 +126,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     } catch { /* non-critical */ }
 
     const systemPrompt = buildSystemPrompt(session, sections)
+    const sessionStateBlock = buildSessionStateBlock(session, sections)
     const phaseTools = getToolsForPhase(session.currentPhase)
 
     // Build messages array for LLM
@@ -135,6 +136,12 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       tool_call_id?: string
       tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[]
     }[] = []
+
+    // Volatile session state — delivered as a role:'system' message so the
+    // Anthropic native adapter hoists it to an uncached additional system block
+    // after the cached req.system prefix. See docs/superpowers/plans/2026-04-22-v3-rag-prompt-caching-pr2-v3-optin.md §D3.
+    llmMessages.push({ role: 'system', content: sessionStateBlock })
+
     if (history.summary) {
       llmMessages.push({ role: 'system', content: `Previous conversation summary:\n${history.summary}` })
     }
