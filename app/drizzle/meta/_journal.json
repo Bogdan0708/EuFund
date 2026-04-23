@@ -232,6 +232,13 @@
       "when": 1776988800002,
       "tag": "0032_prompt_cache_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1776988800003,
+      "tag": "0033_v3_prompt_cache_flag",
+      "breakpoints": true
     }
   ]
 }
