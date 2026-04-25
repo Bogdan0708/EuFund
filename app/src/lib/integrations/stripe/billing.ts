@@ -351,39 +351,46 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
 }
 
 export async function handleWebhookEvent(event: Stripe.Event): Promise<void> {
-  // Idempotency: skip if already processed
-  const existing = await db.query.stripeWebhookEvents.findFirst({
-    where: eq(stripeWebhookEvents.eventId, event.id),
-  });
-  if (existing) return;
+  // Insert-first idempotency: the unique constraint on event_id is the gate.
+  // Note: the dispatch handlers are short-lived DB writes, so the window
+  // between claim INSERT and successful return is sub-millisecond. A hard
+  // process death inside that window would leave the claim in place and
+  // silently no-op subsequent retries; if observed, follow up with a claim
+  // row that carries status / claimedAt / processedAt / lastError.
+  const claimed = await db
+    .insert(stripeWebhookEvents)
+    .values({ eventId: event.id, eventType: event.type })
+    .onConflictDoNothing()
+    .returning({ id: stripeWebhookEvents.id });
 
-  // Process the event
-  switch (event.type) {
-    case 'checkout.session.completed':
-      await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
-      break;
-    case 'customer.subscription.created':
-    case 'customer.subscription.updated':
-      await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
-      break;
-    case 'customer.subscription.deleted':
-      await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
-      break;
-    case 'invoice.payment_succeeded':
-      await handleInvoicePaymentSucceeded(event.data.object as Stripe.Invoice);
-      break;
-    case 'invoice.payment_failed':
-      await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
-      break;
-    default:
-      break;
+  if (claimed.length === 0) return;
+
+  try {
+    switch (event.type) {
+      case 'checkout.session.completed':
+        await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+        break;
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+        await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
+        break;
+      case 'customer.subscription.deleted':
+        await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+        break;
+      case 'invoice.payment_succeeded':
+        await handleInvoicePaymentSucceeded(event.data.object as Stripe.Invoice);
+        break;
+      case 'invoice.payment_failed':
+        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+        break;
+      default:
+        break;
+    }
+  } catch (err) {
+    // Release the claim so Stripe's retry can re-attempt.
+    await db.delete(stripeWebhookEvents).where(eq(stripeWebhookEvents.eventId, event.id));
+    throw err;
   }
-
-  // Record as processed (after success — if handler throws, event can be retried)
-  await db.insert(stripeWebhookEvents).values({
-    eventId: event.id,
-    eventType: event.type,
-  }).onConflictDoNothing();
 }
 
 export class MissingWebhookSecretError extends Error {

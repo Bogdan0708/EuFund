@@ -1,5 +1,5 @@
 // app/tests/integration/stripe-webhooks.test.ts
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import Stripe from 'stripe';
 
 // Chainable Drizzle-style mock factory.
@@ -62,5 +62,37 @@ describe('MissingWebhookSecretError', () => {
     // MissingSecret must be a constructor — if the class isn't exported this assertion catches it
     expect(typeof MissingSecret).toBe('function');
     expect(() => constructWebhookEvent('payload', 'sig')).toThrow(MissingSecret);
+  });
+});
+
+function makeStripeEvent(type: string, id = 'evt_test_1'): any {
+  return {
+    id,
+    type,
+    data: { object: { id: 'sub_test_1', customer: 'cus_test_1', metadata: {}, items: { data: [] }, status: 'active' } },
+  };
+}
+
+describe('handleWebhookEvent idempotency', () => {
+  beforeEach(() => {
+    process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_anything';
+  });
+
+  it('concurrent identical deliveries → handler runs exactly once', async () => {
+    const { handleWebhookEvent } = await import('@/lib/integrations/stripe/billing');
+
+    // First insert wins (returns row); second loses (returns empty array)
+    const returningMock = dbMock.returning as Mock;
+    returningMock.mockReset();
+    returningMock
+      .mockResolvedValueOnce([{ id: 'claim-row-1' }])  // first delivery wins
+      .mockResolvedValueOnce([]);                       // second delivery: conflict
+
+    const updateMock = dbMock.update as Mock;
+
+    const event = makeStripeEvent('customer.subscription.updated');
+    await Promise.all([handleWebhookEvent(event), handleWebhookEvent(event)]);
+
+    expect(updateMock).toHaveBeenCalledTimes(1);
   });
 });
