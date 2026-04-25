@@ -95,4 +95,22 @@ describe('handleWebhookEvent idempotency', () => {
 
     expect(updateMock).toHaveBeenCalledTimes(1);
   });
+
+  it('handler throws → claim row deleted (so retry can re-claim)', async () => {
+    const returningMock = (dbMock as any).returning as Mock;
+    returningMock.mockReset();
+    returningMock.mockResolvedValueOnce([{ id: 'claim-row-1' }]);
+
+    const updateMock = (dbMock as any).update as Mock;
+    // Handler dispatch eventually calls db.update; make it throw
+    updateMock.mockImplementationOnce(() => { throw new Error('simulated db failure'); });
+
+    const deleteMock = (dbMock as any).delete as Mock;
+
+    const { handleWebhookEvent } = await import('@/lib/integrations/stripe/billing');
+    const event = makeStripeEvent('customer.subscription.updated', 'evt_test_rollback');
+    await expect(handleWebhookEvent(event)).rejects.toThrow('simulated db failure');
+
+    expect(deleteMock).toHaveBeenCalled();
+  });
 });
