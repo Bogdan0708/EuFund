@@ -2,7 +2,7 @@ import Stripe from 'stripe';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { users, stripeWebhookEvents } from '@/lib/db/schema';
-import { FREE_TRIAL_DAYS, resolveBillingTrialState } from '@/lib/billing/trial';
+import { FREE_TRIAL_DAYS, normalizeBillingTier, resolveBillingTrialState } from '@/lib/billing/trial';
 
 export type BillingTier = 'free' | 'plus' | 'pro' | 'enterprise' | 'ultra';
 export type BillingInterval = 'monthly' | 'yearly';
@@ -138,7 +138,7 @@ async function checkIfDowngrade(
   if (!condition) return false;
 
   const row = await db.select({ tier: users.tier }).from(users).where(condition).limit(1);
-  const currentTier = (row[0]?.tier || 'free') as BillingTier;
+  const currentTier = normalizeBillingTier(row[0]?.tier, { userId: userId ?? undefined });
   return TIER_RANK[newTier] < TIER_RANK[currentTier];
 }
 
