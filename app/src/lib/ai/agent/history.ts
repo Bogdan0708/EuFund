@@ -115,9 +115,22 @@ export async function compactIfNeeded(
     allRows.slice(-PRESERVE_RECENT).map(r => r.id)
   )
 
-  // Protect tool pairs: if one half is kept, keep the other
-  const toolCallIds = new Map<string, string>() // toolCallId -> message.id for tool_calls
-  const toolResultIds = new Map<string, string>() // toolCallId -> message.id for tool_results
+  // Protect tool pairs: if one half is kept, keep the other.
+  //
+  // Two persistence shapes coexist in agent_messages:
+  //   - V3 legacy: one row per tool call with messageType='tool_call' +
+  //     row.toolCallId; paired tool_result rows also carry row.toolCallId.
+  //   - Managed runtime: assistant rows carry messageType='text' with the
+  //     tool_use block nested in content[] (see managed/runtime.ts:289);
+  //     paired tool_result rows are standard messageType='tool_result'
+  //     with row.toolCallId set to the block.id.
+  //
+  // Without scanning content[] for managed rows, the pairing map stays
+  // empty for managed sessions and a tool_result kept inside the
+  // preserve-recent window can lose its tool_use on compaction. On
+  // replay, ensurePairingInvariant then strips the orphan tool_result.
+  const toolCallIds = new Map<string, string>() // tool-use id -> message.id for call-side rows
+  const toolResultIds = new Map<string, string>() // tool-use id -> message.id for result-side rows
 
   for (const row of allRows) {
     if (row.messageType === 'tool_call' && row.toolCallId) {
@@ -125,6 +138,14 @@ export async function compactIfNeeded(
     }
     if (row.messageType === 'tool_result' && row.toolCallId) {
       toolResultIds.set(row.toolCallId, row.id)
+    }
+    // Managed-runtime shape: tool_use blocks nested in assistant content[].
+    if (row.role === 'assistant' && Array.isArray(row.content)) {
+      for (const block of row.content as Array<{ type?: string; id?: string }>) {
+        if (block?.type === 'tool_use' && typeof block.id === 'string') {
+          toolCallIds.set(block.id, row.id)
+        }
+      }
     }
   }
 
