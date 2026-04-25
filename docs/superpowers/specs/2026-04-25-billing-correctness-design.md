@@ -59,7 +59,8 @@ Splits cleanly into two PRs (one urgent, one pre-launch) to keep blast radius sm
 | Stripe price table | `app/src/lib/integrations/stripe/billing.ts:66-83` | `STRIPE_PRICES` defines `plus` and `ultra` (env vars never wired) |
 | Price-ID resolver | `app/src/lib/integrations/stripe/billing.ts:119-128` | Only branches on `pro` / `enterprise`; `plus` and `ultra` paid subs resolve to `free` |
 | Public pricing | `app/src/lib/integrations/stripe/billing.ts:93-99` | `getPricingTiers()` returns only `free` / `pro` / `enterprise` |
-| Tier-gate helpers | `app/src/lib/billing/tier-gate.ts` | References `plus` and `ultra` per user audit note |
+| Tier-gate helpers | `app/src/lib/middleware/tier-gate.ts` | References `plus` and `ultra` per user audit note; `resolveUserTier()` reads `users.tier` directly |
+| Direct downgrade check | `app/src/lib/integrations/stripe/billing.ts:140` | `checkIfDowngrade()` casts raw DB value to `BillingTier` and indexes `TIER_RANK` directly — bypasses `resolveBillingTrialState` |
 | Tier table | `app/src/lib/billing/tiers.ts` | Defines `plus` and `ultra` per user audit note |
 | Cloud Build config | `cloudbuild.production.yaml:166` | Wires `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` only |
 | Postgres enum | `app/src/lib/db/schema.ts:32` | `userTierEnum` includes `'plus'` and `'ultra'` (added by `drizzle/0011_living_microbe.sql`) |
@@ -261,16 +262,19 @@ Postgres enum stays as-is (out of scope per §3). TypeScript narrowing surfaces 
 | `app/src/lib/billing/trial.ts` | `BillingTier = 'free' \| 'pro' \| 'enterprise'` |
 | `app/src/lib/integrations/stripe/billing.ts` | Drop `plus` and `ultra` keys from `STRIPE_PRICES` (lines 67-70, 79-82) and `API_CALL_LIMITS` (lines 87, 90) |
 | `app/src/lib/middleware/auth.ts` | Drop `plus` and `ultra` from `RATE_LIMITS` (lines 61, 64) |
-| `app/src/lib/billing/tier-gate.ts` | Remove plus/ultra branches per user audit note |
+| `app/src/lib/middleware/tier-gate.ts` | Remove plus/ultra branches per user audit note; route DB tier reads through `normalizeBillingTier()` (see §6.3) |
 | `app/src/lib/billing/tiers.ts` | Remove plus/ultra entries per user audit note |
 
 The `resolveTierByPriceId` function (lines 119-128) already only branches on `pro` and `enterprise` — no change beyond exporting it (§6.5).
 
-### 6.3 Legacy row coercion at the read boundary
+### 6.3 Legacy row coercion at every read boundary
 
-`users.tier` in the DB can still hold `'plus'` or `'ultra'`; the TypeScript union no longer admits them. Coerce at the single read boundary (B-coercion: preserve entitlements during transition) with a warning log so any production occurrence is observable.
+`users.tier` in the DB can still hold `'plus'` or `'ultra'`; the TypeScript union no longer admits them. Coerce at every place the codebase reads the raw column. Two distinct boundary classes:
 
-New helper, exported for tests:
+- **Class A — readers that already pass through `resolveBillingTrialState()`**: `getUserTier()` in `lib/middleware/auth.ts` and `getBillingInfo()` in `lib/integrations/stripe/billing.ts:419`. Centralize coercion *inside* `resolveBillingTrialState()` so both are fixed in one move.
+- **Class B — readers that index `TIER_RANK` / `RATE_LIMITS` / `API_CALL_LIMITS` directly without going through `resolveBillingTrialState()`**: `checkIfDowngrade()` in `lib/integrations/stripe/billing.ts:140` and `resolveUserTier()` in `lib/middleware/tier-gate.ts`. These need explicit `normalizeBillingTier()` calls because they bypass the trial-state path.
+
+#### New helper, exported for tests
 
 ```ts
 // app/src/lib/billing/trial.ts
@@ -288,18 +292,49 @@ export function normalizeBillingTier(raw: string | null | undefined, ctx?: { use
 }
 ```
 
-Call site in `app/src/lib/middleware/auth.ts:42` becomes:
+#### Class A: centralize in `resolveBillingTrialState`
+
+Inside `resolveBillingTrialState()`, normalize the incoming `tier` before any rank/limit logic runs:
 
 ```ts
-const rawTier = rows[0]?.tier ?? null;
-const normalizedTier = normalizeBillingTier(rawTier, { userId });
-const tier = resolveBillingTrialState({
-  ...(rows[0] ?? {}),
-  tier: normalizedTier,
-}).effectiveTier;
+// app/src/lib/billing/trial.ts — at the top of resolveBillingTrialState()
+export function resolveBillingTrialState(input: { tier?: string | null; /* ... */ }) {
+  const tier = normalizeBillingTier(input.tier);
+  // ... existing logic, now operating on a guaranteed BillingTier
+}
 ```
 
-`resolveBillingTrialState` itself doesn't need to change because its input is already typed `BillingTier | null`. The `?? {}` mirrors the existing `rows[0] || {}` fallback to keep the no-row case as a no-op.
+`getUserTier()` and `getBillingInfo()` keep their existing call shape — no change at the call sites. `getUserTier()` becomes:
+
+```ts
+// app/src/lib/middleware/auth.ts:42 — unchanged shape, normalization moves into resolveBillingTrialState
+const tier = resolveBillingTrialState(rows[0] ?? {}).effectiveTier;
+```
+
+(The `?? {}` mirrors the existing `rows[0] || {}` fallback.)
+
+#### Class B: explicit calls at the direct readers
+
+`checkIfDowngrade()` in `lib/integrations/stripe/billing.ts:140-143`:
+
+```ts
+const row = await db.select({ tier: users.tier }).from(users).where(condition).limit(1);
+const currentTier = normalizeBillingTier(row[0]?.tier, { userId: userId ?? undefined });
+return TIER_RANK[newTier] < TIER_RANK[currentTier];
+```
+
+`resolveUserTier()` in `lib/middleware/tier-gate.ts`:
+
+```ts
+const rawTier = row?.tier ?? null;
+return normalizeBillingTier(rawTier, { userId });
+```
+
+(Exact line numbers for tier-gate to be confirmed during implementation; the contract is "every direct read of `users.tier` ends in a `normalizeBillingTier()` call before the value is used.")
+
+#### Audit rule for the implementation PR
+
+Grep `users.tier` and `\.tier` references in `lib/billing/`, `lib/middleware/`, and `lib/integrations/stripe/`. Every site that reads the column from the DB must either pass the value through `resolveBillingTrialState()` or call `normalizeBillingTier()` explicitly. Add the grep result to the PR description.
 
 ### 6.4 Wire price IDs in `cloudbuild.production.yaml`
 
@@ -320,45 +355,85 @@ Append four entries to the `--update-secrets` argument on line 166:
 ,STRIPE_PRICE_PRO_MONTHLY=${_STRIPE_PRICE_PRO_MONTHLY_SECRET_NAME}:latest,STRIPE_PRICE_PRO_YEARLY=${_STRIPE_PRICE_PRO_YEARLY_SECRET_NAME}:latest,STRIPE_PRICE_ENTERPRISE_MONTHLY=${_STRIPE_PRICE_ENTERPRISE_MONTHLY_SECRET_NAME}:latest,STRIPE_PRICE_ENTERPRISE_YEARLY=${_STRIPE_PRICE_ENTERPRISE_YEARLY_SECRET_NAME}:latest
 ```
 
-Operational prereq (called out in PR checklist, not in code): create the four GCP Secret Manager entries with the actual Stripe price IDs from the live Stripe Dashboard. If the IDs are not ready at deploy time, the env vars resolve to empty and `createCheckoutSession` throws — the same failure mode as today, just visible.
+Operational prereq (called out in PR checklist, not in code): create the four GCP Secret Manager entries with the actual Stripe price IDs from the live Stripe Dashboard *before* the next deploy.
 
-### 6.5 Test-only exports
+Two distinct failure modes:
 
-Both helpers are pure and side-effect-free; exporting them costs nothing.
+- **Secret missing entirely**: `gcloud run deploy --update-secrets stripe-price-pro-monthly:latest` fails at deploy time with "secret … was not found". Deploy aborts; no production impact.
+- **Secret exists but holds an empty version**: deploy succeeds, the env var resolves to an empty string, and `createCheckoutSession` throws `Stripe price not configured for ${tier}/${interval}` at runtime — same failure mode as today, just visible at the point a user tries to upgrade.
+
+The PR checklist gates on creating *non-empty* secret versions to avoid the second failure mode.
+
+### 6.5 Test seams
+
+The test plan in §6.6 needs three things the current code doesn't expose:
+
+1. **`normalizeBillingTier()`** — pure, exported from `lib/billing/trial.ts` per §6.3.
+2. **`resolveTierByPriceId()`** — pure, exported from `lib/integrations/stripe/billing.ts`. Today it's a private function at `:119-128`; just add `export`.
+3. **`getUserTier()`** — currently a private function in `lib/middleware/auth.ts:24-49`. Tests need it to verify cache invalidation. Export it as an intentional test seam (no production behavior change; just a wider import surface).
+
+#### Refactor `STRIPE_PRICES` to a lazy getter
+
+`STRIPE_PRICES` (`lib/integrations/stripe/billing.ts:66-83`) is evaluated at module load. Tests cannot stub `process.env.STRIPE_PRICE_*` after the module has been imported. Replace the const with a function:
 
 ```ts
-// app/src/lib/billing/trial.ts
-export function normalizeBillingTier(raw, ctx) { /* §6.3 */ }
-
 // app/src/lib/integrations/stripe/billing.ts
-export function resolveTierByPriceId(priceId: string | null | undefined): BillingTier { /* unchanged */ }
+function getStripePrices(): Record<Exclude<BillingTier, 'free'>, Record<BillingInterval, string | undefined>> {
+  return {
+    pro: {
+      monthly: process.env.STRIPE_PRICE_PRO_MONTHLY,
+      yearly: process.env.STRIPE_PRICE_PRO_YEARLY,
+    },
+    enterprise: {
+      monthly: process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY,
+      yearly: process.env.STRIPE_PRICE_ENTERPRISE_YEARLY,
+    },
+  };
+}
 ```
+
+Call sites (`resolveTierByPriceId`, `createCheckoutSession`) read via `getStripePrices()` instead of the const. Production behavior is unchanged — env vars are still resolved at first call rather than at import. Tests can now set `process.env.STRIPE_PRICE_PRO_MONTHLY = 'price_test_pro_m'` in `beforeEach()` and have the resolver pick it up. This also avoids the project's known `vi.resetModules()` brittleness with the `@/*` alias.
 
 ### 6.6 Tests
 
-`tests/integration/billing-tier-cache.test.ts` — one test per webhook event type:
+`tests/integration/billing-tier-cache.test.ts` — uses the now-exported `getUserTier` (per §6.5). One test per webhook event type:
 
 | # | Event | Assertion |
 |---|---|---|
-| 1 | `checkout.session.completed` | After `handleWebhookEvent`, `getUserTier(userId)` triggers a DB read (cache cleared) |
+| 1 | `checkout.session.completed` | After `handleWebhookEvent`, the next `getUserTier(userId)` call triggers `db.select` (cache cleared) |
 | 2 | `customer.subscription.updated` | Same |
 | 3 | `customer.subscription.deleted` | Same |
 | 4 | `invoice.payment_succeeded` | Same |
 | 5 | `invoice.payment_failed` | Same |
 
-Spy mechanism: prime the cache with `getUserTier(userId)`, replay the event, then call `getUserTier(userId)` again with `db.select` spied. Assert the second call hit the DB.
+Spy mechanism: prime the cache with one `getUserTier(userId)` call, replay the event, install `vi.spyOn(db, 'select')`, call `getUserTier(userId)` again, assert the spy fired. Reset spy + cache between tests.
 
-`tests/unit/billing-tier-resolver.test.ts`:
+`tests/unit/billing-tier-resolver.test.ts` — uses env stubs against the lazy `getStripePrices()` (per §6.5):
+
+```ts
+beforeEach(() => {
+  process.env.STRIPE_PRICE_PRO_MONTHLY = 'price_test_pro_m';
+  process.env.STRIPE_PRICE_PRO_YEARLY = 'price_test_pro_y';
+  process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY = 'price_test_ent_m';
+  process.env.STRIPE_PRICE_ENTERPRISE_YEARLY = 'price_test_ent_y';
+});
+
+afterEach(() => {
+  delete process.env.STRIPE_PRICE_PRO_MONTHLY; // etc.
+});
+```
 
 | # | Assertion |
 |---|---|
-| 1 | `resolveTierByPriceId(STRIPE_PRICES.pro.monthly)` === `'pro'` |
-| 2 | `resolveTierByPriceId(STRIPE_PRICES.pro.yearly)` === `'pro'` |
-| 3 | `resolveTierByPriceId(STRIPE_PRICES.enterprise.monthly)` === `'enterprise'` |
-| 4 | `resolveTierByPriceId(STRIPE_PRICES.enterprise.yearly)` === `'enterprise'` |
+| 1 | `resolveTierByPriceId('price_test_pro_m')` === `'pro'` |
+| 2 | `resolveTierByPriceId('price_test_pro_y')` === `'pro'` |
+| 3 | `resolveTierByPriceId('price_test_ent_m')` === `'enterprise'` |
+| 4 | `resolveTierByPriceId('price_test_ent_y')` === `'enterprise'` |
 | 5 | `resolveTierByPriceId('price_unknown')` === `'free'` |
 | 6 | `resolveTierByPriceId(null)` === `'free'` |
-| 7 | `Object.keys(STRIPE_PRICES)` does not include `'plus'` or `'ultra'` |
+| 7 | Even with `process.env.STRIPE_PRICE_PLUS_MONTHLY = 'fake_plus_id'` set, `resolveTierByPriceId('fake_plus_id')` === `'free'` (resolver does not recognize plus tier) |
+
+Test #7 is the load-bearing one — it pins the property "even if someone re-adds a `STRIPE_PRICE_PLUS_*` env var, the resolver does not honor it." If anyone later re-adds plus/ultra branches to the resolver, this test fails.
 
 `tests/unit/billing-tier-normalize.test.ts`:
 
@@ -382,7 +457,7 @@ PR-B does not depend on PR-A code paths but does share `lib/integrations/stripe/
 
 Before deploying PR-B to production:
 
-1. Create four GCP Secret Manager entries (`stripe-price-pro-monthly`, `stripe-price-pro-yearly`, `stripe-price-enterprise-monthly`, `stripe-price-enterprise-yearly`) populated with the actual Stripe price IDs from the live Dashboard.
+1. Create four GCP Secret Manager entries (`stripe-price-pro-monthly`, `stripe-price-pro-yearly`, `stripe-price-enterprise-monthly`, `stripe-price-enterprise-yearly`) with the actual Stripe price IDs from the live Dashboard. **Verify each secret has a non-empty version** before deploying — an empty version would let the deploy succeed but throw at first checkout call. A missing secret aborts the deploy outright.
 2. Run `SELECT COUNT(*) FROM users WHERE tier IN ('plus','ultra')` against production. Record the result in the PR description. If non-zero, the B-coercion in §6.3 is load-bearing — do not change it without a migration. If zero, file a follow-up ticket to drop the warning log and (eventually) shrink the Postgres enum.
 
 ## 9. PR checklist
@@ -399,10 +474,13 @@ Before deploying PR-B to production:
 ### PR-B
 
 - [ ] Production row count for `tier IN ('plus','ultra')` recorded in PR description
-- [ ] All 4 GCP Secret Manager entries created and verified before merge
+- [ ] All 4 GCP Secret Manager entries created with **non-empty** versions; verified via `gcloud secrets versions list` before merge
 - [ ] `BillingTier` is `'free' | 'pro' | 'enterprise'` in `lib/billing/trial.ts`
-- [ ] `tier-gate.ts` and `tiers.ts` updated alongside `stripe/billing.ts` and `middleware/auth.ts`
+- [ ] `lib/middleware/tier-gate.ts` and `lib/billing/tiers.ts` updated alongside `lib/integrations/stripe/billing.ts` and `lib/middleware/auth.ts`
+- [ ] `normalizeBillingTier` called from inside `resolveBillingTrialState()` (Class A) and explicitly at every direct DB tier reader: `checkIfDowngrade`, `tier-gate.resolveUserTier` (Class B)
+- [ ] PR description includes grep output of `users.tier` / `\.tier` references in `lib/billing/`, `lib/middleware/`, and `lib/integrations/stripe/` confirming every read site is covered
 - [ ] All 5 webhook handlers (including `handleInvoicePaymentFailed`) call `invalidateUserTierCache`
-- [ ] `normalizeBillingTier` and `resolveTierByPriceId` exported and unit-tested
+- [ ] `normalizeBillingTier`, `resolveTierByPriceId`, and `getUserTier` exported as test seams (no production behavior change)
+- [ ] `STRIPE_PRICES` const refactored into `getStripePrices()` lazy getter so env stubs work in tests
 - [ ] `cloudbuild.production.yaml` substitutions and `--update-secrets` line updated
 - [ ] All 18 tests across the three new test files pass
