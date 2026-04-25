@@ -63,16 +63,18 @@ function getStripeClient(): Stripe {
   return stripeClient;
 }
 
-const STRIPE_PRICES: Record<Exclude<BillingTier, 'free'>, Record<BillingInterval, string | undefined>> = {
-  pro: {
-    monthly: process.env.STRIPE_PRICE_PRO_MONTHLY,
-    yearly: process.env.STRIPE_PRICE_PRO_YEARLY,
-  },
-  enterprise: {
-    monthly: process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY,
-    yearly: process.env.STRIPE_PRICE_ENTERPRISE_YEARLY,
-  },
-};
+function getStripePrices(): Record<Exclude<BillingTier, 'free'>, Record<BillingInterval, string | undefined>> {
+  return {
+    pro: {
+      monthly: process.env.STRIPE_PRICE_PRO_MONTHLY,
+      yearly: process.env.STRIPE_PRICE_PRO_YEARLY,
+    },
+    enterprise: {
+      monthly: process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY,
+      yearly: process.env.STRIPE_PRICE_ENTERPRISE_YEARLY,
+    },
+  };
+}
 
 const API_CALL_LIMITS: Record<BillingTier, number> = {
   free: 1000,
@@ -106,12 +108,11 @@ function mapStripeStatus(status: Stripe.Subscription.Status): BillingStatus {
   }
 }
 
-function resolveTierByPriceId(priceId: string | null | undefined): BillingTier {
+export function resolveTierByPriceId(priceId: string | null | undefined): BillingTier {
   if (!priceId) return 'free';
-
-  const proPriceIds = [STRIPE_PRICES.pro.monthly, STRIPE_PRICES.pro.yearly].filter(Boolean);
-  const enterprisePriceIds = [STRIPE_PRICES.enterprise.monthly, STRIPE_PRICES.enterprise.yearly].filter(Boolean);
-
+  const prices = getStripePrices();
+  const proPriceIds = [prices.pro.monthly, prices.pro.yearly].filter(Boolean);
+  const enterprisePriceIds = [prices.enterprise.monthly, prices.enterprise.yearly].filter(Boolean);
   if (proPriceIds.includes(priceId)) return 'pro';
   if (enterprisePriceIds.includes(priceId)) return 'enterprise';
   return 'free';
@@ -169,7 +170,7 @@ export async function createCheckoutSession(
   cancelUrl: string,
 ): Promise<CheckoutSessionResult> {
   const stripe = getStripeClient();
-  const selectedPrice = STRIPE_PRICES[tier][interval];
+  const selectedPrice = getStripePrices()[tier][interval];
   if (!selectedPrice) {
     throw new Error(`Stripe price not configured for ${tier}/${interval}`);
   }
