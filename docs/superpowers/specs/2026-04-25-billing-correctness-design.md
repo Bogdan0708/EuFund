@@ -198,9 +198,24 @@ If observed in production, the follow-up fix is a claim row with `status` / `cla
 
 Side-effect-based: handlers stay private; tests assert via the DB calls those handlers make and via response shapes from the route handler.
 
+**Mocking note:** `db` from `@/lib/db` is a lazy `Proxy` (per `CLAUDE.md` — first property access initializes a real Postgres connection). `vi.spyOn(db, 'update')` would trigger that initialization. Mock the module instead — follow the existing project pattern:
+
+```ts
+vi.mock('@/lib/db', () => ({
+  db: {
+    insert: vi.fn(/* chainable mock */),
+    update: vi.fn(/* chainable mock */),
+    select: vi.fn(/* chainable mock */),
+    query: { stripeWebhookEvents: { findFirst: vi.fn() } },
+  },
+}));
+import { db } from '@/lib/db';
+// then assert on (db.update as Mock).mock.calls etc.
+```
+
 | # | Test | Assertion |
 |---|---|---|
-| 1 | Concurrent identical deliveries → exactly one observable side effect | `vi.spyOn(db, 'update')` count = 1 after `Promise.all([handle, handle])` |
+| 1 | Concurrent identical deliveries → exactly one observable side effect | `(db.update as Mock).mock.calls.length === 1` after `Promise.all([handle, handle])` |
 | 2 | Handler throws | route returns 500, `captureException` called, `stripeWebhookEvents` row absent (so retry can claim) |
 | 3 | Bad signature | route returns 400, no `captureException` call, no `stripeWebhookEvents` row |
 | 4 | Missing `stripe-signature` header | route returns 400 before any `constructWebhookEvent` call |
@@ -248,10 +263,26 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Pro
 
 Apply the same pattern to:
 
-- `handleCheckoutCompleted` (already has `userId`; just add the invalidate after the update)
+- `handleCheckoutCompleted` (already has `userId`; just add the invalidate after the update — see also the metadata-validation note below)
 - `handleSubscriptionDeleted` (same `userIdFromMetadata` / `customerId` resolution)
 - `handleInvoicePaymentSucceeded` (only has `customerId` — `.returning({ id })` covers it)
 - `handleInvoicePaymentFailed` (cheap insurance against future `subscriptionStatus`-driven effective-tier changes)
+
+#### Normalize inbound Stripe metadata before writing
+
+`handleCheckoutCompleted` currently writes `session.metadata?.tier as BillingTier | undefined` straight into `users.tier`. After PR-B narrows `BillingTier`, a stale checkout event whose metadata was set to `'plus'` or `'ultra'` (e.g., from a Stripe session created before this PR shipped) would still write the legacy value into the DB — breaking the invariant that "no new write produces a legacy tier."
+
+Fix: validate / coerce the inbound metadata via `normalizeBillingTier`. Because `handleCheckoutCompleted` controls the entitlement granted, prefer **fail-loud** over silent coercion here — an unrecognized tier means our checkout config is broken:
+
+```ts
+const rawTierFromMetadata = session.metadata?.tier;
+if (rawTierFromMetadata && rawTierFromMetadata !== 'free' && rawTierFromMetadata !== 'pro' && rawTierFromMetadata !== 'enterprise') {
+  log.warn({ rawTierFromMetadata, sessionId: session.id, userId }, '[stripe-webhook] unexpected tier in checkout metadata — falling back to free');
+}
+const tier = normalizeBillingTier(rawTierFromMetadata) ?? 'free';
+```
+
+The `normalizeBillingTier` call still B-coerces `plus` → `pro` and `ultra` → `enterprise` (preserving paid entitlements during the transition), but anything genuinely unknown (`'admin'`, `''`, garbage) falls to `free` and surfaces a warning. This matches the read-side contract.
 
 ### 6.2 Plus/ultra removal from the TypeScript surface
 
@@ -271,8 +302,8 @@ The `resolveTierByPriceId` function (lines 119-128) already only branches on `pr
 
 `users.tier` in the DB can still hold `'plus'` or `'ultra'`; the TypeScript union no longer admits them. Coerce at every place the codebase reads the raw column. Two distinct boundary classes:
 
-- **Class A — readers that already pass through `resolveBillingTrialState()`**: `getUserTier()` in `lib/middleware/auth.ts` and `getBillingInfo()` in `lib/integrations/stripe/billing.ts:419`. Centralize coercion *inside* `resolveBillingTrialState()` so both are fixed in one move.
-- **Class B — readers that index `TIER_RANK` / `RATE_LIMITS` / `API_CALL_LIMITS` directly without going through `resolveBillingTrialState()`**: `checkIfDowngrade()` in `lib/integrations/stripe/billing.ts:140` and `resolveUserTier()` in `lib/middleware/tier-gate.ts`. These need explicit `normalizeBillingTier()` calls because they bypass the trial-state path.
+- **Class A — readers that already pass through `resolveBillingTrialState()`**: `getUserTier()` in `lib/middleware/auth.ts:42`, `getBillingInfo()` in `lib/integrations/stripe/billing.ts:419`, and `resolveUserTier()` in `lib/middleware/tier-gate.ts:30-60` (which casts `row.tier as BillingTier | null` at line 54 and feeds it into `resolveBillingTrialState`). Centralize coercion *inside* `resolveBillingTrialState()` so all three are fixed by a single change. **Critical: the cast in `resolveUserTier` becomes safe automatically once `resolveBillingTrialState` normalizes internally — do not replace the trial-state call with a direct `normalizeBillingTier()` return, that would skip the trial-upgrade path that turns eligible free-trial users into effective `pro`.**
+- **Class B — readers that index `TIER_RANK` / `RATE_LIMITS` / `API_CALL_LIMITS` directly without going through `resolveBillingTrialState()`**: `checkIfDowngrade()` in `lib/integrations/stripe/billing.ts:140` is the only confirmed Class B reader. The grep audit in the PR description must surface any others.
 
 #### New helper, exported for tests
 
@@ -323,14 +354,9 @@ const currentTier = normalizeBillingTier(row[0]?.tier, { userId: userId ?? undef
 return TIER_RANK[newTier] < TIER_RANK[currentTier];
 ```
 
-`resolveUserTier()` in `lib/middleware/tier-gate.ts`:
+`resolveUserTier()` in `lib/middleware/tier-gate.ts:30-60` needs **no explicit change** — it already feeds `row.tier` into `resolveBillingTrialState()`, which normalizes internally per Class A. The cast `as BillingTier | null` at line 54 becomes a no-op once `resolveBillingTrialState` coerces unrecognized values via `normalizeBillingTier`. Verify via the grep audit; do not refactor the function unless the audit shows additional direct reads.
 
-```ts
-const rawTier = row?.tier ?? null;
-return normalizeBillingTier(rawTier, { userId });
-```
-
-(Exact line numbers for tier-gate to be confirmed during implementation; the contract is "every direct read of `users.tier` ends in a `normalizeBillingTier()` call before the value is used.")
+The contract is: **every direct read of `users.tier` ends in either a `resolveBillingTrialState()` call or an explicit `normalizeBillingTier()` call before the value is used as a `BillingTier`.**
 
 #### Audit rule for the implementation PR
 
@@ -406,7 +432,7 @@ Call sites (`resolveTierByPriceId`, `createCheckoutSession`) read via `getStripe
 | 4 | `invoice.payment_succeeded` | Same |
 | 5 | `invoice.payment_failed` | Same |
 
-Spy mechanism: prime the cache with one `getUserTier(userId)` call, replay the event, install `vi.spyOn(db, 'select')`, call `getUserTier(userId)` again, assert the spy fired. Reset spy + cache between tests.
+Spy mechanism: same `vi.mock('@/lib/db', …)` pattern as PR-A (the `db` lazy Proxy must not be touched directly). Prime the cache via one `getUserTier(userId)` call (which the mock satisfies with a fixture row), reset `(db.select as Mock).mockClear()`, replay the event, call `getUserTier(userId)` again, assert `db.select` was called. Reset cache between tests via `invalidateUserTierCache(userId)`.
 
 `tests/unit/billing-tier-resolver.test.ts` — uses env stubs against the lazy `getStripePrices()` (per §6.5):
 
@@ -480,6 +506,7 @@ Before deploying PR-B to production:
 - [ ] `normalizeBillingTier` called from inside `resolveBillingTrialState()` (Class A) and explicitly at every direct DB tier reader: `checkIfDowngrade`, `tier-gate.resolveUserTier` (Class B)
 - [ ] PR description includes grep output of `users.tier` / `\.tier` references in `lib/billing/`, `lib/middleware/`, and `lib/integrations/stripe/` confirming every read site is covered
 - [ ] All 5 webhook handlers (including `handleInvoicePaymentFailed`) call `invalidateUserTierCache`
+- [ ] `handleCheckoutCompleted` normalizes `session.metadata?.tier` via `normalizeBillingTier` (or rejects unknown values) before writing to `users.tier` — closes the inbound-metadata write path so no new row picks up `plus`/`ultra`
 - [ ] `normalizeBillingTier`, `resolveTierByPriceId`, and `getUserTier` exported as test seams (no production behavior change)
 - [ ] `STRIPE_PRICES` const refactored into `getStripePrices()` lazy getter so env stubs work in tests
 - [ ] `cloudbuild.production.yaml` substitutions and `--update-secrets` line updated
