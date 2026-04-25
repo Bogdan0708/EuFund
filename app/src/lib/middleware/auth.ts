@@ -21,7 +21,7 @@ export function invalidateUserTierCache(userId: string): void {
   tierCache.delete(userId);
 }
 
-async function getUserTier(userId: string): Promise<UserTier> {
+export async function getUserTier(userId: string): Promise<UserTier> {
   const cached = tierCache.get(userId);
   if (cached !== undefined) {
     return cached;
