@@ -1,5 +1,5 @@
 // app/tests/integration/stripe-webhooks.test.ts
-import { beforeEach, describe, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
 
 // Chainable Drizzle-style mock factory.
@@ -52,6 +52,15 @@ function makeSignatureError(message = 'No signatures found matching the expected
   return err as Stripe.errors.StripeSignatureVerificationError;
 }
 
-describe('stripe webhooks', () => {
-  it.skip('placeholder', () => {});
+describe('MissingWebhookSecretError', () => {
+  const original = process.env.STRIPE_WEBHOOK_SECRET;
+  beforeEach(() => { delete process.env.STRIPE_WEBHOOK_SECRET; });
+  afterEach(() => { if (original) process.env.STRIPE_WEBHOOK_SECRET = original; });
+
+  it('constructWebhookEvent throws MissingWebhookSecretError when secret is unset', async () => {
+    const { constructWebhookEvent, MissingWebhookSecretError: MissingSecret } = await import('@/lib/integrations/stripe/billing');
+    // MissingSecret must be a constructor — if the class isn't exported this assertion catches it
+    expect(typeof MissingSecret).toBe('function');
+    expect(() => constructWebhookEvent('payload', 'sig')).toThrow(MissingSecret);
+  });
 });

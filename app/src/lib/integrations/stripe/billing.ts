@@ -386,12 +386,21 @@ export async function handleWebhookEvent(event: Stripe.Event): Promise<void> {
   }).onConflictDoNothing();
 }
 
+export class MissingWebhookSecretError extends Error {
+  constructor() {
+    super('STRIPE_WEBHOOK_SECRET is required for Stripe webhook verification.');
+    this.name = 'MissingWebhookSecretError';
+  }
+}
+
 export function constructWebhookEvent(payload: string | Buffer, signature: string): Stripe.Event {
-  const stripe = getStripeClient();
+  // Webhook secret check runs first so a missing secret can't be masked
+  // by a missing STRIPE_SECRET_KEY error from getStripeClient().
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    throw new Error('STRIPE_WEBHOOK_SECRET is required for Stripe webhook verification.');
+    throw new MissingWebhookSecretError();
   }
+  const stripe = getStripeClient();
   return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
 }
 
