@@ -3,6 +3,10 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { users, stripeWebhookEvents } from '@/lib/db/schema';
 import { FREE_TRIAL_DAYS, normalizeBillingTier, resolveBillingTrialState } from '@/lib/billing/trial';
+import { logger } from '@/lib/logger';
+import { invalidateUserTierCache } from '@/lib/middleware/auth';
+
+const log = logger.child({ component: 'stripe-billing' });
 
 export type BillingTier = 'free' | 'pro' | 'enterprise';
 export type BillingInterval = 'monthly' | 'yearly';
@@ -237,13 +241,25 @@ export async function createPortalSession(userId: string, returnUrl: string): Pr
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
   const userId = session.metadata?.userId || session.client_reference_id;
-  const tier = (session.metadata?.tier as BillingTier | undefined) || 'free';
+  const rawTierFromMetadata = session.metadata?.tier;
+  // Outer warn fires only for truly unknown tier strings; plus/ultra get their
+  // own '[billing] legacy tier coerced' log from normalizeBillingTier, so we
+  // skip them here to avoid double-logging during the legacy migration window.
+  if (
+    rawTierFromMetadata
+    && rawTierFromMetadata !== 'free'
+    && rawTierFromMetadata !== 'pro'
+    && rawTierFromMetadata !== 'enterprise'
+    && rawTierFromMetadata !== 'plus'
+    && rawTierFromMetadata !== 'ultra'
+  ) {
+    log.warn({ rawTierFromMetadata, sessionId: session.id, userId }, '[stripe-webhook] unrecognized tier in checkout metadata — falling back to free');
+  }
+  const tier = normalizeBillingTier(rawTierFromMetadata, { userId: userId ?? undefined });
   const subscriptionId = typeof session.subscription === 'string' ? session.subscription : null;
   const customerId = typeof session.customer === 'string' ? session.customer : null;
 
-  if (!userId) {
-    return;
-  }
+  if (!userId) return;
 
   await db
     .update(users)
@@ -255,6 +271,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
       updatedAt: new Date(),
     })
     .where(eq(users.id, userId));
+
+  invalidateUserTierCache(userId);
 }
 
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Promise<void> {
@@ -263,82 +281,79 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Pro
   const priceId = subscription.items.data[0]?.price?.id;
   const resolvedTier = resolveTierByPriceId(priceId);
 
-  // On downgrade, reset API call counter to prevent overuse at new tier limit
   const isDowngrade = await checkIfDowngrade(userIdFromMetadata, customerId, resolvedTier);
-
   const periodEndUnix = (subscription as { current_period_end?: number }).current_period_end;
   const updateValues = {
     tier: resolvedTier,
     stripeSubscriptionId: subscription.id,
     stripeCustomerId: customerId,
     subscriptionStatus: mapStripeStatus(subscription.status),
-    subscriptionPeriodEnd: periodEndUnix
-      ? new Date(periodEndUnix * 1000)
-      : null,
+    subscriptionPeriodEnd: periodEndUnix ? new Date(periodEndUnix * 1000) : null,
     ...(isDowngrade ? { apiCallsThisMonth: 0 } : {}),
     updatedAt: new Date(),
   } as const;
 
-  if (userIdFromMetadata) {
-    await db.update(users).set(updateValues).where(eq(users.id, userIdFromMetadata));
-    return;
-  }
+  const updated = userIdFromMetadata
+    ? await db.update(users).set(updateValues).where(eq(users.id, userIdFromMetadata)).returning({ id: users.id })
+    : customerId
+      ? await db.update(users).set(updateValues).where(eq(users.stripeCustomerId, customerId)).returning({ id: users.id })
+      : [];
 
-  if (customerId) {
-    await db.update(users).set(updateValues).where(eq(users.stripeCustomerId, customerId));
-  }
+  for (const row of updated) invalidateUserTierCache(row.id);
 }
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Promise<void> {
   const customerId = typeof subscription.customer === 'string' ? subscription.customer : null;
   const userIdFromMetadata = subscription.metadata?.userId;
-
   const periodEndUnix = (subscription as { current_period_end?: number }).current_period_end;
   const updateValues = {
     tier: 'free' as const,
     stripeSubscriptionId: null,
     subscriptionStatus: 'canceled' as const,
-    subscriptionPeriodEnd: periodEndUnix
-      ? new Date(periodEndUnix * 1000)
-      : null,
+    subscriptionPeriodEnd: periodEndUnix ? new Date(periodEndUnix * 1000) : null,
     updatedAt: new Date(),
   };
 
-  if (userIdFromMetadata) {
-    await db.update(users).set(updateValues).where(eq(users.id, userIdFromMetadata));
-    return;
-  }
+  const updated = userIdFromMetadata
+    ? await db.update(users).set(updateValues).where(eq(users.id, userIdFromMetadata)).returning({ id: users.id })
+    : customerId
+      ? await db.update(users).set(updateValues).where(eq(users.stripeCustomerId, customerId)).returning({ id: users.id })
+      : [];
 
-  if (customerId) {
-    await db.update(users).set(updateValues).where(eq(users.stripeCustomerId, customerId));
-  }
+  for (const row of updated) invalidateUserTierCache(row.id);
 }
 
 async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice): Promise<void> {
   const customerId = typeof invoice.customer === 'string' ? invoice.customer : null;
   if (!customerId) return;
 
-  await db
+  const updated = await db
     .update(users)
     .set({
       apiCallsThisMonth: 0,
       subscriptionStatus: 'active',
       updatedAt: new Date(),
     })
-    .where(eq(users.stripeCustomerId, customerId));
+    .where(eq(users.stripeCustomerId, customerId))
+    .returning({ id: users.id });
+
+  for (const row of updated) invalidateUserTierCache(row.id);
 }
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void> {
   const customerId = typeof invoice.customer === 'string' ? invoice.customer : null;
   if (!customerId) return;
 
-  await db
+  const updated = await db
     .update(users)
     .set({
       subscriptionStatus: 'past_due',
       updatedAt: new Date(),
     })
-    .where(eq(users.stripeCustomerId, customerId));
+    .where(eq(users.stripeCustomerId, customerId))
+    .returning({ id: users.id });
+
+  for (const row of updated) invalidateUserTierCache(row.id);
 }
 
 export async function handleWebhookEvent(event: Stripe.Event): Promise<void> {

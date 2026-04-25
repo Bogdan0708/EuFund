@@ -1,6 +1,19 @@
 // app/tests/unit/billing/resolve-tier-by-price.test.ts
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveTierByPriceId } from '@/lib/integrations/stripe/billing';
+
+// billing.ts imports invalidateUserTierCache from middleware/auth, which
+// transitively imports next-auth/next/server — unavailable in the test env.
+vi.mock('@/lib/middleware/auth', () => ({
+  invalidateUserTierCache: vi.fn(),
+  getUserTier: vi.fn().mockResolvedValue('free'),
+  withAIAuth: vi.fn(),
+  authenticateAIUser: vi.fn(),
+}));
+// billing.ts also imports logger
+vi.mock('@/lib/logger', () => ({
+  logger: { child: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) },
+}));
 
 const ORIGINAL_ENV = { ...process.env };
 
