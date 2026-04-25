@@ -114,6 +114,21 @@ describe('handleWebhookEvent idempotency', () => {
 
     expect(deleteMock).toHaveBeenCalled();
   });
+
+  it('replay of already-processed event → no handler call, no new side effects', async () => {
+    const returningMock = (dbMock as any).returning as Mock;
+    returningMock.mockReset();
+    // Already-processed: insert returns empty (conflict)
+    returningMock.mockResolvedValueOnce([]);
+
+    const updateMock = (dbMock as any).update as Mock;
+
+    const { handleWebhookEvent } = await import('@/lib/integrations/stripe/billing');
+    const event = makeStripeEvent('customer.subscription.updated', 'evt_test_replay');
+    await handleWebhookEvent(event);
+
+    expect(updateMock).not.toHaveBeenCalled();
+  });
 });
 
 function makeRequest(payload: string, headers: Record<string, string> = {}): Request {
