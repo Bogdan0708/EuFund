@@ -21,11 +21,18 @@ The test file mocks `@/lib/db`, `@/lib/monitoring/sentry`, and `@/lib/logger` so
 
 - [ ] **Step 1: Create the test file scaffolding**
 
+All `import` statements in this test file go at the top. Later tasks add `describe` blocks at the bottom and add new imports next to the existing ones — never interleaved with executable code.
+
+`vi.resetAllMocks()` is intentionally **not** used in `afterEach` because it would reset the chainable `dbMock` implementations (the `() => chain` factories) to bare `vi.fn()`s, breaking subsequent tests. Use `vi.clearAllMocks()` only — it clears call history without touching implementations.
+
 ```ts
 // app/tests/integration/stripe-webhooks.test.ts
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
-// Chainable Drizzle-style mock factory
+// Chainable Drizzle-style mock factory.
+// IMPORTANT: this defines per-method implementations once at module load.
+// Tests must NOT call vi.resetAllMocks() — that would replace the chain
+// implementations with bare vi.fn()s and break the next test.
 function makeChainable() {
   const chain: any = {
     insert: vi.fn(() => chain),
@@ -56,16 +63,22 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  // Default: idempotency claim succeeds (insert returns one row)
+  vi.clearAllMocks();          // clears call history; preserves implementations
+  // Default: idempotency claim succeeds (insert .returning() returns one row)
   dbMock.returning.mockResolvedValue([{ id: 'webhook-event-id-1' }]);
-  // Default: handler DB writes succeed
+  // Default: SELECT().limit(1) for checkIfDowngrade reads
   dbMock.limit.mockResolvedValue([{ tier: 'pro' }]);
 });
 
-afterEach(() => {
-  vi.resetAllMocks();
-});
+// Helper to build a StripeSignatureVerificationError that passes instanceof.
+// stripe-node's actual constructor signature is awkward; setting the prototype
+// directly is the most robust pattern.
+import Stripe from 'stripe';
+function makeSignatureError(message = 'No signatures found matching the expected signature for payload'): Stripe.errors.StripeSignatureVerificationError {
+  const err = new Error(message);
+  Object.setPrototypeOf(err, Stripe.errors.StripeSignatureVerificationError.prototype);
+  return err as Stripe.errors.StripeSignatureVerificationError;
+}
 
 describe('stripe webhooks', () => {
   it.skip('placeholder', () => {});
@@ -97,11 +110,15 @@ Today `constructWebhookEvent` throws a generic `new Error('STRIPE_WEBHOOK_SECRET
 
 - [ ] **Step 1: Write the failing test**
 
-Replace the `it.skip('placeholder', …)` with:
+Add the import at the top of the file (next to the other `@/lib/...` imports):
 
 ```ts
 import { MissingWebhookSecretError } from '@/lib/integrations/stripe/billing';
+```
 
+Replace the `it.skip('placeholder', …)` with this new top-level `describe`:
+
+```ts
 describe('MissingWebhookSecretError', () => {
   const original = process.env.STRIPE_WEBHOOK_SECRET;
   beforeEach(() => { delete process.env.STRIPE_WEBHOOK_SECRET; });
@@ -121,6 +138,8 @@ Expected: FAIL with "MissingWebhookSecretError is not exported" or similar.
 
 - [ ] **Step 3: Add the error class and update the throw site**
 
+**Order matters here.** Check the webhook secret BEFORE calling `getStripeClient()` — otherwise a missing `STRIPE_SECRET_KEY` would throw a generic `Error` first and mask the more specific `MissingWebhookSecretError` classification.
+
 In `app/src/lib/integrations/stripe/billing.ts`, replace lines 389-396 with:
 
 ```ts
@@ -132,11 +151,13 @@ export class MissingWebhookSecretError extends Error {
 }
 
 export function constructWebhookEvent(payload: string | Buffer, signature: string): Stripe.Event {
-  const stripe = getStripeClient();
+  // Webhook secret check runs first so a missing secret can't be masked
+  // by a missing STRIPE_SECRET_KEY error from getStripeClient().
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
     throw new MissingWebhookSecretError();
   }
+  const stripe = getStripeClient();
   return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
 }
 ```
@@ -332,14 +353,17 @@ Three response classes: 400 for client errors (signature, syntax, missing header
 
 - [ ] **Step 1: Write the failing tests for all six route paths**
 
-Append to the test file:
+Route tests use `vi.doMock(...)` followed by a dynamic `await import('@/app/api/webhooks/stripe/route')`. This pattern is more robust than `vi.spyOn(billingModule, ...)` against ESM live-binding quirks: each test installs a fresh mock for the billing module before importing the route.
+
+Add to imports at the top of the test file (next to the other `@/lib/monitoring/sentry` import):
 
 ```ts
-import Stripe from 'stripe';
 import { captureException } from '@/lib/monitoring/sentry';
-import { POST } from '@/app/api/webhooks/stripe/route';
-import * as billingModule from '@/lib/integrations/stripe/billing';
+```
 
+Append this `describe` block at the bottom of the file:
+
+```ts
 function makeRequest(payload: string, headers: Record<string, string> = {}): Request {
   return new Request('http://localhost/api/webhooks/stripe', {
     method: 'POST',
@@ -348,21 +372,42 @@ function makeRequest(payload: string, headers: Record<string, string> = {}): Req
   });
 }
 
+async function loadRouteWithBillingMock(billingMockOverrides: Record<string, unknown>) {
+  // Reset module registry so doMock takes effect for the freshly-imported route
+  vi.resetModules();
+  vi.doMock('@/lib/integrations/stripe/billing', async () => {
+    const actual = await vi.importActual<typeof import('@/lib/integrations/stripe/billing')>('@/lib/integrations/stripe/billing');
+    return { ...actual, ...billingMockOverrides };
+  });
+  // Re-mock dependencies that our top-level mocks installed; resetModules cleared them
+  vi.doMock('@/lib/db', () => ({ db: dbMock }));
+  vi.doMock('@/lib/monitoring/sentry', () => ({
+    captureException: captureException as Mock,
+    initSentryIfConfigured: vi.fn().mockResolvedValue(undefined),
+  }));
+  vi.doMock('@/lib/logger', () => ({
+    logger: { child: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) },
+  }));
+  const mod = await import('@/app/api/webhooks/stripe/route');
+  return mod.POST;
+}
+
 describe('POST /api/webhooks/stripe error classification', () => {
+  beforeEach(() => {
+    process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_anything';
+  });
+
   it('missing stripe-signature header → 400 before construct', async () => {
-    const constructSpy = vi.spyOn(billingModule, 'constructWebhookEvent');
+    const constructFn = vi.fn();
+    const POST = await loadRouteWithBillingMock({ constructWebhookEvent: constructFn });
     const res = await POST(makeRequest('{}', {}) as any);
     expect(res.status).toBe(400);
-    expect(constructSpy).not.toHaveBeenCalled();
+    expect(constructFn).not.toHaveBeenCalled();
   });
 
   it('signature verification error → 400, no Sentry capture', async () => {
-    vi.spyOn(billingModule, 'constructWebhookEvent').mockImplementation(() => {
-      const err = new Stripe.errors.StripeSignatureVerificationError({
-        type: 'StripeSignatureVerificationError',
-        message: 'No signatures found matching the expected signature for payload',
-      } as any);
-      throw err;
+    const POST = await loadRouteWithBillingMock({
+      constructWebhookEvent: vi.fn(() => { throw makeSignatureError(); }),
     });
     const res = await POST(makeRequest('{}', { 'stripe-signature': 'bad' }) as any);
     expect(res.status).toBe(400);
@@ -370,8 +415,8 @@ describe('POST /api/webhooks/stripe error classification', () => {
   });
 
   it('malformed payload (SyntaxError after signature verifies) → 400', async () => {
-    vi.spyOn(billingModule, 'constructWebhookEvent').mockImplementation(() => {
-      throw new SyntaxError('Unexpected token in JSON');
+    const POST = await loadRouteWithBillingMock({
+      constructWebhookEvent: vi.fn(() => { throw new SyntaxError('Unexpected token in JSON'); }),
     });
     const res = await POST(makeRequest('not-json', { 'stripe-signature': 'good' }) as any);
     expect(res.status).toBe(400);
@@ -379,8 +424,9 @@ describe('POST /api/webhooks/stripe error classification', () => {
   });
 
   it('missing STRIPE_WEBHOOK_SECRET → 500 + Sentry', async () => {
-    vi.spyOn(billingModule, 'constructWebhookEvent').mockImplementation(() => {
-      throw new billingModule.MissingWebhookSecretError();
+    const billing = await import('@/lib/integrations/stripe/billing');
+    const POST = await loadRouteWithBillingMock({
+      constructWebhookEvent: vi.fn(() => { throw new billing.MissingWebhookSecretError(); }),
     });
     const res = await POST(makeRequest('{}', { 'stripe-signature': 'whatever' }) as any);
     expect(res.status).toBe(500);
@@ -388,20 +434,20 @@ describe('POST /api/webhooks/stripe error classification', () => {
   });
 
   it('handler error → 500 + Sentry', async () => {
-    vi.spyOn(billingModule, 'constructWebhookEvent').mockReturnValue({
-      id: 'evt_test', type: 'customer.subscription.updated', data: { object: {} },
-    } as any);
-    vi.spyOn(billingModule, 'handleWebhookEvent').mockRejectedValue(new Error('boom'));
+    const POST = await loadRouteWithBillingMock({
+      constructWebhookEvent: vi.fn(() => ({ id: 'evt_test', type: 'customer.subscription.updated', data: { object: {} } } as any)),
+      handleWebhookEvent: vi.fn().mockRejectedValue(new Error('boom')),
+    });
     const res = await POST(makeRequest('{}', { 'stripe-signature': 'good' }) as any);
     expect(res.status).toBe(500);
     expect(captureException as Mock).toHaveBeenCalled();
   });
 
   it('successful event → 200', async () => {
-    vi.spyOn(billingModule, 'constructWebhookEvent').mockReturnValue({
-      id: 'evt_test', type: 'customer.subscription.updated', data: { object: {} },
-    } as any);
-    vi.spyOn(billingModule, 'handleWebhookEvent').mockResolvedValue(undefined);
+    const POST = await loadRouteWithBillingMock({
+      constructWebhookEvent: vi.fn(() => ({ id: 'evt_test', type: 'customer.subscription.updated', data: { object: {} } } as any)),
+      handleWebhookEvent: vi.fn().mockResolvedValue(undefined),
+    });
     const res = await POST(makeRequest('{}', { 'stripe-signature': 'good' }) as any);
     expect(res.status).toBe(200);
   });

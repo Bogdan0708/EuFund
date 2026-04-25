@@ -24,18 +24,22 @@ The helper coerces unknown tier strings: `plus` → `pro`, `ultra` → `enterpri
 
 - [ ] **Step 1: Create the failing test file**
 
+All `import` statements go at the top. Use `vi.clearAllMocks()` (or per-mock `.mockClear()`); never use `vi.resetAllMocks()` in this file because it would replace mocked logger implementations with bare `vi.fn()`s.
+
+The helper logs a warn for `plus`/`ultra` (legacy coercion) AND for any unrecognized non-empty value (potential data corruption signal). It does NOT log for `null`/`undefined`/`''` — those are normal for users who never had a tier set.
+
 ```ts
 // app/tests/unit/billing/normalize-tier.test.ts
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const warn = vi.fn();
 vi.mock('@/lib/logger', () => ({
   logger: { warn, error: vi.fn(), info: vi.fn(), child: () => ({ warn, error: vi.fn(), info: vi.fn() }) },
 }));
 
-beforeEach(() => { warn.mockClear(); });
-
 import { normalizeBillingTier } from '@/lib/billing/trial';
+
+beforeEach(() => { warn.mockClear(); });
 
 describe('normalizeBillingTier', () => {
   it('coerces plus → pro and emits warn log', () => {
@@ -52,17 +56,21 @@ describe('normalizeBillingTier', () => {
   });
   it('passes through enterprise unchanged with no log', () => {
     expect(normalizeBillingTier('enterprise')).toBe('enterprise');
+    expect(warn).not.toHaveBeenCalled();
   });
   it('passes through free unchanged with no log', () => {
     expect(normalizeBillingTier('free')).toBe('free');
+    expect(warn).not.toHaveBeenCalled();
   });
-  it('returns free for null', () => {
-    expect(normalizeBillingTier(null)).toBe('free');
-  });
-  it('returns free for unknown garbage', () => {
+  it('logs warn for unrecognized non-empty tier', () => {
     expect(normalizeBillingTier('admin')).toBe('free');
-    expect(normalizeBillingTier('')).toBe('free');
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+  it('does not log for null/undefined/empty (normal for users without a tier)', () => {
+    expect(normalizeBillingTier(null)).toBe('free');
     expect(normalizeBillingTier(undefined)).toBe('free');
+    expect(normalizeBillingTier('')).toBe('free');
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 ```
@@ -74,11 +82,15 @@ Expected: FAIL — `normalizeBillingTier` not exported.
 
 - [ ] **Step 3: Add the helper to `lib/billing/trial.ts`**
 
-Append to `app/src/lib/billing/trial.ts` (after the `resolveBillingTrialState` function):
+Add the import at the top of the file:
 
 ```ts
 import { logger } from '@/lib/logger';
+```
 
+Append after the `resolveBillingTrialState` function:
+
+```ts
 export function normalizeBillingTier(
   raw: string | null | undefined,
   ctx?: { userId?: string },
@@ -92,6 +104,11 @@ export function normalizeBillingTier(
     return 'enterprise';
   }
   if (raw === 'free' || raw === 'pro' || raw === 'enterprise') return raw;
+  // Unrecognized non-empty value: surface it as a warn so data corruption
+  // is observable. Empty/null/undefined are normal (no tier set yet).
+  if (raw != null && raw !== '') {
+    logger.warn({ userId: ctx?.userId, rawTier: raw }, '[billing] unrecognized tier — falling back to free');
+  }
   return 'free';
 }
 ```
@@ -233,13 +250,16 @@ git commit -m "fix(billing): explicit normalizeBillingTier at checkIfDowngrade (
 
 ---
 
-## Task 4: Narrow `BillingTier` union (both definition sites)
+## Task 4: Narrow `BillingTier` union (all three definition sites) + drop legacy keys from rank/limit/price tables
 
 **Files:**
 - Modify: `app/src/lib/billing/trial.ts:1`
 - Modify: `app/src/lib/middleware/tier-gate.ts:4-12`
+- Modify: `app/src/lib/integrations/stripe/billing.ts:7, 66-83, 85-91, 130`
+- Modify: `app/src/lib/middleware/auth.ts:59-65`
+- Modify: `app/src/lib/billing/tiers.ts:13-58`
 
-Drop `'plus'` and `'ultra'` from `BillingTier`. TypeScript will flag every consumer that still uses them.
+Drop `'plus'` and `'ultra'` from **three** `BillingTier` definitions (the project has three independent ones — confirmed via `grep -rn "export type BillingTier"`). TypeScript will flag every consumer.
 
 - [ ] **Step 1: Narrow the type in `lib/billing/trial.ts:1`**
 
@@ -278,7 +298,27 @@ const BILLING_TIER_ORDER: Record<BillingTier, number> = {
 };
 ```
 
-- [ ] **Step 3: Run typecheck and capture all consumer errors**
+- [ ] **Step 3: Narrow the third definition in `lib/integrations/stripe/billing.ts:7` and update `TIER_RANK`**
+
+Replace line 7:
+
+```ts
+// before
+export type BillingTier = 'free' | 'plus' | 'pro' | 'enterprise' | 'ultra';
+// after
+export type BillingTier = 'free' | 'pro' | 'enterprise';
+```
+
+Replace line 130:
+
+```ts
+// before
+const TIER_RANK: Record<BillingTier, number> = { free: 0, plus: 1, pro: 2, enterprise: 3, ultra: 4 };
+// after
+const TIER_RANK: Record<BillingTier, number> = { free: 0, pro: 1, enterprise: 2 };
+```
+
+- [ ] **Step 4: Run typecheck and capture all consumer errors**
 
 Run: `cd app && npm run typecheck 2>&1 | tee /tmp/tier-narrow-errors.txt`
 Expected: errors at consumer sites that still reference `plus` / `ultra`.
@@ -292,7 +332,7 @@ The known sites (per spec §6.2) and what to do at each:
 | `app/src/lib/middleware/auth.ts:59-65` (RATE_LIMITS) | drop plus + ultra entries |
 | `app/src/lib/billing/tiers.ts:13-58` (TIER_LIMITS) | drop plus + ultra entries (note: `enterprise` is missing from this map — pre-existing gap, do not add it; out of scope) |
 
-- [ ] **Step 4: Apply each fix**
+- [ ] **Step 5: Apply each fix**
 
 In `app/src/lib/integrations/stripe/billing.ts`, replace the `STRIPE_PRICES` const (lines 66-83) — this stays as a const for now; Task 5 refactors it into a function:
 
@@ -329,25 +369,43 @@ const RATE_LIMITS: Record<UserTier, number> = {
 };
 ```
 
-In `app/src/lib/billing/tiers.ts`, drop the `plus` entry (lines 25-35) and the `ultra` entry (lines 47-57) from `TIER_LIMITS`. The remaining map should have only `free` and `pro`. Add a comment noting that `enterprise` is intentionally absent here (callers fall back to `free` via `TIER_LIMITS.free` at line 61) — that's a pre-existing gap tracked separately, not in scope for this PR.
+In `app/src/lib/billing/tiers.ts`:
+- Drop the `plus` entry (lines 25-35) and the `ultra` entry (lines 47-57) from `TIER_LIMITS`.
+- **Add an `enterprise` entry** so coercion preserves entitlements. Without this, `normalizeBillingTier('ultra')` → `'enterprise'` would fall through `getTierLimits('enterprise')` to `TIER_LIMITS.free` (line 61 fallback) and silently downgrade the user's storage / workflow / export limits. Use the values from the old `ultra` entry — that's the highest paid tier we previously offered:
 
-- [ ] **Step 5: Re-run typecheck**
+```ts
+enterprise: {
+  workflowsPerMonth: 200,
+  editsPerMonth: Number.MAX_SAFE_INTEGER,
+  maxActiveSessions: 10,
+  fileStorageMB: 25600,
+  exportFormats: ['docx', 'pdf'],
+  buildModel: 'premium',
+  maxTeamMembers: 5,
+  isLifetimeLimit: false,
+  priceGBP: 200,
+},
+```
+
+The final map has three entries: `free`, `pro`, `enterprise`.
+
+- [ ] **Step 6: Re-run typecheck**
 
 Run: `cd app && npm run typecheck`
 Expected: zero errors. If new errors surface (e.g., a site this plan didn't list), audit it: was the consumer using `plus`/`ultra` and needs updating, or is it a generic typing issue?
 
-- [ ] **Step 6: Run the test suite**
+- [ ] **Step 7: Run the test suite**
 
 Run: `cd app && npm run test`
 Expected: tests still green. (Some tier-related tests may need their fixtures narrowed; if any fail, update the fixtures to use `free` / `pro` / `enterprise` only.)
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add app/src/lib/billing/trial.ts app/src/lib/middleware/tier-gate.ts \
         app/src/lib/integrations/stripe/billing.ts app/src/lib/middleware/auth.ts \
         app/src/lib/billing/tiers.ts
-git commit -m "refactor(billing): narrow BillingTier to free|pro|enterprise across the TS surface"
+git commit -m "refactor(billing): narrow BillingTier to free|pro|enterprise across the TS surface; add enterprise to TIER_LIMITS"
 ```
 
 ---
@@ -557,12 +615,16 @@ Each Stripe webhook handler that writes `users` rows must invalidate the in-memo
 
 - [ ] **Step 1: Write the failing tests**
 
+`vi.resetAllMocks()` is intentionally **not** used — it would replace the chainable `dbMock` `() => chain` factories with bare `vi.fn()`s and break every subsequent test. Use `vi.clearAllMocks()` (clears history; preserves implementations) and per-mock `.mockReset()` if you need to discard queued return values.
+
 ```ts
 // app/tests/integration/billing-tier-cache.test.ts
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type Stripe from 'stripe';
 
-// Mock the db module — chainable Drizzle-style
+// Mock the db module — chainable Drizzle-style.
+// IMPORTANT: do NOT call vi.resetAllMocks() in this file; it would clear
+// the implementations on insert/values/update/etc. and break subsequent tests.
 function makeChainable() {
   const chain: any = {
     insert: vi.fn(() => chain),
@@ -594,12 +656,17 @@ import { handleWebhookEvent } from '@/lib/integrations/stripe/billing';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Idempotency claim succeeds
+  // Reset queued return values on the terminal mocks (clearAllMocks doesn't touch these).
+  dbMock.returning.mockReset();
+  dbMock.limit.mockReset();
+  // checkIfDowngrade() does SELECT().from().where().limit(1) and reads row[0]?.tier.
+  // Default to a row that makes the new tier non-downgrading (matters for handleSubscriptionUpdated).
+  dbMock.limit.mockResolvedValue([{ tier: 'pro' }]);
+  // Idempotency claim succeeds; subsequent UPDATE().returning() yields the user id.
   dbMock.returning
-    .mockResolvedValueOnce([{ id: 'webhook-event-row-1' }])  // first call: claim insert
-    .mockResolvedValueOnce([{ id: 'user-1' }]);              // second call: update returning userId
+    .mockResolvedValueOnce([{ id: 'webhook-event-row-1' }])  // claim insert
+    .mockResolvedValueOnce([{ id: 'user-1' }]);              // user update returning
 });
-afterEach(() => { vi.resetAllMocks(); });
 
 function makeSubscriptionEvent(type: string): Stripe.Event {
   return {
@@ -860,8 +927,19 @@ Find line 166 — it is a single long `--update-secrets "..."` argument with com
 
 - [ ] **Step 3: Validate the YAML parses**
 
-Run: `cd /home/godja/Dev/EU-Funds && python3 -c "import yaml; yaml.safe_load(open('cloudbuild.production.yaml'))" && echo OK`
-Expected: `OK`. If the YAML is malformed (e.g., quoting issue from the long line), fix before continuing.
+Pick whichever validator is available locally. Try in this order:
+
+```bash
+cd /home/godja/Dev/EU-Funds
+# Option 1: yq (most likely to be installed)
+yq . cloudbuild.production.yaml > /dev/null && echo OK
+# Option 2: Node + js-yaml (project already has js-yaml as a transitive dep)
+node -e "require('js-yaml').load(require('fs').readFileSync('cloudbuild.production.yaml','utf8'))" && echo OK
+# Option 3: python3 with PyYAML (if installed)
+python3 -c "import yaml; yaml.safe_load(open('cloudbuild.production.yaml'))" && echo OK
+```
+
+Expected: `OK`. If none of these are available, open the file in an editor with YAML linting and visually verify (a) the four substitution defaults parse, (b) the `--update-secrets` line still has matching quotes and balanced commas. The most likely failure is a missing comma when appending to the long string on line 166.
 
 - [ ] **Step 4: Commit**
 
