@@ -55,13 +55,11 @@ export interface AuthenticatedUser {
   tier: UserTier;
 }
 
-// Hourly request limits by tier. plus aliases pro, ultra aliases enterprise.
+// Hourly request limits by tier.
 const RATE_LIMITS: Record<UserTier, number> = {
   free: 10,
-  plus: 100,
   pro: 100,
   enterprise: 1000,
-  ultra: 1000,
 };
 
 const FEATURE_DAILY_LIMITS: Record<AIFeature, number> = {

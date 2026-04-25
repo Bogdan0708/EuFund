@@ -1,14 +1,12 @@
 import { Errors } from '@/lib/errors';
 import { isBillingEnabled } from '@/lib/billing/config';
 
-export type BillingTier = 'free' | 'plus' | 'pro' | 'enterprise' | 'ultra';
+export type BillingTier = 'free' | 'pro' | 'enterprise';
 
 const BILLING_TIER_ORDER: Record<BillingTier, number> = {
   free: 0,
-  plus: 1,
-  pro: 2,
-  enterprise: 3,
-  ultra: 4,
+  pro: 1,
+  enterprise: 2,
 };
 
 export function hasRequiredTier(currentTier: BillingTier, minTier: BillingTier): boolean {
@@ -51,7 +49,7 @@ async function resolveUserTier(userId: string): Promise<BillingTier> {
   }
 
   const trialState = resolveBillingTrialState({
-    tier: row.tier as BillingTier | null,
+    tier: row.tier,
     subscriptionStatus: row.subscriptionStatus,
     stripeSubscriptionId: row.stripeSubscriptionId,
     createdAt: row.createdAt,

@@ -1,13 +1,13 @@
 import { logger } from '@/lib/logger';
 
-export type BillingTier = 'free' | 'plus' | 'pro' | 'enterprise' | 'ultra';
+export type BillingTier = 'free' | 'pro' | 'enterprise';
 export type BillingStatus = 'none' | 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete' | 'unpaid';
 
 export const FREE_TRIAL_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface TrialResolutionInput {
-  tier?: BillingTier | null;
+  tier?: string | null;
   subscriptionStatus?: BillingStatus | string | null;
   stripeSubscriptionId?: string | null;
   createdAt?: Date | string | null;

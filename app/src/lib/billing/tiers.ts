@@ -22,17 +22,6 @@ export const TIER_LIMITS: Record<string, TierLimits> = {
     isLifetimeLimit: false,
     priceGBP: 0,
   },
-  plus: {
-    workflowsPerMonth: 10,
-    editsPerMonth: 50,
-    maxActiveSessions: 2,
-    fileStorageMB: 500,
-    exportFormats: ['docx'],
-    buildModel: 'standard',
-    maxTeamMembers: 1,
-    isLifetimeLimit: false,
-    priceGBP: 10,
-  },
   pro: {
     workflowsPerMonth: 50,
     editsPerMonth: 300,
@@ -44,7 +33,7 @@ export const TIER_LIMITS: Record<string, TierLimits> = {
     isLifetimeLimit: false,
     priceGBP: 50,
   },
-  ultra: {
+  enterprise: {
     workflowsPerMonth: 200,
     editsPerMonth: Number.MAX_SAFE_INTEGER,
     maxActiveSessions: 10,
