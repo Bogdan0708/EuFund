@@ -54,22 +54,22 @@ export const MANAGED_TOOLS: Tool[] = [
   },
   {
     name: 'get_application_state',
-    description: 'Get the current application state for a session: phase, selected call, eligibility summary, section statuses, warnings. Read-only.',
+    description: 'Get the current application state: phase, selected call, eligibility summary, section statuses, warnings. Scoped to the active session automatically. Read-only.',
     input_schema: zodToJsonSchema(getApplicationStateSchema) as Tool['input_schema'],
   },
   {
     name: 'list_sections',
-    description: 'List sections for a session with key, title, status, and document order. Does not return section content. Read-only.',
+    description: 'List sections with key, title, status, and document order. Does not return section content. Scoped to the active session. Read-only.',
     input_schema: zodToJsonSchema(listSectionsSchema) as Tool['input_schema'],
   },
   {
     name: 'get_section',
-    description: 'Get full details of one section: title, status, content, accepted content, model used, sources. Read-only.',
+    description: 'Get full details of one section by sectionKey: title, status, content, accepted content, model used, sources. Scoped to the active session. Read-only.',
     input_schema: zodToJsonSchema(getSectionSchema) as Tool['input_schema'],
   },
   {
     name: 'get_validation_report',
-    description: 'Get the latest validation report for a session: issues, pass/fail summary, annex checklist. Read-only view of validation state.',
+    description: 'Get the latest validation report: issues, pass/fail summary, annex checklist. Scoped to the active session. Read-only.',
     input_schema: zodToJsonSchema(getValidationReportSchema) as Tool['input_schema'],
   },
   {
@@ -114,7 +114,7 @@ export const MANAGED_TOOLS: Tool[] = [
   },
   {
     name: 'save_section_draft',
-    description: 'Upsert a section draft by (sessionId, sectionKey), creating or updating the section and creating a new version record. Requires the outline to be frozen. Enforces concurrency via expectedStateVersion. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
+    description: 'Upsert a section draft by sectionKey, creating or updating the section and creating a new version record. Scoped to the active session. Requires the outline to be frozen. Enforces concurrency via expectedStateVersion. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
     input_schema: zodToJsonSchema(saveSectionDraftSchema) as Tool['input_schema'],
   },
   {
@@ -129,7 +129,7 @@ export const MANAGED_TOOLS: Tool[] = [
   },
   {
     name: 'set_application_status',
-    description: 'Update the status of an agent session to paused or completed. Setting to the current status is a no-op (idempotent). Completing requires passing validation. Enforces concurrency via expectedStateVersion. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
+    description: 'Update the active session status to paused or completed. Setting to the current status is a no-op (idempotent). Completing requires passing validation. Enforces concurrency via expectedStateVersion. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
     input_schema: zodToJsonSchema(setApplicationStatusSchema) as Tool['input_schema'],
   },
   {

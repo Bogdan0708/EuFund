@@ -7,10 +7,11 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { validateSection } from '../../services/sections'
 import type { ServiceContext } from '../../services/types'
+import { requireSession } from '../../services/types'
 import { withMcpErrorMapping } from '../tool-error'
 
+// sessionId is implicit on ctx — see get-application-state.ts header.
 export const inputShape = {
-  sessionId: z.string().uuid(),
   sectionKey: z.string(),
 }
 
@@ -22,7 +23,8 @@ export function registerValidateSection(server: McpServer, ctx: ServiceContext):
     'Validate a generated section for quality issues using deterministic rules — checks for empty content, insufficient length, placeholder text, and repeated sentences. Returns a list of issues with severity, a quality score (0-100), and a recommended section status. No LLM calls.',
     inputShape,
     withMcpErrorMapping(async (args) => {
-      const result = await validateSection(ctx, args.sessionId, args.sectionKey)
+      requireSession(ctx)
+      const result = await validateSection(ctx, ctx.sessionId, args.sectionKey)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }

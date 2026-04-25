@@ -8,9 +8,9 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { approveSection } from '../../services/sections'
 import { ConcurrencyError, NotFoundError, ValidationError } from '../../services/errors'
 import type { ServiceContext } from '../../services/types'
+import { requireSession } from '../../services/types'
 
 export const inputShape = {
-  sessionId: z.string().uuid(),
   sectionKey: z.string().min(1),
   expectedStateVersion: z.number().int(),
 }
@@ -23,8 +23,9 @@ export function registerApproveRevision(server: McpServer, ctx: ServiceContext):
     inputShape,
     async (args) => {
       try {
+        requireSession(ctx)
         const result = await approveSection(ctx, {
-          sessionId: args.sessionId,
+          sessionId: ctx.sessionId,
           sectionKey: args.sectionKey,
           expectedStateVersion: args.expectedStateVersion,
         })

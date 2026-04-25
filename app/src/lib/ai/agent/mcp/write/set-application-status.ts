@@ -8,9 +8,9 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { setApplicationStatus } from '../../services/application'
 import { ConcurrencyError, NotFoundError, ValidationError } from '../../services/errors'
 import type { ServiceContext } from '../../services/types'
+import { requireSession } from '../../services/types'
 
 export const inputShape = {
-  sessionId: z.string().uuid(),
   status: z.enum(['paused', 'completed']),
   expectedStateVersion: z.number().int(),
 }
@@ -19,12 +19,13 @@ export const inputSchema = z.object(inputShape)
 export function registerSetApplicationStatus(server: McpServer, ctx: ServiceContext): void {
   server.tool(
     'set_application_status',
-    'Update the status of an agent session to paused or completed. Setting to the current status is a no-op (idempotent). Enforces concurrency guard via expectedStateVersion.',
+    'Update the status of the current agent session to paused or completed. Setting to the current status is a no-op (idempotent). Enforces concurrency guard via expectedStateVersion.',
     inputShape,
     async (args) => {
       try {
+        requireSession(ctx)
         const result = await setApplicationStatus(ctx, {
-          sessionId: args.sessionId,
+          sessionId: ctx.sessionId,
           status: args.status,
           expectedStateVersion: args.expectedStateVersion,
         })

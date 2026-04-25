@@ -8,9 +8,9 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { rollbackSection } from '../../services/sections'
 import { ConcurrencyError, NotFoundError, ValidationError } from '../../services/errors'
 import type { ServiceContext } from '../../services/types'
+import { requireSession } from '../../services/types'
 
 export const inputShape = {
-  sessionId: z.string().uuid(),
   sectionKey: z.string().min(1),
   targetVersion: z.number().int(),
   expectedStateVersion: z.number().int(),
@@ -24,8 +24,9 @@ export function registerRollbackSection(server: McpServer, ctx: ServiceContext):
     inputShape,
     async (args) => {
       try {
+        requireSession(ctx)
         const result = await rollbackSection(ctx, {
-          sessionId: args.sessionId,
+          sessionId: ctx.sessionId,
           sectionKey: args.sectionKey,
           targetVersion: args.targetVersion,
           expectedStateVersion: args.expectedStateVersion,

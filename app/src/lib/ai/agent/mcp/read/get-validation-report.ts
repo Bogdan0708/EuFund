@@ -7,21 +7,22 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { getValidationReport } from '../../services/application'
 import type { ServiceContext } from '../../services/types'
+import { requireSession } from '../../services/types'
 import { withMcpErrorMapping } from '../tool-error'
 
-export const inputShape = {
-  sessionId: z.string().uuid(),
-}
+// sessionId is implicit on ctx — see get-application-state.ts header.
+export const inputShape = {}
 
 export const inputSchema = z.object(inputShape)
 
 export function registerGetValidationReport(server: McpServer, ctx: ServiceContext): void {
   server.tool(
     'get_validation_report',
-    'Get a read-only validation summary for an agent session. Returns counts of accepted, draft, and missing sections plus eligibility blockers. The full deterministic rules check runs on the rules server. Verifies session ownership.',
+    'Get a read-only validation summary for the current agent session. Returns counts of accepted, draft, and missing sections plus eligibility blockers. The full deterministic rules check runs on the rules server.',
     inputShape,
-    withMcpErrorMapping(async (args) => {
-      const result = await getValidationReport(ctx, args.sessionId)
+    withMcpErrorMapping(async () => {
+      requireSession(ctx)
+      const result = await getValidationReport(ctx, ctx.sessionId)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       }

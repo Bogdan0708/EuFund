@@ -24,7 +24,6 @@ function registerAndCapture(ctx: ServiceContext): ToolCallback {
 }
 
 const VALID_ARGS = {
-  sessionId: '22222222-2222-4222-8222-222222222222',
   callId: 'CALL-2026-001',
   expectedStateVersion: 0,
 }
@@ -48,10 +47,6 @@ describe('MCP set_selected_call handler', () => {
 
   it('rejects empty callId at schema level', () => {
     expect(() => inputSchema.parse({ ...VALID_ARGS, callId: '' })).toThrow()
-  })
-
-  it('rejects non-uuid sessionId at schema level', () => {
-    expect(() => inputSchema.parse({ ...VALID_ARGS, sessionId: 'not-uuid' })).toThrow()
   })
 
   it('returns service result on happy path', async () => {

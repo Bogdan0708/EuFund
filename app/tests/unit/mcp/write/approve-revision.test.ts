@@ -24,7 +24,6 @@ function registerAndCapture(ctx: ServiceContext): ToolCallback {
 }
 
 const VALID_ARGS = {
-  sessionId: '22222222-2222-4222-8222-222222222222',
   sectionKey: 'obiective',
   expectedStateVersion: 0,
 }
