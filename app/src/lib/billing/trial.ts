@@ -25,7 +25,7 @@ export interface TrialResolution {
 }
 
 export function resolveBillingTrialState(input: TrialResolutionInput): TrialResolution {
-  const tier = (input.tier || 'free') as BillingTier;
+  const tier = normalizeBillingTier(input.tier);
   const subscriptionStatus = (input.subscriptionStatus || 'none') as BillingStatus;
   const now = input.now ?? new Date();
   const createdAt = input.createdAt ? new Date(input.createdAt) : null;

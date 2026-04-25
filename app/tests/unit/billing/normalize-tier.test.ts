@@ -7,7 +7,7 @@ vi.mock('@/lib/logger', () => ({
   logger: { warn, error: vi.fn(), info: vi.fn(), child: () => ({ warn, error: vi.fn(), info: vi.fn() }) },
 }));
 
-import { normalizeBillingTier } from '@/lib/billing/trial';
+import { normalizeBillingTier, resolveBillingTrialState } from '@/lib/billing/trial';
 
 beforeEach(() => { warn.mockClear(); });
 
@@ -41,5 +41,23 @@ describe('normalizeBillingTier', () => {
     expect(normalizeBillingTier(undefined)).toBe('free');
     expect(normalizeBillingTier('')).toBe('free');
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveBillingTrialState (post-normalize)', () => {
+  it('coerces legacy plus to pro effective tier', () => {
+    const r = resolveBillingTrialState({ tier: 'plus' as any, subscriptionStatus: 'active' });
+    expect(r.tier).toBe('pro');
+    expect(r.effectiveTier).toBe('pro');
+  });
+  it('coerces legacy ultra to enterprise effective tier', () => {
+    const r = resolveBillingTrialState({ tier: 'ultra' as any, subscriptionStatus: 'active' });
+    expect(r.tier).toBe('enterprise');
+    expect(r.effectiveTier).toBe('enterprise');
+  });
+  it('garbage tier falls to free', () => {
+    const r = resolveBillingTrialState({ tier: 'admin' as any, subscriptionStatus: 'active' });
+    expect(r.tier).toBe('free');
+    expect(r.effectiveTier).toBe('free');
   });
 });
