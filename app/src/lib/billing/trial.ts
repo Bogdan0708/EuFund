@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logger';
+
 export type BillingTier = 'free' | 'plus' | 'pro' | 'enterprise' | 'ultra';
 export type BillingStatus = 'none' | 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete' | 'unpaid';
 
@@ -62,4 +64,25 @@ export function resolveBillingTrialState(input: TrialResolutionInput): TrialReso
     trialEndsAt: isInFreeTrial ? trialEndsAt : null,
     trialDaysRemaining,
   };
+}
+
+export function normalizeBillingTier(
+  raw: string | null | undefined,
+  ctx?: { userId?: string },
+): BillingTier {
+  if (raw === 'plus') {
+    logger.warn({ userId: ctx?.userId, rawTier: raw }, '[billing] legacy tier coerced — schedule cleanup');
+    return 'pro';
+  }
+  if (raw === 'ultra') {
+    logger.warn({ userId: ctx?.userId, rawTier: raw }, '[billing] legacy tier coerced — schedule cleanup');
+    return 'enterprise';
+  }
+  if (raw === 'free' || raw === 'pro' || raw === 'enterprise') return raw;
+  // Unrecognized non-empty value: surface it as a warn so data corruption
+  // is observable. Empty/null/undefined are normal (no tier set yet).
+  if (raw != null && raw !== '') {
+    logger.warn({ userId: ctx?.userId, rawTier: raw }, '[billing] unrecognized tier — falling back to free');
+  }
+  return 'free';
 }
