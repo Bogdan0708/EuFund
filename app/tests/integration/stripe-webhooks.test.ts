@@ -1,6 +1,7 @@
 // app/tests/integration/stripe-webhooks.test.ts
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import Stripe from 'stripe';
+import { captureException } from '@/lib/monitoring/sentry';
 
 // Chainable Drizzle-style mock factory.
 // IMPORTANT: this defines per-method implementations once at module load.
@@ -112,5 +113,94 @@ describe('handleWebhookEvent idempotency', () => {
     await expect(handleWebhookEvent(event)).rejects.toThrow('simulated db failure');
 
     expect(deleteMock).toHaveBeenCalled();
+  });
+});
+
+function makeRequest(payload: string, headers: Record<string, string> = {}): Request {
+  return new Request('http://localhost/api/webhooks/stripe', {
+    method: 'POST',
+    body: payload,
+    headers,
+  });
+}
+
+async function loadRouteWithBillingMock(billingMockOverrides: Record<string, unknown>) {
+  // Reset module registry so doMock takes effect for the freshly-imported route
+  vi.resetModules();
+  vi.doMock('@/lib/integrations/stripe/billing', async () => {
+    const actual = await vi.importActual<typeof import('@/lib/integrations/stripe/billing')>('@/lib/integrations/stripe/billing');
+    return { ...actual, ...billingMockOverrides };
+  });
+  // Re-mock dependencies that our top-level mocks installed; resetModules cleared them
+  vi.doMock('@/lib/db', () => ({ db: dbMock }));
+  vi.doMock('@/lib/monitoring/sentry', () => ({
+    captureException: captureException as Mock,
+    initSentryIfConfigured: vi.fn().mockResolvedValue(undefined),
+  }));
+  vi.doMock('@/lib/logger', () => ({
+    logger: { child: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) },
+  }));
+  const mod = await import('@/app/api/webhooks/stripe/route');
+  return mod.POST;
+}
+
+describe('POST /api/webhooks/stripe error classification', () => {
+  beforeEach(() => {
+    process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_anything';
+  });
+
+  it('missing stripe-signature header → 400 before construct', async () => {
+    const constructFn = vi.fn();
+    const POST = await loadRouteWithBillingMock({ constructWebhookEvent: constructFn });
+    const res = await POST(makeRequest('{}', {}) as any);
+    expect(res.status).toBe(400);
+    expect(constructFn).not.toHaveBeenCalled();
+  });
+
+  it('signature verification error → 400, no Sentry capture', async () => {
+    const POST = await loadRouteWithBillingMock({
+      constructWebhookEvent: vi.fn(() => { throw makeSignatureError(); }),
+    });
+    const res = await POST(makeRequest('{}', { 'stripe-signature': 'bad' }) as any);
+    expect(res.status).toBe(400);
+    expect(captureException as Mock).not.toHaveBeenCalled();
+  });
+
+  it('malformed payload (SyntaxError after signature verifies) → 400', async () => {
+    const POST = await loadRouteWithBillingMock({
+      constructWebhookEvent: vi.fn(() => { throw new SyntaxError('Unexpected token in JSON'); }),
+    });
+    const res = await POST(makeRequest('not-json', { 'stripe-signature': 'good' }) as any);
+    expect(res.status).toBe(400);
+    expect(captureException as Mock).not.toHaveBeenCalled();
+  });
+
+  it('missing STRIPE_WEBHOOK_SECRET → 500 + Sentry', async () => {
+    const billing = await import('@/lib/integrations/stripe/billing');
+    const POST = await loadRouteWithBillingMock({
+      constructWebhookEvent: vi.fn(() => { throw new billing.MissingWebhookSecretError(); }),
+    });
+    const res = await POST(makeRequest('{}', { 'stripe-signature': 'whatever' }) as any);
+    expect(res.status).toBe(500);
+    expect(captureException as Mock).toHaveBeenCalled();
+  });
+
+  it('handler error → 500 + Sentry', async () => {
+    const POST = await loadRouteWithBillingMock({
+      constructWebhookEvent: vi.fn(() => ({ id: 'evt_test', type: 'customer.subscription.updated', data: { object: {} } } as any)),
+      handleWebhookEvent: vi.fn().mockRejectedValue(new Error('boom')),
+    });
+    const res = await POST(makeRequest('{}', { 'stripe-signature': 'good' }) as any);
+    expect(res.status).toBe(500);
+    expect(captureException as Mock).toHaveBeenCalled();
+  });
+
+  it('successful event → 200', async () => {
+    const POST = await loadRouteWithBillingMock({
+      constructWebhookEvent: vi.fn(() => ({ id: 'evt_test', type: 'customer.subscription.updated', data: { object: {} } } as any)),
+      handleWebhookEvent: vi.fn().mockResolvedValue(undefined),
+    });
+    const res = await POST(makeRequest('{}', { 'stripe-signature': 'good' }) as any);
+    expect(res.status).toBe(200);
   });
 });
