@@ -1,0 +1,54 @@
+name: Upstream Drift
+
+# Nightly + manual contract checks against live external upstreams
+# (CORDIS, EUR-Lex, Eurostat, EC funding-calls portal).
+#
+# This workflow is deliberately separate from PR CI so a flaky upstream
+# never blocks a merge. PR coverage of these integrations is in
+# app/tests/integration/integrations/*.test.ts (mocked).
+#
+# When this fails, the integration client may need a parser update — see
+# the affected client under app/src/lib/integrations/<name>/.
+
+on:
+  schedule:
+    # 06:00 UTC daily — picks up overnight upstream changes before EU work hours.
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  upstream-drift:
+    name: upstream-drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: ./app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run upstream contract drift suite
+        env:
+          RUN_UPSTREAM_DRIFT: '1'
+        run: npx vitest run tests/upstream/
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: upstream-drift-logs
+          path: app/test-results/
+          retention-days: 14
