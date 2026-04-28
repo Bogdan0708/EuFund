@@ -8,9 +8,9 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { freezeOutline } from '../../services/application'
 import { ConcurrencyError, NotFoundError, ValidationError } from '../../services/errors'
 import type { ServiceContext } from '../../services/types'
+import { requireSession } from '../../services/types'
 
 export const inputShape = {
-  sessionId: z.string().uuid(),
   expectedStateVersion: z.number().int(),
 }
 export const inputSchema = z.object(inputShape)
@@ -18,12 +18,13 @@ export const inputSchema = z.object(inputShape)
 export function registerFreezeOutline(server: McpServer, ctx: ServiceContext): void {
   server.tool(
     'freeze_outline',
-    'Freeze the application outline, moving the workflow from structuring into drafting. Requires a selected call and passing eligibility. After freeze, the call cannot change and drafting tools become available. Idempotent if outline is already frozen. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
+    'Freeze the application outline for the current session, moving the workflow from structuring into drafting. Requires a selected call and passing eligibility. After freeze, the call cannot change and drafting tools become available. Idempotent if outline is already frozen. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
     inputShape,
     async (args) => {
       try {
+        requireSession(ctx)
         const result = await freezeOutline(ctx, {
-          sessionId: args.sessionId,
+          sessionId: ctx.sessionId,
           expectedStateVersion: args.expectedStateVersion,
         })
         return { content: [{ type: 'text', text: JSON.stringify(result) }] }

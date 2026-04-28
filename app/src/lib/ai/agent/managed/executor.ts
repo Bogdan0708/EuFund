@@ -8,6 +8,7 @@
 import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/messages'
 import { MANAGED_TOOL_NAMES, PHASE_4_BLOCKED_TOOL_NAMES, WRITE_TOOL_NAMES } from './tools'
 import type { ServiceContext } from '../services/types'
+import { requireSession } from '../services/types'
 import {
   ServiceError,
   NotFoundError,
@@ -298,20 +299,24 @@ async function dispatchTool(
       })
     }
     case 'get_application_state': {
-      const i = getApplicationStateSchema.parse(rawInput)
-      return application.getApplicationState(ctx, i.sessionId)
+      getApplicationStateSchema.parse(rawInput)
+      requireSession(ctx)
+      return application.getApplicationState(ctx, ctx.sessionId)
     }
     case 'list_sections': {
-      const i = listSectionsSchema.parse(rawInput)
-      return sections.listSections(ctx, i.sessionId)
+      listSectionsSchema.parse(rawInput)
+      requireSession(ctx)
+      return sections.listSections(ctx, ctx.sessionId)
     }
     case 'get_section': {
       const i = getSectionSchema.parse(rawInput)
-      return sections.getSection(ctx, i.sessionId, i.sectionKey)
+      requireSession(ctx)
+      return sections.getSection(ctx, ctx.sessionId, i.sectionKey)
     }
     case 'get_validation_report': {
-      const i = getValidationReportSchema.parse(rawInput)
-      return application.getValidationReport(ctx, i.sessionId)
+      getValidationReportSchema.parse(rawInput)
+      requireSession(ctx)
+      return application.getValidationReport(ctx, ctx.sessionId)
     }
     case 'get_project_summary': {
       const i = getProjectSummarySchema.parse(rawInput)
@@ -337,48 +342,59 @@ async function dispatchTool(
     }
     case 'validate_section': {
       const i = validateSectionSchema.parse(rawInput)
-      return sections.validateSection(ctx, i.sessionId, i.sectionKey)
+      requireSession(ctx)
+      return sections.validateSection(ctx, ctx.sessionId, i.sectionKey)
     }
     case 'validate_application': {
-      const i = validateApplicationSchema.parse(rawInput)
-      return application.validateApplication(ctx, i.sessionId)
+      validateApplicationSchema.parse(rawInput)
+      requireSession(ctx)
+      return application.validateApplication(ctx, ctx.sessionId)
     }
     case 'check_missing_annexes': {
-      const i = checkMissingAnnexesSchema.parse(rawInput)
-      return application.checkMissingAnnexes(ctx, i.sessionId)
+      checkMissingAnnexesSchema.parse(rawInput)
+      requireSession(ctx)
+      return application.checkMissingAnnexes(ctx, ctx.sessionId)
     }
     // ── Phase 3b write tools ───────────────────────────────────────────────
     case 'save_section_draft': {
       const i = saveSectionDraftSchema.parse(rawInput)
-      return sections.saveSectionDraft(ctx, i)
+      requireSession(ctx)
+      return sections.saveSectionDraft(ctx, { ...i, sessionId: ctx.sessionId })
     }
     case 'approve_revision': {
       const i = approveRevisionSchema.parse(rawInput)
-      return sections.approveSection(ctx, i)
+      requireSession(ctx)
+      return sections.approveSection(ctx, { ...i, sessionId: ctx.sessionId })
     }
     case 'rollback_section': {
       const i = rollbackSectionSchema.parse(rawInput)
-      return sections.rollbackSection(ctx, i)
+      requireSession(ctx)
+      return sections.rollbackSection(ctx, { ...i, sessionId: ctx.sessionId })
     }
     case 'mark_section_stale': {
       const i = markSectionStaleSchema.parse(rawInput)
-      return sections.markSectionStale(ctx, i)
+      requireSession(ctx)
+      return sections.markSectionStale(ctx, { ...i, sessionId: ctx.sessionId })
     }
     case 'reject_section': {
       const i = rejectSectionSchema.parse(rawInput)
-      return sections.rejectSection(ctx, i)
+      requireSession(ctx)
+      return sections.rejectSection(ctx, { ...i, sessionId: ctx.sessionId })
     }
     case 'set_application_status': {
       const i = setApplicationStatusSchema.parse(rawInput)
-      return application.setApplicationStatus(ctx, i)
+      requireSession(ctx)
+      return application.setApplicationStatus(ctx, { ...i, sessionId: ctx.sessionId })
     }
     case 'set_selected_call': {
       const i = setSelectedCallSchema.parse(rawInput)
-      return application.setSelectedCall(ctx, i)
+      requireSession(ctx)
+      return application.setSelectedCall(ctx, { ...i, sessionId: ctx.sessionId })
     }
     case 'freeze_outline': {
       const i = freezeOutlineSchema.parse(rawInput)
-      return application.freezeOutline(ctx, i)
+      requireSession(ctx)
+      return application.freezeOutline(ctx, { ...i, sessionId: ctx.sessionId })
     }
     default:
       throw new Error(`Dispatcher has no handler for ${name}`)

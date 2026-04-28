@@ -7,6 +7,7 @@ import {
 
 const mockCtx = {
   userId: '11111111-1111-4111-8111-111111111111',
+  sessionId: '22222222-2222-4222-8222-222222222222',
   requestId: 'req-1',
   now: new Date(),
 }
@@ -157,9 +158,7 @@ describe('executeManagedTool', () => {
       '@/lib/ai/agent/managed/executor'
     )
     const result = await executeManagedTool(
-      makeBlock('get_application_state', {
-        sessionId: '22222222-2222-4222-8222-222222222222',
-      }),
+      makeBlock('get_application_state', {}),
       mockCtx,
     )
 

@@ -8,9 +8,9 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { saveSectionDraft } from '../../services/sections'
 import { ConcurrencyError, NotFoundError, ValidationError } from '../../services/errors'
 import type { ServiceContext } from '../../services/types'
+import { requireSession } from '../../services/types'
 
 export const inputShape = {
-  sessionId: z.string().uuid(),
   sectionKey: z.string().min(1),
   content: z.string(),
   expectedStateVersion: z.number().int(),
@@ -20,12 +20,13 @@ export const inputSchema = z.object(inputShape)
 export function registerSaveSectionDraft(server: McpServer, ctx: ServiceContext): void {
   server.tool(
     'save_section_draft',
-    'Upsert a section draft by (sessionId, sectionKey). Creates or updates the section, creates a version record, and increments the session stateVersion. Enforces concurrency guard via expectedStateVersion.',
+    'Upsert a section draft by sectionKey for the current session. Creates or updates the section, creates a version record, and increments the session stateVersion. Enforces concurrency guard via expectedStateVersion.',
     inputShape,
     async (args) => {
       try {
+        requireSession(ctx)
         const result = await saveSectionDraft(ctx, {
-          sessionId: args.sessionId,
+          sessionId: ctx.sessionId,
           sectionKey: args.sectionKey,
           content: args.content,
           expectedStateVersion: args.expectedStateVersion,

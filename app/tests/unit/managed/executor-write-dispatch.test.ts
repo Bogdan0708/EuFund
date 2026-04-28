@@ -57,7 +57,7 @@ describe('executor write dispatch happy paths', () => {
     } as never)
     const { executeManagedTool } = await import('@/lib/ai/agent/managed/executor')
     const r = await executeManagedTool(
-      makeBlock('save_section_draft', { sessionId: SESSION_ID, sectionKey: 'obiective', content: 'x', expectedStateVersion: 0 }),
+      makeBlock('save_section_draft', { sectionKey: 'obiective', content: 'x', expectedStateVersion: 0 }),
       makeCtx(),
     )
     expect(r.isError).toBe(false)
@@ -70,7 +70,7 @@ describe('executor write dispatch happy paths', () => {
     vi.mocked(sections.approveSection).mockResolvedValueOnce({ newStateVersion: 1 } as never)
     const { executeManagedTool } = await import('@/lib/ai/agent/managed/executor')
     const r = await executeManagedTool(
-      makeBlock('approve_revision', { sessionId: SESSION_ID, sectionKey: 'obiective', expectedStateVersion: 0 }),
+      makeBlock('approve_revision', { sectionKey: 'obiective', expectedStateVersion: 0 }),
       makeCtx(),
     )
     expect(r.isError).toBe(false)
@@ -86,7 +86,7 @@ describe('executor write dispatch happy paths', () => {
     } as never)
     const { executeManagedTool } = await import('@/lib/ai/agent/managed/executor')
     const r = await executeManagedTool(
-      makeBlock('rollback_section', { sessionId: SESSION_ID, sectionKey: 'obiective', targetVersion: 1, expectedStateVersion: 0 }),
+      makeBlock('rollback_section', { sectionKey: 'obiective', targetVersion: 1, expectedStateVersion: 0 }),
       makeCtx(),
     )
     expect(r.isError).toBe(false)
@@ -98,7 +98,7 @@ describe('executor write dispatch happy paths', () => {
     vi.mocked(sections.markSectionStale).mockResolvedValueOnce({ newStateVersion: 1 } as never)
     const { executeManagedTool } = await import('@/lib/ai/agent/managed/executor')
     const r = await executeManagedTool(
-      makeBlock('mark_section_stale', { sessionId: SESSION_ID, sectionKey: 'obiective', expectedStateVersion: 0 }),
+      makeBlock('mark_section_stale', { sectionKey: 'obiective', expectedStateVersion: 0 }),
       makeCtx(),
     )
     expect(r.isError).toBe(false)
@@ -110,7 +110,7 @@ describe('executor write dispatch happy paths', () => {
     vi.mocked(sections.rejectSection).mockResolvedValueOnce({ newStateVersion: 1 } as never)
     const { executeManagedTool } = await import('@/lib/ai/agent/managed/executor')
     const r = await executeManagedTool(
-      makeBlock('reject_section', { sessionId: SESSION_ID, sectionKey: 'obiective', reason: 'bad', expectedStateVersion: 0 }),
+      makeBlock('reject_section', { sectionKey: 'obiective', reason: 'bad', expectedStateVersion: 0 }),
       makeCtx(),
     )
     expect(r.isError).toBe(false)
@@ -122,7 +122,7 @@ describe('executor write dispatch happy paths', () => {
     vi.mocked(application.setApplicationStatus).mockResolvedValueOnce({ newStateVersion: 1 } as never)
     const { executeManagedTool } = await import('@/lib/ai/agent/managed/executor')
     const r = await executeManagedTool(
-      makeBlock('set_application_status', { sessionId: SESSION_ID, status: 'paused', expectedStateVersion: 0 }),
+      makeBlock('set_application_status', { status: 'paused', expectedStateVersion: 0 }),
       makeCtx(),
     )
     expect(r.isError).toBe(false)
@@ -134,7 +134,7 @@ describe('executor write dispatch happy paths', () => {
     vi.mocked(application.setSelectedCall).mockResolvedValueOnce({ newStateVersion: 1 } as never)
     const { executeManagedTool } = await import('@/lib/ai/agent/managed/executor')
     const r = await executeManagedTool(
-      makeBlock('set_selected_call', { sessionId: SESSION_ID, callId: 'CALL-1', expectedStateVersion: 0 }),
+      makeBlock('set_selected_call', { callId: 'CALL-1', expectedStateVersion: 0 }),
       makeCtx(),
     )
     expect(r.isError).toBe(false)
@@ -146,7 +146,7 @@ describe('executor write dispatch happy paths', () => {
     vi.mocked(application.freezeOutline).mockResolvedValueOnce({ newStateVersion: 1 } as never)
     const { executeManagedTool } = await import('@/lib/ai/agent/managed/executor')
     const r = await executeManagedTool(
-      makeBlock('freeze_outline', { sessionId: SESSION_ID, expectedStateVersion: 0 }),
+      makeBlock('freeze_outline', { expectedStateVersion: 0 }),
       makeCtx(),
     )
     expect(r.isError).toBe(false)
