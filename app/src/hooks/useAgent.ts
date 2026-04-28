@@ -363,22 +363,30 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   }, [sendRequest])
 
   // Adopt an externally-created session (e.g. one the deterministic preselect
-  // endpoint just created). Updates the ref synchronously so a follow-up
-  // sendMessage() in the same click handler sends with the new sessionId, and
-  // fetches the real session state so consumers get the correct outlineFrozen,
-  // phase, stateVersion, blueprint, etc.
-  const adoptSession = useCallback(async (newSessionId: string) => {
-    sessionIdRef.current = newSessionId
-    setSessionId(newSessionId)
+  // endpoint just created). Validate ownership before mutating the local
+  // session ref; otherwise a failed/foreign adoption could poison the next
+  // sendMessage() with an unowned session id.
+  const adoptSession = useCallback(async (newSessionId: string): Promise<boolean> => {
+    const previousSessionId = sessionIdRef.current
     try {
       const res = await csrfFetch(`/api/ai/agent/state?sessionId=${newSessionId}`)
-      if (res.ok) {
-        const state: UIStateSnapshot = await res.json()
-        applyFinalState(state)
+      if (!res.ok) {
+        sessionIdRef.current = previousSessionId
+        setSessionId(previousSessionId)
+        setStatus('error')
+        setError('Session not found or access denied')
+        return false
       }
-    } catch {
-      // Best effort — the next turn will still carry the correct sessionId
-      // because we set the ref synchronously above.
+
+      const state: UIStateSnapshot = await res.json()
+      applyFinalState(state)
+      return true
+    } catch (err) {
+      sessionIdRef.current = previousSessionId
+      setSessionId(previousSessionId)
+      setStatus('error')
+      setError(err instanceof Error ? err.message : 'Failed to adopt session')
+      return false
     }
   }, [applyFinalState])
 

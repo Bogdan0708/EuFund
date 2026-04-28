@@ -100,7 +100,8 @@ export function NewProjectView({
       // created BEFORE sending the first turn — otherwise useAgent's
       // internal sessionId is null and /api/ai/agent would create a fresh
       // discovery session instead of continuing the preselected one.
-      await agent.adoptSession(result.sessionId)
+      const adopted = await agent.adoptSession(result.sessionId)
+      if (!adopted) return
       await agent.sendMessage(description)
     },
     [preselectEnabled, initialSessionId, locale, agent, state.kind],
@@ -140,13 +141,15 @@ export function NewProjectView({
           // Existing session was mutated — refresh its state (stateVersion
           // bumped via setSelectedCall). Do NOT touch URL; sessionId is
           // unchanged.
-          await agent.adoptSession(result.sessionId)
+          const adopted = await agent.adoptSession(result.sessionId)
+          if (!adopted) return
           return
         }
         if (typeof window !== 'undefined') {
           window.history.replaceState(null, '', `?session=${result.sessionId}`)
         }
-        await agent.adoptSession(result.sessionId)
+        const adopted = await agent.adoptSession(result.sessionId)
+        if (!adopted) return
         await agent.sendMessage(description)
       }
     },
@@ -181,7 +184,8 @@ export function NewProjectView({
       // Re-hydrate from /api/ai/agent/state so the next sendMessage carries
       // the fresh stateVersion; otherwise the next managed turn will 409 on
       // CAS check.
-      await agent.adoptSession(result.sessionId)
+      const adopted = await agent.adoptSession(result.sessionId)
+      if (!adopted) return
       return
     }
     if (result.kind === 'ambiguous') {
