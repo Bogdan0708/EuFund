@@ -77,6 +77,7 @@ import {
   persistFirstDurableOutput,
   markTurnCompleted,
 } from './history'
+import { compactIfNeeded } from '../history'
 import { logger } from '@/lib/logger'
 import { addUsage, computeAnthropicCostMicros, type UsageLike } from '@/lib/ai/cost/anthropic-pricing'
 
@@ -398,6 +399,19 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
       cacheCreationInputTokens: aggregateUsage.cache_creation_input_tokens ?? null,
       costUsdMicros,
     })
+
+    try {
+      await compactIfNeeded(session.id, session.currentPhase)
+    } catch (err) {
+      log.warn(
+        {
+          sessionId: session.id,
+          requestId: request.requestId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        'managed compaction failed (non-fatal)',
+      )
+    }
   }
 
   const finalState = buildUISnapshot(session, sections)

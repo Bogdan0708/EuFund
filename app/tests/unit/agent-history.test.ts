@@ -262,5 +262,68 @@ describe('Message History Manager', () => {
       expect(result.compacted).toBe(true)
       expect(result.summary).toContain('[Tool: search_calls]')
     })
+
+    // Managed runtime persists assistant tool_use blocks inside content[]
+    // on messageType='text' rows, not as messageType='tool_call'. The
+    // compactor must scan content[] for tool_use blocks to protect pairs
+    // that straddle the PRESERVE_RECENT boundary. Without this, a
+    // tool_result kept in the last-10 window loses its tool_use on
+    // compaction, and ensurePairingInvariant drops the orphan on replay.
+    it('protects managed tool_use/tool_result pairs across compaction boundary', async () => {
+      const TOOL_ID = 'toolu_cross_boundary'
+      mockRows = Array.from({ length: 41 }, (_, i) => {
+        // Assistant tool_use row at seq 29 (outside last 10, so it would be
+        // compacted without pairing protection).
+        if (i === 29) {
+          return {
+            id: `msg-${i}`,
+            role: 'assistant',
+            content: [
+              { type: 'text', text: 'searching for calls' },
+              { type: 'tool_use', id: TOOL_ID, name: 'search_calls', input: {} },
+            ],
+            messageType: 'text',
+            sequenceNumber: i,
+            compactedAt: null,
+            toolName: null,
+            toolCallId: null,
+          }
+        }
+        // Paired tool_result row at seq 35 (inside last 10, so it is kept).
+        if (i === 35) {
+          return {
+            id: `msg-${i}`,
+            role: 'user',
+            content: [{ type: 'tool_result', tool_use_id: TOOL_ID, content: 'ok' }],
+            messageType: 'tool_result',
+            sequenceNumber: i,
+            compactedAt: null,
+            toolName: 'search_calls',
+            toolCallId: TOOL_ID,
+          }
+        }
+        return {
+          id: `msg-${i}`,
+          role: i % 2 === 0 ? 'user' : 'assistant',
+          content: `Message ${i}`,
+          messageType: 'text',
+          sequenceNumber: i,
+          compactedAt: null,
+          toolName: null,
+          toolCallId: null,
+        }
+      })
+
+      const result = await compactIfNeeded('session-1', 'research')
+
+      expect(result.compacted).toBe(true)
+      // 41 total, last 10 preserved (seq 31-40), pair protection also
+      // preserves seq 29, so 30 messages are compacted (seq 0-28 + seq 30).
+      // Without the fix, 31 would be compacted.
+      expect(result.summary).toContain('30 messages compacted')
+      // Extra belt-and-suspenders: the tool_use row's JSON-stringified
+      // content must NOT appear in the summary because it was kept, not compacted.
+      expect(result.summary).not.toContain(TOOL_ID)
+    })
   })
 })
