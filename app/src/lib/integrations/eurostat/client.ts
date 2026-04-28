@@ -48,12 +48,13 @@ export interface EurostatIndicator {
 }
 
 export async function getRegionalGDP(nutsCode: string, years?: number[]): Promise<EurostatRegionalData> {
+  // Eurostat removed the NA_ITEM dimension from nama_10r_2gdp — the dataset is now
+  // GDP-only at the source. Including na_item triggers HTTP 400 INVALID_QUERY_DIMENSION.
   return fetchRegionalDataset({
     nutsCode,
     datasetCode: 'nama_10r_2gdp',
     years,
     staticParams: {
-      na_item: 'B1GQ',
       unit: 'MIO_EUR',
       lang: 'EN',
     },
