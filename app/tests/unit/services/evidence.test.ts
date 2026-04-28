@@ -150,6 +150,70 @@ describe('searchCalls', () => {
     expect(result.matches[0].callId).toBe('raw-chunk-xyz')
   })
 
+  // Regression: bulk-ingest-rag-knowledge.ts writes titleRo + callCode + sourceId
+  // (contentHash) but NOT callTitle/title/callId. Prior to the fallback fix,
+  // candidates surfaced the MD5 hash as both id and display title.
+  it('uses titleRo when callTitle/title are absent', async () => {
+    mockSearch.mockResolvedValue([
+      {
+        id: 'md5hash-abc123',
+        content: 'Ghid solicitant PNRR Digital',
+        score: 0.82,
+        metadata: {
+          sourceId: 'md5hash-abc123',
+          callCode: 'PNRR/2024/C7/I8',
+          titleRo: 'Digitalizarea IMM-urilor',
+          program: 'PNRR',
+        },
+      },
+    ])
+
+    const result = await searchCalls(baseCtx, 'digital transformation')
+
+    expect(result.matches[0].title).toBe('Digitalizarea IMM-urilor')
+    expect(result.matches[0].callId).toBe('PNRR/2024/C7/I8')
+  })
+
+  it('falls through titleRo, titleEn, then callId for the display title', async () => {
+    mockSearch.mockResolvedValue([
+      {
+        id: 'md5-1',
+        content: 'content',
+        score: 0.7,
+        metadata: {
+          sourceId: 'md5-1',
+          callCode: 'PEO/2024/1.1',
+          titleEn: 'SME Growth Scheme',
+          program: 'PEO',
+        },
+      },
+    ])
+
+    const result = await searchCalls(baseCtx, 'any')
+
+    expect(result.matches[0].title).toBe('SME Growth Scheme')
+    expect(result.matches[0].callId).toBe('PEO/2024/1.1')
+  })
+
+  it('prefers callCode over sourceId for callId when metadata.callId is absent', async () => {
+    mockSearch.mockResolvedValue([
+      {
+        id: 'point-id-zzz',
+        content: 'content',
+        score: 0.7,
+        metadata: {
+          sourceId: 'md5-hash-xyz',
+          callCode: 'POTJ/2024/M1',
+          program: 'POTJ',
+        },
+      },
+    ])
+
+    const result = await searchCalls(baseCtx, 'any')
+
+    expect(result.matches[0].callId).toBe('POTJ/2024/M1')
+  })
+
   it('returns score rounded to 2 decimal places', async () => {
     mockSearch.mockResolvedValue([{ ...makeResult(), score: 0.9166666 }])
 

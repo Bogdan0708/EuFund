@@ -94,6 +94,7 @@ export async function searchCalls(
   for (const r of results) {
     const callId =
       (r.metadata.callId as string) ||
+      (r.metadata.callCode as string) ||
       (r.metadata.sourceId as string) ||
       r.id
     if (seen.has(callId)) continue
@@ -103,6 +104,8 @@ export async function searchCalls(
       title:
         (r.metadata.callTitle as string) ||
         (r.metadata.title as string) ||
+        (r.metadata.titleRo as string) ||
+        (r.metadata.titleEn as string) ||
         callId,
       program: (r.metadata.program as string) || 'unknown',
       score: Math.round(r.score * 100) / 100,
