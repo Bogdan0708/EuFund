@@ -117,6 +117,75 @@ describe('EC funding-calls client searchFundingCalls parser', () => {
     expect(first.currency).toBe('EUR');
   });
 
+  it('scans multiple pages and dedupes by identifier when status=open and no query', async () => {
+    vi.resetModules();
+    stubWrappers();
+
+    // The multi-page scan triggers only when !query && status in {open, forthcoming}.
+    // Page 1 returns two open calls. Page 2 returns one new + one duplicate (by identifier),
+    // proving the seen-Set dedup. Page 3 returns empty, which short-circuits the scan.
+    const page1 = {
+      results: [
+        {
+          metadata: {
+            identifier: ['CALL-A'],
+            title: ['Call A'],
+            status: ['31094501'],
+            keywords: [],
+          },
+        },
+        {
+          metadata: {
+            identifier: ['CALL-B'],
+            title: ['Call B'],
+            status: ['31094501'],
+            keywords: [],
+          },
+        },
+      ],
+    };
+    const page2 = {
+      results: [
+        {
+          metadata: {
+            identifier: ['CALL-C'],
+            title: ['Call C'],
+            status: ['31094501'],
+            keywords: [],
+          },
+        },
+        {
+          metadata: {
+            identifier: ['CALL-A'], // duplicate of page-1 entry
+            title: ['Call A again'],
+            status: ['31094501'],
+            keywords: [],
+          },
+        },
+      ],
+    };
+    const empty = { results: [] };
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => page1 })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => page2 })
+      .mockResolvedValue({ ok: true, status: 200, json: async () => empty });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { searchFundingCalls } = await import('@/lib/integrations/ec-portal/client');
+    const calls = await searchFundingCalls({ status: 'open', limit: 50 });
+
+    // The scan stops at the first empty page, so we expect 3 fetches total.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const identifiers = calls.map((c) => c.identifier);
+    expect(identifiers).toContain('CALL-A');
+    expect(identifiers).toContain('CALL-B');
+    expect(identifiers).toContain('CALL-C');
+    // Dedup proof: CALL-A appears exactly once even though page-2 also returned it.
+    expect(identifiers.filter((id) => id === 'CALL-A')).toHaveLength(1);
+  });
+
   it('throws when the upstream returns a non-OK response', async () => {
     vi.resetModules();
     stubWrappers();
