@@ -71,4 +71,27 @@ describe('perplexityProvider.generate', () => {
     })
     expect(result.cacheUsage).toBeUndefined()
   })
+
+  it('passes AbortSignal to chat.completions.create options', async () => {
+    const { perplexityProvider } = await import('@/lib/ai/providers/perplexity')
+    const controller = new AbortController()
+    await perplexityProvider.generate({
+      provider: 'perplexity',
+      model: 'sonar',
+      messages: [{ role: 'user', content: 'hi' }],
+    }, controller.signal)
+    const optionsArg = createMock.mock.calls[0][1] as { signal?: AbortSignal } | undefined
+    expect(optionsArg?.signal).toBe(controller.signal)
+  })
+
+  it('omits signal option when called without one', async () => {
+    const { perplexityProvider } = await import('@/lib/ai/providers/perplexity')
+    await perplexityProvider.generate({
+      provider: 'perplexity',
+      model: 'sonar',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+    const optionsArg = createMock.mock.calls[0][1]
+    expect(optionsArg).toBeUndefined()
+  })
 })

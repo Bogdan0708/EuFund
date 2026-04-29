@@ -83,4 +83,27 @@ describe('anthropicProvider.generate — branching', () => {
     expect(asst.tool_calls).toHaveLength(1)
     expect(asst.tool_calls[0].id).toBe('c1')
   })
+
+  it('passes AbortSignal to chat.completions.create options', async () => {
+    const { anthropicProvider } = await import('@/lib/ai/providers/anthropic')
+    const controller = new AbortController()
+    await anthropicProvider.generate({
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'hi' }],
+    }, controller.signal)
+    const optionsArg = shimCreateMock.mock.calls[0][1] as { signal?: AbortSignal } | undefined
+    expect(optionsArg?.signal).toBe(controller.signal)
+  })
+
+  it('omits signal option when called without one', async () => {
+    const { anthropicProvider } = await import('@/lib/ai/providers/anthropic')
+    await anthropicProvider.generate({
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+    const optionsArg = shimCreateMock.mock.calls[0][1]
+    expect(optionsArg).toBeUndefined()
+  })
 })

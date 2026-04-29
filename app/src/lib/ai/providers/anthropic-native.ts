@@ -213,7 +213,7 @@ export function clampTtl(input: number | undefined): { effective: number | undef
 // Test-only reset.
 export function __resetTtlClampWarningForTests() { ttlClampWarned = false }
 
-export async function anthropicNativeGenerate(req: GenerateRequest): Promise<GenerateResult> {
+export async function anthropicNativeGenerate(req: GenerateRequest, signal?: AbortSignal): Promise<GenerateResult> {
   const anthropic = getAnthropicClient()
   const translated = translateRequestToAnthropic(req)
   const { effective: effectiveTtlSeconds } = clampTtl(req.cache?.ttlSeconds)
@@ -226,7 +226,8 @@ export async function anthropicNativeGenerate(req: GenerateRequest): Promise<Gen
     ...(translated.system ? { system: translated.system } : {}),
     ...(translated.tools ? { tools: translated.tools } : {}),
     messages: translated.messages,
-  } as unknown as Parameters<typeof anthropic.messages.create>[0])
+  } as unknown as Parameters<typeof anthropic.messages.create>[0],
+  signal ? { signal } : undefined)
 
   return translateResponseFromAnthropic(response as unknown as AnthropicNativeResponse, {
     model: req.model,

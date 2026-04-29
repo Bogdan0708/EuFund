@@ -71,4 +71,27 @@ describe('googleProvider.generate', () => {
     })
     expect(result.cacheUsage).toBeUndefined()
   })
+
+  it('passes AbortSignal to chat.completions.create options', async () => {
+    const { googleProvider } = await import('@/lib/ai/providers/google')
+    const controller = new AbortController()
+    await googleProvider.generate({
+      provider: 'google',
+      model: 'gemini-3-flash',
+      messages: [{ role: 'user', content: 'hi' }],
+    }, controller.signal)
+    const optionsArg = createMock.mock.calls[0][1] as { signal?: AbortSignal } | undefined
+    expect(optionsArg?.signal).toBe(controller.signal)
+  })
+
+  it('omits signal option when called without one', async () => {
+    const { googleProvider } = await import('@/lib/ai/providers/google')
+    await googleProvider.generate({
+      provider: 'google',
+      model: 'gemini-3-flash',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+    const optionsArg = createMock.mock.calls[0][1]
+    expect(optionsArg).toBeUndefined()
+  })
 })

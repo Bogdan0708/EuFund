@@ -14,7 +14,7 @@ function getShimClient(): OpenAI {
   return shimClient
 }
 
-async function anthropicCompatGenerate(req: GenerateRequest): Promise<GenerateResult> {
+async function anthropicCompatGenerate(req: GenerateRequest, signal?: AbortSignal): Promise<GenerateResult> {
   const c = getShimClient()
   const messages = [
     ...(req.system ? [{ role: 'system' as const, content: req.system }] : []),
@@ -42,7 +42,7 @@ async function anthropicCompatGenerate(req: GenerateRequest): Promise<GenerateRe
     max_completion_tokens: req.maxTokens ?? 20_000,
     temperature: req.temperature ?? 0.7,
     ...(req.tools ? { tools: req.tools } : {}),
-  })
+  }, signal ? { signal } : undefined)
   const choice = response.choices[0]
   return {
     content: choice.message.content ?? '',
@@ -56,8 +56,8 @@ async function anthropicCompatGenerate(req: GenerateRequest): Promise<GenerateRe
 }
 
 export const anthropicProvider: ProviderClient = {
-  async generate(req: GenerateRequest): Promise<GenerateResult> {
-    if (req.cache?.enabled === true) return anthropicNativeGenerate(req)
-    return anthropicCompatGenerate(req)
+  async generate(req: GenerateRequest, signal?: AbortSignal): Promise<GenerateResult> {
+    if (req.cache?.enabled === true) return anthropicNativeGenerate(req, signal)
+    return anthropicCompatGenerate(req, signal)
   },
 }

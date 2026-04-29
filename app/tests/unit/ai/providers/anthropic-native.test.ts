@@ -2,13 +2,15 @@ import { describe, it, expect, vi } from 'vitest'
 import { translateRequestToAnthropic, translateResponseFromAnthropic, clampTtl, anthropicNativeGenerate } from '@/lib/ai/providers/anthropic-native'
 import type { GenerateRequest } from '@/lib/ai/providers/types'
 
+const messagesCreateMock = vi.fn(async () => ({
+  content: [{ type: 'text', text: 'hi' }],
+  usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+}))
+
 vi.mock('@/lib/ai/anthropic-client', () => ({
   getAnthropicClient: vi.fn(() => ({
     messages: {
-      create: vi.fn(async () => ({
-        content: [{ type: 'text', text: 'hi' }],
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      })),
+      create: messagesCreateMock,
     },
   })),
 }))
@@ -299,5 +301,30 @@ describe('anthropicNativeGenerate — end to end', () => {
       cache: { enabled: true, breakpoints: ['system'], ttlSeconds: 600 },
     })
     expect(result.cacheUsage!.effectiveTtlSeconds).toBe(300)
+  })
+
+  it('passes AbortSignal to messages.create options', async () => {
+    messagesCreateMock.mockClear()
+    const controller = new AbortController()
+    await anthropicNativeGenerate({
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'hi' }],
+    }, controller.signal)
+    const calls = messagesCreateMock.mock.calls as unknown as Array<[unknown, { signal?: AbortSignal } | undefined]>
+    const optionsArg = calls[0][1]
+    expect(optionsArg?.signal).toBe(controller.signal)
+  })
+
+  it('omits signal option when called without one', async () => {
+    messagesCreateMock.mockClear()
+    await anthropicNativeGenerate({
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+    const calls = messagesCreateMock.mock.calls as unknown as Array<[unknown, unknown]>
+    const optionsArg = calls[0][1]
+    expect(optionsArg).toBeUndefined()
   })
 })

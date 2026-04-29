@@ -12,7 +12,7 @@ function getClient(): OpenAI {
 }
 
 export const openaiProvider: ProviderClient = {
-  async generate(req: GenerateRequest): Promise<GenerateResult> {
+  async generate(req: GenerateRequest, signal?: AbortSignal): Promise<GenerateResult> {
     const c = getClient()
 
     const messages = [
@@ -49,7 +49,7 @@ export const openaiProvider: ProviderClient = {
         : {}),
     }
 
-    const response = await c.chat.completions.create(createParams)
+    const response = await c.chat.completions.create(createParams, signal ? { signal } : undefined)
     const choice = response.choices[0]
 
     const result: GenerateResult = {
@@ -84,9 +84,9 @@ export const openaiProvider: ProviderClient = {
 
     return result
   },
-  async embed(text: string): Promise<number[]> {
+  async embed(text: string, signal?: AbortSignal): Promise<number[]> {
     const c = getClient()
-    const res = await c.embeddings.create({ model: 'text-embedding-3-small', input: text })
+    const res = await c.embeddings.create({ model: 'text-embedding-3-small', input: text }, signal ? { signal } : undefined)
     return res.data[0].embedding
   },
 }
