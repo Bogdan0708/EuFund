@@ -81,6 +81,7 @@ describe('Agent Runtime', () => {
       sections: [],
       request: { message: 'I want to apply for green energy funding', requestId: 'req-1', locale: 'ro' },
       emit,
+          turnId: 'tu-test',
     })
 
     expect(result.session.stateVersion).toBe(1)
@@ -103,6 +104,7 @@ describe('Agent Runtime', () => {
       sections,
       request: { action: { type: 'accept_section', sectionKey: 'rezumat' }, requestId: 'req-2', locale: 'ro' },
       emit,
+          turnId: 'tu-test',
     })
 
     const accepted = result.sections.find(s => s.sectionKey === 'rezumat')
@@ -117,6 +119,7 @@ describe('Agent Runtime', () => {
       sections: [],
       request: { message: 'test', requestId: 'req-3', locale: 'ro' },
       emit,
+          turnId: 'tu-test',
     })
 
     expect(result.session.stateVersion).toBe(6)
@@ -137,6 +140,7 @@ describe('Agent Runtime', () => {
       sections,
       request: { action: { type: 'accept_section', sectionKey: 'rezumat' }, requestId: 'req-ver', locale: 'ro' },
       emit,
+          turnId: 'tu-test',
     })
 
     expect(result.session.stateVersion).toBe(4)
@@ -153,6 +157,7 @@ describe('Agent Runtime', () => {
       sections: [],
       request: { action: { type: 'approve_outline' }, requestId: 'req-phase', locale: 'ro' },
       emit,
+          turnId: 'tu-test',
     })
 
     expect(onPhaseTransition).toHaveBeenCalledWith(
@@ -199,6 +204,7 @@ describe('Agent Runtime', () => {
         action: { type: 'accept_section', sectionKey: 'methodology' },
       },
       emit,
+          turnId: 'tu-test',
     })
 
     expect(onSectionAccepted).toHaveBeenCalledWith(

@@ -102,6 +102,7 @@ describe('V3 runtime — cache opt-in flag gating (PR 2b)', () => {
       sections: [],
       request: { message: 'hi', requestId: 'r1', locale: 'ro' },
       emit: () => {},
+          turnId: 'tu-test',
     })
     expect(captured).toHaveLength(1)
     expect(captured[0].cache).toBeUndefined()
@@ -114,6 +115,7 @@ describe('V3 runtime — cache opt-in flag gating (PR 2b)', () => {
       sections: [],
       request: { message: 'hi', requestId: 'r2', locale: 'ro' },
       emit: () => {},
+          turnId: 'tu-test',
     })
     expect(captured).toHaveLength(1)
     expect(captured[0].cache).toEqual({ enabled: true, breakpoints: ['system', 'tools'] })
@@ -126,6 +128,7 @@ describe('V3 runtime — cache opt-in flag gating (PR 2b)', () => {
       sections: [],
       request: { message: 'hi', requestId: 'r3', locale: 'ro' },
       emit: () => {},
+          turnId: 'tu-test',
     })
     expect(captured).toHaveLength(1)
     const cache = captured[0].cache as { key?: string } | undefined
@@ -139,6 +142,7 @@ describe('V3 runtime — cache opt-in flag gating (PR 2b)', () => {
       sections: [],
       request: { message: 'hi', requestId: 'r4', locale: 'ro' },
       emit: () => {},
+          turnId: 'tu-test',
     })
     expect(isFeatureEnabledMock).toHaveBeenCalledWith(
       'v3_prompt_cache_enabled',
