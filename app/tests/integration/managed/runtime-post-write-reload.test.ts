@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Two sub-streams: first emits save_section_draft(tool_use), second wraps with text.
 function makeFakeStream(events: unknown[]) {
   return {
     [Symbol.asyncIterator]: async function* () {
@@ -10,32 +9,34 @@ function makeFakeStream(events: unknown[]) {
 }
 
 const stream1Events = [
-  { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-4-6', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 100, output_tokens: 0 } } },
-  { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tu_save', name: 'save_section_draft', input: {} } },
-  { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"sessionId":"11111111-1111-4111-8111-111111111111","sectionKey":"obiective","content":"drafted content","expectedStateVersion":0}' } },
+  { type: 'message_start', message: { id: 'm1', type: 'message', role: 'assistant', model: 'claude-sonnet-4-6', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 100, output_tokens: 0 } } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tu_set', name: 'set_selected_call', input: {} } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"sessionId":"11111111-1111-4111-8111-111111111111","callId":"CALL-1","expectedStateVersion":0}' } },
   { type: 'content_block_stop', index: 0 },
   { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 20 } },
   { type: 'message_stop' },
 ]
 
 const stream2Events = [
-  { type: 'message_start', message: { id: 'msg_2', type: 'message', role: 'assistant', model: 'claude-sonnet-4-6', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 150, output_tokens: 0 } } },
+  { type: 'message_start', message: { id: 'm2', type: 'message', role: 'assistant', model: 'claude-sonnet-4-6', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 150, output_tokens: 0 } } },
   { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
-  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Am salvat.' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done.' } },
   { type: 'content_block_stop', index: 0 },
-  { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 10 } },
+  { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 5 } },
   { type: 'message_stop' },
 ]
 
-vi.mock('@/lib/ai/anthropic-client', () => ({
-  getAnthropicClient: () => ({
+const { getAnthropicClient } = vi.hoisted(() => ({
+  getAnthropicClient: vi.fn(() => ({
     messages: {
       stream: vi.fn()
         .mockImplementationOnce(() => makeFakeStream(stream1Events))
         .mockImplementationOnce(() => makeFakeStream(stream2Events)),
     },
-  }),
+  })),
 }))
+
+vi.mock('@/lib/ai/anthropic-client', () => ({ getAnthropicClient }))
 
 vi.mock('@/lib/db', () => {
   const makeChain = () => {
@@ -67,11 +68,13 @@ vi.mock('@/lib/db/schema', () => ({
   agentMessages: { sessionId: 'session_id', sequenceNumber: 'sequence_number', turnId: 'turn_id' },
   agentTurns: { id: 'id', sessionId: 'session_id', requestId: 'request_id' },
   agentSessions: { id: 'id', userId: 'user_id' },
+  agentSections: { sessionId: 'session_id' },
   runtimeModeEnum: {},
 }))
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(),
+  and: vi.fn(),
   asc: vi.fn(),
   desc: vi.fn(),
 }))
@@ -104,32 +107,8 @@ vi.mock('@/lib/ai/agent/services/sections', () => ({
 vi.mock('@/lib/ai/agent/services/projects', () => ({ getProjectSummary: vi.fn(), listUploadedDocuments: vi.fn() }))
 vi.mock('@/lib/ai/agent/services/eligibility', () => ({ runEligibility: vi.fn(), scoreFit: vi.fn() }))
 
-// PR1 Change B: post-write reload runs after a successful write tool. This
-// test exercises a successful saveSectionDraft, so the runtime now calls
-// reloadSessionAndSections; mock it to a no-op resolution.
 vi.mock('@/lib/ai/agent/managed/reload', () => ({
-  reloadSessionAndSections: vi.fn().mockResolvedValue({
-    session: {
-      id: '11111111-1111-4111-8111-111111111111',
-      userId: '22222222-2222-4222-8222-222222222222',
-      projectId: null,
-      status: 'active',
-      locale: 'ro',
-      selectedCallId: 'CALL-1',
-      currentPhase: 'drafting',
-      blueprint: null,
-      eligibility: null,
-      outline: null,
-      warnings: [],
-      planningArtifact: null,
-      outlineFrozen: false,
-      messageSummary: null,
-      stateVersion: 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    sections: [],
-  }),
+  reloadSessionAndSections: vi.fn(),
 }))
 
 import type { AgentEvent, AgentSession } from '@/lib/ai/agent/types'
@@ -140,30 +119,32 @@ const mockSession: AgentSession = {
   projectId: null,
   status: 'active',
   locale: 'ro',
-  selectedCallId: 'CALL-1',
-  currentPhase: 'drafting',
+  selectedCallId: null,
+  currentPhase: 'research',
   blueprint: null,
   eligibility: null,
   outline: null,
   warnings: [],
   planningArtifact: null,
-  outlineFrozen: true,
+  outlineFrozen: false,
   messageSummary: null,
   stateVersion: 0,
   createdAt: new Date(),
   updatedAt: new Date(),
 }
 
-describe('runManagedTurn — write tool happy path (allowWrites=true)', () => {
+describe('runManagedTurn — post-write reload', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('dispatches save_section_draft to the service layer and emits success tool_result', async () => {
-    const { saveSectionDraft } = await import('@/lib/ai/agent/services/sections')
-    vi.mocked(saveSectionDraft).mockResolvedValueOnce({
-      sectionId: 'sec-1',
-      versionNumber: 1,
-      newStateVersion: 1,
-    } as never)
+  it('reloads from DB after a successful write and emits done with fresh stateVersion', async () => {
+    const { setSelectedCall } = await import('@/lib/ai/agent/services/application')
+    vi.mocked(setSelectedCall).mockResolvedValueOnce({ newStateVersion: 1 } as never)
+
+    const { reloadSessionAndSections } = await import('@/lib/ai/agent/managed/reload')
+    vi.mocked(reloadSessionAndSections).mockResolvedValueOnce({
+      session: { ...mockSession, stateVersion: 1, selectedCallId: 'CALL-1' },
+      sections: [],
+    })
 
     const { runManagedTurn } = await import('@/lib/ai/agent/managed/runtime')
     const events: AgentEvent[] = []
@@ -171,40 +152,59 @@ describe('runManagedTurn — write tool happy path (allowWrites=true)', () => {
     await runManagedTurn({
       session: mockSession,
       sections: [],
-      request: {
-        requestId: 'req-write-happy',
-        locale: 'ro',
-        message: 'Salvează secțiunea obiective.',
-      },
+      request: { requestId: 'req-1', locale: 'ro', message: 'Selectează apelul.' },
       emit: (e) => events.push(e),
       turnId: '99999999-9999-4999-8999-999999999999',
       serviceCtx: {
         userId: mockSession.userId,
         sessionId: mockSession.id,
-        requestId: 'req-write-happy',
+        requestId: 'req-1',
         now: new Date(),
         allowWrites: true,
       },
     })
 
-    // Service was called exactly once, with the parsed payload + ctx
-    expect(saveSectionDraft).toHaveBeenCalledTimes(1)
-    const [ctxArg, inputArg] = vi.mocked(saveSectionDraft).mock.calls[0]
-    expect(ctxArg.allowWrites).toBe(true)
-    expect(ctxArg.userId).toBe(mockSession.userId)
-    expect(inputArg).toEqual({
-      sessionId: mockSession.id,
-      sectionKey: 'obiective',
-      content: 'drafted content',
-      expectedStateVersion: 0,
+    expect(reloadSessionAndSections).toHaveBeenCalledWith(mockSession.id, mockSession.userId)
+
+    const done = events.find(e => e.type === 'done')
+    expect(done).toBeDefined()
+    if (done?.type !== 'done') throw new Error('expected done event')
+    expect(done.finalState.stateVersion).toBe(1)
+  })
+
+  it('does NOT call reload when no write succeeded', async () => {
+    const { getAnthropicClient } = await import('@/lib/ai/anthropic-client')
+    vi.mocked(getAnthropicClient).mockReturnValueOnce({
+      messages: {
+        stream: vi.fn().mockImplementationOnce(() => makeFakeStream(stream2Events)),
+      },
+    } as never)
+
+    const { reloadSessionAndSections } = await import('@/lib/ai/agent/managed/reload')
+
+    const { runManagedTurn } = await import('@/lib/ai/agent/managed/runtime')
+    const events: AgentEvent[] = []
+
+    await runManagedTurn({
+      session: mockSession,
+      sections: [],
+      request: { requestId: 'req-2', locale: 'ro', message: 'Salut.' },
+      emit: (e) => events.push(e),
+      turnId: '99999999-9999-4999-8999-999999999999',
+      serviceCtx: {
+        userId: mockSession.userId,
+        sessionId: mockSession.id,
+        requestId: 'req-2',
+        now: new Date(),
+        allowWrites: true,
+      },
     })
 
-    // SSE tool_result with success=true
-    const toolResults = events.filter((e) => e.type === 'tool_result')
-    expect(toolResults.length).toBe(1)
-    const first = toolResults[0]
-    if (first.type !== 'tool_result') throw new Error('expected tool_result')
-    expect(first.success).toBe(true)
-    expect(first.tool).toBe('save_section_draft')
+    expect(reloadSessionAndSections).not.toHaveBeenCalled()
+
+    const done = events.find(e => e.type === 'done')
+    expect(done).toBeDefined()
+    if (done?.type !== 'done') throw new Error('expected done event')
+    expect(done.finalState.stateVersion).toBe(0)
   })
 })

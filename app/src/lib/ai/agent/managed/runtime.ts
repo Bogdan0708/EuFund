@@ -78,6 +78,7 @@ import {
   markTurnCompleted,
 } from './history'
 import { compactIfNeeded } from '../history'
+import { reloadSessionAndSections } from './reload'
 import { logger } from '@/lib/logger'
 import { addUsage, computeAnthropicCostMicros, type UsageLike } from '@/lib/ai/cost/anthropic-pricing'
 
@@ -422,7 +423,58 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     }
   }
 
-  const finalState = buildUISnapshot(session, sections)
+  // Post-write reload (PR1 Change B). Runs AFTER markTurnCompleted +
+  // compactIfNeeded so that a turn with durable output is always recorded
+  // as completed even if the reload itself fails.
+  let snapshotSession = session
+  let snapshotSections = sections
+  if (writesSucceeded) {
+    try {
+      const reloaded = await reloadSessionAndSections(session.id, session.userId)
+      if (!reloaded) throw new Error('session row missing after write')
+      snapshotSession = reloaded.session
+      snapshotSections = reloaded.sections
+    } catch (err) {
+      log.error(
+        {
+          sessionId: session.id,
+          requestId: request.requestId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        'managed post-write reload failed',
+      )
+      const message = session.locale === 'ro'
+        ? 'Sesiunea s-a actualizat parțial. Reîncarcă pagina pentru a continua.'
+        : 'Session partially updated. Reload to continue.'
+      emit({ type: 'error', message, retryable: false })
+      // Skip the done event. agent_turns.completedAt is already set by
+      // markTurnCompleted above. The client's terminalErrorRef latch (Task 5)
+      // prevents the post-stream setStatus('idle') from masking this.
+      log.info({
+        event: 'managed_turn_complete',
+        sessionId: session.id,
+        turnId,
+        requestId: request.requestId,
+        iterations: iterationCount,
+        toolCount,
+        durationMs: Date.now() - start,
+        outcome: 'completed_reload_failed',
+        degradedReason: null,
+        model: modelUsed,
+        usage: aggregateUsage,
+        costUsdMicros,
+      }, 'managed_turn_complete')
+      return {
+        toolCount,
+        iterationCount,
+        model: tctx.messageModel,
+        latencyMs: Date.now() - start,
+        firstOutputPersisted,
+      }
+    }
+  }
+
+  const finalState = buildUISnapshot(snapshotSession, snapshotSections)
   emit({ type: 'done', finalState })
 
   // Structured turn-complete log — consumed by the reconciliation

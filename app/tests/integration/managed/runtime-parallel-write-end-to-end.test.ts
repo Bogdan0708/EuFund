@@ -104,6 +104,34 @@ vi.mock('@/lib/ai/agent/services/sections', () => ({
 vi.mock('@/lib/ai/agent/services/projects', () => ({ getProjectSummary: vi.fn(), listUploadedDocuments: vi.fn() }))
 vi.mock('@/lib/ai/agent/services/eligibility', () => ({ runEligibility: vi.fn(), scoreFit: vi.fn() }))
 
+// PR1 Change B: post-write reload runs after a successful write tool. This
+// test exercises a successful saveSectionDraft, so the runtime now calls
+// reloadSessionAndSections; mock it to a no-op resolution.
+vi.mock('@/lib/ai/agent/managed/reload', () => ({
+  reloadSessionAndSections: vi.fn().mockResolvedValue({
+    session: {
+      id: '11111111-1111-4111-8111-111111111111',
+      userId: '22222222-2222-4222-8222-222222222222',
+      projectId: null,
+      status: 'active',
+      locale: 'ro',
+      selectedCallId: 'CALL-1',
+      currentPhase: 'drafting',
+      blueprint: null,
+      eligibility: null,
+      outline: null,
+      warnings: [],
+      planningArtifact: null,
+      outlineFrozen: false,
+      messageSummary: null,
+      stateVersion: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    sections: [],
+  }),
+}))
+
 import type { AgentEvent, AgentSession } from '@/lib/ai/agent/types'
 
 const mockSession: AgentSession = {
