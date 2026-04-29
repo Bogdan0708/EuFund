@@ -4,9 +4,10 @@ interface Props {
   sections: AgentSectionState[]
   eligibility: unknown
   onComplete: () => void
+  disabled?: boolean
 }
 
-export function ValidationSummary({ sections, eligibility, onComplete }: Props) {
+export function ValidationSummary({ sections, eligibility, onComplete, disabled = false }: Props) {
   const accepted = sections.filter(s => s.status === 'accepted').length
   const total = sections.length
   const allAccepted = accepted === total && total > 0
@@ -32,7 +33,7 @@ export function ValidationSummary({ sections, eligibility, onComplete }: Props) 
       </div>
       <button
         onClick={onComplete}
-        disabled={!allAccepted || hasBlockers}
+        disabled={!allAccepted || hasBlockers || disabled}
         className="mt-4 w-full py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         Mark Complete
