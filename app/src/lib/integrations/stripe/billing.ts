@@ -89,8 +89,8 @@ const API_CALL_LIMITS: Record<BillingTier, number> = {
 export function getPricingTiers(): PricingTier[] {
   return [
     { tier: 'free', displayName: 'Free', monthlyPriceEur: 0, yearlyPriceEur: 0, trialDays: FREE_TRIAL_DAYS },
-    { tier: 'pro', displayName: 'Pro', monthlyPriceEur: 29, yearlyPriceEur: 290, trialDays: 0 },
-    { tier: 'enterprise', displayName: 'Enterprise', monthlyPriceEur: 99, yearlyPriceEur: 990, trialDays: 0 },
+    { tier: 'pro', displayName: 'Pro', monthlyPriceEur: 99, yearlyPriceEur: 990, trialDays: 0 },
+    { tier: 'enterprise', displayName: 'Enterprise', monthlyPriceEur: 499, yearlyPriceEur: 4990, trialDays: 0 },
   ];
 }
 
