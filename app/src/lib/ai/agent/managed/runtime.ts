@@ -131,6 +131,10 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   // tool_use block arrives. This flag flips true inside the stream loop
   // the first time we flush the user message + first output together.
   let firstOutputPersisted = false
+  // Tracks whether any WRITE_TOOL_NAMES tool dispatched in this turn returned
+  // a non-error result. Read after the loop to decide whether to reload
+  // session/sections from DB before building the final UI snapshot.
+  let writesSucceeded = false
 
   // 1. Load history. systemSummary is extracted from V3 compaction rows
   //    (system_summary message type) or falls back to session.messageSummary
@@ -328,6 +332,10 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     const toolResultBlocks: ToolResultBlockParam[] = []
     for (const { block, result } of executionResults) {
       toolCount += 1
+
+      if (!result.isError && WRITE_TOOL_NAMES.has(result.toolName)) {
+        writesSucceeded = true
+      }
 
       emit({
         type: 'tool_result',
