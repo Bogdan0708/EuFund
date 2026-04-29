@@ -81,7 +81,7 @@ export async function generate(req: GenerateRequest): Promise<GenerateResult> {
 
   const provider = PROVIDERS[config.provider]
   const result = await withRetry(
-    () => provider.generate({ ...effectiveReq, provider: config.provider }),
+    (signal) => provider.generate({ ...effectiveReq, provider: config.provider }, signal),
     config,
     PROVIDERS,
     effectiveReq,
