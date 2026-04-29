@@ -146,6 +146,70 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   //    (pre-stream claim + deferred persistence).
   const { messages: history, systemSummary } = await loadManagedHistory(session.id)
 
+  // 1b. PR2 Item A.2 — preselect synthetic evidence injection.
+  //     When the session was bootstrapped via deterministic preselect
+  //     and lookupBlueprint stashed rawEvidence, inject a synthetic
+  //     retrieve_evidence tool_use + tool_result pair into in-memory
+  //     history so the model sees evidence as if it had called the
+  //     tool. NOT persisted to agent_messages. Inserted BEFORE the
+  //     current user message push so runningMessages contains:
+  //     [...history, synthetic_assistant, synthetic_user, current_user].
+  //     The system prompt's research-phase branch (3a) tells the model
+  //     NOT to call get_call_blueprint or retrieve_evidence.
+  //     Skipped when session.blueprint is already set — that means a
+  //     previous turn already ran save_call_blueprint and persisted.
+  const preselectArtifact = (
+    session.planningArtifact as { preselect?: { rawEvidence?: unknown[]; rankedAt?: string } } | null
+  )?.preselect
+  const rawEvidence = Array.isArray(preselectArtifact?.rawEvidence)
+    ? (preselectArtifact!.rawEvidence as unknown[])
+    : []
+  const shouldInject =
+    session.currentPhase === 'research' &&
+    session.selectedCallId !== null &&
+    rawEvidence.length > 0 &&
+    session.blueprint === null
+
+  if (shouldInject) {
+    try {
+      const syntheticToolUseId = `preselect_evidence_${turnId}`
+      history.push({
+        role: 'assistant',
+        content: [{
+          type: 'tool_use',
+          id: syntheticToolUseId,
+          name: 'retrieve_evidence',
+          input: { callId: session.selectedCallId },
+        }] as never,
+      })
+      history.push({
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: syntheticToolUseId,
+          content: JSON.stringify({
+            callId: session.selectedCallId,
+            chunks: rawEvidence,
+            totalChunks: rawEvidence.length,
+            retrievedAt: preselectArtifact?.rankedAt ?? new Date().toISOString(),
+          }),
+          is_error: false,
+        }] as never,
+      })
+    } catch (err) {
+      // Defensive — the JSON.stringify above could only throw on a
+      // circular structure. Log and skip injection so the turn continues.
+      // Without injection the model falls back to calling tools (the
+      // research-phase 3b branch in the prompt is the natural fallback,
+      // but since 3a was already selected the model may now be confused;
+      // acceptable trade-off for not crashing the turn).
+      log.warn(
+        { sessionId: session.id, requestId: request.requestId, error: err instanceof Error ? err.message : String(err) },
+        'preselect synthetic injection skipped (corrupted rawEvidence)',
+      )
+    }
+  }
+
   // 2. Push the current user message into in-memory history ONLY.
   if (request.message) {
     history.push({ role: 'user', content: request.message })
