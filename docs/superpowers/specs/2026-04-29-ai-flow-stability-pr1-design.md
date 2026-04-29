@@ -130,16 +130,29 @@ if (iterationCount >= ITERATION_CAP) {
     : '\n\n(Reached tool iteration limit. Please clarify your request.)'
   emit({ type: 'text_delta', content: capMessage })
   if (firstOutputPersisted) {
-    await appendManagedMessage(
-      session.id,
-      { role: 'assistant', messageType: 'text', content: capMessage, turnId },
-      { runtimeMode: 'managed', provider: 'anthropic', model: tctx.messageModel },
-    )
+    // Best-effort: cap text persistence MUST NOT crash the runtime. If it
+    // throws, runtime would exit before markTurnCompleted, leaving the turn
+    // in an incomplete state — exactly the bug PR1 is closing on the
+    // reload-failure path. Log and continue.
+    try {
+      await appendManagedMessage(
+        session.id,
+        { role: 'assistant', messageType: 'text', content: capMessage, turnId },
+        { runtimeMode: 'managed', provider: 'anthropic', model: tctx.messageModel },
+      )
+    } catch (err) {
+      log.warn(
+        { sessionId: session.id, turnId, err: err instanceof Error ? err.message : String(err) },
+        'iteration-cap text persistence failed (non-fatal)',
+      )
+    }
   }
 }
 ```
 
 Guard on `firstOutputPersisted` because `appendManagedMessage` requires the user message to already be in `agent_messages` for sequence numbering to make sense. If `firstOutputPersisted === false` the turn is empty and the route's catch branch will delete the claim row anyway.
+
+If the persistence write fails: the warn is logged and the runtime proceeds normally to `markTurnCompleted` and the post-write reload. The user has already seen the cap text via the SSE `text_delta`; the divergence is that the next turn's `loadManagedHistory` won't include the cap text — acceptable because the model's prior message and tool history fully describe what happened, and the cap text is advisory rather than load-bearing.
 
 ### F2 — Localize tool error UI
 
@@ -173,7 +186,7 @@ Add an `agent.toolErrors` namespace keyed by stable prefixes the executor actual
       "TOOL_TIMEOUT": "{tool} took too long and was cancelled.",
       "AUTHORIZATION": "You are not authorized to perform {tool}.",
       "NOT_FOUND": "{tool}: the requested resource was not found.",
-      "POLICY_PREFIX": "{tool} blocked by policy: {detail}",
+      "POLICY_PREFIX": "{tool} blocked by policy ({code}).",
       "VALIDATION_PREFIX": "{tool}: invalid input.",
       "CONCURRENCY": "{tool} conflicted with a concurrent change. Please retry.",
       "EXTERNAL_DEPENDENCY": "{tool} unavailable: external service error.",
@@ -193,7 +206,7 @@ Add an `agent.toolErrors` namespace keyed by stable prefixes the executor actual
       "TOOL_TIMEOUT": "{tool} a durat prea mult și a fost anulată.",
       "AUTHORIZATION": "Nu ai permisiunea să rulezi {tool}.",
       "NOT_FOUND": "{tool}: resursa cerută nu a fost găsită.",
-      "POLICY_PREFIX": "{tool} blocată de o regulă: {detail}",
+      "POLICY_PREFIX": "{tool} blocată de o regulă ({code}).",
       "VALIDATION_PREFIX": "{tool}: date invalide.",
       "CONCURRENCY": "{tool} a intrat în conflict cu o modificare concurentă. Reîncearcă.",
       "EXTERNAL_DEPENDENCY": "{tool} indisponibilă: eroare la un serviciu extern.",
@@ -213,7 +226,16 @@ function formatToolError(tool: string, summary: string, t: TranslateFn): string 
   if (summary === 'Tool timed out after 15s') return t('TOOL_TIMEOUT', { tool })
   if (summary.startsWith('NOT_FOUND')) return t('NOT_FOUND', { tool })
   if (summary.startsWith('AUTHORIZATION')) return t('AUTHORIZATION', { tool })
-  if (summary.startsWith('POLICY_')) return t('POLICY_PREFIX', { tool, detail: summary })
+  if (summary.startsWith('POLICY_')) {
+    // Extract ONLY the stable code (text up to the first ':') — never pass
+    // the full raw summary as detail. Otherwise a Romanian render of
+    // "POLICY_OUTLINE_NOT_FROZEN: outline must be frozen" would leak the
+    // English service prose ("outline must be frozen") into the localized
+    // string. The code itself ("POLICY_OUTLINE_NOT_FROZEN") is a stable
+    // identifier, not user-facing English prose.
+    const code = summary.split(':')[0]
+    return t('POLICY_PREFIX', { tool, code })
+  }
   if (summary.startsWith('VALIDATION:')) return t('VALIDATION_PREFIX', { tool })
   if (summary.startsWith('CONCURRENCY')) return t('CONCURRENCY', { tool })
   if (summary.startsWith('EXTERNAL_DEPENDENCY')) return t('EXTERNAL_DEPENDENCY', { tool })
@@ -238,11 +260,15 @@ No SSE event shape changes. The flow is:
 [managed runtime]
   - tool loop runs; flips writesSucceeded on any successful WRITE_TOOL_NAMES result
   - loop exits
-  - if writesSucceeded: reload session/sections from DB → freshSnapshot
-  - if reload OK: emit done{finalState=freshSnapshot}
-  - if reload fails: emit error{retryable:false, localized message}, skip done
+  - if iterationCap hit AND firstOutputPersisted:
+      - emit text_delta(capMessage)
+      - try { appendManagedMessage(capMessage) } catch { log.warn — non-fatal }
+  - markTurnCompleted (existing)
+  - compactIfNeeded (existing)
+  - if writesSucceeded:
+      - try { reload session/sections from DB → freshSnapshot } emit done{finalState=freshSnapshot}
+      - on reload failure: emit error{retryable:false, localized message}, skip done
   - if !writesSucceeded: emit done{finalState from pre-turn locals} (current behavior)
-  - if iterationCap hit AND firstOutputPersisted: persist cap text via appendManagedMessage
 
 [useAgent]
   - on error event with retryable=false: setStatus('error'), terminalErrorRef.current=true
@@ -262,7 +288,7 @@ No SSE event shape changes. The flow is:
 | All writes errored | `writesSucceeded === false` → no reload, current behavior preserved |
 | Post-write reload throws | Emit terminal error, skip `done`. Client's `terminalErrorRef` prevents `idle` from masking it. `agent_turns.completedAt` IS set (markTurnCompleted ran before the reload). User reload via `agent.reconnect()` or page refresh reconciles. |
 | Iteration cap hit, `firstOutputPersisted === false` | Cap text emitted to UI but NOT persisted (consistent with route's empty-turn cleanup) |
-| `appendManagedMessage` for cap text fails | Log warn, do not abort — non-critical; the next turn's loadManagedHistory will repair via `ensurePairingInvariant` if needed |
+| `appendManagedMessage` for cap text fails | Log warn, do not abort — non-critical. The user has already seen the cap text via SSE `text_delta`; the next turn's `loadManagedHistory` simply won't replay the cap text, but the prior assistant + tool messages fully describe the conversation state. (`ensurePairingInvariant` does NOT cover this — it repairs orphan tool_use/tool_result blocks, not missing assistant text rows.) |
 | Unknown tool error code | `formatToolError` falls back to `GENERIC` template; raw summary logged in dev only |
 
 ## Testing
@@ -289,7 +315,7 @@ Each change ships with at least one test:
   - `'Tool timed out after 15s'` → `TOOL_TIMEOUT` template
   - `'NOT_FOUND: section foo'` → `NOT_FOUND` template
   - `'AUTHORIZATION: Access denied to requested session'` → `AUTHORIZATION` template
-  - `'POLICY_OUTLINE_NOT_FROZEN: outline must be frozen'` → `POLICY_PREFIX` template with `{detail}` populated
+  - `'POLICY_OUTLINE_NOT_FROZEN: outline must be frozen'` → `POLICY_PREFIX` template with `{code}` populated as `'POLICY_OUTLINE_NOT_FROZEN'`. **Romanian-locale assertion: rendered string MUST NOT contain `'outline must be frozen'`** (regression guard against passing raw service prose into the localized template).
   - `'VALIDATION:sectionKey: invalid'` → `VALIDATION_PREFIX` template
   - `'CONCURRENCY: state version mismatch'` → `CONCURRENCY` template
   - `'EXTERNAL_DEPENDENCY: VectorStore unavailable'` → `EXTERNAL_DEPENDENCY` template
