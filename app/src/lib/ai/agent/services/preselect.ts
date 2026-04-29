@@ -8,7 +8,7 @@ import { logAudit } from '@/lib/legal/audit'
 import { logger } from '@/lib/logger'
 import { lookupBlueprint } from './blueprint'
 import { searchCalls } from './evidence'
-import type { CallMatch, ServiceContext } from './types'
+import type { CallMatch, ServiceContext, EvidenceChunk } from './types'
 
 // Rollout-tunable defaults; tune against real traces after 20-50 sessions.
 export const SCORE_FLOOR = 0.35
@@ -41,6 +41,11 @@ export interface PreselectArtifactV1 {
   selectionKind: 'selected'
   blueprintKind: BlueprintKind
   excludeCallIdsApplied: string[]
+  // Top-15 evidence chunks stashed on cache miss so the managed runtime
+  // can synthetically inject them on the first turn — avoids the model
+  // re-running retrieve_evidence on Qdrant. Present iff blueprintKind ===
+  // 'raw_evidence'. Absent (undefined) for 'structured' and 'none'.
+  rawEvidence?: EvidenceChunk[]
 }
 
 // Re-export type for convenience in tests
@@ -116,6 +121,7 @@ export async function initializeSession(
   let blueprintKind: BlueprintKind
   let blueprintPayload: unknown = null
   let blueprintLookupFailed = false
+  let rawEvidenceForArtifact: EvidenceChunk[] | undefined = undefined
 
   try {
     const ctx = { userId, sessionId: '', locale } as const
@@ -125,7 +131,9 @@ export async function initializeSession(
       blueprintPayload = result.blueprint
     } else {
       blueprintKind = 'raw_evidence'
-      // raw evidence chunks are not a structured blueprint — leave blueprint column null
+      // Top-15 cap matches retrieve_evidence's default maxChunks. Slicing
+      // here keeps the invariant local: no other caller needs to know.
+      rawEvidenceForArtifact = (result.rawEvidence ?? []).slice(0, 15)
     }
   } catch (err) {
     blueprintLookupFailed = true
@@ -149,6 +157,7 @@ export async function initializeSession(
     selectionKind: 'selected',
     blueprintKind,
     excludeCallIdsApplied,
+    ...(rawEvidenceForArtifact !== undefined ? { rawEvidence: rawEvidenceForArtifact } : {}),
   }
 
   const [row] = await withUserRLS(userId, (tx) =>
