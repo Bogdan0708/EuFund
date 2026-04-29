@@ -1368,5 +1368,19 @@
     "acord_parteneriat": "Partnership agreement",
     "declaratie": "Declaration",
     "altul": "Other"
+  },
+  "agent": {
+    "toolErrors": {
+      "PARALLEL_WRITE_BLOCKED": "Only one write at a time was allowed; the second write was rejected.",
+      "TOOL_TIMEOUT": "{tool} took too long and was cancelled.",
+      "AUTHORIZATION": "You are not authorized to perform {tool}.",
+      "NOT_FOUND": "{tool}: the requested resource was not found.",
+      "POLICY_PREFIX": "{tool} blocked by policy ({code}).",
+      "VALIDATION_PREFIX": "{tool}: invalid input.",
+      "CONCURRENCY": "{tool} conflicted with a concurrent change. Please retry.",
+      "EXTERNAL_DEPENDENCY": "{tool} unavailable: external service error.",
+      "INTERNAL": "{tool} encountered an internal error.",
+      "GENERIC": "{tool} failed."
+    }
   }
 }
