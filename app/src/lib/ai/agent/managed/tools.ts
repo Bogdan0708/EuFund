@@ -35,6 +35,7 @@ import { inputSchema as setSelectedCallSchema } from '../mcp/write/set-selected-
 import { inputSchema as freezeOutlineSchema } from '../mcp/write/freeze-outline'
 import { inputSchema as markSectionStaleSchema } from '../mcp/write/mark-section-stale'
 import { inputSchema as rejectSectionSchema } from '../mcp/write/reject-section'
+import { inputSchema as saveCallBlueprintSchema } from '../mcp/write/save-call-blueprint'
 
 export const MANAGED_TOOLS: Tool[] = [
   {
@@ -152,6 +153,11 @@ export const MANAGED_TOOLS: Tool[] = [
     description: 'Reject a section with a required reason string. Valid from draft, needs_review, or same-reason rejected (no-op). Different-reason re-reject is forbidden to prevent rejection metadata churn. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
     input_schema: zodToJsonSchema(rejectSectionSchema) as Tool['input_schema'],
   },
+  {
+    name: 'save_call_blueprint',
+    description: 'Persist an agent-extracted call blueprint into the global cache (callKnowledge) AND the active session row. Idempotent by callId. CALL THIS AUTOMATICALLY in research-phase preselected sessions after converting the injected retrieve_evidence result into structured fields — the deterministic preselect itself is the user confirmation, NO additional confirmation is required for this tool. Set structureConfidence ≥ 0.4 only when the blueprint is well supported by the evidence; below threshold the row persists as provisional and the next session re-extracts. On success the session phase advances from research to structuring.',
+    input_schema: zodToJsonSchema(saveCallBlueprintSchema) as Tool['input_schema'],
+  },
 ]
 
 // ── Categorized tool name sets ─────────────────────────────────────────────
@@ -191,11 +197,11 @@ export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
   'freeze_outline',
   'mark_section_stale',
   'reject_section',
+  'save_call_blueprint',
 ])
 
 export const PHASE_4_BLOCKED_TOOL_NAMES: ReadonlySet<string> = new Set([
   'create_export_snapshot',
-  'save_call_blueprint',
 ])
 
 export const MANAGED_TOOL_NAMES: ReadonlySet<string> = new Set([

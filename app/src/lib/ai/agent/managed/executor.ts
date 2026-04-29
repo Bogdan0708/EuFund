@@ -24,6 +24,9 @@ import * as sections from '../services/sections'
 import * as projects from '../services/projects'
 import * as documents from '../services/documents'
 import * as eligibility from '../services/eligibility'
+import { db } from '@/lib/db'
+import { agentSessions } from '@/lib/db/schema'
+import { eq, and, sql } from 'drizzle-orm'
 
 // Zod schemas from Phase 1 handlers
 import { inputSchema as searchCallsSchema } from '../mcp/read/search-calls'
@@ -50,6 +53,7 @@ import { inputSchema as setSelectedCallSchema } from '../mcp/write/set-selected-
 import { inputSchema as freezeOutlineSchema } from '../mcp/write/freeze-outline'
 import { inputSchema as markSectionStaleSchema } from '../mcp/write/mark-section-stale'
 import { inputSchema as rejectSectionSchema } from '../mcp/write/reject-section'
+import { inputSchema as saveCallBlueprintSchema } from '../mcp/write/save-call-blueprint'
 
 import { logger } from '@/lib/logger'
 
@@ -395,6 +399,32 @@ async function dispatchTool(
       const i = freezeOutlineSchema.parse(rawInput)
       requireSession(ctx)
       return application.freezeOutline(ctx, { ...i, sessionId: ctx.sessionId })
+    }
+    case 'save_call_blueprint': {
+      const i = saveCallBlueprintSchema.parse(rawInput)
+      requireSession(ctx)
+      const fullBlueprint = blueprint.buildCallBlueprintFromArgs(i, ctx)
+      const result = await blueprint.saveCallBlueprint(ctx, i.callId, fullBlueprint)
+
+      // Session-row write-back. Conditional WHERE makes repeat calls in
+      // later phases a no-op rather than a phase rewind. PR1's reload-
+      // after-write fires (tool is in WRITE_TOOL_NAMES) — the reloaded
+      // session row reflects the new phase, blueprint, and stateVersion,
+      // and done.finalState carries them to the client.
+      await db.update(agentSessions)
+        .set({
+          blueprint: fullBlueprint as never,
+          currentPhase: 'structuring',
+          stateVersion: sql`${agentSessions.stateVersion} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(agentSessions.id, ctx.sessionId),
+          eq(agentSessions.currentPhase, 'research'),
+          eq(agentSessions.selectedCallId, i.callId),
+        ))
+
+      return result
     }
     default:
       throw new Error(`Dispatcher has no handler for ${name}`)
