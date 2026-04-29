@@ -382,12 +382,36 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
       requestId: request.requestId,
       iterationCount,
     }, 'managed turn hit iteration cap')
-    emit({
-      type: 'text_delta',
-      content: session.locale === 'ro'
-        ? '\n\n(Limita de iterații atinsă. Vă rog, clarificați întrebarea.)'
-        : '\n\n(Reached tool iteration limit. Please clarify your request.)',
-    })
+    const capMessage = session.locale === 'ro'
+      ? '\n\n(Limita de iterații atinsă. Vă rog, clarificați întrebarea.)'
+      : '\n\n(Reached tool iteration limit. Please clarify your request.)'
+    emit({ type: 'text_delta', content: capMessage })
+    // Persist the cap text so the next turn's loadManagedHistory replays
+    // the bail-out signal. Best-effort: a failure here MUST NOT abort the
+    // runtime — markTurnCompleted still has to run, and the user has
+    // already seen the text via SSE. The next turn's history will simply
+    // omit the cap text; the prior assistant + tool messages already
+    // describe the conversation state. ensurePairingInvariant covers
+    // orphan tool_use/tool_result blocks but not missing assistant text.
+    if (firstOutputPersisted) {
+      try {
+        await appendManagedMessage(
+          session.id,
+          { role: 'assistant', messageType: 'text', content: capMessage, turnId },
+          { runtimeMode: 'managed', provider: 'anthropic', model: tctx.messageModel },
+        )
+      } catch (err) {
+        log.warn(
+          {
+            sessionId: session.id,
+            turnId,
+            requestId: request.requestId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          'iteration-cap text persistence failed (non-fatal)',
+        )
+      }
+    }
   }
 
   // Compute per-turn cost from the summed usage. Unknown model → 0 (safe).

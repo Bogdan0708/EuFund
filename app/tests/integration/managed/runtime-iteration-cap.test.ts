@@ -101,6 +101,17 @@ vi.mock('@/lib/ai/agent/services/eligibility', () => ({
   scoreFit: vi.fn(),
 }))
 
+vi.mock('@/lib/ai/agent/managed/history', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/ai/agent/managed/history')>()
+  return {
+    ...actual,
+    appendManagedMessage: vi.fn().mockResolvedValue(0),
+    persistFirstDurableOutput: vi.fn().mockResolvedValue(undefined),
+    markTurnCompleted: vi.fn().mockResolvedValue(undefined),
+    loadManagedHistory: vi.fn().mockResolvedValue({ messages: [], systemSummary: null }),
+  }
+})
+
 import type { AgentEvent, AgentSession } from '@/lib/ai/agent/types'
 
 const mockSession: AgentSession = {
@@ -167,5 +178,62 @@ describe('runManagedTurn — iteration cap', () => {
           || preDone.content.includes('iterații'),
       ).toBe(true)
     }
+
+    // PR1 Change F1: cap text MUST also be appended to agent_messages so the
+    // next turn's loadManagedHistory replays the bail-out signal.
+    const { appendManagedMessage } = await import('@/lib/ai/agent/managed/history')
+    const calls = vi.mocked(appendManagedMessage).mock.calls
+    const capCall = calls.find(([, msg]) => {
+      if (typeof msg.content === 'string') {
+        return msg.content.includes('Limita de iterații') || msg.content.includes('iteration limit')
+      }
+      return false
+    })
+    expect(capCall).toBeDefined()
+    expect(capCall![0]).toBe(mockSession.id)
+    expect(capCall![1].role).toBe('assistant')
+    expect(capCall![1].messageType).toBe('text')
+    expect(capCall![1].turnId).toBe('99999999-9999-4999-8999-999999999999')
+  })
+
+  it('does NOT crash if the cap-text persistence fails — markTurnCompleted still runs', async () => {
+    const { appendManagedMessage, markTurnCompleted } = await import('@/lib/ai/agent/managed/history')
+
+    // Reject ONLY when the runtime tries to persist the cap-text. The
+    // tool-loop calls appendManagedMessage once per tool_result before the
+    // cap is reached (8 iterations × 1 tool_result/iteration = 8 calls
+    // before cap-text persistence). A blanket mockRejectedValueOnce would
+    // fire on the first tool_result and short-circuit the test before
+    // exercising the cap-text catch path.
+    vi.mocked(appendManagedMessage).mockImplementation(async (_sessionId, msg) => {
+      const isCapText =
+        typeof msg.content === 'string' &&
+        (msg.content.includes('Limita de iterații') || msg.content.includes('iteration limit'))
+      if (isCapText) throw new Error('db blip')
+      return 0
+    })
+
+    const { runManagedTurn } = await import('@/lib/ai/agent/managed/runtime')
+    const events: AgentEvent[] = []
+
+    await runManagedTurn({
+      session: mockSession,
+      sections: [],
+      request: { requestId: 'req-cap-fail', locale: 'ro', message: 'Loop forever.' },
+      emit: (e) => events.push(e),
+      turnId: '99999999-9999-4999-8999-999999999999',
+      serviceCtx: {
+        userId: mockSession.userId,
+        sessionId: mockSession.id,
+        requestId: 'req-cap-fail',
+        now: new Date(),
+      },
+    })
+
+    // markTurnCompleted MUST still run.
+    expect(markTurnCompleted).toHaveBeenCalled()
+
+    // The done event still fires.
+    expect(events.find(e => e.type === 'done')).toBeDefined()
   })
 })
