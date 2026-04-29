@@ -46,6 +46,7 @@ function AsistentAIInner({ locale }: { locale: string }) {
             eligibility={agent.eligibility}
             warnings={agent.warnings}
             onAction={agent.sendAction}
+            isBusy={agent.status === 'streaming' || agent.status === 'connecting'}
           />
         </div>
       </div>

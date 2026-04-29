@@ -17,6 +17,10 @@ interface Props {
   eligibility: unknown
   warnings: Warning[]
   onAction: (action: StructuredAction) => void
+  // True while the agent is connecting or streaming. Disables the four
+  // mutating workspace buttons (approve outline, accept/reject section,
+  // mark complete) so a click cannot race the in-flight turn and 409.
+  isBusy: boolean
 }
 
 const PHASE_ORDER: Phase[] = ['discovery', 'research', 'structuring', 'drafting', 'review']
@@ -29,7 +33,7 @@ const PHASE_LABELS: Record<Phase, string> = {
   review: 'Review',
 }
 
-export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnings, onAction }: Props) {
+export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnings, onAction, isBusy }: Props) {
   const currentIndex = PHASE_ORDER.indexOf(phase)
 
   return (
@@ -69,7 +73,7 @@ export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnin
         ) : null}
 
         {sections.length > 0 && phase === 'structuring' && (
-          <OutlineView sections={sections} onApprove={() => onAction({ type: 'approve_outline' })} />
+          <OutlineView sections={sections} onApprove={() => onAction({ type: 'approve_outline' })} disabled={isBusy} />
         )}
 
         {sections.length > 0 && (phase === 'drafting' || phase === 'review') && (
@@ -82,6 +86,7 @@ export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnin
                   section={section}
                   onAccept={() => onAction({ type: 'accept_section', sectionKey: section.sectionKey })}
                   onReject={() => onAction({ type: 'reject_section', sectionKey: section.sectionKey, reason: 'Needs revision' })}
+                  disabled={isBusy}
                 />
               ))}
           </div>
@@ -92,6 +97,7 @@ export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnin
             sections={sections}
             eligibility={eligibility}
             onComplete={() => onAction({ type: 'mark_complete' })}
+            disabled={isBusy}
           />
         )}
 
