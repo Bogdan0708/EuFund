@@ -40,6 +40,14 @@ export interface SearchCallsOptions {
    * `metadata.callId || metadata.sourceId || r.id`.
    */
   sourceId?: string
+  /**
+   * Authoritative callCode filter. Same semantics as callId/sourceId, but
+   * matches on metadata.callCode. Bulk-ingested points often carry callCode
+   * as the primary identifier; the dedup loop above emits it as the second
+   * prong of the fallback chain, so the confirm-mode existence probe must
+   * be able to filter on it.
+   */
+  callCode?: string
 }
 
 export async function searchCalls(
@@ -68,6 +76,9 @@ export async function searchCalls(
   }
   if (opts.sourceId) {
     filter.sourceId = opts.sourceId
+  }
+  if (opts.callCode) {
+    filter.callCode = opts.callCode
   }
 
   let results

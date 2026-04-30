@@ -52,4 +52,22 @@ describe('rankCandidates', () => {
     const result = await rankCandidates(ctx, 'q', ['top'])
     expect(result.map(r => r.callId)).toEqual(['two'])
   })
+
+  it('scales searchCalls maxResults by exclusion count', async () => {
+    // Default (no exclusions) overfetches to 10.
+    mockSearchCalls.mockResolvedValue({ matches: [] })
+    await rankCandidates(ctx, 'q')
+    expect(mockSearchCalls.mock.calls[0][2]).toMatchObject({ maxResults: 10 })
+
+    // 5 exclusions → 10 + 5*2 = 20.
+    mockSearchCalls.mockClear()
+    await rankCandidates(ctx, 'q', ['a', 'b', 'c', 'd', 'e'])
+    expect(mockSearchCalls.mock.calls[0][2]).toMatchObject({ maxResults: 20 })
+
+    // 30 exclusions → would be 70 but capped at the 50 ceiling.
+    mockSearchCalls.mockClear()
+    const many = Array.from({ length: 30 }, (_, i) => `excl-${i}`)
+    await rankCandidates(ctx, 'q', many)
+    expect(mockSearchCalls.mock.calls[0][2]).toMatchObject({ maxResults: 50 })
+  })
 })

@@ -73,8 +73,12 @@ export async function rankCandidates(
   description: string,
   excludeCallIds: string[] = [],
 ): Promise<Candidate[]> {
-  // Overfetch slightly so exclusions don't leave us short.
-  const { matches } = await searchCalls(ctx, description, { maxResults: 10 })
+  // Overfetch scaled by exclusion count: with ≥10 excludeCallIds the post-
+  // filter would empty out and falsely surface no_match. Capped at 50 — the
+  // ceiling already supported by the picker (`excludeCallIds.max(50)` in
+  // RequestSchema).
+  const maxResults = Math.min(50, 10 + excludeCallIds.length * 2)
+  const { matches } = await searchCalls(ctx, description, { maxResults })
   const excluded = new Set(excludeCallIds)
   return matches
     .filter(m => !excluded.has(m.callId))

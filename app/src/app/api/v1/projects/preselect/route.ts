@@ -13,7 +13,7 @@ import { searchCalls } from '@/lib/ai/agent/services/evidence'
 import { setSelectedCall } from '@/lib/ai/agent/services/application'
 import { ConcurrencyError, ValidationError } from '@/lib/ai/agent/services/errors'
 import { FondEUError } from '@/lib/errors'
-import type { ServiceContext } from '@/lib/ai/agent/services/types'
+import type { CallMatch, ServiceContext } from '@/lib/ai/agent/services/types'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'preselect-route' })
@@ -129,30 +129,42 @@ async function handlePreselect(
 
   // Shared existence probe used by both confirm-new and confirm-override.
   // `searchCalls` emits each match's callId via the fallback chain
-  // `metadata.callId || metadata.sourceId || r.id`, so a correct probe must
-  // be able to confirm on any of those three sources. Three authoritative
-  // prongs — each exits early on first match, no reliance on cosine-similarity
-  // ranking:
+  // `metadata.callId || metadata.callCode || metadata.sourceId || r.id`, so
+  // a correct probe must be able to confirm on any of those four sources.
+  // Four authoritative prongs — each exits early on first match, no reliance
+  // on cosine-similarity ranking:
   //   1. Filter on metadata.callId (canonical, covers the common case).
-  //   2. Filter on metadata.sourceId (covers ingest-paths that populate only
+  //   2. Filter on metadata.callCode (bulk-ingested points often carry
+  //      callCode as the primary identifier — evidence.ts emits it as the
+  //      second prong of the dedup fallback chain).
+  //   3. Filter on metadata.sourceId (covers ingest-paths that populate only
   //      sourceId).
-  //   3. Reproducibility fallback: re-run the exact search the ambiguous
+  //   4. Reproducibility fallback: re-run the exact search the ambiguous
   //      picker used — the client-supplied `description` — with a larger
   //      limit (25) and post-filter on emitted callId. If the picker
   //      surfaced this callId to the user, the description-based search
   //      must be able to reach it via the same fallback chain. This covers
   //      the rare case where the callId is rooted in point-id only.
-  async function confirmCallExists(
+  //
+  // Returns the matched CallMatch (with score + title) or null. Returning
+  // the record — not just a boolean — lets confirm-new pass the real
+  // selectedScore through to initializeSession instead of hardcoding 1.
+  async function findMatchedCall(
     ctx: ServiceContext,
     target: string,
     description: string,
-  ): Promise<boolean> {
+  ): Promise<CallMatch | null> {
     const p1 = await searchCalls(ctx, target, { callId: target, maxResults: 1 })
-    if (p1.matches.some(m => m.callId === target)) return true
-    const p2 = await searchCalls(ctx, target, { sourceId: target, maxResults: 1 })
-    if (p2.matches.some(m => m.callId === target)) return true
-    const p3 = await searchCalls(ctx, description, { maxResults: 25 })
-    return p3.matches.some(m => m.callId === target)
+    const m1 = p1.matches.find(m => m.callId === target)
+    if (m1) return m1
+    const p2 = await searchCalls(ctx, target, { callCode: target, maxResults: 1 })
+    const m2 = p2.matches.find(m => m.callId === target)
+    if (m2) return m2
+    const p3 = await searchCalls(ctx, target, { sourceId: target, maxResults: 1 })
+    const m3 = p3.matches.find(m => m.callId === target)
+    if (m3) return m3
+    const p4 = await searchCalls(ctx, description, { maxResults: 25 })
+    return p4.matches.find(m => m.callId === target) ?? null
   }
 
   // Confirm-override mode: existing sessionId + confirmCandidateId. The user
@@ -167,9 +179,10 @@ async function handlePreselect(
       now: new Date(),
     }
     const target = parsed.confirmCandidateId
+    let matched: CallMatch | null
     try {
-      const exists = await confirmCallExists(ctx, target, parsed.description)
-      if (!exists) return err(400, 'INVALID_CALL_ID')
+      matched = await findMatchedCall(ctx, target, parsed.description)
+      if (!matched) return err(400, 'INVALID_CALL_ID')
     } catch (e) {
       log.error({ err: e, userId: user.id }, 'confirm-override existence check failed')
       return err(503, 'PRESELECT_UNAVAILABLE')
@@ -197,7 +210,7 @@ async function handlePreselect(
       kind: 'selected',
       sessionId: parsed.sessionId,
       selectedCallId: target,
-      candidates: [{ callId: target, title: target, score: 1 }],
+      candidates: [{ callId: target, title: matched.title, score: matched.score }],
     })
   }
 
@@ -210,32 +223,34 @@ async function handlePreselect(
       now: new Date(),
     }
     const target = parsed.confirmCandidateId
+    let matched: CallMatch | null
     try {
-      const exists = await confirmCallExists(ctx, target, parsed.description)
-      if (!exists) return err(400, 'INVALID_CALL_ID')
+      matched = await findMatchedCall(ctx, target, parsed.description)
+      if (!matched) return err(400, 'INVALID_CALL_ID')
     } catch (e) {
       log.error({ err: e, userId: user.id }, 'confirm-new existence check failed')
       return err(503, 'PRESELECT_UNAVAILABLE')
     }
     try {
+      const candidate = {
+        callId: matched.callId,
+        title: matched.title,
+        score: matched.score,
+      }
       const result = await initializeSession({
         userId: user.id,
         description: parsed.description,
         locale: parsed.locale,
-        selectedCallId: parsed.confirmCandidateId,
-        selectedScore: 1,
-        candidates: [{
-          callId: parsed.confirmCandidateId,
-          title: parsed.confirmCandidateId,
-          score: 1,
-        }],
+        selectedCallId: matched.callId,
+        selectedScore: matched.score,
+        candidates: [candidate],
         excludeCallIdsApplied: [],
       })
       return NextResponse.json({
         kind: 'selected',
         sessionId: result.sessionId,
-        selectedCallId: parsed.confirmCandidateId,
-        candidates: [{ callId: parsed.confirmCandidateId, title: parsed.confirmCandidateId, score: 1 }],
+        selectedCallId: matched.callId,
+        candidates: [candidate],
         blueprintKind: result.blueprintKind,
         phase: result.phase,
       })

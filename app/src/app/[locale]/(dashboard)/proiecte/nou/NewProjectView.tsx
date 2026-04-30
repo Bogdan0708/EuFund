@@ -85,13 +85,6 @@ export function NewProjectView({
       }
 
       // result.kind === 'selected'
-      setState({
-        kind: 'selected',
-        sessionId: result.sessionId,
-        callId: result.selectedCallId,
-        callTitle: result.candidates[0]?.title ?? result.selectedCallId,
-        description,
-      })
       // Update URL so a refresh resumes into the created session
       if (typeof window !== 'undefined') {
         window.history.replaceState(null, '', `?session=${result.sessionId}`)
@@ -100,11 +93,28 @@ export function NewProjectView({
       // created BEFORE sending the first turn — otherwise useAgent's
       // internal sessionId is null and /api/ai/agent would create a fresh
       // discovery session instead of continuing the preselected one.
+      // Critical: we transition into 'selected' AFTER adopt resolves, so a
+      // failed adoption surfaces as an error instead of stranding the UI in
+      // a 'selected' state with no working agent session.
       const adopted = await agent.adoptSession(result.sessionId)
-      if (!adopted) return
+      if (!adopted) {
+        setState({
+          kind: 'error',
+          code: 'ADOPTION_FAILED',
+          message: tPre('errors.ADOPTION_FAILED'),
+        })
+        return
+      }
+      setState({
+        kind: 'selected',
+        sessionId: result.sessionId,
+        callId: result.selectedCallId,
+        callTitle: result.candidates[0]?.title ?? result.selectedCallId,
+        description,
+      })
       await agent.sendMessage(description)
     },
-    [preselectEnabled, initialSessionId, locale, agent, state.kind],
+    [preselectEnabled, initialSessionId, locale, agent, state.kind, tPre],
   )
 
   const handleCandidatePick = useCallback(
@@ -130,6 +140,41 @@ export function NewProjectView({
         return
       }
       if (result.kind === 'selected') {
+        if (overrideCtx) {
+          // Existing session was mutated — refresh its state (stateVersion
+          // bumped via setSelectedCall). Do NOT touch URL; sessionId is
+          // unchanged. Transition AFTER adopt resolves so a failure does
+          // not strand the UI in 'selected' against a stale agent session.
+          const adopted = await agent.adoptSession(result.sessionId)
+          if (!adopted) {
+            setState({
+              kind: 'error',
+              code: 'ADOPTION_FAILED',
+              message: tPre('errors.ADOPTION_FAILED'),
+            })
+            return
+          }
+          setState({
+            kind: 'selected',
+            sessionId: result.sessionId,
+            callId: result.selectedCallId,
+            callTitle: result.candidates[0]?.title ?? result.selectedCallId,
+            description,
+          })
+          return
+        }
+        if (typeof window !== 'undefined') {
+          window.history.replaceState(null, '', `?session=${result.sessionId}`)
+        }
+        const adopted = await agent.adoptSession(result.sessionId)
+        if (!adopted) {
+          setState({
+            kind: 'error',
+            code: 'ADOPTION_FAILED',
+            message: tPre('errors.ADOPTION_FAILED'),
+          })
+          return
+        }
         setState({
           kind: 'selected',
           sessionId: result.sessionId,
@@ -137,23 +182,10 @@ export function NewProjectView({
           callTitle: result.candidates[0]?.title ?? result.selectedCallId,
           description,
         })
-        if (overrideCtx) {
-          // Existing session was mutated — refresh its state (stateVersion
-          // bumped via setSelectedCall). Do NOT touch URL; sessionId is
-          // unchanged.
-          const adopted = await agent.adoptSession(result.sessionId)
-          if (!adopted) return
-          return
-        }
-        if (typeof window !== 'undefined') {
-          window.history.replaceState(null, '', `?session=${result.sessionId}`)
-        }
-        const adopted = await agent.adoptSession(result.sessionId)
-        if (!adopted) return
         await agent.sendMessage(description)
       }
     },
-    [state, locale, agent],
+    [state, locale, agent, tPre],
   )
 
   const handleChangeRequested = useCallback(async () => {
@@ -173,6 +205,19 @@ export function NewProjectView({
       return
     }
     if (result.kind === 'selected') {
+      // Override mode bumped the session's stateVersion via setSelectedCall.
+      // Re-hydrate from /api/ai/agent/state so the next sendMessage carries
+      // the fresh stateVersion; otherwise the next managed turn will 409 on
+      // CAS check. Transition AFTER adopt resolves to keep UI honest.
+      const adopted = await agent.adoptSession(result.sessionId)
+      if (!adopted) {
+        setState({
+          kind: 'error',
+          code: 'ADOPTION_FAILED',
+          message: tPre('errors.ADOPTION_FAILED'),
+        })
+        return
+      }
       setState({
         kind: 'selected',
         sessionId: result.sessionId,
@@ -180,12 +225,6 @@ export function NewProjectView({
         callTitle: result.candidates[0]?.title ?? result.selectedCallId,
         description,
       })
-      // Override mode bumped the session's stateVersion via setSelectedCall.
-      // Re-hydrate from /api/ai/agent/state so the next sendMessage carries
-      // the fresh stateVersion; otherwise the next managed turn will 409 on
-      // CAS check.
-      const adopted = await agent.adoptSession(result.sessionId)
-      if (!adopted) return
       return
     }
     if (result.kind === 'ambiguous') {
@@ -205,7 +244,7 @@ export function NewProjectView({
     if (result.kind === 'no_match') {
       setState({ kind: 'no_match', reason: result.reason })
     }
-  }, [state, locale, agent])
+  }, [state, locale, agent, tPre])
 
   const handleNoMatchRetry = useCallback(() => {
     setState({ kind: 'idle' })

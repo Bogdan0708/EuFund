@@ -23,8 +23,18 @@ interface AnthropicRates {
   cacheReadMultiplier: number
 }
 
+// Anthropic stream events sometimes echo a dated identifier (e.g. the bare
+// alias `claude-sonnet-4-6` is returned today, but historically the API
+// has resolved it to `claude-sonnet-4-6-YYYYMMDD`). The pricing table is
+// keyed on bare aliases, so we strip a trailing 8-digit date suffix before
+// lookup. Defensive — keeps cost telemetry accurate if Anthropic flips back.
+export function normalizeAnthropicModel(model: string): string {
+  return model.toLowerCase().replace(/-\d{8}$/, '')
+}
+
 export function computeAnthropicCostMicros(usage: UsageLike, model: string): number {
-  const rates = (PRICING_V1.anthropic as Record<string, AnthropicRates>)[model]
+  const key = normalizeAnthropicModel(model)
+  const rates = (PRICING_V1.anthropic as Record<string, AnthropicRates>)[key]
   if (!rates) return 0
 
   const input = usage.input_tokens ?? 0
