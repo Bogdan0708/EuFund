@@ -57,6 +57,34 @@ describe('translateAnthropicEvent', () => {
     expect(result).toEqual({ type: 'text_delta', content: 'Salut' })
   })
 
+  it('content_block_delta text_delta scrubs raw error prefixes (leakage fix)', () => {
+    const tctx = createTranslatorContext()
+    const prefixes = [
+      'CONCURRENCY:',
+      'VALIDATION:',
+      'NOT_FOUND:',
+      'AUTHORIZATION:',
+      'POLICY:',
+      'EXTERNAL_DEPENDENCY:',
+      'INTERNAL:',
+      'GENERIC:',
+      'PARALLEL_WRITE_BLOCKED:',
+    ]
+
+    for (const prefix of prefixes) {
+      const event: AnyEvent = {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: `${prefix} Ne pare rău, a apărut o problemă.` },
+      }
+      const result = translateAnthropicEvent(event as never, tctx)
+      expect(result).toEqual({
+        type: 'text_delta',
+        content: 'Ne pare rău, a apărut o problemă.',
+      })
+    }
+  })
+
   it('content_block_delta input_json_delta emits nothing', () => {
     const tctx = createTranslatorContext()
     const event: AnyEvent = {
