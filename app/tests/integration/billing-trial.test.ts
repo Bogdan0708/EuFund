@@ -8,6 +8,15 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
+// billing.ts imports invalidateUserTierCache from middleware/auth, which
+// transitively imports next-auth/next/server — unavailable in the test env.
+vi.mock('@/lib/middleware/auth', () => ({
+  invalidateUserTierCache: vi.fn(),
+  getUserTier: vi.fn().mockResolvedValue('free'),
+  withAIAuth: vi.fn(),
+  authenticateAIUser: vi.fn(),
+}));
+
 describe('billing trial behavior', () => {
   beforeEach(() => {
     vi.resetModules();

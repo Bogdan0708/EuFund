@@ -35,6 +35,12 @@ vi.mock('@/lib/monitoring/sentry', () => ({
 vi.mock('@/lib/logger', () => ({
   logger: { child: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) },
 }));
+vi.mock('@/lib/middleware/auth', () => ({
+  invalidateUserTierCache: vi.fn(),
+  getUserTier: vi.fn().mockResolvedValue('free'),
+  withAIAuth: vi.fn(),
+  authenticateAIUser: vi.fn(),
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();          // clears call history; preserves implementations
@@ -82,12 +88,22 @@ describe('handleWebhookEvent idempotency', () => {
   it('concurrent identical deliveries → handler runs exactly once', async () => {
     const { handleWebhookEvent } = await import('@/lib/integrations/stripe/billing');
 
-    // First insert wins (returns row); second loses (returns empty array)
+    // Both deliveries race to claim. One wins (non-empty row), one loses (empty).
+    // The winner then calls .returning() again for the user update.
+    // We queue enough values for all possible orderings:
+    //   [claim-winner, claim-loser, user-update-of-winner]
+    // Using a deterministic implementation: first and third calls return rows,
+    // second call returns empty (conflict). This covers both orderings since
+    // exactly one will see the empty response and return early.
     const returningMock = dbMock.returning as Mock;
     returningMock.mockReset();
-    returningMock
-      .mockResolvedValueOnce([{ id: 'claim-row-1' }])  // first delivery wins
-      .mockResolvedValueOnce([]);                       // second delivery: conflict
+    returningMock.mockImplementation(() => {
+      const callCount = (returningMock as any).__returnCallCount =
+        ((returningMock as any).__returnCallCount ?? 0) + 1;
+      if (callCount === 1) return Promise.resolve([{ id: 'claim-row-1' }]);
+      if (callCount === 2) return Promise.resolve([]);            // second claim: conflict
+      return Promise.resolve([{ id: 'user-from-update' }]);      // user update returning
+    });
 
     const updateMock = dbMock.update as Mock;
 

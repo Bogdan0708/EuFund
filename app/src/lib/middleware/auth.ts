@@ -21,7 +21,7 @@ export function invalidateUserTierCache(userId: string): void {
   tierCache.delete(userId);
 }
 
-async function getUserTier(userId: string): Promise<UserTier> {
+export async function getUserTier(userId: string): Promise<UserTier> {
   const cached = tierCache.get(userId);
   if (cached !== undefined) {
     return cached;
@@ -55,13 +55,11 @@ export interface AuthenticatedUser {
   tier: UserTier;
 }
 
-// Hourly request limits by tier. plus aliases pro, ultra aliases enterprise.
+// Hourly request limits by tier.
 const RATE_LIMITS: Record<UserTier, number> = {
   free: 10,
-  plus: 100,
   pro: 100,
   enterprise: 1000,
-  ultra: 1000,
 };
 
 const FEATURE_DAILY_LIMITS: Record<AIFeature, number> = {
