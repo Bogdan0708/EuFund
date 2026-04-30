@@ -487,6 +487,13 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   // one where the stream produced zero blocks) stays uncompleted so the
   // route's catch branch or the daily reconciliation cron can classify
   // it as an empty orphan.
+  // Track silent-degradation conditions on the successful-turn path so the
+  // done event and structured log can surface them. log.warn-and-continue
+  // around infra mutations inside this critical section is an anti-pattern
+  // (see feedback_managed_runtime_success_accounting.md): the turn's
+  // durable output landed, but session state diverged from what the user
+  // sees. Surface via telemetry, not a user-visible error.
+  let degradedReason: string | null = null
   if (firstOutputPersisted) {
     await markTurnCompleted(turnId, {
       model: modelUsed,
@@ -500,6 +507,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     try {
       await compactIfNeeded(session.id, session.currentPhase)
     } catch (err) {
+      degradedReason = 'compaction_failed'
       log.warn(
         {
           sessionId: session.id,
@@ -563,11 +571,12 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   }
 
   const finalState = buildUISnapshot(snapshotSession, snapshotSections)
-  emit({ type: 'done', finalState })
+  emit({ type: 'done', finalState, degradedReason })
 
   // Structured turn-complete log — consumed by the reconciliation
   // queries and pilot dashboards (see docs/superpowers/runbooks/
-  // managed-pilot-observability.md).
+  // managed-pilot-observability.md). degradedReason lets dashboards count
+  // outcome=completed turns separately from compaction-degraded ones.
   log.info({
     event: 'managed_turn_complete',
     sessionId: session.id,
@@ -577,7 +586,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     toolCount,
     durationMs: Date.now() - start,
     outcome: firstOutputPersisted ? 'completed' : 'no_output',
-    degradedReason: null,
+    degradedReason,
     model: modelUsed,
     usage: aggregateUsage,
     costUsdMicros,
