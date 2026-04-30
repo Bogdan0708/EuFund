@@ -4,6 +4,7 @@ interface Props {
   section: AgentSectionState
   onAccept: () => void
   onReject: () => void
+  disabled?: boolean
 }
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
@@ -17,7 +18,7 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }>
   failed: { bg: 'bg-red-100', text: 'text-red-700', label: 'Failed' },
 }
 
-export function SectionCard({ section, onAccept, onReject }: Props) {
+export function SectionCard({ section, onAccept, onReject, disabled = false }: Props) {
   const style = STATUS_STYLES[section.status] || STATUS_STYLES.pending
 
   return (
@@ -30,10 +31,10 @@ export function SectionCard({ section, onAccept, onReject }: Props) {
       </div>
       {section.status === 'draft' && (
         <div className="flex gap-2 mt-3">
-          <button onClick={onAccept} className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+          <button onClick={onAccept} disabled={disabled} className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
             Accept
           </button>
-          <button onClick={onReject} className="text-xs px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors">
+          <button onClick={onReject} disabled={disabled} className="text-xs px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
             Revise
           </button>
         </div>

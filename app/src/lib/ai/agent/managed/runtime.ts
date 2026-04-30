@@ -78,6 +78,7 @@ import {
   markTurnCompleted,
 } from './history'
 import { compactIfNeeded } from '../history'
+import { reloadSessionAndSections } from './reload'
 import { logger } from '@/lib/logger'
 import { addUsage, computeAnthropicCostMicros, type UsageLike } from '@/lib/ai/cost/anthropic-pricing'
 
@@ -131,6 +132,10 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   // tool_use block arrives. This flag flips true inside the stream loop
   // the first time we flush the user message + first output together.
   let firstOutputPersisted = false
+  // Tracks whether any WRITE_TOOL_NAMES tool dispatched in this turn returned
+  // a non-error result. Read after the loop to decide whether to reload
+  // session/sections from DB before building the final UI snapshot.
+  let writesSucceeded = false
 
   // 1. Load history. systemSummary is extracted from V3 compaction rows
   //    (system_summary message type) or falls back to session.messageSummary
@@ -329,6 +334,10 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     for (const { block, result } of executionResults) {
       toolCount += 1
 
+      if (!result.isError && WRITE_TOOL_NAMES.has(result.toolName)) {
+        writesSucceeded = true
+      }
+
       emit({
         type: 'tool_result',
         tool: result.toolName,
@@ -373,12 +382,36 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
       requestId: request.requestId,
       iterationCount,
     }, 'managed turn hit iteration cap')
-    emit({
-      type: 'text_delta',
-      content: session.locale === 'ro'
-        ? '\n\n(Limita de iterații atinsă. Vă rog, clarificați întrebarea.)'
-        : '\n\n(Reached tool iteration limit. Please clarify your request.)',
-    })
+    const capMessage = session.locale === 'ro'
+      ? '\n\n(Limita de iterații atinsă. Vă rog, clarificați întrebarea.)'
+      : '\n\n(Reached tool iteration limit. Please clarify your request.)'
+    emit({ type: 'text_delta', content: capMessage })
+    // Persist the cap text so the next turn's loadManagedHistory replays
+    // the bail-out signal. Best-effort: a failure here MUST NOT abort the
+    // runtime — markTurnCompleted still has to run, and the user has
+    // already seen the text via SSE. The next turn's history will simply
+    // omit the cap text; the prior assistant + tool messages already
+    // describe the conversation state. ensurePairingInvariant covers
+    // orphan tool_use/tool_result blocks but not missing assistant text.
+    if (firstOutputPersisted) {
+      try {
+        await appendManagedMessage(
+          session.id,
+          { role: 'assistant', messageType: 'text', content: capMessage, turnId },
+          { runtimeMode: 'managed', provider: 'anthropic', model: tctx.messageModel },
+        )
+      } catch (err) {
+        log.warn(
+          {
+            sessionId: session.id,
+            turnId,
+            requestId: request.requestId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          'iteration-cap text persistence failed (non-fatal)',
+        )
+      }
+    }
   }
 
   // Compute per-turn cost from the summed usage. Unknown model → 0 (safe).
@@ -414,7 +447,58 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     }
   }
 
-  const finalState = buildUISnapshot(session, sections)
+  // Post-write reload (PR1 Change B). Runs AFTER markTurnCompleted +
+  // compactIfNeeded so that a turn with durable output is always recorded
+  // as completed even if the reload itself fails.
+  let snapshotSession = session
+  let snapshotSections = sections
+  if (writesSucceeded) {
+    try {
+      const reloaded = await reloadSessionAndSections(session.id, session.userId)
+      if (!reloaded) throw new Error('session row missing after write')
+      snapshotSession = reloaded.session
+      snapshotSections = reloaded.sections
+    } catch (err) {
+      log.error(
+        {
+          sessionId: session.id,
+          requestId: request.requestId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        'managed post-write reload failed',
+      )
+      const message = session.locale === 'ro'
+        ? 'Sesiunea s-a actualizat parțial. Reîncarcă pagina pentru a continua.'
+        : 'Session partially updated. Reload to continue.'
+      emit({ type: 'error', message, retryable: false })
+      // Skip the done event. agent_turns.completedAt is already set by
+      // markTurnCompleted above. The client's terminalErrorRef latch (Task 5)
+      // prevents the post-stream setStatus('idle') from masking this.
+      log.info({
+        event: 'managed_turn_complete',
+        sessionId: session.id,
+        turnId,
+        requestId: request.requestId,
+        iterations: iterationCount,
+        toolCount,
+        durationMs: Date.now() - start,
+        outcome: 'completed_reload_failed',
+        degradedReason: null,
+        model: modelUsed,
+        usage: aggregateUsage,
+        costUsdMicros,
+      }, 'managed_turn_complete')
+      return {
+        toolCount,
+        iterationCount,
+        model: tctx.messageModel,
+        latencyMs: Date.now() - start,
+        firstOutputPersisted,
+      }
+    }
+  }
+
+  const finalState = buildUISnapshot(snapshotSession, snapshotSections)
   emit({ type: 'done', finalState })
 
   // Structured turn-complete log — consumed by the reconciliation

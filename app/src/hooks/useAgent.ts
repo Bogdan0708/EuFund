@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useTranslations } from 'next-intl'
 import { csrfFetch } from '@/lib/csrf/client'
+import { formatToolError } from '@/lib/ai/agent/format-tool-error'
 import type {
   AgentEvent, AgentRequest, StructuredAction, UIStateSnapshot,
   Phase, Warning, SectionStatus,
@@ -30,6 +32,7 @@ export type AgentStatus = 'idle' | 'connecting' | 'streaming' | 'error'
 // ── Hook ────────────────────────────────────────────────────────
 
 export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
+  const tToolError = useTranslations('agent.toolErrors')
   const [messages, setMessages] = useState<AgentMessage[]>([])
   const [status, setStatus] = useState<AgentStatus>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -43,6 +46,12 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   const [eligibility, setEligibility] = useState<unknown>(null)
 
   const abortRef = useRef<AbortController | null>(null)
+  // True when the most recent stream emitted a non-retryable error event.
+  // The reader loop's natural-end setStatus('idle') is gated on this so
+  // a terminal failure (e.g. post-write reload failure) isn't masked as
+  // 'idle' once the stream closes. Reset to false at the start of each
+  // sendRequest so retries clear the latch.
+  const terminalErrorRef = useRef(false)
   const stateVersionRef = useRef(0)
   stateVersionRef.current = stateVersion
   // Mirror sessionId in a ref so sendRequest can observe synchronous updates
@@ -99,8 +108,11 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
         setMessages(prev => {
           const toolMsg = [...prev].reverse().find(m => m.toolName === event.tool && m.isToolActivity)
           if (toolMsg) {
+            const newContent = event.success
+              ? `${event.tool}: completed`
+              : formatToolError(event.tool, event.summary, tToolError)
             return prev.map(m => m.id === toolMsg.id
-              ? { ...m, content: `${event.tool}: ${event.success ? 'completed' : event.summary}` }
+              ? { ...m, content: newContent }
               : m
             )
           }
@@ -148,7 +160,10 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
 
       case 'error':
         setError(event.message)
-        if (!event.retryable) setStatus('error')
+        if (!event.retryable) {
+          terminalErrorRef.current = true
+          setStatus('error')
+        }
         break
 
       case 'done':
@@ -156,7 +171,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
         break
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applyFinalState])
+  }, [applyFinalState, tToolError])
 
   // ── Send message or action ──────────────────────────────────
 
@@ -170,6 +185,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     abortRef.current = controller
 
     setStatus('connecting')
+    terminalErrorRef.current = false
     setError(null)
 
     const fullRequest: AgentRequest = {
@@ -257,7 +273,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
         }
       }
 
-      setStatus('idle')
+      if (!terminalErrorRef.current) setStatus('idle')
     } catch (err) {
       if ((err as Error).name === 'AbortError') return
       setStatus('error')

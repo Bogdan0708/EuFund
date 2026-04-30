@@ -1368,5 +1368,19 @@
     "acord_parteneriat": "Acord de parteneriat",
     "declaratie": "Declarație",
     "altul": "Altul"
+  },
+  "agent": {
+    "toolErrors": {
+      "PARALLEL_WRITE_BLOCKED": "Doar o operațiune de scriere era permisă; a doua a fost respinsă.",
+      "TOOL_TIMEOUT": "{tool} a durat prea mult și a fost anulată.",
+      "AUTHORIZATION": "Nu ai permisiunea să rulezi {tool}.",
+      "NOT_FOUND": "{tool}: resursa cerută nu a fost găsită.",
+      "POLICY_PREFIX": "{tool} blocată de o regulă ({code}).",
+      "VALIDATION_PREFIX": "{tool}: date invalide.",
+      "CONCURRENCY": "{tool} a intrat în conflict cu o modificare concurentă. Reîncearcă.",
+      "EXTERNAL_DEPENDENCY": "{tool} indisponibilă: eroare la un serviciu extern.",
+      "INTERNAL": "{tool} a întâmpinat o eroare internă.",
+      "GENERIC": "{tool} a eșuat."
+    }
   }
 }
