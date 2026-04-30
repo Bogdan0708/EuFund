@@ -10,8 +10,8 @@ import {
 } from '@/lib/ai/agent/managed/tools'
 
 describe('MANAGED_TOOLS', () => {
-  it('contains exactly 23 tools (10 read + 5 rules + 8 write)', () => {
-    expect(MANAGED_TOOLS).toHaveLength(23)
+  it('contains exactly 24 tools (10 read + 5 rules + 9 write)', () => {
+    expect(MANAGED_TOOLS).toHaveLength(24)
   })
 
   it('each tool has name, description, and input_schema', () => {
@@ -26,7 +26,7 @@ describe('MANAGED_TOOLS', () => {
   })
 
   it('MANAGED_TOOL_NAMES is a Set of all tool names', () => {
-    expect(MANAGED_TOOL_NAMES.size).toBe(23)
+    expect(MANAGED_TOOL_NAMES.size).toBe(24)
     for (const tool of MANAGED_TOOLS) {
       expect(MANAGED_TOOL_NAMES.has(tool.name)).toBe(true)
     }
@@ -82,7 +82,7 @@ describe('MANAGED_TOOLS', () => {
   })
 
   it('Phase 4 write tools are NOT exposed', () => {
-    const phase4 = ['create_export_snapshot', 'save_call_blueprint']
+    const phase4 = ['create_export_snapshot']
     for (const name of phase4) {
       expect(MANAGED_TOOL_NAMES.has(name)).toBe(false)
     }
@@ -98,14 +98,14 @@ describe('tool name sets', () => {
     expect(RULE_TOOL_NAMES.size).toBe(5)
   })
 
-  it('WRITE_TOOL_NAMES has 8 entries', () => {
-    expect(WRITE_TOOL_NAMES.size).toBe(8)
+  it('WRITE_TOOL_NAMES has 9 entries', () => {
+    expect(WRITE_TOOL_NAMES.size).toBe(9)
   })
 
-  it('PHASE_4_BLOCKED_TOOL_NAMES has 2 entries (create_export_snapshot, save_call_blueprint)', () => {
+  it('PHASE_4_BLOCKED_TOOL_NAMES has 1 entry (create_export_snapshot)', () => {
     expect(PHASE_4_BLOCKED_TOOL_NAMES.has('create_export_snapshot')).toBe(true)
-    expect(PHASE_4_BLOCKED_TOOL_NAMES.has('save_call_blueprint')).toBe(true)
-    expect(PHASE_4_BLOCKED_TOOL_NAMES.size).toBe(2)
+    expect(PHASE_4_BLOCKED_TOOL_NAMES.has('save_call_blueprint')).toBe(false)
+    expect(PHASE_4_BLOCKED_TOOL_NAMES.size).toBe(1)
   })
 
   it('READ, RULE, and WRITE sets are disjoint', () => {
@@ -118,14 +118,14 @@ describe('tool name sets', () => {
     }
   })
 
-  it('MANAGED_TOOL_NAMES is the union of READ + RULE + WRITE (23)', () => {
+  it('MANAGED_TOOL_NAMES is the union of READ + RULE + WRITE (24)', () => {
     const expected = new Set([
       ...READ_TOOL_NAMES,
       ...RULE_TOOL_NAMES,
       ...WRITE_TOOL_NAMES,
     ])
     expect(new Set(MANAGED_TOOL_NAMES)).toEqual(expected)
-    expect(MANAGED_TOOL_NAMES.size).toBe(23)
+    expect(MANAGED_TOOL_NAMES.size).toBe(24)
   })
 
   it('PHASE_4_BLOCKED_TOOL_NAMES is disjoint from MANAGED_TOOL_NAMES', () => {
@@ -136,9 +136,9 @@ describe('tool name sets', () => {
 })
 
 describe('getManagedTools', () => {
-  it('returns the full 23-tool surface when allowWrites=true', () => {
+  it('returns the full 24-tool surface when allowWrites=true', () => {
     const tools = getManagedTools(true)
-    expect(tools).toHaveLength(23)
+    expect(tools).toHaveLength(24)
     expect(tools).toBe(MANAGED_TOOLS)
   })
 
