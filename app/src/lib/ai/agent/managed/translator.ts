@@ -38,7 +38,36 @@ export function translateAnthropicEvent(
 
     case 'content_block_delta': {
       if (event.delta.type === 'text_delta') {
-        return { type: 'text_delta', content: event.delta.text }
+        let content = event.delta.text
+
+        // Desk Audit Fix #15: Tool payload leakage scrubbing.
+        // Prevent the model from quoting raw tool_result error prefixes
+        // (CONCURRENCY, VALIDATION, NOT_FOUND, etc.) in its free-text
+        // response. These prefixes are used by the executor to signal
+        // errors back to the model, but should not leak to the user.
+        //
+        // Pattern: Matches a capital-case error prefix at the start of a
+        // delta or after a newline. Since deltas can be small, we apply
+        // this broadly but safely.
+        const RAW_ERROR_PREFIXES = [
+          'CONCURRENCY:',
+          'VALIDATION:',
+          'NOT_FOUND:',
+          'AUTHORIZATION:',
+          'POLICY:',
+          'EXTERNAL_DEPENDENCY:',
+          'INTERNAL:',
+          'GENERIC:',
+          'PARALLEL_WRITE_BLOCKED:',
+        ]
+
+        for (const prefix of RAW_ERROR_PREFIXES) {
+          if (content.includes(prefix)) {
+            content = content.replace(prefix, '').trimStart()
+          }
+        }
+
+        return { type: 'text_delta', content }
       }
       return null
     }

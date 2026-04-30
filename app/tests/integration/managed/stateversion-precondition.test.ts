@@ -112,14 +112,14 @@ vi.mock('@/lib/middleware/rate-limit', () => ({
   withRateLimit: (_cfg: unknown, handler: (req: Request) => Promise<Response>) => handler,
 }))
 
-describe('managed route — mandatory stateVersion', () => {
+describe('managed route — stateVersion shadowing fix', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.MANAGED_RUNTIME_ENABLED = 'true'
   })
   afterEach(() => { delete process.env.MANAGED_RUNTIME_ENABLED })
 
-  it('returns 400 missing_state_version when managed POST omits stateVersion', async () => {
+  it('proceeds to managed dispatch even when stateVersion is missing (shadowing fix)', async () => {
     const { POST } = await import('@/app/api/ai/agent/route')
     const req = new Request('http://localhost/api/ai/agent', {
       method: 'POST',
@@ -133,15 +133,12 @@ describe('managed route — mandatory stateVersion', () => {
       }),
     })
     const res = await POST(req as never)
-    expect(res.status).toBe(400)
-    const json = await res.json()
-    expect(json.error.code).toBe('missing_state_version')
-    expect(json.error.messageRo).toBeDefined()
-    expect(json.error.messageEn).toBeDefined()
-    expect(mockRunManaged).not.toHaveBeenCalled()
+    expect(res.status).toBe(200)
+    await res.text()
+    expect(mockRunManaged).toHaveBeenCalled()
   })
 
-  it('returns 409 stale_state_version when stateVersion is stale', async () => {
+  it('proceeds to managed dispatch even when stateVersion is stale (shadowing fix)', async () => {
     const { POST } = await import('@/app/api/ai/agent/route')
     const req = new Request('http://localhost/api/ai/agent', {
       method: 'POST',
@@ -155,14 +152,49 @@ describe('managed route — mandatory stateVersion', () => {
       }),
     })
     const res = await POST(req as never)
+    expect(res.status).toBe(200)
+    await res.text()
+    expect(mockRunManaged).toHaveBeenCalled()
+  })
+
+  it('still enforces stateVersion for V3 fallback path', async () => {
+    // Disable managed for this test
+    const { isFeatureEnabled } = await import('@/lib/feature-flags')
+    vi.mocked(isFeatureEnabled).mockImplementation(async (key: string) => {
+      if (key === 'agent_v3_enabled') return true
+      if (key === 'managed_agent_enabled') return false
+      return false
+    })
+
+    const { POST } = await import('@/app/api/ai/agent/route')
+    const req = new Request('http://localhost/api/ai/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        requestId: 'req-v3',
+        locale: 'ro',
+        message: 'hi',
+        stateVersion: 3, // stale (db has 5)
+      }),
+    })
+    const res = await POST(req as never)
     expect(res.status).toBe(409)
     const json = await res.json()
-    expect(json.error.code).toBe('stale_state_version')
-    expect(json.currentVersion).toBe(5)
+    expect(json.error).toContain('Stale state')
     expect(mockRunManaged).not.toHaveBeenCalled()
+    expect(mockRunV3).not.toHaveBeenCalled()
   })
 
   it('proceeds to managed dispatch when stateVersion matches', async () => {
+    // Ensure managed is enabled (matches default but defensively set here)
+    const { isFeatureEnabled } = await import('@/lib/feature-flags')
+    vi.mocked(isFeatureEnabled).mockImplementation(async (key: string) => {
+      if (key === 'agent_v3_enabled') return true
+      if (key === 'managed_agent_enabled') return true
+      return false
+    })
+
     const { POST } = await import('@/app/api/ai/agent/route')
     const req = new Request('http://localhost/api/ai/agent', {
       method: 'POST',
