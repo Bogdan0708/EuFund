@@ -3,12 +3,22 @@ import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/messages'
 
 vi.mock('@/lib/db', () => {
   const updateCalls: unknown[] = []
+  // Session row returned by the precondition probe. Tests can mutate
+  // mockDb.__sessionRow to simulate phase mismatch or missing session.
+  const mockState: { sessionRow: Record<string, unknown> | null } = {
+    sessionRow: { currentPhase: 'research', selectedCallId: 'CALL-1' },
+  }
   const mockDb = {
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(() => Promise.resolve(mockState.sessionRow ? [mockState.sessionRow] : [])),
+        })),
+      })),
+    })),
     update: vi.fn(() => ({
       set: vi.fn((v: unknown) => {
-        const last = updateCalls[updateCalls.length - 1] as Record<string, unknown> | undefined
-        if (last) last.set = v
-        else updateCalls.push({ set: v })
+        updateCalls.push({ set: v })
         return {
           where: vi.fn((w: unknown) => {
             const lastEntry = updateCalls[updateCalls.length - 1] as Record<string, unknown> | undefined
@@ -19,6 +29,9 @@ vi.mock('@/lib/db', () => {
       }),
     })),
     __updateCalls: updateCalls,
+    __setSessionRow: (row: Record<string, unknown> | null) => {
+      mockState.sessionRow = row
+    },
   }
   return { db: mockDb }
 })
@@ -49,7 +62,15 @@ import { executeManagedTool } from '@/lib/ai/agent/managed/executor'
 import type { ServiceContext } from '@/lib/ai/agent/services/types'
 
 describe('save_call_blueprint executor case', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    // Reset session row to the happy-path values; individual tests can override.
+    const { db } = await import('@/lib/db') as unknown as {
+      db: { __setSessionRow: (row: Record<string, unknown> | null) => void; __updateCalls: unknown[] }
+    }
+    db.__setSessionRow({ currentPhase: 'research', selectedCallId: 'CALL-1' })
+    db.__updateCalls.length = 0
+  })
 
   const ctx: ServiceContext = {
     userId: '11111111-1111-4111-8111-111111111111',
@@ -107,5 +128,51 @@ describe('save_call_blueprint executor case', () => {
     const result = await executeManagedTool(block, ctxNoWrites)
     expect(result.isError).toBe(true)
     expect(result.content).toContain('Managed write tools are disabled')
+  })
+
+  it('rejects with POLICY_BLUEPRINT_PHASE_GATE when session is past research phase', async () => {
+    const { db } = await import('@/lib/db') as unknown as {
+      db: { __setSessionRow: (row: Record<string, unknown> | null) => void; __updateCalls: unknown[] }
+    }
+    db.__setSessionRow({ currentPhase: 'structuring', selectedCallId: 'CALL-1' })
+    const { saveCallBlueprint } = await import('@/lib/ai/agent/services/blueprint')
+
+    const result = await executeManagedTool(block, ctx)
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toContain('POLICY_BLUEPRINT_PHASE_GATE')
+    // Critical: saveCallBlueprint must NOT have been called — the global
+    // callKnowledge cache write must be gated by the precondition.
+    expect(saveCallBlueprint).not.toHaveBeenCalled()
+    // And no session-row update either.
+    expect(db.__updateCalls).toHaveLength(0)
+  })
+
+  it('rejects with POLICY_BLUEPRINT_PHASE_GATE when callId does not match selectedCallId', async () => {
+    const { db } = await import('@/lib/db') as unknown as {
+      db: { __setSessionRow: (row: Record<string, unknown> | null) => void; __updateCalls: unknown[] }
+    }
+    db.__setSessionRow({ currentPhase: 'research', selectedCallId: 'OTHER-CALL' })
+    const { saveCallBlueprint } = await import('@/lib/ai/agent/services/blueprint')
+
+    const result = await executeManagedTool(block, ctx)
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toContain('POLICY_BLUEPRINT_PHASE_GATE')
+    expect(saveCallBlueprint).not.toHaveBeenCalled()
+    expect(db.__updateCalls).toHaveLength(0)
+  })
+
+  it('rejects with NOT_FOUND when session row is missing', async () => {
+    const { db } = await import('@/lib/db') as unknown as {
+      db: { __setSessionRow: (row: Record<string, unknown> | null) => void; __updateCalls: unknown[] }
+    }
+    db.__setSessionRow(null)
+    const { saveCallBlueprint } = await import('@/lib/ai/agent/services/blueprint')
+
+    const result = await executeManagedTool(block, ctx)
+
+    expect(result.isError).toBe(true)
+    expect(saveCallBlueprint).not.toHaveBeenCalled()
   })
 })

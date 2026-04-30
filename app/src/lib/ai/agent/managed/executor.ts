@@ -403,6 +403,37 @@ async function dispatchTool(
     case 'save_call_blueprint': {
       const i = saveCallBlueprintSchema.parse(rawInput)
       requireSession(ctx)
+
+      // Precondition: blueprint writes are restricted to preselect-research
+      // turns on the same session that has the matching selectedCallId.
+      // saveCallBlueprint writes to the GLOBAL callKnowledge table (cross-
+      // tenant cache), so a model in a later phase or with a mismatched
+      // callId could otherwise poison the cache for every other tenant.
+      // The session-row write-back below has a CAS WHERE on the same
+      // condition, but that runs AFTER the global write — kept here as
+      // defense-in-depth, not as the authoritative gate.
+      const [sessionRow] = await db
+        .select({
+          currentPhase: agentSessions.currentPhase,
+          selectedCallId: agentSessions.selectedCallId,
+        })
+        .from(agentSessions)
+        .where(eq(agentSessions.id, ctx.sessionId))
+        .limit(1)
+      if (!sessionRow) {
+        throw new NotFoundError('agent_session', ctx.sessionId)
+      }
+      if (
+        sessionRow.currentPhase !== 'research' ||
+        sessionRow.selectedCallId !== i.callId
+      ) {
+        throw new ValidationError(
+          'callId',
+          'save_call_blueprint requires currentPhase=research and selectedCallId matching the blueprint callId',
+          'POLICY_BLUEPRINT_PHASE_GATE',
+        )
+      }
+
       const fullBlueprint = blueprint.buildCallBlueprintFromArgs(i, ctx)
       const result = await blueprint.saveCallBlueprint(ctx, i.callId, fullBlueprint)
 
@@ -410,7 +441,9 @@ async function dispatchTool(
       // later phases a no-op rather than a phase rewind. PR1's reload-
       // after-write fires (tool is in WRITE_TOOL_NAMES) — the reloaded
       // session row reflects the new phase, blueprint, and stateVersion,
-      // and done.finalState carries them to the client.
+      // and done.finalState carries them to the client. Defense-in-depth
+      // against the precondition above; cannot be relied on alone because
+      // saveCallBlueprint already wrote to callKnowledge by this point.
       await db.update(agentSessions)
         .set({
           blueprint: fullBlueprint as never,
