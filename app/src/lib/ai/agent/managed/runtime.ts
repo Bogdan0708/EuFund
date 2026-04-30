@@ -118,6 +118,13 @@ export interface ManagedTurnResult {
   // uses this to decide whether to call deleteEmptyTurn. Any non-throw
   // return from this function implies a turn that did produce content.
   firstOutputPersisted: boolean
+  // True when the post-write reload step (reloadSessionAndSections)
+  // threw — durable output IS persisted (firstOutputPersisted=true) but
+  // the UI snapshot is stale and a terminal error event was emitted in
+  // place of the done event. The route uses this to skip
+  // recordManagedSuccess / recordTurnSuccess so health metrics don't
+  // false-green on reload failure.
+  reloadFailed?: boolean
 }
 
 export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<ManagedTurnResult> {
@@ -566,6 +573,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
         model: tctx.messageModel,
         latencyMs: Date.now() - start,
         firstOutputPersisted,
+        reloadFailed: true,
       }
     }
   }

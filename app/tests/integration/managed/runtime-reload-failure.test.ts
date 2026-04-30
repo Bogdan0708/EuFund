@@ -160,7 +160,7 @@ describe('runManagedTurn — reload failure', () => {
     const { runManagedTurn } = await import('@/lib/ai/agent/managed/runtime')
     const events: AgentEvent[] = []
 
-    await runManagedTurn({
+    const result = await runManagedTurn({
       session: mockSession,
       sections: [],
       request: { requestId: 'req-fail', locale: 'ro', message: 'Selectează apelul.' },
@@ -174,6 +174,13 @@ describe('runManagedTurn — reload failure', () => {
         allowWrites: true,
       },
     })
+
+    // The runtime returns reloadFailed=true on the reload-throw path so the
+    // route can skip recordManagedSuccess / recordTurnSuccess. Output is
+    // durable (firstOutputPersisted stays true), but the success accounting
+    // gate must check the reloadFailed flag.
+    expect(result.firstOutputPersisted).toBe(true)
+    expect(result.reloadFailed).toBe(true)
 
     // markTurnCompleted MUST have run BEFORE the reload threw — proves the
     // turn is recorded as completed even though the post-write reload failed.
@@ -211,7 +218,7 @@ describe('runManagedTurn — reload failure', () => {
     const { runManagedTurn } = await import('@/lib/ai/agent/managed/runtime')
     const events: AgentEvent[] = []
 
-    await runManagedTurn({
+    const result = await runManagedTurn({
       session: mockSession,
       sections: [],
       request: { requestId: 'req-ok', locale: 'ro', message: 'Selectează apelul.' },
@@ -228,5 +235,8 @@ describe('runManagedTurn — reload failure', () => {
 
     expect(events.filter(e => e.type === 'error')).toHaveLength(0)
     expect(events.filter(e => e.type === 'done')).toHaveLength(1)
+    // Happy-path return: reload landed, route should run success accounting.
+    expect(result.firstOutputPersisted).toBe(true)
+    expect(result.reloadFailed).toBeFalsy()
   })
 })
