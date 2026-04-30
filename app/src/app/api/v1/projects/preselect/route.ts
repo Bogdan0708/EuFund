@@ -129,42 +129,56 @@ async function handlePreselect(
 
   // Shared existence probe used by both confirm-new and confirm-override.
   // `searchCalls` emits each match's callId via the fallback chain
-  // `metadata.callId || metadata.callCode || metadata.sourceId || r.id`, so
-  // a correct probe must be able to confirm on any of those four sources.
-  // Four authoritative prongs — each exits early on first match, no reliance
-  // on cosine-similarity ranking:
-  //   1. Filter on metadata.callId (canonical, covers the common case).
-  //   2. Filter on metadata.callCode (bulk-ingested points often carry
-  //      callCode as the primary identifier — evidence.ts emits it as the
-  //      second prong of the dedup fallback chain).
-  //   3. Filter on metadata.sourceId (covers ingest-paths that populate only
-  //      sourceId).
-  //   4. Reproducibility fallback: re-run the exact search the ambiguous
-  //      picker used — the client-supplied `description` — with a larger
-  //      limit (25) and post-filter on emitted callId. If the picker
-  //      surfaced this callId to the user, the description-based search
-  //      must be able to reach it via the same fallback chain. This covers
-  //      the rare case where the callId is rooted in point-id only.
+  // `metadata.callId || metadata.callCode || metadata.sourceId || r.id`,
+  // so a correct probe must be able to confirm on any of those four
+  // sources.
   //
-  // Returns the matched CallMatch (with score + title) or null. Returning
-  // the record — not just a boolean — lets confirm-new pass the real
-  // selectedScore through to initializeSession instead of hardcoding 1.
+  // Score derivation is split from existence on purpose. Earlier revisions
+  // of this helper returned the score of the first identifier-filtered
+  // probe that hit, but that score is similarity-to-callId-string, not
+  // similarity-to-project-description — telemetry junk shaped like real
+  // data. Codex flagged it on 2026-04-30. Now:
+  //
+  //   1. **Score** comes from a description-ranked search (no filter).
+  //      This reproduces the picker's search path and yields a real
+  //      similarity-to-description score for the chosen call when it
+  //      surfaces in the top-25.
+  //   2. **Existence** falls back to filter-by-callId / -callCode /
+  //      -sourceId probes when the description search misses (e.g. the
+  //      target is rooted in point-id only, or sits below the
+  //      description-search horizon). Identifier-only matches return a
+  //      sentinel score of 0 so downstream telemetry can distinguish
+  //      "real description match" from "merely exists in the index."
+  //
+  // Returns null when no probe found the target (→ 400 INVALID_CALL_ID).
   async function findMatchedCall(
     ctx: ServiceContext,
     target: string,
     description: string,
   ): Promise<CallMatch | null> {
+    // Description-ranked search FIRST: this is the authoritative source
+    // of similarity-to-description scores. Limit 25 matches the previous
+    // reproducibility-fallback budget.
+    const descSearch = await searchCalls(ctx, description, { maxResults: 25 })
+    const descMatch = descSearch.matches.find(m => m.callId === target)
+    if (descMatch) return descMatch
+
+    // Identifier-filtered existence probes. Each exits early on first
+    // hit. Score is set to 0 to flag "exists in index, but no
+    // description-based ranking was achievable" — confirm-new
+    // initializeSession persists this, and a 0-score row in agent_sessions
+    // tells operators the picker confirmed via identifier path only.
+    const flag = (m: CallMatch): CallMatch => ({ ...m, score: 0 })
     const p1 = await searchCalls(ctx, target, { callId: target, maxResults: 1 })
     const m1 = p1.matches.find(m => m.callId === target)
-    if (m1) return m1
+    if (m1) return flag(m1)
     const p2 = await searchCalls(ctx, target, { callCode: target, maxResults: 1 })
     const m2 = p2.matches.find(m => m.callId === target)
-    if (m2) return m2
+    if (m2) return flag(m2)
     const p3 = await searchCalls(ctx, target, { sourceId: target, maxResults: 1 })
     const m3 = p3.matches.find(m => m.callId === target)
-    if (m3) return m3
-    const p4 = await searchCalls(ctx, description, { maxResults: 25 })
-    return p4.matches.find(m => m.callId === target) ?? null
+    if (m3) return flag(m3)
+    return null
   }
 
   // Confirm-override mode: existing sessionId + confirmCandidateId. The user

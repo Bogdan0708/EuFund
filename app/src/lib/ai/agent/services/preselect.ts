@@ -73,11 +73,14 @@ export async function rankCandidates(
   description: string,
   excludeCallIds: string[] = [],
 ): Promise<Candidate[]> {
-  // Overfetch scaled by exclusion count: with ≥10 excludeCallIds the post-
-  // filter would empty out and falsely surface no_match. Capped at 50 — the
-  // ceiling already supported by the picker (`excludeCallIds.max(50)` in
-  // RequestSchema).
-  const maxResults = Math.min(50, 10 + excludeCallIds.length * 2)
+  // Overfetch must clear the exclusion list AND leave headroom for the
+  // top-5 slice. RequestSchema caps excludeCallIds at 50, so at the worst
+  // case we need >50 candidates after filtering — fetch
+  // excludeCallIds.length + 15 (5 desired + 10 margin) so even all 50
+  // exclusions matching the top of the index leaves a usable pool.
+  // Earlier revisions capped maxResults at 50, which silently false-no_match'd
+  // any user with a near-max exclusion list. Codex flagged it 2026-04-30.
+  const maxResults = excludeCallIds.length + 15
   const { matches } = await searchCalls(ctx, description, { maxResults })
   const excluded = new Set(excludeCallIds)
   return matches

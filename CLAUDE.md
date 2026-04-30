@@ -261,7 +261,7 @@ This project is part of a cross-project knowledge system:
 - `instrumentationHook: true` in next.config.mjs enables Sentry — only active when `SENTRY_DSN` env var is set.
 - `direct-ingest-guides.ts` is emergency-only — it bypasses API auth, audit logging, and review. Never use as a normal ingestion path.
 - Kill-switch / rollout-control feature flags must pass `bypassCache: true` — a cached read can delay an emergency disable by up to 60s on warm instances.
-- **Cloud Build deploy is full-replace for env vars and secrets.** `--set-env-vars` overwrites all env vars; `--update-secrets` updates the listed keys but routed providers absent from the list are silently dropped. Every provider used at runtime (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `PERPLEXITY_API_KEY`, `GOOGLE_AI_API_KEY`, …) must be explicitly listed in `cloudbuild.production.yaml` — pre-flight any deploy by greping `app/src/lib/ai/providers/*.ts` for required env vars and matching them against the deploy command.
+- **Cloud Build deploy: `--set-env-vars` and `--set-secrets` are full-replace; `--update-secrets` is additive.** With `--update-secrets` (the form `cloudbuild.production.yaml` uses), keys not in the flag are left as-is on redeploy — but a key that was never wired in the first place will never be auto-added. Pre-flight any deploy by greping `app/src/lib/ai/providers/*.ts` for required env vars and matching every routed provider (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `PERPLEXITY_API_KEY`, `GOOGLE_AI_API_KEY`, …) against the deploy command. Missing-on-first-deploy is the failure mode — silent until a request hits the unrouted provider.
 
 ### Gotchas — dev-environment mechanics
 
