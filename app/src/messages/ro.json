@@ -1354,7 +1354,8 @@
       "PRESELECT_UNAVAILABLE": "Sistemul de căutare este momentan indisponibil. Încearcă din nou în câteva momente.",
       "DESCRIPTION_TOO_SHORT": "Descrie proiectul mai în detaliu (cel puțin 40 de caractere).",
       "OUTLINE_FROZEN": "Outline-ul este înghețat, nu mai poți schimba apelul.",
-      "CONCURRENCY_CONFLICT": "Starea sesiunii s-a schimbat între timp. Reîncearcă."
+      "CONCURRENCY_CONFLICT": "Starea sesiunii s-a schimbat între timp. Reîncearcă.",
+      "ADOPTION_FAILED": "Apelul a fost selectat, dar sesiunea nu a putut fi inițializată. Reîncearcă."
     }
   },
   "docType": {

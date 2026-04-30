@@ -245,7 +245,9 @@ describe('POST /api/v1/projects/preselect — error paths', () => {
 
 describe('POST /api/v1/projects/preselect — confirm mode', () => {
   it('creates session with the specified confirmCandidateId, skips ranker', async () => {
-    mockSearchCalls.mockResolvedValue({
+    // Description-ranked search (probe 1) finds the target — its score is
+    // similarity-to-description, the only meaningful signal for telemetry.
+    mockSearchCalls.mockResolvedValueOnce({
       matches: [{ callId: 'chosen-call-id', title: 'Chosen', program: 'P', score: 0.9, snippet: '', sourceUrl: undefined }],
     })
     mockInitializeSession.mockResolvedValue({
@@ -263,23 +265,23 @@ describe('POST /api/v1/projects/preselect — confirm mode', () => {
     expect(body.kind).toBe('selected')
     expect(body.selectedCallId).toBe('chosen-call-id')
     expect(mockRankCandidates).not.toHaveBeenCalled()
-    // Existence probe uses a filtered Qdrant search, not semantic similarity.
-    expect(mockSearchCalls).toHaveBeenCalledWith(
-      expect.any(Object),
-      'chosen-call-id',
-      expect.objectContaining({ callId: 'chosen-call-id' }),
-    )
+    // First probe: description search (no filter), query=description.
+    expect(mockSearchCalls.mock.calls[0][1]).toBe('x'.repeat(50))
+    expect(mockSearchCalls.mock.calls[0][2]).toMatchObject({ maxResults: 25 })
+    expect(mockSearchCalls.mock.calls[0][2]).not.toHaveProperty('callId')
     expect(mockInitializeSession).toHaveBeenCalledWith(expect.objectContaining({
       selectedCallId: 'chosen-call-id',
-      candidates: [{ callId: 'chosen-call-id', title: 'chosen-call-id', score: 1 }],
+      // Score comes from the description-ranked search, NOT the callId-string
+      // query that the old findMatchedCall ran. Real similarity-to-description.
+      candidates: [{ callId: 'chosen-call-id', title: 'Chosen', score: 0.9 }],
+      selectedScore: 0.9,
       excludeCallIdsApplied: [],
     }))
   })
 
-  it('returns 400 INVALID_CALL_ID when all three existence prongs reject', async () => {
-    // Prong 1 (callId filter), prong 2 (sourceId filter), and prong 3
-    // (description-based) all return no matching callId — the client sent
-    // a callId that genuinely isn't in the store.
+  it('returns 400 INVALID_CALL_ID when all four existence prongs reject', async () => {
+    // Probe 1 (description search) and probes 2-4 (callId / callCode /
+    // sourceId filters) all return no matching callId — genuinely absent.
     mockSearchCalls.mockResolvedValue({ matches: [] })
 
     const res = await POST(req({
@@ -290,19 +292,84 @@ describe('POST /api/v1/projects/preselect — confirm mode', () => {
 
     expect(res.status).toBe(400)
     expect((await res.json()).error.code).toBe('INVALID_CALL_ID')
-    expect(mockSearchCalls).toHaveBeenCalledTimes(3)
+    expect(mockSearchCalls).toHaveBeenCalledTimes(4)
     expect(mockInitializeSession).not.toHaveBeenCalled()
   })
 
-  it('confirms callIds via the metadata.sourceId authoritative prong', async () => {
-    // Real-world: the ambiguous picker surfaced a candidate whose metadata
-    // had no callId — searchCalls emitted callId from sourceId. Prong 1
-    // (filter on metadata.callId) returns empty; prong 2 (filter on
-    // metadata.sourceId) finds the point and emits the target callId via
-    // the fallback chain. No need for the description-based prong 3.
+  it('confirms callIds via the metadata.callId identifier probe with score=0', async () => {
+    // Description search misses (target not in top-25); callId filter hits.
+    // Score is sentinel 0 because we only have similarity-to-callId, which
+    // is not a meaningful signal — flagging it lets dashboards distinguish
+    // identifier-only confirmations from real description matches.
     mockSearchCalls
-      .mockResolvedValueOnce({ matches: [] }) // prong 1: metadata.callId filter
-      .mockResolvedValueOnce({                // prong 2: metadata.sourceId filter
+      .mockResolvedValueOnce({ matches: [] }) // probe 1: description search
+      .mockResolvedValueOnce({                // probe 2: metadata.callId filter
+        matches: [
+          { callId: 'callid-call', title: 'From callId', program: 'P', score: 0.95, snippet: '', sourceUrl: undefined },
+        ],
+      })
+    mockInitializeSession.mockResolvedValue({
+      sessionId: 'session-xyz', phase: 'structuring', blueprintKind: 'structured',
+    })
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      confirmCandidateId: 'callid-call',
+    }))
+
+    expect(res.status).toBe(200)
+    expect((await res.json()).kind).toBe('selected')
+    expect(mockSearchCalls).toHaveBeenCalledTimes(2)
+    expect(mockSearchCalls.mock.calls[0][2]).not.toHaveProperty('callId') // description
+    expect(mockSearchCalls.mock.calls[1][2]).toMatchObject({ callId: 'callid-call' })
+    // Score sentinel: identifier-only match gets score=0, NOT the 0.95 from
+    // the filter-by-callId search (that's similarity-to-id-string, junk).
+    expect(mockInitializeSession).toHaveBeenCalledWith(expect.objectContaining({
+      selectedScore: 0,
+      candidates: [{ callId: 'callid-call', title: 'From callId', score: 0 }],
+    }))
+  })
+
+  it('confirms callIds via the metadata.callCode authoritative prong with score=0', async () => {
+    // Bulk-ingested points often carry callCode as the primary identifier.
+    // Probe 1 (description) and probe 2 (callId filter) miss; probe 3
+    // (callCode filter) hits. Sentinel score=0.
+    mockSearchCalls
+      .mockResolvedValueOnce({ matches: [] }) // probe 1: description
+      .mockResolvedValueOnce({ matches: [] }) // probe 2: callId filter
+      .mockResolvedValueOnce({                // probe 3: callCode filter
+        matches: [
+          { callId: 'callcode-call', title: 'From callCode', program: 'P', score: 0.7, snippet: '', sourceUrl: undefined },
+        ],
+      })
+    mockInitializeSession.mockResolvedValue({
+      sessionId: 'session-xyz', phase: 'structuring', blueprintKind: 'structured',
+    })
+
+    const res = await POST(req({
+      description: 'x'.repeat(50),
+      locale: 'ro',
+      confirmCandidateId: 'callcode-call',
+    }))
+
+    expect(res.status).toBe(200)
+    expect((await res.json()).kind).toBe('selected')
+    expect(mockSearchCalls).toHaveBeenCalledTimes(3)
+    expect(mockSearchCalls.mock.calls[2][2]).toMatchObject({ callCode: 'callcode-call' })
+    expect(mockInitializeSession).toHaveBeenCalledWith(expect.objectContaining({
+      selectedScore: 0,
+    }))
+  })
+
+  it('confirms callIds via the metadata.sourceId authoritative prong with score=0', async () => {
+    // Probe 1 (description), 2 (callId), 3 (callCode) all miss; probe 4
+    // (sourceId filter) hits. Sentinel score=0.
+    mockSearchCalls
+      .mockResolvedValueOnce({ matches: [] }) // probe 1: description
+      .mockResolvedValueOnce({ matches: [] }) // probe 2: callId filter
+      .mockResolvedValueOnce({ matches: [] }) // probe 3: callCode filter
+      .mockResolvedValueOnce({                // probe 4: sourceId filter
         matches: [
           { callId: 'sourceid-call', title: 'From sourceId', program: 'P', score: 0.2, snippet: '', sourceUrl: undefined },
         ],
@@ -319,42 +386,11 @@ describe('POST /api/v1/projects/preselect — confirm mode', () => {
 
     expect(res.status).toBe(200)
     expect((await res.json()).kind).toBe('selected')
-    expect(mockSearchCalls).toHaveBeenCalledTimes(2)
-    expect(mockSearchCalls.mock.calls[0][2]).toMatchObject({ callId: 'sourceid-call' })
-    expect(mockSearchCalls.mock.calls[1][2]).toMatchObject({ sourceId: 'sourceid-call' })
-    expect(mockInitializeSession).toHaveBeenCalled()
-  })
-
-  it('confirms callIds via prong-3 reproducibility fallback using description search', async () => {
-    // Edge case: metadata.callId and metadata.sourceId both miss, but the
-    // point id is the callId (or ingest used a non-standard field). The
-    // picker found the candidate via the project description; prong 3
-    // reproduces that search with a larger limit and finds the same point.
-    mockSearchCalls
-      .mockResolvedValueOnce({ matches: [] })                        // prong 1
-      .mockResolvedValueOnce({ matches: [] })                        // prong 2
-      .mockResolvedValueOnce({                                       // prong 3: description search
-        matches: [
-          { callId: 'pointid-call', title: 'Via description', program: 'P', score: 0.5, snippet: '', sourceUrl: undefined },
-        ],
-      })
-    mockInitializeSession.mockResolvedValue({
-      sessionId: 'session-xyz', phase: 'structuring', blueprintKind: 'structured',
-    })
-
-    const res = await POST(req({
-      description: 'original project description that picker used',
-      locale: 'ro',
-      confirmCandidateId: 'pointid-call',
+    expect(mockSearchCalls).toHaveBeenCalledTimes(4)
+    expect(mockSearchCalls.mock.calls[3][2]).toMatchObject({ sourceId: 'sourceid-call' })
+    expect(mockInitializeSession).toHaveBeenCalledWith(expect.objectContaining({
+      selectedScore: 0,
     }))
-
-    expect(res.status).toBe(200)
-    expect(mockSearchCalls).toHaveBeenCalledTimes(3)
-    // Prong 3 uses the description as the query (not the callId) — this is
-    // the key property: the probe reproduces the picker's search path.
-    expect(mockSearchCalls.mock.calls[2][1]).toBe('original project description that picker used')
-    expect(mockSearchCalls.mock.calls[2][2]).not.toHaveProperty('callId')
-    expect(mockSearchCalls.mock.calls[2][2]).not.toHaveProperty('sourceId')
   })
 
   it('returns 503 PRESELECT_UNAVAILABLE when the existence check fails', async () => {
