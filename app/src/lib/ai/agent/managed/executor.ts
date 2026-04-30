@@ -407,15 +407,30 @@ async function dispatchTool(
       // Precondition: blueprint writes are restricted to preselect-research
       // turns on the same session that has the matching selectedCallId.
       // saveCallBlueprint writes to the GLOBAL callKnowledge table (cross-
-      // tenant cache), so a model in a later phase or with a mismatched
-      // callId could otherwise poison the cache for every other tenant.
-      // The session-row write-back below has a CAS WHERE on the same
-      // condition, but that runs AFTER the global write — kept here as
-      // defense-in-depth, not as the authoritative gate.
+      // tenant cache), so a model in a later phase, with a mismatched
+      // callId, OR running in a non-preselect (V3-style discovery) session
+      // could poison the cache for every other tenant.
+      //
+      // Three required conditions:
+      //   1. currentPhase === 'research' — blueprint extraction is only
+      //      ever a research-phase activity.
+      //   2. selectedCallId === input.callId — the model can only write
+      //      blueprint data for the call this session is bound to.
+      //   3. planningArtifact.preselect.version === 1 — only sessions
+      //      bootstrapped via deterministic preselect (which set the
+      //      callKnowledge contract: rawEvidence injected, model asked
+      //      to extract structure) are allowed to write to the cache.
+      //      Discovery-style V3 sessions that happen to have a
+      //      selectedCallId in research phase MUST NOT.
+      //
+      // The session-row write-back below has a CAS WHERE that subsumes
+      // (1) and (2) — kept as defense-in-depth, not the authoritative
+      // gate. Only this precondition checks (3).
       const [sessionRow] = await db
         .select({
           currentPhase: agentSessions.currentPhase,
           selectedCallId: agentSessions.selectedCallId,
+          planningArtifact: agentSessions.planningArtifact,
         })
         .from(agentSessions)
         .where(eq(agentSessions.id, ctx.sessionId))
@@ -423,13 +438,17 @@ async function dispatchTool(
       if (!sessionRow) {
         throw new NotFoundError('agent_session', ctx.sessionId)
       }
+      const preselectVersion = (
+        sessionRow.planningArtifact as { preselect?: { version?: number } } | null
+      )?.preselect?.version
       if (
         sessionRow.currentPhase !== 'research' ||
-        sessionRow.selectedCallId !== i.callId
+        sessionRow.selectedCallId !== i.callId ||
+        preselectVersion !== 1
       ) {
         throw new ValidationError(
           'callId',
-          'save_call_blueprint requires currentPhase=research and selectedCallId matching the blueprint callId',
+          'save_call_blueprint requires a preselect-research session with selectedCallId matching the blueprint callId',
           'POLICY_BLUEPRINT_PHASE_GATE',
         )
       }
