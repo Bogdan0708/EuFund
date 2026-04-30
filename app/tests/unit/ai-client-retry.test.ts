@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const generateMock = vi.fn()
+const logInfoMock = vi.hoisted(() => vi.fn())
+const logWarnMock = vi.hoisted(() => vi.fn())
+const logErrorMock = vi.hoisted(() => vi.fn())
+
 vi.mock('@/lib/ai/providers/router', () => ({
   generate: generateMock,
   embed: vi.fn(),
@@ -24,10 +28,15 @@ vi.mock('@/lib/errors', async (importOriginal) => {
   }
 })
 
-vi.mock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }))
+vi.mock('@/lib/logger', () => ({ logger: { child: () => ({ info: logInfoMock, warn: logWarnMock, error: logErrorMock }) } }))
 
 describe('aiGenerate — no outer withRetry, original errors preserved', () => {
-  beforeEach(() => { generateMock.mockReset() })
+  beforeEach(() => {
+    generateMock.mockReset()
+    logInfoMock.mockReset()
+    logWarnMock.mockReset()
+    logErrorMock.mockReset()
+  })
 
   it('does NOT wrap call in @/lib/errors withRetry', async () => {
     generateMock.mockResolvedValueOnce({
@@ -49,5 +58,23 @@ describe('aiGenerate — no outer withRetry, original errors preserved', () => {
 
     await expect(aiGenerate({ system: 's', prompt: 'p' })).rejects.toBe(upstreamError)
     // Specifically: NOT wrapped as Errors.serviceUnavailable(...)
+  })
+
+  it('logs provider/model/tier on failure while rethrowing the original error', async () => {
+    const upstreamError = Object.assign(new Error('auth failed'), { status: 401 })
+    generateMock.mockRejectedValueOnce(upstreamError)
+    const { aiGenerate } = await import('@/lib/ai/client')
+
+    await expect(aiGenerate({ system: 's', prompt: 'p' })).rejects.toBe(upstreamError)
+
+    expect(logErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: upstreamError,
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-6',
+        tier: 'standard',
+      }),
+      'AI generation failed',
+    )
   })
 })

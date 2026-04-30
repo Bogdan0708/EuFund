@@ -44,6 +44,9 @@ export async function aiGenerate(opts: {
         tokensUsed: response.tokensUsed.input + response.tokensUsed.output,
       };
     });
+  } catch (error) {
+    log.error({ error, provider: resolved.provider, model: resolved.model, tier: resolved.tier }, 'AI generation failed');
+    throw error;
   } finally {
     log.info({
       operation: 'aiGenerate',
@@ -84,6 +87,12 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
         tokensUsed: response.tokensUsed.input + response.tokensUsed.output,
       };
     });
+  } catch (error) {
+    log.error(
+      { error, schemaName: opts.schemaName, provider: resolved.provider, model: resolved.model, tier: resolved.tier },
+      'AI structured generation failed',
+    );
+    throw error;
   } finally {
     log.info({
       operation: 'aiGenerateObject',
@@ -116,6 +125,12 @@ export async function aiEmbed(text: string): Promise<{ embedding: number[]; toke
         tokensUsed: response.usage?.total_tokens || Math.ceil(text.length / 4),
       };
     });
+  } catch (error) {
+    log.error(
+      { error, provider: 'openai', model: AI_CONFIG.embedding.model, tier: 'embedding' },
+      'Embedding generation failed',
+    );
+    throw error;
   } finally {
     log.info({ operation: 'aiEmbed', durationMs: Number((performance.now() - startTime).toFixed(2)) }, 'AI call completed');
   }
