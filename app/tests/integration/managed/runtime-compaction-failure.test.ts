@@ -8,19 +8,10 @@ function makeFakeStream(events: unknown[]) {
   }
 }
 
-const stream1Events = [
+const streamEvents = [
   { type: 'message_start', message: { id: 'm1', type: 'message', role: 'assistant', model: 'claude-sonnet-4-6', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 100, output_tokens: 0 } } },
-  { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tu_set', name: 'set_selected_call', input: {} } },
-  { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"sessionId":"11111111-1111-4111-8111-111111111111","callId":"CALL-1","expectedStateVersion":0}' } },
-  { type: 'content_block_stop', index: 0 },
-  { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 20 } },
-  { type: 'message_stop' },
-]
-
-const stream2Events = [
-  { type: 'message_start', message: { id: 'm2', type: 'message', role: 'assistant', model: 'claude-sonnet-4-6', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 150, output_tokens: 0 } } },
   { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
-  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done.' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hi.' } },
   { type: 'content_block_stop', index: 0 },
   { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 5 } },
   { type: 'message_stop' },
@@ -29,9 +20,7 @@ const stream2Events = [
 const { getAnthropicClient } = vi.hoisted(() => ({
   getAnthropicClient: vi.fn(() => ({
     messages: {
-      stream: vi.fn()
-        .mockImplementationOnce(() => makeFakeStream(stream1Events))
-        .mockImplementationOnce(() => makeFakeStream(stream2Events)),
+      stream: vi.fn().mockImplementation(() => makeFakeStream(streamEvents)),
     },
   })),
 }))
@@ -107,7 +96,6 @@ vi.mock('@/lib/ai/agent/services/sections', () => ({
 vi.mock('@/lib/ai/agent/services/projects', () => ({ getProjectSummary: vi.fn(), listUploadedDocuments: vi.fn() }))
 vi.mock('@/lib/ai/agent/services/eligibility', () => ({ runEligibility: vi.fn(), scoreFit: vi.fn() }))
 
-// Spy on markTurnCompleted so we can assert it ran before the reload threw.
 vi.mock('@/lib/ai/agent/managed/history', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/ai/agent/managed/history')>()
   return {
@@ -116,6 +104,14 @@ vi.mock('@/lib/ai/agent/managed/history', async (importOriginal) => {
     appendManagedMessage: vi.fn().mockResolvedValue(0),
     persistFirstDurableOutput: vi.fn().mockResolvedValue(undefined),
     loadManagedHistory: vi.fn().mockResolvedValue({ messages: [], systemSummary: null }),
+  }
+})
+
+vi.mock('@/lib/ai/agent/history', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/ai/agent/history')>()
+  return {
+    ...actual,
+    compactIfNeeded: vi.fn(),
   }
 })
 
@@ -145,98 +141,66 @@ const mockSession: AgentSession = {
   updatedAt: new Date(),
 }
 
-describe('runManagedTurn — reload failure', () => {
+describe('runManagedTurn — compaction failure surfacing', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('emits exactly one terminal error, no done, after markTurnCompleted', async () => {
-    const { setSelectedCall } = await import('@/lib/ai/agent/services/application')
-    vi.mocked(setSelectedCall).mockResolvedValueOnce({ newStateVersion: 1 } as never)
-
-    const { reloadSessionAndSections } = await import('@/lib/ai/agent/managed/reload')
-    vi.mocked(reloadSessionAndSections).mockRejectedValueOnce(new Error('db down'))
-
-    const { markTurnCompleted } = await import('@/lib/ai/agent/managed/history')
+  it('emits done with degradedReason="compaction_failed" when compaction throws', async () => {
+    const { compactIfNeeded } = await import('@/lib/ai/agent/history')
+    vi.mocked(compactIfNeeded).mockRejectedValueOnce(new Error('compaction db down'))
 
     const { runManagedTurn } = await import('@/lib/ai/agent/managed/runtime')
     const events: AgentEvent[] = []
 
-    const result = await runManagedTurn({
+    await runManagedTurn({
       session: mockSession,
       sections: [],
-      request: { requestId: 'req-fail', locale: 'ro', message: 'Selectează apelul.' },
+      request: { requestId: 'req-compact', locale: 'ro', message: 'salut' },
       emit: (e) => events.push(e),
       turnId: '99999999-9999-4999-8999-999999999999',
       serviceCtx: {
         userId: mockSession.userId,
         sessionId: mockSession.id,
-        requestId: 'req-fail',
+        requestId: 'req-compact',
         now: new Date(),
         allowWrites: true,
       },
     })
 
-    // The runtime returns reloadFailed=true on the reload-throw path so the
-    // route can skip recordManagedSuccess / recordTurnSuccess. Output is
-    // durable (firstOutputPersisted stays true), but the success accounting
-    // gate must check the reloadFailed flag.
-    expect(result.firstOutputPersisted).toBe(true)
-    expect(result.reloadFailed).toBe(true)
-
-    // markTurnCompleted MUST have run BEFORE the reload threw — proves the
-    // turn is recorded as completed even though the post-write reload failed.
-    // Assert ordering via invocationCallOrder, not just call count: a future
-    // refactor that runs the reload first and falls through to markTurnCompleted
-    // on success would still see "called once" but would no longer satisfy the
-    // ordering invariant the catch path depends on.
-    expect(markTurnCompleted).toHaveBeenCalledTimes(1)
-    expect(reloadSessionAndSections).toHaveBeenCalledTimes(1)
-    const markOrder = vi.mocked(markTurnCompleted).mock.invocationCallOrder[0]
-    const reloadOrder = vi.mocked(reloadSessionAndSections).mock.invocationCallOrder[0]
-    expect(markOrder).toBeLessThan(reloadOrder)
-
-    const errorEvents = events.filter(e => e.type === 'error')
-    expect(errorEvents).toHaveLength(1)
-    if (errorEvents[0].type !== 'error') throw new Error('expected error event')
-    expect(errorEvents[0].retryable).toBe(false)
-    expect(errorEvents[0].message).toMatch(/Sesiunea|Session/)
-    expect(errorEvents[0].message.length).toBeGreaterThan(0)
-
+    // The turn is durable — output landed, so done event should fire.
     const doneEvents = events.filter(e => e.type === 'done')
-    expect(doneEvents).toHaveLength(0)
+    expect(doneEvents).toHaveLength(1)
+    if (doneEvents[0].type !== 'done') throw new Error('expected done event')
+    expect(doneEvents[0].degradedReason).toBe('compaction_failed')
+
+    // No user-visible error event — compaction failure is observability-only.
+    expect(events.filter(e => e.type === 'error')).toHaveLength(0)
   })
 
-  it('does NOT emit terminal error when reload succeeds', async () => {
-    const { setSelectedCall } = await import('@/lib/ai/agent/services/application')
-    vi.mocked(setSelectedCall).mockResolvedValueOnce({ newStateVersion: 1 } as never)
-
-    const { reloadSessionAndSections } = await import('@/lib/ai/agent/managed/reload')
-    vi.mocked(reloadSessionAndSections).mockResolvedValueOnce({
-      session: { ...mockSession, stateVersion: 1 },
-      sections: [],
-    })
+  it('emits done with degradedReason=null on the happy path', async () => {
+    const { compactIfNeeded } = await import('@/lib/ai/agent/history')
+    vi.mocked(compactIfNeeded).mockResolvedValueOnce({ compacted: false } as never)
 
     const { runManagedTurn } = await import('@/lib/ai/agent/managed/runtime')
     const events: AgentEvent[] = []
 
-    const result = await runManagedTurn({
+    await runManagedTurn({
       session: mockSession,
       sections: [],
-      request: { requestId: 'req-ok', locale: 'ro', message: 'Selectează apelul.' },
+      request: { requestId: 'req-happy', locale: 'ro', message: 'salut' },
       emit: (e) => events.push(e),
       turnId: '99999999-9999-4999-8999-999999999999',
       serviceCtx: {
         userId: mockSession.userId,
         sessionId: mockSession.id,
-        requestId: 'req-ok',
+        requestId: 'req-happy',
         now: new Date(),
         allowWrites: true,
       },
     })
 
-    expect(events.filter(e => e.type === 'error')).toHaveLength(0)
-    expect(events.filter(e => e.type === 'done')).toHaveLength(1)
-    // Happy-path return: reload landed, route should run success accounting.
-    expect(result.firstOutputPersisted).toBe(true)
-    expect(result.reloadFailed).toBeFalsy()
+    const doneEvents = events.filter(e => e.type === 'done')
+    expect(doneEvents).toHaveLength(1)
+    if (doneEvents[0].type !== 'done') throw new Error('expected done event')
+    expect(doneEvents[0].degradedReason).toBeNull()
   })
 })

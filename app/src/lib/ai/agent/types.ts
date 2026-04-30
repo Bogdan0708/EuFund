@@ -276,7 +276,7 @@ export type AgentEvent =
   | { type: 'state_update'; patch: Partial<UIStateSnapshot> }
   | { type: 'policy_violation'; gate: string; reason: string }
   | { type: 'error'; message: string; retryable: boolean }
-  | { type: 'done'; finalState: UIStateSnapshot }
+  | { type: 'done'; finalState: UIStateSnapshot; degradedReason?: string | null }
 
 // ── Request Shape ───────────────────────────────────────────────
 
