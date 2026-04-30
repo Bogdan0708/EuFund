@@ -116,6 +116,7 @@ describe('V3 runAgentTurn — assistant-message push consolidation (Task 21)', (
       sections: [],
       request: { message: 'hi', requestId: 'req-1', locale: 'ro' },
       emit: () => {},
+          turnId: 'tu-test',
     })
 
     expect(generateMock).toHaveBeenCalledTimes(2)

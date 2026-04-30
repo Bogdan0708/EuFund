@@ -55,6 +55,10 @@ export async function loadContext(sessionId: string): Promise<{
 
 /**
  * Append a message to the session history.
+ *
+ * Retries once on PG 23505 (UNIQUE(session_id, sequence_number) violation)
+ * to handle intra-session sequence-number races. Mirrors
+ * appendManagedMessage's pattern in managed/history.ts.
  */
 export async function appendMessage(
   sessionId: string,
@@ -64,28 +68,40 @@ export async function appendMessage(
     content: unknown
     toolName?: string
     toolCallId?: string
+    turnId?: string | null
   },
 ): Promise<number> {
-  // Get next sequence number
-  const [last] = await db.select()
-    .from(agentMessages)
-    .where(eq(agentMessages.sessionId, sessionId))
-    .orderBy(desc(agentMessages.sequenceNumber))
-    .limit(1)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const [last] = await db.select()
+      .from(agentMessages)
+      .where(eq(agentMessages.sessionId, sessionId))
+      .orderBy(desc(agentMessages.sequenceNumber))
+      .limit(1)
 
-  const sequenceNumber = last ? last.sequenceNumber + 1 : 0
+    const sequenceNumber = last ? (last.sequenceNumber as number) + 1 : 0
 
-  await db.insert(agentMessages).values({
-    sessionId,
-    role: message.role,
-    messageType: message.messageType,
-    content: message.content,
-    toolName: message.toolName ?? null,
-    toolCallId: message.toolCallId ?? null,
-    sequenceNumber,
-  })
-
-  return sequenceNumber
+    try {
+      await db.insert(agentMessages).values({
+        sessionId,
+        role: message.role,
+        messageType: message.messageType,
+        content: message.content,
+        toolName: message.toolName ?? null,
+        toolCallId: message.toolCallId ?? null,
+        turnId: message.turnId ?? null,
+        sequenceNumber,
+      })
+      return sequenceNumber
+    } catch (err) {
+      const pgCode = (err as { code?: string } | null)?.code
+      if (pgCode === '23505') {
+        if (attempt === 0) continue
+        throw new Error('appendMessage: sequence number conflict after retry')
+      }
+      throw err
+    }
+  }
+  throw new Error('appendMessage: sequence number conflict after retry')
 }
 
 /**

@@ -4,7 +4,7 @@
 // Uses the centralized routing policy and provider router.
 
 import { z } from 'zod';
-import { CircuitBreaker, Errors, withRetry } from '@/lib/errors';
+import { CircuitBreaker, Errors } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { AI_CONFIG } from './config';
 import { resolveAgentModel } from './model-routing';
@@ -30,28 +30,23 @@ export async function aiGenerate(opts: {
   const startTime = performance.now();
   const resolved = resolveAgentModel({ task: 'editing' }); // standard tier
   try {
-    return await generationBreaker.execute(() =>
-      withRetry(async () => {
-        try {
-          const response = await generate({
-            provider: resolved.provider,
-            model: resolved.model,
-            system: opts.system,
-            messages: [{ role: 'user', content: opts.prompt }],
-            maxTokens: opts.maxTokens ?? 20_000,
-            temperature: opts.temperature ?? AI_CONFIG.generation.temperature,
-          });
-
-          return {
-            text: response.content,
-            tokensUsed: response.tokensUsed.input + response.tokensUsed.output,
-          };
-        } catch (error) {
-          log.error({ error, provider: resolved.provider, model: resolved.model }, 'AI generation failed');
-          throw Errors.serviceUnavailable('AI generation failed');
-        }
-      })
-    );
+    return await generationBreaker.execute(async () => {
+      const response = await generate({
+        provider: resolved.provider,
+        model: resolved.model,
+        system: opts.system,
+        messages: [{ role: 'user', content: opts.prompt }],
+        maxTokens: opts.maxTokens ?? 20_000,
+        temperature: opts.temperature ?? AI_CONFIG.generation.temperature,
+      });
+      return {
+        text: response.content,
+        tokensUsed: response.tokensUsed.input + response.tokensUsed.output,
+      };
+    });
+  } catch (error) {
+    log.error({ error, provider: resolved.provider, model: resolved.model, tier: resolved.tier }, 'AI generation failed');
+    throw error;
   } finally {
     log.info({
       operation: 'aiGenerate',
@@ -77,30 +72,27 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
   const startTime = performance.now();
   const resolved = resolveAgentModel({ task: 'structure_extraction' }); // budget tier — best JSON
   try {
-    return await analysisBreaker.execute(() =>
-      withRetry(async () => {
-        try {
-          const response = await generate({
-            provider: resolved.provider,
-            model: resolved.model,
-            system: `${opts.system}\n\nReturn only valid JSON that matches this schema: ${JSON.stringify(zodToJsonSchema(opts.schema))}`,
-            messages: [{ role: 'user', content: opts.prompt }],
-            maxTokens: AI_CONFIG.analysis.maxTokens,
-            temperature: opts.temperature ?? AI_CONFIG.analysis.temperature,
-          });
-
-          const object = opts.schema.parse(JSON.parse(response.content));
-
-          return {
-            object,
-            tokensUsed: response.tokensUsed.input + response.tokensUsed.output,
-          };
-        } catch (error) {
-          log.error({ error, schemaName: opts.schemaName, provider: resolved.provider, model: resolved.model }, 'AI structured generation failed');
-          throw Errors.serviceUnavailable('AI structured generation failed');
-        }
-      })
+    return await analysisBreaker.execute(async () => {
+      const response = await generate({
+        provider: resolved.provider,
+        model: resolved.model,
+        system: `${opts.system}\n\nReturn only valid JSON that matches this schema: ${JSON.stringify(zodToJsonSchema(opts.schema))}`,
+        messages: [{ role: 'user', content: opts.prompt }],
+        maxTokens: AI_CONFIG.analysis.maxTokens,
+        temperature: opts.temperature ?? AI_CONFIG.analysis.temperature,
+      });
+      const object = opts.schema.parse(JSON.parse(response.content));
+      return {
+        object,
+        tokensUsed: response.tokensUsed.input + response.tokensUsed.output,
+      };
+    });
+  } catch (error) {
+    log.error(
+      { error, schemaName: opts.schemaName, provider: resolved.provider, model: resolved.model, tier: resolved.tier },
+      'AI structured generation failed',
     );
+    throw error;
   } finally {
     log.info({
       operation: 'aiGenerateObject',
@@ -122,25 +114,23 @@ export async function aiEmbed(text: string): Promise<{ embedding: number[]; toke
   const OpenAI = (await import('openai')).default;
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   try {
-    return await embeddingBreaker.execute(() =>
-      withRetry(async () => {
-        try {
-          const response = await client.embeddings.create({
-            model: AI_CONFIG.embedding.model,
-            input: text,
-            dimensions: AI_CONFIG.embedding.dimensions,
-          });
-
-          return {
-            embedding: response.data[0]?.embedding || [],
-            tokensUsed: response.usage?.total_tokens || Math.ceil(text.length / 4),
-          };
-        } catch (error) {
-          log.error({ error }, 'Embedding generation failed');
-          throw Errors.serviceUnavailable('Embedding generation failed');
-        }
-      })
+    return await embeddingBreaker.execute(async () => {
+      const response = await client.embeddings.create({
+        model: AI_CONFIG.embedding.model,
+        input: text,
+        dimensions: AI_CONFIG.embedding.dimensions,
+      });
+      return {
+        embedding: response.data[0]?.embedding || [],
+        tokensUsed: response.usage?.total_tokens || Math.ceil(text.length / 4),
+      };
+    });
+  } catch (error) {
+    log.error(
+      { error, provider: 'openai', model: AI_CONFIG.embedding.model, tier: 'embedding' },
+      'Embedding generation failed',
     );
+    throw error;
   } finally {
     log.info({ operation: 'aiEmbed', durationMs: Number((performance.now() - startTime).toFixed(2)) }, 'AI call completed');
   }

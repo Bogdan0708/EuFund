@@ -57,7 +57,7 @@ Ești în modul **doar-citire**. Poți căuta apeluri, citi documente, evalua el
 Doar **descoperire** (discovery) și **cercetare** (research). Când utilizatorul are nevoie de structurare, redactare sau revizuire, explică politicos că aceste faze sunt gestionate de fluxul standard.`
 
   const writeToolsLine = allowWrites
-    ? '\n- **Write** (scriere, cu confirmare explicită): `save_section_draft`, `approve_revision`, `rollback_section`, `set_application_status`, `set_selected_call`, `freeze_outline`, `mark_section_stale`, `reject_section`'
+    ? '\n- **Write** (scriere, cu confirmare explicită): `save_section_draft`, `approve_revision`, `rollback_section`, `set_application_status`, `set_selected_call`, `freeze_outline`, `mark_section_stale`, `reject_section`\n- **Internal write** (intern, fără confirmare suplimentară a utilizatorului): `save_call_blueprint`'
     : ''
 
   const readOnlyHardRule = allowWrites
@@ -71,7 +71,7 @@ Doar **descoperire** (discovery) și **cercetare** (research). Când utilizatoru
 
 Instrumentele de scriere modifică starea sesiunii. Respectă aceste reguli:
 
-1. **Confirmă înainte de a scrie.** Înainte de a apela orice instrument de scriere, obține intenția explicită a utilizatorului — fie o afirmație directă ("salvează", "aprobă această secțiune"), fie o confirmare de acțiune UI structurată. Nu scrie pe speculație.
+1. **Confirmă înainte de a scrie.** Înainte de a apela orice instrument de scriere, obține intenția explicită a utilizatorului — fie o afirmație directă ("salvează", "aprobă această secțiune"), fie o confirmare de acțiune UI structurată. Nu scrie pe speculație. **Excepție:** \`save_call_blueprint\` este o scriere internă declanșată automat când extragi un blueprint din dovezile injectate într-o sesiune preselectată faza research — preselectarea însăși este confirmarea utilizatorului, nu cere o confirmare suplimentară.
 
 2. **Un singur write pe rând.** Nu apela mai multe instrumente de scriere în paralel în aceeași tură. Execută o scriere, așteaptă rezultatul, apoi decide următorul pas. Runtime-ul impune această regulă — scrierile suplimentare din același mesaj primesc PARALLEL_WRITE_BLOCKED.
 
@@ -80,12 +80,31 @@ Instrumentele de scriere modifică starea sesiunii. Respectă aceste reguli:
 4. **Recuperare după coduri de politică.** Dacă o scriere returnează o eroare cu prefix \`POLICY_*\` (ex. \`POLICY_OUTLINE_NOT_FROZEN\`, \`POLICY_ELIGIBILITY_NOT_PASSED\`), citește mesajul și rezolvă precondiția înainte de reîncercare. Pentru \`POLICY_OUTLINE_NOT_FROZEN\`, apelează \`freeze_outline\` mai întâi. Pentru \`POLICY_ELIGIBILITY_NOT_PASSED\`, rulează \`run_eligibility\`. Pentru \`POLICY_VALIDATION_NOT_PASSED\` la \`set_application_status('completed')\`, rulează \`validate_application\` și rezolvă problemele raportate.`
     : ''
 
+  // PR2 Item A.3 — research phase has two mutually-exclusive branches.
+  // Branch 3a: managed runtime injected evidence into history. Tell the
+  // model NOT to call get_call_blueprint or retrieve_evidence — the
+  // injected tool_result already contains the chunks.
+  // Branch 3b: lookupBlueprint failed during preselect (rare). Model uses
+  // tools to fetch evidence directly. Existing behavior.
+  const preselectRawEvidence =
+    (session.planningArtifact as { preselect?: { rawEvidence?: unknown[] } } | null)
+      ?.preselect?.rawEvidence
+  const hasInjectedEvidence =
+    Array.isArray(preselectRawEvidence) && preselectRawEvidence.length > 0
+    && session.blueprint === null
+
   const phaseBootstrapBlock = phase === 'structuring' && session.selectedCallId
     ? `## Punct de pornire
 
 Apelul ${session.selectedCallId} a fost deja selectat prin preselectare deterministă.
 Blueprint-ul complet al apelului este deja disponibil în stare.
 Nu re-căuta apeluri. Începe cu generarea outline-ului.
+
+`
+    : phase === 'research' && session.selectedCallId && hasInjectedEvidence
+    ? `## Punct de pornire
+
+Apelul ${session.selectedCallId} a fost deja selectat prin preselectare deterministă. Rezultatul \`retrieve_evidence\` este deja prezent în istoricul conversației — **NU apela \`get_call_blueprint\`** și **NU apela \`retrieve_evidence\`**. Convertește rezultatul existent într-un blueprint structurat și apelează \`save_call_blueprint\` cu \`structureConfidence\` ≥ 0.4 numai dacă blueprint-ul este bine susținut de dovezi.
 
 `
     : phase === 'research' && session.selectedCallId
@@ -154,7 +173,7 @@ You are in **read-only mode**. You can search calls, read documents, evaluate el
 Only **discovery** and **research**. When the user needs structuring, drafting, or review, politely explain that those phases are handled by the standard workflow.`
 
   const writeToolsLine = allowWrites
-    ? '\n- **Write** (require explicit confirmation): `save_section_draft`, `approve_revision`, `rollback_section`, `set_application_status`, `set_selected_call`, `freeze_outline`, `mark_section_stale`, `reject_section`'
+    ? '\n- **Write** (require explicit confirmation): `save_section_draft`, `approve_revision`, `rollback_section`, `set_application_status`, `set_selected_call`, `freeze_outline`, `mark_section_stale`, `reject_section`\n- **Internal write** (no additional user confirmation needed): `save_call_blueprint`'
     : ''
 
   const readOnlyHardRule = allowWrites
@@ -168,7 +187,7 @@ Only **discovery** and **research**. When the user needs structuring, drafting, 
 
 Write tools mutate session state. Follow these rules:
 
-1. **Confirm before writing.** Before calling any write tool, get explicit user intent — either a direct statement ("save it", "approve this section") or a structured UI action confirmation. Never write on speculation.
+1. **Confirm before writing.** Before calling any write tool, get explicit user intent — either a direct statement ("save it", "approve this section") or a structured UI action confirmation. Never write on speculation. **Exception:** \`save_call_blueprint\` is an internal write triggered automatically when you extract a blueprint from injected evidence in a research-phase preselected session — the deterministic preselect itself is the user confirmation, no additional confirmation is required.
 
 2. **One write at a time.** Never call multiple write tools in parallel in the same turn. Execute one write, wait for the result, then decide the next step. The runtime enforces this — additional writes in the same message will return PARALLEL_WRITE_BLOCKED.
 
@@ -177,12 +196,25 @@ Write tools mutate session state. Follow these rules:
 4. **Policy-code recovery.** If a write returns an error prefixed with \`POLICY_*\` (e.g., \`POLICY_OUTLINE_NOT_FROZEN\`, \`POLICY_ELIGIBILITY_NOT_PASSED\`), read the message and address the precondition before retrying. For \`POLICY_OUTLINE_NOT_FROZEN\`, call \`freeze_outline\` first. For \`POLICY_ELIGIBILITY_NOT_PASSED\`, run \`run_eligibility\` first. For \`POLICY_VALIDATION_NOT_PASSED\` on \`set_application_status('completed')\`, run \`validate_application\` and address the reported issues.`
     : ''
 
+  const preselectRawEvidence =
+    (session.planningArtifact as { preselect?: { rawEvidence?: unknown[] } } | null)
+      ?.preselect?.rawEvidence
+  const hasInjectedEvidence =
+    Array.isArray(preselectRawEvidence) && preselectRawEvidence.length > 0
+    && session.blueprint === null
+
   const phaseBootstrapBlock = phase === 'structuring' && session.selectedCallId
     ? `## Starting point
 
 Call ${session.selectedCallId} has already been selected via deterministic preselect.
 The full call blueprint is already available in state.
 Do not re-run call search. Start with outline generation.
+
+`
+    : phase === 'research' && session.selectedCallId && hasInjectedEvidence
+    ? `## Starting point
+
+Call ${session.selectedCallId} has already been selected via deterministic preselect. The \`retrieve_evidence\` result is already present in the conversation history — **do NOT call \`get_call_blueprint\`** and **do NOT call \`retrieve_evidence\`**. Convert the existing result into a structured blueprint and call \`save_call_blueprint\` with \`structureConfidence\` ≥ 0.4 only when the blueprint is well supported by evidence.
 
 `
     : phase === 'research' && session.selectedCallId

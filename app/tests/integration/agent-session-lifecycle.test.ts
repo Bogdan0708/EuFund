@@ -108,6 +108,7 @@ describe('Agent Session Lifecycle', () => {
       sections: [],
       request: { message: 'I want to apply for green energy funding in Romania', requestId: 'req-1', locale: 'ro' },
       emit,
+          turnId: 'tu-test',
     })
 
     expect(result.session.stateVersion).toBe(1)
@@ -128,6 +129,7 @@ describe('Agent Session Lifecycle', () => {
       sections: [{ sectionKey: 'context', title: 'Context', status: 'pending', documentOrder: 1 } as any],
       request: { action: { type: 'approve_outline' }, requestId: 'req-2', locale: 'ro' },
       emit,
+          turnId: 'tu-test',
     })
 
     // approve_outline sets FREEZE + SET_PHASE(drafting) then continues to LLM
@@ -162,6 +164,7 @@ describe('Agent Session Lifecycle', () => {
       sections,
       request: { action: { type: 'accept_section', sectionKey: 'context' }, requestId: 'req-3', locale: 'ro' },
       emit,
+          turnId: 'tu-test',
     })
 
     const accepted = result.sections.find(s => s.sectionKey === 'context')
@@ -183,6 +186,7 @@ describe('Agent Session Lifecycle', () => {
       sections,
       request: { action: { type: 'mark_complete' }, requestId: 'req-4', locale: 'ro' },
       emit,
+          turnId: 'tu-test',
     })
 
     // Should NOT be completed — policy gate blocks it

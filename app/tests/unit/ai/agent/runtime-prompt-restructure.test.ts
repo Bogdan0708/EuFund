@@ -109,11 +109,13 @@ describe('V3 runtime — prompt restructure parity (PR 2a)', () => {
       session, sections: sectionsT1,
       request: { message: 'turn 1', requestId: 'req-1', locale: 'ro' },
       emit: () => {},
+          turnId: 'tu-test',
     })
     await runAgentTurn({
       session, sections: sectionsT2,
       request: { message: 'turn 2', requestId: 'req-2', locale: 'ro' },
       emit: () => {},
+          turnId: 'tu-test',
     })
 
     expect(capturedCalls).toHaveLength(2)
@@ -137,11 +139,13 @@ describe('V3 runtime — prompt restructure parity (PR 2a)', () => {
       session, sections: sectionsT1,
       request: { message: 'turn 1', requestId: 'req-1', locale: 'ro' },
       emit: () => {},
+          turnId: 'tu-test',
     })
     await runAgentTurn({
       session, sections: sectionsT2,
       request: { message: 'turn 2', requestId: 'req-2', locale: 'ro' },
       emit: () => {},
+          turnId: 'tu-test',
     })
 
     const firstSystemT1 = capturedCalls[0].messages.find(m => m.role === 'system')

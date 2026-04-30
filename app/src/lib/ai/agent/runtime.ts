@@ -9,6 +9,7 @@ import { checkPolicyGate } from './policies'
 import { getToolsForPhase } from './tools/registry'
 import './tools/index' // Side-effect: registers all tools
 import { loadContext, appendMessage, compactIfNeeded } from './history'
+import { markTurnCompleted } from './managed/history'
 import { zodToJsonSchema } from './utils'
 import { db } from '@/lib/db'
 import { agentSessions, agentCheckpoints, agentSections } from '@/lib/db/schema'
@@ -33,7 +34,24 @@ export interface RuntimeOptions {
   request: AgentRequest
   emit: EventEmitter
   routingCtx?: import('../model-routing').ModelRoutingContext
+  // Pre-stream turn-claim id. The route inserts the agent_turns row before
+  // calling runAgentTurn and passes the id in. runAgentTurn calls
+  // markTurnCompleted() immediately before each `done` emit so the
+  // reconciliation cron can distinguish completed turns from abandoned ones.
+  turnId: string
 }
+
+// V3 doesn't track per-turn token usage or cost the way managed does.
+// Pass empty telemetry — completedAt is the only field markTurnCompleted
+// flips to non-null, which is what the reconciliation cron checks.
+const V3_EMPTY_TELEMETRY = {
+  model: null,
+  inputTokens: null,
+  outputTokens: null,
+  cacheReadInputTokens: null,
+  cacheCreationInputTokens: null,
+  costUsdMicros: null,
+} as const
 
 /**
  * Run one turn of the agent conversation loop.
@@ -67,12 +85,14 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
         role: 'user',
         messageType: 'text',
         content: request.message,
+        turnId: opts.turnId,
       })
     } else if (request.action) {
       await appendMessage(session.id, {
         role: 'user',
         messageType: 'structured_action',
         content: request.action,
+        turnId: opts.turnId,
       })
     }
 
@@ -108,6 +128,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
         emit({ type: 'policy_violation', gate: request.action.type, reason: actionResult.policyViolation })
       }
       if (actionResult.skipLLM) {
+        await markTurnCompleted(opts.turnId, V3_EMPTY_TELEMETRY)
         emit({ type: 'state_update', patch: buildStatePatch(session, sections) })
         emit({ type: 'done', finalState: buildUISnapshot(session, sections) })
         return { session, sections }
@@ -223,6 +244,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
             role: 'assistant',
             messageType: 'text',
             content: response.content,
+            turnId: opts.turnId,
           })
         }
         break
@@ -305,6 +327,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
             content: { name: toolCall.name, arguments: toolCall.arguments },
             toolName: toolCall.name,
             toolCallId: toolCall.id,
+            turnId: opts.turnId,
           })
           await appendMessage(session.id, {
             role: 'tool',
@@ -312,6 +335,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
             content: { success: toolResult.success, data: toolResult.data, error: toolResult.error },
             toolName: toolCall.name,
             toolCallId: toolCall.id,
+            turnId: opts.turnId,
           })
 
           // Feed tool result back into conversation for next LLM iteration
@@ -400,6 +424,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     await compactIfNeeded(session.id, session.currentPhase)
 
     // 10. Emit done
+    await markTurnCompleted(opts.turnId, V3_EMPTY_TELEMETRY)
     emit({ type: 'state_update', patch: buildStatePatch(session, sections) })
     emit({ type: 'done', finalState: buildUISnapshot(session, sections) })
 

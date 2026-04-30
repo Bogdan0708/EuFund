@@ -230,3 +230,72 @@ function buildBlueprintFromCache(
     structureConfidence: row.structureConfidence,
   }
 }
+
+// ── buildCallBlueprintFromArgs ───────────────────────────────────────────
+//
+// Converts the partial input shape that save_call_blueprint accepts into a
+// full normalized CallBlueprint. Used by:
+//   - The MCP handler (mcp/write/save-call-blueprint.ts) for the call to
+//     saveCallBlueprint().
+//   - The managed executor's save_call_blueprint case for both
+//     saveCallBlueprint() AND the agent_sessions.blueprint write-back.
+//
+// Both call sites MUST construct the blueprint via this helper; otherwise
+// the cache row and the session row drift, and the next-turn skip
+// condition (`!session.blueprint`) becomes unreliable.
+
+export interface SaveCallBlueprintArgs {
+  callId: string
+  blueprint: {
+    callId?: string
+    program?: string
+    requiredSections?: { title: string; description: string; evaluationWeight?: number }[]
+    mandatoryAnnexes?: string[]
+    eligibilityCriteria?: string[]
+    structureConfidence?: number
+    sources?: string[]
+  }
+}
+
+export function buildCallBlueprintFromArgs(
+  args: SaveCallBlueprintArgs,
+  ctx: ServiceContext,
+): CallBlueprint {
+  const requiredSections = args.blueprint.requiredSections ?? []
+  const mandatoryAnnexes = args.blueprint.mandatoryAnnexes ?? []
+  const eligibilityCriteria = args.blueprint.eligibilityCriteria ?? []
+  const sources = args.blueprint.sources ?? []
+  const verifiedAt = ctx.now.toISOString()
+
+  // The schema input only carries { title, description, evaluationWeight? }
+  // per section. CallBlueprint.normalized.requiredSections is SectionSpec[]
+  // which has additional fields. The cache row in callKnowledge has
+  // historically stored the partial shape via the `as SectionSpec[]`
+  // precedent in buildBlueprintFromCache. Match that precedent here at
+  // the boundary so the helper's return type is honored without an `any`
+  // cast on the whole shape.
+  return {
+    callId: args.callId,
+    program: args.blueprint.program ?? 'Unknown',
+    isOpen: true,
+    amendments: [],
+    warnings: [],
+    requiredSections,
+    mandatoryAnnexes,
+    eligibilityCriteria,
+    evaluationGrid: [],
+    cofinancingRate: 0,
+    eligibilityResult: { score: 0, passCount: 0, failCount: 0, failures: [], warnings: [] },
+    sources,
+    verifiedAt,
+    raw: { notebookLmResponse: '', perplexityResponse: '', retrievedAt: verifiedAt },
+    normalized: {
+      requiredSections: requiredSections as unknown as SectionSpec[],
+      mandatoryAnnexes,
+      eligibilityCriteria,
+      evaluationGrid: [],
+      cofinancingRate: 0,
+    },
+    structureConfidence: args.blueprint.structureConfidence ?? 0.3,
+  }
+}

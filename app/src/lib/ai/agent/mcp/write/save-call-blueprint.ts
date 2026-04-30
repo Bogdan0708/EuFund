@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { saveCallBlueprint } from '../../services/blueprint'
+import { saveCallBlueprint, buildCallBlueprintFromArgs } from '../../services/blueprint'
 import { ValidationError, NotFoundError } from '../../services/errors'
 import type { ServiceContext } from '../../services/types'
 
@@ -15,7 +15,7 @@ const sectionSpecShape = z.object({
   evaluationWeight: z.number().optional(),
 })
 
-const inputShape = {
+export const inputShape = {
   callId: z.string().min(1),
   blueprint: z.object({
     callId: z.string().optional(),
@@ -28,6 +28,8 @@ const inputShape = {
   }),
 }
 
+export const inputSchema = z.object(inputShape)
+
 export function registerSaveCallBlueprint(server: McpServer, ctx: ServiceContext): void {
   server.tool(
     'save_call_blueprint',
@@ -35,26 +37,7 @@ export function registerSaveCallBlueprint(server: McpServer, ctx: ServiceContext
     inputShape,
     async (args) => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const blueprint: any = {
-          ...args.blueprint,
-          callId: args.callId,
-          isOpen: true,
-          amendments: [],
-          warnings: [],
-          requiredSections: args.blueprint.requiredSections ?? [],
-          mandatoryAnnexes: args.blueprint.mandatoryAnnexes ?? [],
-          eligibilityCriteria: args.blueprint.eligibilityCriteria ?? [],
-          evaluationGrid: [],
-          cofinancingRate: 0,
-          eligibilityResult: { score: 0, passCount: 0, failCount: 0, failures: [], warnings: [] },
-          sources: args.blueprint.sources ?? [],
-          verifiedAt: ctx.now.toISOString(),
-          raw: { notebookLmResponse: '', perplexityResponse: '', retrievedAt: ctx.now.toISOString() },
-          normalized: { requiredSections: args.blueprint.requiredSections ?? [], mandatoryAnnexes: args.blueprint.mandatoryAnnexes ?? [], eligibilityCriteria: args.blueprint.eligibilityCriteria ?? [], evaluationGrid: [], cofinancingRate: 0 },
-          structureConfidence: args.blueprint.structureConfidence ?? 0.3,
-        }
-
+        const blueprint = buildCallBlueprintFromArgs(args, ctx)
         const result = await saveCallBlueprint(ctx, args.callId, blueprint)
         return {
           content: [{ type: 'text', text: JSON.stringify(result) }],

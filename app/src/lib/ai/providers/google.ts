@@ -16,7 +16,7 @@ function getClient(): OpenAI {
 }
 
 export const googleProvider: ProviderClient = {
-  async generate(req: GenerateRequest): Promise<GenerateResult> {
+  async generate(req: GenerateRequest, signal?: AbortSignal): Promise<GenerateResult> {
     if (req.messages.some((m) => m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0)) {
       throw new UnsupportedOperationError('google', 'tool_calls in messages')
     }
@@ -34,7 +34,7 @@ export const googleProvider: ProviderClient = {
       max_completion_tokens: req.maxTokens ?? 20_000,
       temperature: req.temperature ?? 0.7,
       ...(req.tools ? { tools: req.tools } : {}),
-    })
+    }, signal ? { signal } : undefined)
     const choice = response.choices[0]
     const result: GenerateResult = {
       content: choice.message.content ?? '',

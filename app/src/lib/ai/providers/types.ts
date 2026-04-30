@@ -49,8 +49,8 @@ export interface ToolCallResult {
 export type ProviderName = 'openai' | 'anthropic' | 'google' | 'perplexity'
 
 export interface ProviderClient {
-  generate(req: GenerateRequest): Promise<GenerateResult>
-  embed?(text: string): Promise<number[]>
+  generate(req: GenerateRequest & { provider: ProviderName }, signal?: AbortSignal): Promise<GenerateResult>
+  embed?(text: string, signal?: AbortSignal): Promise<number[]>
 }
 
 export interface ModelConfig {

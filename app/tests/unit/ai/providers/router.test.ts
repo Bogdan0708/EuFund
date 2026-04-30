@@ -16,7 +16,7 @@ const perplexityMock = vi.fn()
 vi.mock('@/lib/ai/providers/perplexity', () => ({ perplexityProvider: { generate: perplexityMock } }))
 
 vi.mock('@/lib/ai/providers/retry', () => ({
-  withRetry: (fn: () => Promise<unknown>) => fn(),
+  withRetry: (fn: (sig: AbortSignal) => Promise<unknown>) => fn(new AbortController().signal),
 }))
 
 describe('router.generate — cache resolution + presence', () => {

@@ -21,6 +21,29 @@ import { claimTurn, deleteEmptyTurn } from '@/lib/ai/agent/managed/history'
 
 const log = logger.child({ component: 'api-agent' })
 
+async function claimV3OrConflict(
+  sessionId: string,
+  userId: string,
+  requestId: string,
+): Promise<{ kind: 'claimed'; turnId: string } | { kind: 'conflict'; response: NextResponse }> {
+  const claim = await claimTurn({ sessionId, userId, requestId, runtimeMode: 'v3' })
+  if (claim.kind === 'conflict') {
+    return {
+      kind: 'conflict',
+      response: NextResponse.json({
+        error: {
+          code: 'conflict_request_id',
+          messageRo:
+            'Cerere deja înregistrată. Dacă ai reîncercat, operațiunea a fost deja salvată.',
+          messageEn:
+            'Request already recorded. If this was a retry, the operation has already been saved.',
+        },
+      }, { status: 409 }),
+    }
+  }
+  return { kind: 'claimed', turnId: claim.turnId }
+}
+
 async function handler(req: NextRequest) {
   const user = await requireAuth()
 
@@ -255,7 +278,9 @@ async function handler(req: NextRequest) {
             { status: 503 },
           )
         }
-        return runV3WithSSE(session, sections, body, user)
+        const v3Claim1 = await claimV3OrConflict(session.id, user.id, body.requestId)
+        if (v3Claim1.kind === 'conflict') return v3Claim1.response
+        return runV3WithSSE(session, sections, body, user, v3Claim1.turnId)
       }
 
       // Pre-stream turn-claim. The INSERT either succeeds atomically
@@ -325,7 +350,9 @@ async function handler(req: NextRequest) {
     )
   }
 
-  return runV3WithSSE(session, sections, body, user)
+  const v3Claim2 = await claimV3OrConflict(session.id, user.id, body.requestId)
+  if (v3Claim2.kind === 'conflict') return v3Claim2.response
+  return runV3WithSSE(session, sections, body, user, v3Claim2.turnId)
 }
 
 function runV3WithSSE(
@@ -333,6 +360,7 @@ function runV3WithSSE(
   sections: AgentSection[],
   body: AgentRequest,
   user: { id: string },
+  turnId: string,
 ): Response {
   // Stream response via SSE
   const encoder = new TextEncoder()
@@ -345,7 +373,7 @@ function runV3WithSSE(
 
       try {
         const routingCtx = await getAIModelRoutingContext(user.id)
-        await runAgentTurn({ session, sections, request: body, emit, routingCtx })
+        await runAgentTurn({ session, sections, request: body, emit, routingCtx, turnId })
       } catch (error) {
         const errorEvent: AgentEvent = {
           type: 'error',

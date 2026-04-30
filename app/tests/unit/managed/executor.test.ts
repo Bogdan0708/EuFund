@@ -100,19 +100,6 @@ describe('executeManagedTool', () => {
     expect(result.content).toMatch(/standard workflow/i)
   })
 
-  it('blocks Phase 4 save-call-blueprint tool with targeted rejection', async () => {
-    const { executeManagedTool } = await import(
-      '@/lib/ai/agent/managed/executor'
-    )
-    const result = await executeManagedTool(
-      makeBlock('save_call_blueprint'),
-      mockCtx,
-    )
-
-    expect(result.isError).toBe(true)
-    expect(result.content).toMatch(/Phase 4|not available in the managed runtime yet/i)
-  })
-
   it('blocks unknown tool name', async () => {
     const { executeManagedTool } = await import(
       '@/lib/ai/agent/managed/executor'
