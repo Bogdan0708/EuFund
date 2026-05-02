@@ -63,8 +63,9 @@ Out of scope (each tracked in Follow-ups, not as code TODOs):
 - Helper: `ensureProjectForSession`
 - Title helper: `deriveProjectTitle`
 - Org resolver (extracted): `resolveProjectOrgIdInTx`
-- Audit action: `project.promoted_from_session` (project.* prefix → existing
-  `inferLegalBasis` resolves to `contract` basis; no new branch in `lib/legal/audit.ts`)
+- Audit action: `project.promoted_from_session` — must be added to the `AuditAction` union
+  in `app/src/lib/legal/audit.ts` (under the `// Project` group); the project.* prefix means
+  `inferLegalBasis` resolves to `contract` basis with no new branch needed there
 - Project metadata keys (merged onto existing metadata, never replacing it):
   - `agentSessionId: string`
   - `rawSelectedCallId: string`
@@ -87,6 +88,8 @@ app/src/lib/ai/agent/services/application.ts    MODIFIED — calls ensureProject
 app/src/app/api/v1/projects/preselect/route.ts  MODIFIED — forwards projectId in JSON responses
 app/src/lib/preselect/client.ts                 MODIFIED — projectId on PreselectResponse
 app/src/lib/monitoring/metrics.ts               MODIFIED — register project_promotion_total
+app/src/lib/legal/audit.ts                      MODIFIED — add 'project.promoted_from_session'
+                                                            to the AuditAction type union
 
 app/scripts/backfill-session-projects.ts        NEW — one-shot dry-run/confirm script
 ```
@@ -108,7 +111,9 @@ export type PromotionResult =
 export interface EnsureOpts { dryRun?: boolean }
 
 export async function ensureProjectForSession(
-  ctx: ServiceContext,             // existing { userId, sessionId?, requestId?, now? }
+  ctx: ServiceContext,             // existing { userId, sessionId?, requestId, now } —
+                                   // requestId and now are REQUIRED on ServiceContext
+                                   // (lib/ai/agent/services/types.ts:16)
   sessionId: string,
   opts?: EnsureOpts,
 ): Promise<PromotionResult>
@@ -408,9 +413,12 @@ export function trackProjectPromotion(
 }
 ```
 
-Single low-cardinality `outcome` label. Helper invokes `trackProjectPromotion(...)` after each
-non-thrown return path; live trigger sites and the backfill script both invoke it on caught
-exceptions with `outcome='failed'`.
+Single low-cardinality `outcome` label. **Tracked only on committed helper outcomes** — the
+helper invokes `trackProjectPromotion(...)` after a normal return (i.e., the path that ran
+through to commit), but **not** when the carried result is delivered via `DryRunRollback`.
+Operator dry-runs print outcomes to the script's stdout for inspection but must not pollute
+production counters scraped to dashboards/alerts. The live trigger sites and the backfill
+script invoke `trackProjectPromotion('failed')` from their own try/catch on infra exceptions.
 
 ## Test Plan
 
@@ -434,7 +442,8 @@ exceptions with `outcome='failed'`.
   - Race-loser: two concurrent FOR UPDATE waiters → second sees the first's projectId, returns
     already-linked.
   - Dry-run: full happy-path in dryRun mode → no rows in projects, organizations, or audit_log
-    after; result still describes what would have happened.
+    after; the project_promotion_total counter is also unchanged; result still describes what
+    would have happened.
 - `initializeSession`: returns projectId; failed promotion does not unwind the session insert.
 - `setSelectedCall` three-branch matrix:
   - same callId + linked → no-op return
