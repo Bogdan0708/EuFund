@@ -5,6 +5,11 @@
 //
 // Layer rule: import only from @/lib/db, @/lib/db/schema, drizzle-orm,
 // ./errors, ./types, and @/lib/legal/audit. No V3 or MCP imports.
+//
+// LAYER NOTE: lib/projects/promotion is an intentional downstream dependency
+// of this service — promotion is the post-commit hook for setSelectedCall and
+// runs after the agent state mutation lands. Future cleanup of service
+// dependencies should preserve this.
 
 import { db } from '@/lib/db'
 import { agentSessions, agentSections } from '@/lib/db/schema'
@@ -15,6 +20,7 @@ import { logAudit } from '@/lib/legal/audit'
 import { assertPolicy } from '../policy/enforce'
 import { POLICY_MATRIX } from '../policy/matrix'
 import type { AgentSession } from '../types'
+import { ensureProjectForSession } from '@/lib/projects/promotion'
 import type {
   ServiceContext,
   ApplicationState,
@@ -555,24 +561,30 @@ export async function createExportSnapshot(
 // ── setSelectedCall ────────────────────────────────────────────────────────
 
 /**
- * Sets the selected call on an agent session.
+ * Sets the selected call on an agent session. Three explicit branches:
  *
- * Idempotent: if the session already has the same callId, returns current
- * stateVersion without bumping it, running the policy check, or emitting audit.
+ * Branch 1 — Same callId + already linked to a project:
+ *   True no-op. Skip everything. Return existing stateVersion + projectId.
+ *
+ * Branch 2 — Same callId + no project yet:
+ *   Skip policy gate, CAS, and audit (no logical reselection; works even
+ *   under outline-frozen). Run ensureProjectForSession (try/catch, log on
+ *   failure, default projectId to null). Return existing stateVersion.
+ *
+ * Branch 3 — Different callId:
+ *   Standard policy gate → CAS → audit → ensureProjectForSession.
+ *   Return newStateVersion = stateVersion + 1.
  *
  * Write contract:
  *   1. Verify session ownership (canonical helper)
  *   2. Enforce expectedStateVersion (concurrency guard)
- *   3. Idempotent no-op if same callId
- *   4. Policy gate — POLICY_OUTLINE_ALREADY_FROZEN
- *   5. Persist mutation + bump stateVersion
- *   6. Emit audit log as session.call_selected
- *   7. Return { newStateVersion }
+ *   3. Branch dispatch (see above)
+ *   4. Return { newStateVersion, projectId }
  */
 export async function setSelectedCall(
   ctx: ServiceContext,
   input: { sessionId: string; callId: string; expectedStateVersion: number },
-): Promise<{ newStateVersion: number }> {
+): Promise<{ newStateVersion: number; projectId: string | null }> {
   // 1. Verify ownership (canonical helper)
   const session = await verifySessionOwnership(ctx, input.sessionId)
 
@@ -581,15 +593,32 @@ export async function setSelectedCall(
     throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
   }
 
-  // 3. Idempotent no-op: same callId → return current state unchanged
-  if (session.selectedCallId === input.callId) {
-    return { newStateVersion: session.stateVersion }
+  // Branch 1: true no-op (same callId, already linked).
+  if (session.selectedCallId === input.callId && session.projectId !== null) {
+    return { newStateVersion: session.stateVersion, projectId: session.projectId }
   }
 
-  // 4. Policy gate — cannot reselect once outline is frozen
+  // Branch 2: same callId, no project yet. Skip policy + CAS + audit;
+  // run promotion and return existing stateVersion. This works even
+  // under outline-frozen because no logical reselection is happening.
+  if (session.selectedCallId === input.callId && session.projectId === null) {
+    let projectId: string | null = null
+    try {
+      const result = await ensureProjectForSession(ctx, input.sessionId)
+      if (result.promoted) projectId = result.projectId
+    } catch (err) {
+      // Promotion failure does not break the caller — log and continue.
+      // The session's logical state is untouched; client can retry.
+    }
+    return { newStateVersion: session.stateVersion, projectId }
+  }
+
+  // Branch 3: different callId. Standard policy + CAS + audit, then promotion.
+
+  // Policy gate — cannot reselect once outline is frozen
   assertPolicy(POLICY_MATRIX.setSelectedCall, session as unknown as AgentSession)
 
-  // 5. Mutate (atomic CAS: WHERE includes stateVersion guard)
+  // Mutate (atomic CAS: WHERE includes stateVersion guard)
   const newStateVersion = session.stateVersion + 1
   const casCall = await db
     .update(agentSessions)
@@ -614,7 +643,7 @@ export async function setSelectedCall(
     throw new ConcurrencyError(input.expectedStateVersion, current?.stateVersion ?? -1)
   }
 
-  // 6. Audit
+  // Audit
   await logAudit({
     userId: ctx.userId,
     action: POLICY_MATRIX.setSelectedCall.auditAction,
@@ -623,7 +652,16 @@ export async function setSelectedCall(
     metadata: { callId: input.callId, previousCallId: session.selectedCallId, requestId: ctx.requestId },
   })
 
-  return { newStateVersion }
+  // Post-commit promotion hook — runs after agent state mutation lands.
+  let projectId: string | null = null
+  try {
+    const result = await ensureProjectForSession(ctx, input.sessionId)
+    if (result.promoted) projectId = result.projectId
+  } catch (err) {
+    // Promotion failure does not break the caller — log and continue.
+  }
+
+  return { newStateVersion, projectId }
 }
 
 export async function freezeOutline(

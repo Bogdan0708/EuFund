@@ -174,8 +174,9 @@ async function handlePreselect(
       log.error({ err: e, userId: user.id }, 'confirm-override existence check failed')
       return err(503, 'PRESELECT_UNAVAILABLE')
     }
+    let setResult: { newStateVersion: number; projectId: string | null }
     try {
-      await setSelectedCall(ctx, {
+      setResult = await setSelectedCall(ctx, {
         sessionId: parsed.sessionId,
         callId: target,
         expectedStateVersion: parsed.expectedStateVersion!,
@@ -198,6 +199,7 @@ async function handlePreselect(
       sessionId: parsed.sessionId,
       selectedCallId: target,
       candidates: [{ callId: target, title: target, score: 1 }],
+      projectId: setResult.projectId,
     })
   }
 
@@ -269,8 +271,9 @@ async function handlePreselect(
     if (decision.kind === 'ambiguous') {
       return NextResponse.json({ kind: 'ambiguous', candidates: decision.candidates })
     }
+    let overrideResult: { newStateVersion: number; projectId: string | null }
     try {
-      await setSelectedCall(overrideCtx, {
+      overrideResult = await setSelectedCall(overrideCtx, {
         sessionId: parsed.sessionId,
         callId: decision.callId,
         expectedStateVersion: parsed.expectedStateVersion!,
@@ -298,6 +301,7 @@ async function handlePreselect(
       sessionId: parsed.sessionId,
       selectedCallId: decision.callId,
       candidates: decision.candidates,
+      projectId: overrideResult.projectId,
     })
   }
 

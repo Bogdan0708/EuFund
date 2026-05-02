@@ -87,8 +87,38 @@ describe('preselect route — projectId in response', () => {
     });
   });
 
-  // Tests for override-rerank and confirm-override branches deferred to Task 11
-  // (they require setSelectedCall to expose projectId; that's Task 11's scope).
-  it.skip('override-rerank branch — projectId in response (Task 11)', async () => {});
-  it.skip('confirm-override branch — projectId in response (Task 11)', async () => {});
+  it('override-rerank branch — projectId in response (setSelectedCall path)', async () => {
+    setSelectedCallMock.mockResolvedValueOnce({ newStateVersion: 4, projectId: 'proj-or' });
+    const res = await POST(makeReq({
+      description: 'A description that is long enough to pass.',
+      locale: 'ro',
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      expectedStateVersion: 3,
+    }) as any);
+    const json = await res.json();
+    expect(json).toMatchObject({
+      kind: 'selected',
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      selectedCallId: 'CODE-1',
+      projectId: 'proj-or',
+    });
+  });
+
+  it('confirm-override branch — projectId in response (setSelectedCall with both sessionId + confirmCandidateId)', async () => {
+    setSelectedCallMock.mockResolvedValueOnce({ newStateVersion: 4, projectId: 'proj-co' });
+    const res = await POST(makeReq({
+      description: 'A description that is long enough to pass.',
+      locale: 'ro',
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      expectedStateVersion: 3,
+      confirmCandidateId: 'CODE-1',
+    }) as any);
+    const json = await res.json();
+    expect(json).toMatchObject({
+      kind: 'selected',
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      selectedCallId: 'CODE-1',
+      projectId: 'proj-co',
+    });
+  });
 });
