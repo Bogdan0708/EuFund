@@ -7,6 +7,7 @@ import { agentSessions } from '@/lib/db/schema'
 import { logAudit } from '@/lib/legal/audit'
 import { logger } from '@/lib/logger'
 import { ensureProjectForSession } from '@/lib/projects/promotion'
+import { trackProjectPromotion } from '@/lib/monitoring/metrics'
 import { lookupBlueprint } from './blueprint'
 import { searchCalls } from './evidence'
 import type { CallMatch, ServiceContext, EvidenceChunk } from './types'
@@ -203,6 +204,7 @@ export async function initializeSession(
       { userId, sessionId: row.id, error: err instanceof Error ? err.message : String(err) },
       'session_promotion_failed',
     )
+    trackProjectPromotion('failed')
     // projectId stays null — caller gets the session regardless.
   }
 

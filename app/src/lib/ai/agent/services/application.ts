@@ -21,6 +21,7 @@ import { assertPolicy } from '../policy/enforce'
 import { POLICY_MATRIX } from '../policy/matrix'
 import type { AgentSession } from '../types'
 import { ensureProjectForSession } from '@/lib/projects/promotion'
+import { trackProjectPromotion } from '@/lib/monitoring/metrics'
 import type {
   ServiceContext,
   ApplicationState,
@@ -609,6 +610,7 @@ export async function setSelectedCall(
     } catch (err) {
       // Promotion failure does not break the caller — log and continue.
       // The session's logical state is untouched; client can retry.
+      trackProjectPromotion('failed')
     }
     return { newStateVersion: session.stateVersion, projectId }
   }
@@ -659,6 +661,7 @@ export async function setSelectedCall(
     if (result.promoted) projectId = result.projectId
   } catch (err) {
     // Promotion failure does not break the caller — log and continue.
+    trackProjectPromotion('failed')
   }
 
   return { newStateVersion, projectId }
