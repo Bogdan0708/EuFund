@@ -18,6 +18,9 @@ vi.mock('@/lib/logger', () => ({
 
 vi.mock('@/lib/ai/agent/services/blueprint', () => ({ lookupBlueprint: vi.fn() }))
 vi.mock('@/lib/ai/agent/services/evidence', () => ({ searchCalls: vi.fn() }))
+vi.mock('@/lib/projects/promotion', () => ({
+  ensureProjectForSession: vi.fn().mockResolvedValue({ promoted: false, reason: 'SESSION_NOT_FOUND' }),
+}))
 
 describe('initializeSession — rawEvidence stash', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -31,6 +34,7 @@ describe('initializeSession — rawEvidence stash', () => {
 
   const baseParams = {
     userId: '11111111-1111-4111-8111-111111111111',
+    requestId: 'req-test-uuid',
     description: 'Test description for preselect',
     locale: 'ro' as const,
     selectedCallId: 'CALL-1',

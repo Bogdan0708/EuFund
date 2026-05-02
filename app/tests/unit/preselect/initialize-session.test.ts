@@ -16,6 +16,9 @@ vi.mock('@/lib/legal/audit', () => ({ logAudit: mockLogAudit }))
 vi.mock('@/lib/db/schema', () => ({
   agentSessions: agentSessionsSymbol,
 }))
+vi.mock('@/lib/projects/promotion', () => ({
+  ensureProjectForSession: vi.fn().mockResolvedValue({ promoted: false, reason: 'SESSION_NOT_FOUND' }),
+}))
 
 import { initializeSession } from '@/lib/ai/agent/services/preselect'
 
@@ -50,6 +53,7 @@ describe('initializeSession — structured blueprint', () => {
 
     const result = await initializeSession({
       userId: USER_ID,
+      requestId: 'req-test-uuid',
       description: 'Primăria comunei Ocna Șugatag, proiect digitalizare muzeu',
       locale: 'ro',
       selectedCallId: CALL_ID,
@@ -98,6 +102,7 @@ describe('initializeSession — raw-evidence blueprint', () => {
 
     const result = await initializeSession({
       userId: USER_ID,
+      requestId: 'req-test-uuid',
       description: 'a sufficiently long description of a project',
       locale: 'ro',
       selectedCallId: CALL_ID,
@@ -122,6 +127,7 @@ describe('initializeSession — blueprint lookup failure (degraded success)', ()
 
     const result = await initializeSession({
       userId: USER_ID,
+      requestId: 'req-test-uuid',
       description: 'a sufficiently long description of a project',
       locale: 'ro',
       selectedCallId: CALL_ID,

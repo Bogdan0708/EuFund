@@ -220,6 +220,7 @@ async function handlePreselect(
     try {
       const result = await initializeSession({
         userId: user.id,
+        requestId: ctx.requestId,
         description: parsed.description,
         locale: parsed.locale,
         selectedCallId: parsed.confirmCandidateId,
@@ -238,6 +239,7 @@ async function handlePreselect(
         candidates: [{ callId: parsed.confirmCandidateId, title: parsed.confirmCandidateId, score: 1 }],
         blueprintKind: result.blueprintKind,
         phase: result.phase,
+        projectId: result.projectId,
       })
     } catch (e) {
       log.error({ err: e, userId: user.id }, 'initializeSession failed (confirm mode)')
@@ -325,6 +327,7 @@ async function handlePreselect(
   try {
     const result = await initializeSession({
       userId: user.id,
+      requestId: ctx.requestId,
       description: parsed.description,
       locale: parsed.locale,
       selectedCallId: decision.callId,
@@ -339,6 +342,7 @@ async function handlePreselect(
       candidates: decision.candidates,
       blueprintKind: result.blueprintKind,
       phase: result.phase,
+      projectId: result.projectId,
     })
   } catch (e) {
     log.error({ err: e, userId: user.id }, 'initializeSession failed')
