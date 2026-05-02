@@ -50,11 +50,11 @@ describe('MCP set_selected_call handler', () => {
   })
 
   it('returns service result on happy path', async () => {
-    vi.mocked(application.setSelectedCall).mockResolvedValueOnce({ newStateVersion: 1 })
+    vi.mocked(application.setSelectedCall).mockResolvedValueOnce({ newStateVersion: 1, projectId: 'proj-1' })
     const cb = registerAndCapture(makeCtx())
     const result = await cb(VALID_ARGS)
     expect(result.isError).toBeUndefined()
-    expect(JSON.parse(result.content[0].text)).toEqual({ newStateVersion: 1 })
+    expect(JSON.parse(result.content[0].text)).toEqual({ newStateVersion: 1, projectId: 'proj-1' })
   })
 
   it('maps ConcurrencyError to CONCURRENCY', async () => {

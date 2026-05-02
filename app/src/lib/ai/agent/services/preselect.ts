@@ -6,6 +6,8 @@ import { withUserRLS } from '@/lib/db'
 import { agentSessions } from '@/lib/db/schema'
 import { logAudit } from '@/lib/legal/audit'
 import { logger } from '@/lib/logger'
+import { ensureProjectForSession } from '@/lib/projects/promotion'
+import { trackProjectPromotion } from '@/lib/monitoring/metrics'
 import { lookupBlueprint } from './blueprint'
 import { searchCalls } from './evidence'
 import type { CallMatch, ServiceContext, EvidenceChunk } from './types'
@@ -99,6 +101,7 @@ const log = logger.child({ component: 'preselect-service' })
 
 export interface InitializeSessionParams {
   userId: string
+  requestId: string
   description: string
   locale: 'ro' | 'en'
   selectedCallId: string
@@ -111,13 +114,14 @@ export interface InitializeSessionResult {
   sessionId: string
   phase: 'structuring' | 'research'
   blueprintKind: BlueprintKind
+  projectId: string | null
 }
 
 export async function initializeSession(
   params: InitializeSessionParams,
 ): Promise<InitializeSessionResult> {
   const {
-    userId, description, locale, selectedCallId, selectedScore,
+    userId, requestId, description, locale, selectedCallId, selectedScore,
     candidates, excludeCallIdsApplied,
   } = params
 
@@ -193,6 +197,24 @@ export async function initializeSession(
     },
   })
 
-  return { sessionId: row.id, phase, blueprintKind }
+  // Promote the session to a project. Failure must not unwind the committed
+  // session — the user can still resume by sessionId even if promotion fails.
+  let projectId: string | null = null
+  try {
+    const ctx: ServiceContext = { userId, requestId, sessionId: row.id, now: new Date() }
+    const promotionResult = await ensureProjectForSession(ctx, row.id)
+    if (promotionResult.promoted) {
+      projectId = promotionResult.projectId
+    }
+  } catch (err) {
+    log.error(
+      { userId, sessionId: row.id, error: err instanceof Error ? err.message : String(err) },
+      'session_promotion_failed',
+    )
+    trackProjectPromotion('failed')
+    // projectId stays null — caller gets the session regardless.
+  }
+
+  return { sessionId: row.id, phase, blueprintKind, projectId }
 }
 

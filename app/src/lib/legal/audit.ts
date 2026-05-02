@@ -33,6 +33,7 @@ export type AuditAction =
   | 'organization.member_role_change'
   // Project
   | 'project.create'
+  | 'project.promoted_from_session'
   | 'project.update'
   | 'project.delete'
   | 'project.section_update'

@@ -26,6 +26,7 @@ export type PreselectResponse =
       // Rank and confirm modes always populate them.
       blueprintKind?: 'structured' | 'raw_evidence' | 'none'
       phase?: 'structuring' | 'research'
+      projectId?: string | null
     }
   | { kind: 'ambiguous'; candidates: Candidate[] }
   | { kind: 'no_match'; reason: string }

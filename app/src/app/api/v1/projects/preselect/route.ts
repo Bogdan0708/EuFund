@@ -201,8 +201,9 @@ async function handlePreselect(
       log.error({ err: e, userId: user.id }, 'confirm-override existence check failed')
       return err(503, 'PRESELECT_UNAVAILABLE')
     }
+    let setResult: { newStateVersion: number; projectId: string | null }
     try {
-      await setSelectedCall(ctx, {
+      setResult = await setSelectedCall(ctx, {
         sessionId: parsed.sessionId,
         callId: target,
         expectedStateVersion: parsed.expectedStateVersion!,
@@ -225,6 +226,7 @@ async function handlePreselect(
       sessionId: parsed.sessionId,
       selectedCallId: target,
       candidates: [{ callId: target, title: matched.title, score: matched.score }],
+      projectId: setResult.projectId,
     })
   }
 
@@ -253,6 +255,7 @@ async function handlePreselect(
       }
       const result = await initializeSession({
         userId: user.id,
+        requestId: ctx.requestId,
         description: parsed.description,
         locale: parsed.locale,
         selectedCallId: matched.callId,
@@ -267,6 +270,7 @@ async function handlePreselect(
         candidates: [candidate],
         blueprintKind: result.blueprintKind,
         phase: result.phase,
+        projectId: result.projectId,
       })
     } catch (e) {
       log.error({ err: e, userId: user.id }, 'initializeSession failed (confirm mode)')
@@ -296,8 +300,9 @@ async function handlePreselect(
     if (decision.kind === 'ambiguous') {
       return NextResponse.json({ kind: 'ambiguous', candidates: decision.candidates })
     }
+    let overrideResult: { newStateVersion: number; projectId: string | null }
     try {
-      await setSelectedCall(overrideCtx, {
+      overrideResult = await setSelectedCall(overrideCtx, {
         sessionId: parsed.sessionId,
         callId: decision.callId,
         expectedStateVersion: parsed.expectedStateVersion!,
@@ -325,6 +330,7 @@ async function handlePreselect(
       sessionId: parsed.sessionId,
       selectedCallId: decision.callId,
       candidates: decision.candidates,
+      projectId: overrideResult.projectId,
     })
   }
 
@@ -354,6 +360,7 @@ async function handlePreselect(
   try {
     const result = await initializeSession({
       userId: user.id,
+      requestId: ctx.requestId,
       description: parsed.description,
       locale: parsed.locale,
       selectedCallId: decision.callId,
@@ -368,6 +375,7 @@ async function handlePreselect(
       candidates: decision.candidates,
       blueprintKind: result.blueprintKind,
       phase: result.phase,
+      projectId: result.projectId,
     })
   } catch (e) {
     log.error({ err: e, userId: user.id }, 'initializeSession failed')

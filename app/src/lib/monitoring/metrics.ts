@@ -101,6 +101,8 @@ metrics.counter('ai_cache_reads_tokens_total', 'Router AI cache read tokens');
 metrics.counter('ai_cache_writes_tokens_total', 'Router AI cache write tokens');
 metrics.counter('ai_cache_disabled_total', 'Router AI cache disable reasons');
 
+metrics.counter('project_promotion_total', 'Session-to-project promotion outcomes');
+
 function normalizePath(path: string): string {
   return path
     .replace(/\/[0-9a-f-]{36}/g, '/:id')
@@ -136,4 +138,17 @@ export function trackAiCacheWriteTokens(provider: string, model: string, task: s
 
 export function trackAiCacheDisabled(reason: 'global_kill_switch' | 'request_disabled'): void {
   metrics.inc('ai_cache_disabled_total', { reason });
+}
+
+export function trackProjectPromotion(
+  outcome:
+    | 'promoted'
+    | 'already_linked'
+    | 'synced'
+    | 'no_selected_call'
+    | 'user_missing'
+    | 'session_missing'
+    | 'failed',
+): void {
+  metrics.inc('project_promotion_total', { outcome });
 }

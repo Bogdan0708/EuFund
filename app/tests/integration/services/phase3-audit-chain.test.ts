@@ -19,7 +19,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env.local') })
 import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 import postgres from 'postgres'
 import { db } from '@/lib/db'
-import { agentSections, agentSessions } from '@/lib/db/schema'
+import { agentSections } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { verifyAuditChainIntegrity } from '@/lib/legal/audit-integrity'
 import {
@@ -104,6 +104,10 @@ async function seedSession(): Promise<string> {
  */
 async function cleanupSession(sessionId: string): Promise<void> {
   await db.delete(agentSections).where(eq(agentSections.sessionId, sessionId))
+  // Promoted projects (from setSelectedCall → ensureProjectForSession) link
+  // back to this session via metadata.agentSessionId. Delete them so the
+  // dev DB doesn't accumulate residue across test runs.
+  await sql`DELETE FROM projects WHERE metadata->>'agentSessionId' = ${sessionId}`
   await sql`DELETE FROM agent_sessions WHERE id = ${sessionId}::uuid`
 }
 
