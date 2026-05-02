@@ -190,7 +190,7 @@ export async function ensureProjectForSession(
       }
       const session = sessionRows[0];
 
-      if (session.projectId === null && session.selectedCallId === null) {
+      if (session.selectedCallId === null) {
         return { promoted: false, reason: 'NO_SELECTED_CALL' as const };
       }
 
@@ -272,29 +272,37 @@ export async function ensureProjectForSession(
       return promotionResult;
     });
 
-    // Post-commit audit + metric
-    const audit = pendingAudit as PendingAudit | null;
-    if (audit) {
+    // Post-commit audit + metric.
+    // `pendingAudit` is a `let` mutated inside an async callback. TypeScript's
+    // control-flow analysis cannot see through the async boundary and narrows
+    // it to `never` here — cast to recover the declared type.
+    const capturedAudit = pendingAudit as PendingAudit | null;
+    if (capturedAudit) {
       await logAudit({
         userId,
         action: 'project.promoted_from_session',
         resourceType: 'project',
-        resourceId: audit.projectId,
+        resourceId: capturedAudit.projectId,
         metadata: {
           agentSessionId: sessionId,
-          rawSelectedCallId: audit.rawSelectedCallId,
-          resolvedCallId: audit.resolvedCallId,
-          selectedCallResolution: audit.selectedCallResolution,
-          titleSource: audit.titleSource,
-          kind: audit.kind,
+          rawSelectedCallId: capturedAudit.rawSelectedCallId,
+          resolvedCallId: capturedAudit.resolvedCallId,
+          selectedCallResolution: capturedAudit.selectedCallResolution,
+          titleSource: capturedAudit.titleSource,
+          kind: capturedAudit.kind,
           requestId,
         },
       });
     }
 
-    const res = result as PromotionResult;
+    // `withUserRLS<T>` infers T from the callback. Narrow to PromotionResult
+    // via a typed capture so the discriminated union is usable below.
+    const res: PromotionResult = result as PromotionResult;
     if (res.promoted) {
       const r = res as Extract<PromotionResult, { promoted: true }>;
+      // Task 8 will add a `synced` field to the already-linked branch's return shape.
+      // Until that lands, the discriminated union doesn't include `synced` so we cast.
+      // Remove this `as any` after Task 8 lands.
       const outcome = r.created ? 'promoted' : ((r as any).synced ? 'synced' : 'already_linked');
       trackProjectPromotion(outcome as any);
       log.info({ sessionId, projectId: r.projectId, outcome }, 'session promoted');
