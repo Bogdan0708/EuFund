@@ -31,8 +31,6 @@
 
 import { fileURLToPath } from 'url';
 import postgres from 'postgres';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import * as schema from '../src/lib/db/schema';
 import { ensureProjectForSession } from '../src/lib/projects/promotion';
 import type { ServiceContext } from '../src/lib/ai/agent/services/types';
 
@@ -121,7 +119,6 @@ async function main() {
     : null;
 
   const sqlClient = postgres(process.env.DATABASE_URL!, { max: 1 });
-  const _db = drizzle(sqlClient, { schema });
 
   const candidates = await sqlClient<CandidateRow[]>`
     SELECT s.id, s.user_id, s.selected_call_id,
