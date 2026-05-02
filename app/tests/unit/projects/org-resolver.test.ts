@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolveProjectOrgIdInTx } from '@/lib/projects/org-resolver';
 import { FondEUError } from '@/lib/errors';
+import { organizations as orgsTable } from '@/lib/db/schema';
 
 const findManyMock = vi.fn();
 const insertReturningMock = vi.fn();
@@ -9,7 +10,7 @@ const insertMembersMock = vi.fn();
 const tx = {
   query: { orgMembers: { findMany: findManyMock } },
   insert: vi.fn((table) => {
-    if ((table as any)?._name === 'organizations' || (table as any)?.id === 'organizations.id') {
+    if (table === orgsTable) {
       return { values: vi.fn(() => ({ returning: insertReturningMock })) };
     }
     return { values: insertMembersMock };
@@ -48,6 +49,7 @@ describe('resolveProjectOrgIdInTx', () => {
     const out = await resolveProjectOrgIdInTx(tx, 'user-1');
     expect(out).toBe('org-new');
     expect(insertMembersMock).toHaveBeenCalledOnce();
+    expect(insertMembersMock).toHaveBeenCalledWith({ userId: 'user-1', orgId: 'org-new', role: 'admin' });
   });
 
   it('throws FondEUError(CONFLICT) on multiple memberships without requestedOrgId', async () => {
