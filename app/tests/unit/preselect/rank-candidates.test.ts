@@ -52,4 +52,24 @@ describe('rankCandidates', () => {
     const result = await rankCandidates(ctx, 'q', ['top'])
     expect(result.map(r => r.callId)).toEqual(['two'])
   })
+
+  it('scales searchCalls maxResults by exclusion count, no ceiling', async () => {
+    // No exclusions: 0 + 15 = 15 (5 desired + 10 margin).
+    mockSearchCalls.mockResolvedValue({ matches: [] })
+    await rankCandidates(ctx, 'q')
+    expect(mockSearchCalls.mock.calls[0][2]).toMatchObject({ maxResults: 15 })
+
+    // 5 exclusions → 5 + 15 = 20.
+    mockSearchCalls.mockClear()
+    await rankCandidates(ctx, 'q', ['a', 'b', 'c', 'd', 'e'])
+    expect(mockSearchCalls.mock.calls[0][2]).toMatchObject({ maxResults: 20 })
+
+    // 50 exclusions (RequestSchema max) → 65 results so the post-filter
+    // still has 15 candidates even if every exclusion matches the top
+    // of the index. No 50-cap regression.
+    mockSearchCalls.mockClear()
+    const many = Array.from({ length: 50 }, (_, i) => `excl-${i}`)
+    await rankCandidates(ctx, 'q', many)
+    expect(mockSearchCalls.mock.calls[0][2]).toMatchObject({ maxResults: 65 })
+  })
 })

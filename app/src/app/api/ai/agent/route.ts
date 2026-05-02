@@ -438,12 +438,14 @@ function runManagedWithSSE(
         })
         firstOutputPersisted = result.firstOutputPersisted
 
-        if (firstOutputPersisted) {
+        if (firstOutputPersisted && !result.reloadFailed) {
           // Only count the turn as a success when it actually produced a
-          // durable output. A no_output turn gets its claim row deleted
-          // below and must NOT be recorded as a successful managed turn
-          // in application_agent_sessions — the row would falsely claim
-          // lastTurn metadata for a turn with no persisted history.
+          // durable output AND the post-write reload landed. A no_output
+          // turn gets its claim row deleted below; a reload-failed turn
+          // emitted a terminal error in place of done — neither should be
+          // recorded as a successful managed turn in
+          // application_agent_sessions, the row would falsely claim
+          // lastTurn metadata for a turn the user couldn't actually use.
           const { recordManagedSuccess } = await import('@/lib/ai/agent/managed/circuit-breaker')
           recordManagedSuccess()
 
@@ -463,6 +465,17 @@ function runManagedWithSSE(
               'recordTurnSuccess failed',
             )
           }
+        } else if (firstOutputPersisted && result.reloadFailed) {
+          // Output landed but UI snapshot is stale — turn is durable on
+          // the server, the client got a terminal error in place of done.
+          // Don't bump the success counter or write the lastTurn metadata.
+          // The agent_turns row stays as markTurnCompleted left it; the
+          // failure is observable via outcome=completed_reload_failed in
+          // the structured log.
+          log.warn(
+            { sessionId: session.id, turnId },
+            'managed turn persisted output but reload failed — skipping success accounting',
+          )
         } else {
           // No durable output — the claim row will be deleted below, so
           // the turn leaves no DB trace. Treat as a pre-output failure

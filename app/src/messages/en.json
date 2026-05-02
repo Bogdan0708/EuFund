@@ -1354,7 +1354,8 @@
       "PRESELECT_UNAVAILABLE": "The search system is temporarily unavailable. Try again in a moment.",
       "DESCRIPTION_TOO_SHORT": "Describe your project in more detail (at least 40 characters).",
       "OUTLINE_FROZEN": "The outline is frozen; you can no longer change the call.",
-      "CONCURRENCY_CONFLICT": "The session state changed in the meantime. Please retry."
+      "CONCURRENCY_CONFLICT": "The session state changed in the meantime. Please retry.",
+      "ADOPTION_FAILED": "The call was selected, but the session could not be initialized. Please retry."
     }
   },
   "docType": {
