@@ -607,9 +607,10 @@ export async function setSelectedCall(
     try {
       const result = await ensureProjectForSession(ctx, input.sessionId)
       if (result.promoted) projectId = result.projectId
-    } catch (err) {
-      // Promotion failure does not break the caller — log and continue.
-      // The session's logical state is untouched; client can retry.
+    } catch {
+      // Promotion failure does not break the caller — the helper itself
+      // logs the error. The session's logical state is untouched; client
+      // can retry.
       trackProjectPromotion('failed')
     }
     return { newStateVersion: session.stateVersion, projectId }
@@ -659,8 +660,8 @@ export async function setSelectedCall(
   try {
     const result = await ensureProjectForSession(ctx, input.sessionId)
     if (result.promoted) projectId = result.projectId
-  } catch (err) {
-    // Promotion failure does not break the caller — log and continue.
+  } catch {
+    // Promotion failure does not break the caller — the helper itself logs.
     trackProjectPromotion('failed')
   }
 
