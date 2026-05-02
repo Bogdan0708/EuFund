@@ -517,8 +517,13 @@ Expected: FAIL with `deriveProjectTitle is not exported`.
 Add to `app/src/lib/projects/promotion.ts` (above `ensureProjectForSession`):
 
 ```ts
-import { MIN_DESCRIPTION_LENGTH } from '@/lib/ai/agent/services/preselect';
-
+// Local threshold — kept local on purpose to avoid importing from
+// preselect.ts, which itself will import this module in Task 10.
+// The value happens to match preselect's MIN_DESCRIPTION_LENGTH (40),
+// but the constraints are conceptually independent: preselect uses it
+// to gate the ranker; we use it to decide whether a description is
+// substantive enough to be a project title.
+const MIN_DESCRIPTION_LEN_FOR_TITLE = 40;
 const TITLE_MAX_LEN = 120;
 
 /** Minimal shape used by the title derivation; kept narrow on purpose. */
@@ -543,7 +548,7 @@ export function deriveProjectTitle(
   const desc = session.planningArtifact?.preselect?.description;
   if (typeof desc === 'string') {
     const normalized = normalizeWhitespace(desc);
-    if (normalized.length >= MIN_DESCRIPTION_LENGTH) {
+    if (normalized.length >= MIN_DESCRIPTION_LEN_FOR_TITLE) {
       return { title: truncate(normalized, TITLE_MAX_LEN), source: 'description' };
     }
   }
@@ -806,14 +811,19 @@ EOF
 // app/tests/integration/project-promotion-helper.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// IMPORTANT: drizzle .select({ id: agentSessions.id, userId: agentSessions.userId, ... })
+// returns rows with the alias keys (camelCase here, since the helper aliases
+// every column to camelCase). The mock row must match those keys, NOT the
+// snake_case column names — otherwise session.projectId reads undefined and
+// the helper routes into the wrong branch.
 const sessionRow = {
   id: 'sess-1',
-  user_id: 'user-1',
-  project_id: null,
-  selected_call_id: 'CODE-123',
+  userId: 'user-1',
+  projectId: null,
+  selectedCallId: 'CODE-123',
   locale: 'ro',
-  message_summary: null,
-  planning_artifact: { preselect: { description: 'A '.repeat(60) + 'long enough description' } },
+  messageSummary: null,
+  planningArtifact: { preselect: { description: 'A '.repeat(60) + 'long enough description' } },
 };
 
 const txState: any = {};
@@ -1167,27 +1177,28 @@ describe('ensureProjectForSession — already linked', () => {
   });
 
   it('returns synced=false when callId matches project metadata.rawSelectedCallId', async () => {
-    sessionRow.project_id = 'existing-proj';
-    sessionRow.selected_call_id = 'CODE-123';
+    sessionRow.projectId = 'existing-proj';
+    sessionRow.selectedCallId = 'CODE-123';
+    // Project lock SELECT is also drizzle-aliased: { id, metadata, callId }
     txState.projectRow = {
       id: 'existing-proj',
       metadata: { rawSelectedCallId: 'CODE-123', resolvedCallTitle: 'Call X' },
-      call_id: 'old-call-uuid',
+      callId: 'old-call-uuid',
     };
     const out = await ensureProjectForSession(ctx, 'sess-1');
     expect(out).toMatchObject({ promoted: true, created: false, synced: false, projectId: 'existing-proj' });
     expect(logAudit).not.toHaveBeenCalled();
     expect(trackProjectPromotion).toHaveBeenCalledWith('already_linked');
-    sessionRow.project_id = null;
+    sessionRow.projectId = null;
   });
 
   it('syncs project.callId + metadata when session.selectedCallId differs', async () => {
-    sessionRow.project_id = 'existing-proj';
-    sessionRow.selected_call_id = 'NEW-CODE-999';
+    sessionRow.projectId = 'existing-proj';
+    sessionRow.selectedCallId = 'NEW-CODE-999';
     txState.projectRow = {
       id: 'existing-proj',
       metadata: { rawSelectedCallId: 'CODE-123', resolvedCallTitle: 'Call X', existingExtra: 'keep-me' },
-      call_id: 'old-call-uuid',
+      callId: 'old-call-uuid',
     };
     const out = await ensureProjectForSession(ctx, 'sess-1');
     expect(out).toMatchObject({ promoted: true, created: false, synced: true, projectId: 'existing-proj' });
@@ -1196,7 +1207,7 @@ describe('ensureProjectForSession — already linked', () => {
       metadata: expect.objectContaining({ kind: 'call_resynced' }),
     }));
     expect(trackProjectPromotion).toHaveBeenCalledWith('synced');
-    sessionRow.project_id = null;
+    sessionRow.projectId = null;
   });
 });
 ```
@@ -1211,7 +1222,7 @@ select: vi.fn(() => ({
       limit: vi.fn(async (_n: number) => {
         const phase = txState.selectPhase ?? 'session';
         if (phase === 'session') {
-          txState.selectPhase = sessionRow.project_id ? 'project_lock' : 'user';
+          txState.selectPhase = sessionRow.projectId ? 'project_lock' : 'user';
           return [sessionRow];
         }
         if (phase === 'project_lock') {
@@ -1228,7 +1239,7 @@ select: vi.fn(() => ({
         limit: vi.fn(async () => {
           const phase = txState.selectPhase ?? 'session';
           if (phase === 'session') {
-            txState.selectPhase = sessionRow.project_id ? 'project_lock' : 'user';
+            txState.selectPhase = sessionRow.projectId ? 'project_lock' : 'user';
             return [sessionRow];
           }
           if (phase === 'project_lock') {
@@ -1361,8 +1372,8 @@ Append to the integration test file:
 describe('ensureProjectForSession — dry run', () => {
   beforeEach(() => {
     txState.selectPhase = 'session';
-    sessionRow.project_id = null;
-    sessionRow.selected_call_id = 'CODE-123';
+    sessionRow.projectId = null;
+    sessionRow.selectedCallId = 'CODE-123';
     projectInsertRows.length = 0;
     sessionUpdates.length = 0;
     vi.clearAllMocks();
@@ -1373,6 +1384,17 @@ describe('ensureProjectForSession — dry run', () => {
     expect(out).toMatchObject({ promoted: true, created: true, projectId: 'new-proj-1' });
     expect(logAudit).not.toHaveBeenCalled();
     expect(trackProjectPromotion).not.toHaveBeenCalled();
+  });
+
+  it('does not fire metrics on the not-promotable dry-run path', async () => {
+    // Force the NO_SELECTED_CALL branch — it returns normally, doesn't throw.
+    // Without the !opts.dryRun guard on the telemetry seam, this would
+    // still increment trackProjectPromotion('no_selected_call').
+    sessionRow.selectedCallId = null as any;
+    const out = await ensureProjectForSession(ctx, 'sess-1', { dryRun: true });
+    expect(out).toMatchObject({ promoted: false, reason: 'NO_SELECTED_CALL' });
+    expect(trackProjectPromotion).not.toHaveBeenCalled();
+    sessionRow.selectedCallId = 'CODE-123';
   });
 });
 ```
@@ -1436,10 +1458,18 @@ try {
   throw e;
 }
 
-// post-commit audit + metric path (only reached on real commit)
-if (pendingAudit) { /* …existing logAudit call… */ }
-if (result.promoted) { /* …existing trackProjectPromotion call… */ }
-else { /* …existing not-promotable telemetry… */ }
+// post-commit audit + metric path (only reached on real commit).
+// CRITICAL: guard the entire telemetry seam on !opts.dryRun. The dry-run
+// promoted-success path throws DryRunRollback and never reaches here, but
+// the not-promotable returns (SESSION_NOT_FOUND, NO_SELECTED_CALL,
+// USER_NOT_FOUND) currently return normally — without this guard they
+// would still fire trackProjectPromotion under dry-run and pollute the
+// counter.
+if (!opts.dryRun) {
+  if (pendingAudit) { /* …existing logAudit call… */ }
+  if (result.promoted) { /* …existing trackProjectPromotion call… */ }
+  else { /* …existing not-promotable telemetry… */ }
+}
 return result;
 ```
 
@@ -1520,32 +1550,89 @@ describe('preselect route — projectId in response', () => {
     setSelectedCallMock.mockReset();
   });
 
-  it('returns projectId on rank+select success', async () => {
+  function makeReq(body: Record<string, unknown>) {
+    return new Request('http://x/api/v1/projects/preselect', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('rank+select branch — projectId in response (initializeSession path)', async () => {
     initializeSessionMock.mockResolvedValueOnce({
       sessionId: 'sess-1', phase: 'structuring', blueprintKind: 'structured', projectId: 'proj-1',
     });
-    const req = new Request('http://x/api/v1/projects/preselect', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ description: 'A description that is long enough to pass.', locale: 'ro' }),
-    });
-    const res = await POST(req as any);
+    const res = await POST(makeReq({
+      description: 'A description that is long enough to pass.',
+      locale: 'ro',
+    }) as any);
     const json = await res.json();
     expect(json).toMatchObject({ kind: 'selected', sessionId: 'sess-1', projectId: 'proj-1' });
   });
 
-  it('returns projectId: null when initializeSession reports null projectId', async () => {
+  it('rank+select branch — projectId: null when initializeSession reports null', async () => {
     initializeSessionMock.mockResolvedValueOnce({
       sessionId: 'sess-2', phase: 'research', blueprintKind: 'none', projectId: null,
     });
-    const req = new Request('http://x/api/v1/projects/preselect', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ description: 'A description that is long enough to pass.', locale: 'ro' }),
-    });
-    const res = await POST(req as any);
+    const res = await POST(makeReq({
+      description: 'A description that is long enough to pass.',
+      locale: 'ro',
+    }) as any);
     const json = await res.json();
     expect(json.projectId).toBeNull();
+  });
+
+  it('confirm-new branch — projectId in response (initializeSession path with confirmCandidateId)', async () => {
+    initializeSessionMock.mockResolvedValueOnce({
+      sessionId: 'sess-cn', phase: 'structuring', blueprintKind: 'structured', projectId: 'proj-cn',
+    });
+    const res = await POST(makeReq({
+      description: 'A description that is long enough to pass.',
+      locale: 'ro',
+      confirmCandidateId: 'CODE-1',
+    }) as any);
+    const json = await res.json();
+    expect(json).toMatchObject({
+      kind: 'selected',
+      sessionId: 'sess-cn',
+      selectedCallId: 'CODE-1',
+      projectId: 'proj-cn',
+    });
+  });
+
+  it('override-rerank branch — projectId in response (setSelectedCall path)', async () => {
+    setSelectedCallMock.mockResolvedValueOnce({ newStateVersion: 4, projectId: 'proj-or' });
+    const res = await POST(makeReq({
+      description: 'A description that is long enough to pass.',
+      locale: 'ro',
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      expectedStateVersion: 3,
+    }) as any);
+    const json = await res.json();
+    expect(json).toMatchObject({
+      kind: 'selected',
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      selectedCallId: 'CODE-1',
+      projectId: 'proj-or',
+    });
+  });
+
+  it('confirm-override branch — projectId in response (setSelectedCall with both sessionId + confirmCandidateId)', async () => {
+    setSelectedCallMock.mockResolvedValueOnce({ newStateVersion: 4, projectId: 'proj-co' });
+    const res = await POST(makeReq({
+      description: 'A description that is long enough to pass.',
+      locale: 'ro',
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      expectedStateVersion: 3,
+      confirmCandidateId: 'CODE-1',
+    }) as any);
+    const json = await res.json();
+    expect(json).toMatchObject({
+      kind: 'selected',
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      selectedCallId: 'CODE-1',
+      projectId: 'proj-co',
+    });
   });
 });
 ```
@@ -2057,6 +2144,13 @@ EOF
 // increments after a dry-run — this is correct behavior, not a silent
 // failure.
 
+// SAFE TO IMPORT: this module has no top-level side effects. All env
+// reads, argv parsing, DB connections, and the main loop run only when
+// main() is invoked from the bottom-of-file guard. This makes processRow
+// importable from the unit test without firing process.exit() or
+// connecting to a database at import time.
+
+import { fileURLToPath } from 'url';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
@@ -2064,18 +2158,7 @@ import * as schema from '../src/lib/db/schema';
 import { ensureProjectForSession } from '../src/lib/projects/promotion';
 import type { ServiceContext } from '../src/lib/ai/agent/services/types';
 
-const CONFIRM = process.argv.includes('--confirm');
-const limitIdx = process.argv.indexOf('--limit');
-const LIMIT: number | null = limitIdx >= 0 && process.argv[limitIdx + 1]
-  ? parseInt(process.argv[limitIdx + 1], 10)
-  : null;
-
-if (!process.env.DATABASE_URL) {
-  console.error('error: DATABASE_URL must be set');
-  process.exit(1);
-}
-
-interface CandidateRow {
+export interface CandidateRow {
   id: string;
   user_id: string;
   selected_call_id: string;
@@ -2092,6 +2175,17 @@ interface Tally {
 }
 
 async function main() {
+  // env + argv parsing inside main() so the module is import-safe
+  if (!process.env.DATABASE_URL) {
+    console.error('error: DATABASE_URL must be set');
+    process.exit(1);
+  }
+  const CONFIRM = process.argv.includes('--confirm');
+  const limitIdx = process.argv.indexOf('--limit');
+  const LIMIT: number | null = limitIdx >= 0 && process.argv[limitIdx + 1]
+    ? parseInt(process.argv[limitIdx + 1], 10)
+    : null;
+
   const sqlClient = postgres(process.env.DATABASE_URL!, { max: 1 });
   const _db = drizzle(sqlClient, { schema });
 
@@ -2177,10 +2271,18 @@ async function main() {
   process.exit(anyFailure ? 1 : 0);
 }
 
-main().catch((err) => {
-  console.error('fatal:', err);
-  process.exit(1);
-});
+// Main guard: only run main() when this file is invoked directly via
+// `npx tsx scripts/backfill-session-projects.ts`, not when imported
+// from a test. import.meta.url comparison is the standard ESM idiom;
+// tsx supports both ESM and CJS but the project resolves this file
+// as ESM (no .cjs extension, no "type": "commonjs" override).
+if (import.meta.url === `file://${process.argv[1]}` ||
+    process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error('fatal:', err);
+    process.exit(1);
+  });
+}
 ```
 
 - [ ] **Step 13.2: Add npm script entry**
@@ -2200,11 +2302,17 @@ In `app/package.json`, under the `"scripts"` block, add:
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const ensureMock = vi.fn();
-vi.mock('@/lib/projects/promotion', () => ({ ensureProjectForSession: ensureMock }));
+// Vitest module-identity matching: vi.mock should intercept any import
+// path that resolves to the same absolute file. The script uses a
+// relative path (`'../src/lib/projects/promotion'` from app/scripts/),
+// while source files use the `@/` alias. Mock both shapes defensively
+// so the test is robust even if vitest's alias resolution changes.
+const promotionStub = { ensureProjectForSession: ensureMock };
+vi.mock('@/lib/projects/promotion', () => promotionStub);
+vi.mock('../../../src/lib/projects/promotion', () => promotionStub);
 
-// We test the per-row decision logic by extracting it into an importable
-// helper. Refactor the script to expose `processRow(row, opts)` for
-// testability — see Step 13.4.
+// processRow is exported from the script for unit-level testability.
+// The script has a main guard so this import does NOT trigger main().
 import { processRow, type Tally } from '../../../scripts/backfill-session-projects';
 
 function newTally(): Tally {
@@ -2248,7 +2356,7 @@ describe('backfill-session-projects processRow', () => {
 
 - [ ] **Step 13.4: Refactor the script to export `processRow` and `Tally`**
 
-Edit `app/scripts/backfill-session-projects.ts` to extract the per-row body into an exported function. Replace the inner `for (const row of candidates) { ... }` block with a call to `processRow`, and export the helper + `Tally` type:
+Edit `app/scripts/backfill-session-projects.ts` to extract the per-row body into an exported function. Replace the inner `for (const row of candidates) { ... }` block with a call to `processRow`, and export the helper + `Tally` type. (`CandidateRow` is already exported at the top of the file from Step 13.1.)
 
 ```ts
 export interface Tally {
@@ -2324,17 +2432,6 @@ let anyFailure = false;
 for (const row of candidates) {
   const failed = await processRow(row, { confirm: CONFIRM }, tally);
   if (failed) anyFailure = true;
-}
-```
-
-Also export `CandidateRow`:
-
-```ts
-export interface CandidateRow {
-  id: string;
-  user_id: string;
-  selected_call_id: string;
-  user_exists: boolean;
 }
 ```
 
