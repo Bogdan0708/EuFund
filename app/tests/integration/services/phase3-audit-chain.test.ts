@@ -19,7 +19,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env.local') })
 import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 import postgres from 'postgres'
 import { db } from '@/lib/db'
-import { agentSections, agentSessions } from '@/lib/db/schema'
+import { agentSections } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { verifyAuditChainIntegrity } from '@/lib/legal/audit-integrity'
 import {
