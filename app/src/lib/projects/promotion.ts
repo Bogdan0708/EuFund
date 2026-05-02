@@ -7,11 +7,18 @@
 // drafting workspace attached to that project via agent_sessions.project_id.
 // This module owns the lifecycle transition that links the two.
 
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { ServiceContext } from '@/lib/ai/agent/services/types';
-import { callsForProposals } from '@/lib/db/schema';
+import { agentSessions, callsForProposals, projects, users } from '@/lib/db/schema';
+import { withUserRLS } from '@/lib/db';
 import type { Database } from '@/lib/db';
+import { logAudit } from '@/lib/legal/audit';
+import { logger } from '@/lib/logger';
+import { trackProjectPromotion } from '@/lib/monitoring/metrics';
+import { resolveProjectOrgIdInTx } from '@/lib/projects/org-resolver';
 import { UUID_RE } from '@/lib/validators/patterns';
+
+const log = logger.child({ component: 'project-promotion' });
 
 export type CallResolution = 'id' | 'callCode' | 'externalId' | 'unresolved';
 export type TitleSource = 'description' | 'messageSummary' | 'fallback';
@@ -143,10 +150,168 @@ export async function resolveCallForId(
   return { id: null, title: null, resolution: 'unresolved' };
 }
 
+interface PendingAudit {
+  kind: 'promoted' | 'call_resynced';
+  projectId: string;
+  rawSelectedCallId: string;
+  resolvedCallId: string | null;
+  selectedCallResolution: CallResolution;
+  titleSource?: TitleSource;
+}
+
 export async function ensureProjectForSession(
-  _ctx: ServiceContext,
-  _sessionId: string,
-  _opts: EnsureOpts = {},
+  ctx: ServiceContext,
+  sessionId: string,
+  opts: EnsureOpts = {},
 ): Promise<PromotionResult> {
-  throw new Error('not implemented');
+  const { userId, requestId } = ctx;
+  let pendingAudit: PendingAudit | null = null;
+
+  try {
+    const result = await withUserRLS(userId, async (tx) => {
+      // Step 1 — lock session, ownership-checked
+      const sessionRows = await tx
+        .select({
+          id: agentSessions.id,
+          userId: agentSessions.userId,
+          projectId: agentSessions.projectId,
+          selectedCallId: agentSessions.selectedCallId,
+          locale: agentSessions.locale,
+          messageSummary: agentSessions.messageSummary,
+          planningArtifact: agentSessions.planningArtifact,
+        })
+        .from(agentSessions)
+        .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, userId)))
+        .for('update')
+        .limit(1);
+
+      if (sessionRows.length === 0) {
+        return { promoted: false, reason: 'SESSION_NOT_FOUND' as const };
+      }
+      const session = sessionRows[0];
+
+      if (session.projectId === null && session.selectedCallId === null) {
+        return { promoted: false, reason: 'NO_SELECTED_CALL' as const };
+      }
+
+      if (session.projectId !== null) {
+        // Branch A: already linked. Implemented in Task 8.
+        throw new Error('already-linked branch not yet implemented (Task 8)');
+      }
+
+      // Branch B: fresh promotion
+      const userRows = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      if (userRows.length === 0) {
+        return { promoted: false, reason: 'USER_NOT_FOUND' as const };
+      }
+
+      const orgId = await resolveProjectOrgIdInTx(tx, userId);
+
+      const callResult = await resolveCallForId(tx, session.selectedCallId!);
+      const titleResult = deriveProjectTitle(
+        {
+          selectedCallId: session.selectedCallId!,
+          messageSummary: session.messageSummary,
+          planningArtifact: session.planningArtifact as { preselect?: { description?: string } } | null,
+        },
+        session.locale as 'ro' | 'en',
+      );
+
+      const [created] = await tx
+        .insert(projects)
+        .values({
+          orgId,
+          userId,
+          callId: callResult.id,
+          createdBy: userId,
+          title: titleResult.title,
+          status: 'ciorna',
+          currentVersion: 1,
+          metadata: {
+            agentSessionId: sessionId,
+            rawSelectedCallId: session.selectedCallId!,
+            resolvedCallTitle: callResult.title,
+            titleSource: titleResult.source,
+            selectedCallResolution: callResult.resolution,
+            promotedAt: ctx.now.toISOString(),
+          },
+        })
+        .returning({ id: projects.id });
+
+      await tx
+        .update(agentSessions)
+        .set({ projectId: created.id, updatedAt: new Date() })
+        .where(eq(agentSessions.id, sessionId));
+
+      pendingAudit = {
+        kind: 'promoted',
+        projectId: created.id,
+        rawSelectedCallId: session.selectedCallId!,
+        resolvedCallId: callResult.id,
+        selectedCallResolution: callResult.resolution,
+        titleSource: titleResult.source,
+      };
+
+      const promotionResult: PromotionResult = {
+        promoted: true,
+        projectId: created.id,
+        created: true,
+        titleSource: titleResult.source,
+        selectedCallResolution: callResult.resolution,
+      };
+
+      // Dry-run sentinel. Implemented in Task 9.
+      if (opts.dryRun) {
+        throw new Error('dry-run not yet implemented (Task 9)');
+      }
+
+      return promotionResult;
+    });
+
+    // Post-commit audit + metric
+    const audit = pendingAudit as PendingAudit | null;
+    if (audit) {
+      await logAudit({
+        userId,
+        action: 'project.promoted_from_session',
+        resourceType: 'project',
+        resourceId: audit.projectId,
+        metadata: {
+          agentSessionId: sessionId,
+          rawSelectedCallId: audit.rawSelectedCallId,
+          resolvedCallId: audit.resolvedCallId,
+          selectedCallResolution: audit.selectedCallResolution,
+          titleSource: audit.titleSource,
+          kind: audit.kind,
+          requestId,
+        },
+      });
+    }
+
+    const res = result as PromotionResult;
+    if (res.promoted) {
+      const r = res as Extract<PromotionResult, { promoted: true }>;
+      const outcome = r.created ? 'promoted' : ((r as any).synced ? 'synced' : 'already_linked');
+      trackProjectPromotion(outcome as any);
+      log.info({ sessionId, projectId: r.projectId, outcome }, 'session promoted');
+    } else {
+      const r = res as Extract<PromotionResult, { promoted: false }>;
+      const map = {
+        NO_SELECTED_CALL: 'no_selected_call',
+        USER_NOT_FOUND: 'user_missing',
+        SESSION_NOT_FOUND: 'session_missing',
+      } as const;
+      trackProjectPromotion(map[r.reason]);
+      log.warn({ sessionId, reason: r.reason }, 'session not promotable');
+    }
+
+    return res;
+  } catch (e) {
+    log.error({ sessionId, error: e instanceof Error ? e.message : String(e) }, 'promotion failed');
+    throw e;
+  }
 }
