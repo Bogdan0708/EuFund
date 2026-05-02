@@ -43,6 +43,7 @@
 - No `--no-verify`, no `git add .`, no `git add -A`. Stage exact paths.
 - Run from `app/` for npm/test commands; from repo root for git commands.
 - After every code change: `cd app && npm run typecheck` must pass before commit. Lint failures are non-blocking but should be investigated.
+- Code snippets in this plan are guidance, not laws. If during execution you find a snippet has an unused import, an outdated expected-test-count number, or a small mechanical issue that doesn't affect the task's intent, fix it inline and proceed — flag only material design deviations.
 
 ---
 
