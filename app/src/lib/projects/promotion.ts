@@ -195,8 +195,61 @@ export async function ensureProjectForSession(
       }
 
       if (session.projectId !== null) {
-        // Branch A: already linked. Implemented in Task 8.
-        throw new Error('already-linked branch not yet implemented (Task 8)');
+        // Branch A: already linked. Lock the project row and check whether the
+        // session's selectedCallId still matches what we recorded at promotion time.
+        const projectRows = await tx
+          .select({
+            id: projects.id,
+            metadata: projects.metadata,
+            callId: projects.callId,
+          })
+          .from(projects)
+          .where(eq(projects.id, session.projectId))
+          .for('update')
+          .limit(1);
+
+        if (projectRows.length === 0) {
+          // Project row vanished (hard-deleted somehow). Treat as session_missing
+          // for telemetry — there is nothing to sync into.
+          return { promoted: false, reason: 'SESSION_NOT_FOUND' as const };
+        }
+        const project = projectRows[0];
+        const existingMetadata = (project.metadata ?? {}) as Record<string, unknown>;
+        const recordedCallId = existingMetadata.rawSelectedCallId as string | undefined;
+
+        if (recordedCallId === session.selectedCallId) {
+          // True no-op — call hasn't changed.
+          return { promoted: true, projectId: project.id, created: false, synced: false };
+        }
+
+        // Either the session's call changed, or the metadata never recorded one
+        // (defensive: project was linked by some other code path).
+        const callResult = await resolveCallForId(tx, session.selectedCallId!);
+        await tx
+          .update(projects)
+          .set({
+            callId: callResult.id,
+            metadata: {
+              ...existingMetadata,
+              agentSessionId: sessionId,
+              rawSelectedCallId: session.selectedCallId,
+              resolvedCallTitle: callResult.title,
+              selectedCallResolution: callResult.resolution,
+              // promotedAt deliberately preserved from existing metadata
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(projects.id, project.id));
+
+        pendingAudit = {
+          kind: 'call_resynced',
+          projectId: project.id,
+          rawSelectedCallId: session.selectedCallId!,
+          resolvedCallId: callResult.id,
+          selectedCallResolution: callResult.resolution,
+        };
+
+        return { promoted: true, projectId: project.id, created: false, synced: true };
       }
 
       // Branch B: fresh promotion
@@ -300,11 +353,8 @@ export async function ensureProjectForSession(
     const res: PromotionResult = result as PromotionResult;
     if (res.promoted) {
       const r = res as Extract<PromotionResult, { promoted: true }>;
-      // Task 8 will add a `synced` field to the already-linked branch's return shape.
-      // Until that lands, the discriminated union doesn't include `synced` so we cast.
-      // Remove this `as any` after Task 8 lands.
-      const outcome = r.created ? 'promoted' : ((r as any).synced ? 'synced' : 'already_linked');
-      trackProjectPromotion(outcome as any);
+      const outcome = r.created ? 'promoted' : (r.synced ? 'synced' : 'already_linked');
+      trackProjectPromotion(outcome);
       log.info({ sessionId, projectId: r.projectId, outcome }, 'session promoted');
     } else {
       const r = res as Extract<PromotionResult, { promoted: false }>;

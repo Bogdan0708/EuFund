@@ -9,37 +9,68 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const sessionRow = {
   id: 'sess-1',
   userId: 'user-1',
-  projectId: null,
-  selectedCallId: 'CODE-123',
+  projectId: null as string | null,
+  selectedCallId: 'CODE-123' as string | null,
   locale: 'ro',
   messageSummary: null,
   planningArtifact: { preselect: { description: 'A '.repeat(60) + 'long enough description' } },
 };
 
-const txState: any = {};
+// Per-test tx factory (Option B). Each test's beforeEach rebuilds a fresh tx
+// and stores it in `currentTx`. The vi.mock factory delegates to `currentTx`
+// so each test gets full isolation without a shared phase machine.
+interface TxConfig {
+  projectRow?: {
+    id: string;
+    metadata: Record<string, unknown>;
+    callId: string;
+  };
+}
+
+let currentTxConfig: TxConfig = {};
 const projectInsertRows: Array<any> = [];
 const sessionUpdates: Array<any> = [];
 
-function buildTx() {
+function buildTx(config: TxConfig = {}) {
+  // Track how many times select().from().where() has been called so we can
+  // route session vs user vs call queries correctly.
+  let selectCallCount = 0;
+
   return {
     execute: vi.fn().mockResolvedValue(undefined),
     select: vi.fn(() => ({
       from: vi.fn(() => ({
         where: vi.fn(() => ({
           limit: vi.fn(async (_n: number) => {
-            const phase = txState.selectPhase ?? 'session';
-            if (phase === 'session') {
-              txState.selectPhase = 'user';
+            const call = selectCallCount++;
+            if (call === 0) {
+              // First SELECT: session lock (no .for('update') in user/call path)
               return [sessionRow];
             }
-            if (phase === 'user') {
-              txState.selectPhase = 'call';
+            if (call === 1) {
+              // Second SELECT: user lookup (Branch B) or call lookup
+              // For Branch B: user lookup
               return [{ id: 'user-1' }];
             }
+            // Subsequent SELECTs: call resolution probes
             return [];
           }),
           for: vi.fn(() => ({
-            limit: vi.fn(async () => [sessionRow]),
+            limit: vi.fn(async () => {
+              // .for('update').limit(1) — used for:
+              //   - session lock (Branch A+B initial)
+              //   - project lock (Branch A only)
+              const call = selectCallCount++;
+              if (call === 0) {
+                // Session lock
+                return [sessionRow];
+              }
+              if (call === 1 && config.projectRow) {
+                // Project lock (Branch A)
+                return [config.projectRow];
+              }
+              return [];
+            }),
           })),
         })),
       })),
@@ -60,12 +91,12 @@ function buildTx() {
   } as any;
 }
 
-vi.mock('@/lib/db', () => {
-  const tx = buildTx();
-  return {
-    withUserRLS: vi.fn(async (_uid: string, fn: (t: any) => Promise<any>) => fn(tx)),
-  };
-});
+// Module-level variable that vi.mock delegates to.
+let currentTx: ReturnType<typeof buildTx>;
+
+vi.mock('@/lib/db', () => ({
+  withUserRLS: vi.fn(async (_uid: string, fn: (t: any) => Promise<any>) => fn(currentTx)),
+}));
 vi.mock('@/lib/db/schema', () => ({
   agentSessions: { id: 'sess.id', userId: 'sess.user_id', projectId: 'sess.project_id', selectedCallId: 'sess.selected_call_id', locale: 'sess.locale', messageSummary: 'sess.message_summary', planningArtifact: 'sess.planning_artifact', updatedAt: 'sess.updated_at' },
   projects: { id: 'projects.id', metadata: 'projects.metadata', callId: 'projects.call_id', updatedAt: 'projects.updated_at' },
@@ -100,10 +131,15 @@ const ctx = {
 
 describe('ensureProjectForSession — fresh promotion', () => {
   beforeEach(() => {
-    txState.selectPhase = 'session';
+    sessionRow.projectId = null;
+    sessionRow.selectedCallId = 'CODE-123';
+    currentTxConfig = {};
+    currentTx = buildTx(currentTxConfig);
     projectInsertRows.length = 0;
     sessionUpdates.length = 0;
     vi.clearAllMocks();
+    // Re-bind the mock to the new currentTx after clearAllMocks
+    currentTx = buildTx(currentTxConfig);
   });
 
   it('promotes a session with selectedCallId and null projectId', async () => {
@@ -123,5 +159,54 @@ describe('ensureProjectForSession — fresh promotion', () => {
       resourceId: 'new-proj-1',
     }));
     expect(trackProjectPromotion).toHaveBeenCalledWith('promoted');
+  });
+});
+
+describe('ensureProjectForSession — already linked', () => {
+  beforeEach(() => {
+    sessionRow.projectId = null;
+    sessionRow.selectedCallId = 'CODE-123';
+    currentTxConfig = {};
+    projectInsertRows.length = 0;
+    sessionUpdates.length = 0;
+    vi.clearAllMocks();
+    // tx is rebuilt per-test below (each test sets its own config)
+  });
+
+  it('returns synced=false when callId matches project metadata.rawSelectedCallId', async () => {
+    sessionRow.projectId = 'existing-proj';
+    sessionRow.selectedCallId = 'CODE-123';
+    currentTx = buildTx({
+      projectRow: {
+        id: 'existing-proj',
+        metadata: { rawSelectedCallId: 'CODE-123', resolvedCallTitle: 'Call X' },
+        callId: 'old-call-uuid',
+      },
+    });
+    const out = await ensureProjectForSession(ctx, 'sess-1');
+    expect(out).toMatchObject({ promoted: true, created: false, synced: false, projectId: 'existing-proj' });
+    expect(logAudit).not.toHaveBeenCalled();
+    expect(trackProjectPromotion).toHaveBeenCalledWith('already_linked');
+    sessionRow.projectId = null;
+  });
+
+  it('syncs project.callId + metadata when session.selectedCallId differs', async () => {
+    sessionRow.projectId = 'existing-proj';
+    sessionRow.selectedCallId = 'NEW-CODE-999';
+    currentTx = buildTx({
+      projectRow: {
+        id: 'existing-proj',
+        metadata: { rawSelectedCallId: 'CODE-123', resolvedCallTitle: 'Call X', existingExtra: 'keep-me' },
+        callId: 'old-call-uuid',
+      },
+    });
+    const out = await ensureProjectForSession(ctx, 'sess-1');
+    expect(out).toMatchObject({ promoted: true, created: false, synced: true, projectId: 'existing-proj' });
+    expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'project.promoted_from_session',
+      metadata: expect.objectContaining({ kind: 'call_resynced' }),
+    }));
+    expect(trackProjectPromotion).toHaveBeenCalledWith('synced');
+    sessionRow.projectId = null;
   });
 });
