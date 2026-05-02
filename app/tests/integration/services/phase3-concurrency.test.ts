@@ -122,6 +122,10 @@ async function seedSession(opts: {
  */
 async function cleanupSession(sessionId: string): Promise<void> {
   await db.delete(agentSections).where(eq(agentSections.sessionId, sessionId))
+  // Promoted projects (from setSelectedCall → ensureProjectForSession) link
+  // back to this session via metadata.agentSessionId. Delete them so the
+  // dev DB doesn't accumulate residue across test runs.
+  await sql`DELETE FROM projects WHERE metadata->>'agentSessionId' = ${sessionId}`
   await sql`DELETE FROM agent_sessions WHERE id = ${sessionId}::uuid`
 }
 
