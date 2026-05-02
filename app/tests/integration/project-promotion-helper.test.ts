@@ -210,3 +210,33 @@ describe('ensureProjectForSession — already linked', () => {
     sessionRow.projectId = null;
   });
 });
+
+describe('ensureProjectForSession — dry run', () => {
+  beforeEach(() => {
+    sessionRow.projectId = null;
+    sessionRow.selectedCallId = 'CODE-123';
+    currentTxConfig = {};
+    projectInsertRows.length = 0;
+    sessionUpdates.length = 0;
+    vi.clearAllMocks();
+    currentTx = buildTx(currentTxConfig);
+  });
+
+  it('returns the would-be result without committing audit or metric', async () => {
+    const out = await ensureProjectForSession(ctx, 'sess-1', { dryRun: true });
+    expect(out).toMatchObject({ promoted: true, created: true, projectId: 'new-proj-1' });
+    expect(logAudit).not.toHaveBeenCalled();
+    expect(trackProjectPromotion).not.toHaveBeenCalled();
+  });
+
+  it('does not fire metrics on the not-promotable dry-run path', async () => {
+    // Force the NO_SELECTED_CALL branch — it returns normally, doesn't throw.
+    // Without the !opts.dryRun guard on the telemetry seam, this would
+    // still increment trackProjectPromotion('no_selected_call').
+    sessionRow.selectedCallId = null as any;
+    const out = await ensureProjectForSession(ctx, 'sess-1', { dryRun: true });
+    expect(out).toMatchObject({ promoted: false, reason: 'NO_SELECTED_CALL' });
+    expect(trackProjectPromotion).not.toHaveBeenCalled();
+    sessionRow.selectedCallId = 'CODE-123';
+  });
+});

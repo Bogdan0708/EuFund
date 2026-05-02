@@ -167,8 +167,9 @@ export async function ensureProjectForSession(
   const { userId, requestId } = ctx;
   let pendingAudit: PendingAudit | null = null;
 
+  let result: PromotionResult;
   try {
-    const result = await withUserRLS(userId, async (tx) => {
+    result = await withUserRLS(userId, async (tx) => {
       // Step 1 — lock session, ownership-checked
       const sessionRows = await tx
         .select({
@@ -219,7 +220,9 @@ export async function ensureProjectForSession(
 
         if (recordedCallId === session.selectedCallId) {
           // True no-op — call hasn't changed.
-          return { promoted: true, projectId: project.id, created: false, synced: false };
+          const noOpResult: PromotionResult = { promoted: true, projectId: project.id, created: false, synced: false };
+          if (opts.dryRun) throw new DryRunRollback(noOpResult);
+          return noOpResult;
         }
 
         // Either the session's call changed, or the metadata never recorded one
@@ -249,7 +252,9 @@ export async function ensureProjectForSession(
           selectedCallResolution: callResult.resolution,
         };
 
-        return { promoted: true, projectId: project.id, created: false, synced: true };
+        const syncResult: PromotionResult = { promoted: true, projectId: project.id, created: false, synced: true };
+        if (opts.dryRun) throw new DryRunRollback(syncResult);
+        return syncResult;
       }
 
       // Branch B: fresh promotion
@@ -317,15 +322,29 @@ export async function ensureProjectForSession(
         selectedCallResolution: callResult.resolution,
       };
 
-      // Dry-run sentinel. Implemented in Task 9.
       if (opts.dryRun) {
-        throw new Error('dry-run not yet implemented (Task 9)');
+        throw new DryRunRollback(promotionResult);
       }
 
       return promotionResult;
     });
+  } catch (e) {
+    if (e instanceof DryRunRollback) {
+      // dry-run: tx rolled back by the sentinel throw; audit/metric must not fire.
+      return e.carried as PromotionResult;
+    }
+    log.error({ sessionId, error: e instanceof Error ? e.message : String(e) }, 'promotion failed');
+    throw e;
+  }
 
-    // Post-commit audit + metric.
+  // Post-commit audit + metric.
+  // CRITICAL: guard the entire telemetry seam on !opts.dryRun. The
+  // dry-run promoted-success path throws DryRunRollback and never reaches
+  // here, BUT the not-promotable returns (SESSION_NOT_FOUND, NO_SELECTED_CALL,
+  // USER_NOT_FOUND) come back through normal returns from the callback —
+  // without this guard they'd fire trackProjectPromotion under dry-run and
+  // pollute the production counter.
+  if (!opts.dryRun) {
     // `pendingAudit` is a `let` mutated inside an async callback. TypeScript's
     // control-flow analysis cannot see through the async boundary and narrows
     // it to `never` here — cast to recover the declared type.
@@ -366,10 +385,7 @@ export async function ensureProjectForSession(
       trackProjectPromotion(map[r.reason]);
       log.warn({ sessionId, reason: r.reason }, 'session not promotable');
     }
-
-    return res;
-  } catch (e) {
-    log.error({ sessionId, error: e instanceof Error ? e.message : String(e) }, 'promotion failed');
-    throw e;
   }
+
+  return result as PromotionResult;
 }
