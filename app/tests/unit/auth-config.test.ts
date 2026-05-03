@@ -16,4 +16,15 @@ describe('Auth config safety', () => {
     // Must reject unlinked OAuth identities claiming same email
     expect(source).toContain('return false');
   });
+
+  it('requires an explicit allowlisted email before any sign-in path can proceed', () => {
+    expect(source).toContain('AUTH_ALLOWED_EMAILS');
+    expect(source).toContain('function isAuthEmailAllowed');
+    expect(source).toContain('allowedAuthEmails.size === 0');
+    expect(source).toContain('if (!isAuthEmailAllowed(user.email))');
+  });
+
+  it('keeps production password login behind an explicit opt-in flag', () => {
+    expect(source).toContain("process.env.ALLOW_PASSWORD_LOGIN === 'true'");
+  });
 });
