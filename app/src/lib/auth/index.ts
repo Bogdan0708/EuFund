@@ -14,6 +14,19 @@ import { FondEUAdapter } from './adapter';
 
 const log = logger.child({ component: 'auth' });
 
+const allowedAuthEmails = new Set(
+  (process.env.AUTH_ALLOWED_EMAILS || '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+function isAuthEmailAllowed(email: string | null | undefined): boolean {
+  if (!email) return false;
+  if (allowedAuthEmails.size === 0) return false;
+  return allowedAuthEmails.has(email.toLowerCase());
+}
+
 type SessionUserClaims = {
   id?: string;
   isPlatformAdmin?: boolean;
@@ -27,35 +40,59 @@ export const {
 } = NextAuth({
   adapter: FondEUAdapter(),
   providers: [
-    Apple({
-      clientId: process.env.APPLE_CLIENT_ID!,
-      clientSecret: process.env.APPLE_CLIENT_SECRET!,
-    }),
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
-    MicrosoftEntraID({
-      clientId: process.env.MICROSOFT_CLIENT_ID!,
-      clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
-    }),
-    Facebook({
-      clientId: process.env.FACEBOOK_CLIENT_ID!,
-      clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
-    }),
-    EmailProvider({
-      server: {
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT),
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASSWORD,
-        },
-      },
-      from: process.env.EMAIL_FROM || 'noreply@platformafinantare.eu',
-    }),
-    // Dev-only credentials provider for local testing without OAuth
-    ...(process.env.NODE_ENV === 'development'
+    ...(process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET
+      ? [
+          Apple({
+            clientId: process.env.APPLE_CLIENT_ID,
+            clientSecret: process.env.APPLE_CLIENT_SECRET,
+          }),
+        ]
+      : []),
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ? [
+          Google({
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          }),
+        ]
+      : []),
+    ...(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET
+      ? [
+          MicrosoftEntraID({
+            clientId: process.env.MICROSOFT_CLIENT_ID,
+            clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+          }),
+        ]
+      : []),
+    ...(process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET
+      ? [
+          Facebook({
+            clientId: process.env.FACEBOOK_CLIENT_ID,
+            clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+          }),
+        ]
+      : []),
+    ...(process.env.SMTP_HOST
+      ? [
+          EmailProvider({
+            server: {
+              host: process.env.SMTP_HOST,
+              port: Number(process.env.SMTP_PORT),
+              auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS || process.env.SMTP_PASSWORD,
+              },
+            },
+            from:
+              process.env.EMAIL_FROM ||
+              process.env.SMTP_FROM ||
+              'noreply@platformafinantare.eu',
+          }),
+        ]
+      : []),
+    // Credentials provider — dev by default; opt-in for shared dev/staging via ALLOW_PASSWORD_LOGIN
+    ...(process.env.NODE_ENV === 'development' ||
+    process.env.ALLOW_PASSWORD_LOGIN === 'true'
       ? [
           Credentials({
             name: 'Dev Login',
@@ -92,6 +129,11 @@ export const {
   },
   callbacks: {
     async signIn({ user, account }) {
+      if (!isAuthEmailAllowed(user.email)) {
+        log.warn({ email: user.email, provider: account?.provider }, 'Blocked sign-in for non-allowlisted email');
+        return false;
+      }
+
       if (account?.type === 'oauth' && user.email && account.provider && account.providerAccountId) {
         const existing = await db.query.users.findFirst({
           where: eq(users.email, user.email),
