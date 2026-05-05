@@ -32,6 +32,8 @@ substitutions:
   _HEALTHCHECK_SECRET_NAME: ""
   # Opt-in for shared dev/staging deploys only — leave "false" for true production.
   _ALLOW_PASSWORD_LOGIN: "false"
+  # Build-time client bundle flag; keep paired with _ALLOW_PASSWORD_LOGIN when enabling password login.
+  _NEXT_PUBLIC_ALLOW_PASSWORD_LOGIN: "false"
   # Comma-separated allowlist. Empty is intentional fail-closed behavior.
   _AUTH_ALLOWED_EMAILS: ""
 
@@ -59,6 +61,7 @@ steps:
         source /workspace/deploy.env
         docker build \
           -f infrastructure/Dockerfile.prod \
+          --build-arg "NEXT_PUBLIC_ALLOW_PASSWORD_LOGIN=$_NEXT_PUBLIC_ALLOW_PASSWORD_LOGIN" \
           -t "$$IMAGE_URI" \
           -t "$$IMAGE_REPO:latest" \
           .
