@@ -12,6 +12,8 @@ export interface RateLimitOptions {
   messageRo?: string;
   /** Override the default IP-based key suffix (e.g. pass userId for authenticated routes). */
   keySuffix?: string;
+  /** Allow the wrapped handler when Redis/rate-limit infrastructure is unavailable. */
+  failOpenOnError?: boolean;
 }
 
 export type NextRouteHandler = (request: NextRequest) => Promise<Response>;
@@ -68,6 +70,7 @@ export async function enforceRateLimit(
       `${options.keyPrefix}:${identity}`,
       options.maxRequests,
       options.windowMs,
+      { failOpenOnError: options.failOpenOnError },
     );
 
     const retryAfterSeconds = Math.max(1, Math.ceil((rateLimit.resetTime - Date.now()) / 1000));

@@ -13,8 +13,11 @@ export function getRedis(): Redis | null {
 
   if (!redis) {
     redis = new Redis(process.env.REDIS_URL, {
-      maxRetriesPerRequest: 3,
+      maxRetriesPerRequest: 1,
       lazyConnect: true,
+      enableOfflineQueue: false,
+      connectTimeout: 1000,
+      commandTimeout: 1000,
       keepAlive: 30000,
     });
 
@@ -56,7 +59,8 @@ export async function isRedisAvailable(): Promise<boolean> {
 export async function checkRateLimit(
   key: string,
   maxRequests: number,
-  windowMs: number
+  windowMs: number,
+  options: { failOpenOnError?: boolean } = {},
 ): Promise<{ allowed: boolean; remaining: number; resetTime: number }> {
   const redis = getRedis();
   
@@ -86,6 +90,9 @@ export async function checkRateLimit(
     return { allowed, remaining, resetTime };
   } catch (error) {
     log.error({ error }, 'Rate limit check failed');
+    if (options.failOpenOnError) {
+      return { allowed: true, remaining: maxRequests, resetTime: now + windowMs };
+    }
     // Fail-closed: deny on error (security-critical)
     return { allowed: false, remaining: 0, resetTime: now + windowMs };
   }

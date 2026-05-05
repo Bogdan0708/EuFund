@@ -8,6 +8,7 @@ const credentialsLoginRateLimit = withRateLimit(
     maxRequests: 10,
     windowMs: 15 * 60 * 1000,
     messageRo: 'Prea multe încercări de autentificare. Vă rugăm să încercați din nou mai târziu.',
+    failOpenOnError: true,
   },
   nextAuthPost,
 );
