@@ -19,6 +19,7 @@ export default function LoginPage() {
   const [devPassword, setDevPassword] = useState('');
   const [devLoading, setDevLoading] = useState(false);
   const isDev = process.env.NEXT_PUBLIC_NODE_ENV === 'development' || process.env.NODE_ENV === 'development';
+  const allowPasswordLogin = isDev || process.env.NEXT_PUBLIC_ALLOW_PASSWORD_LOGIN === 'true';
 
   const handleOAuthSignIn = async (provider: string) => {
     setOauthLoading(provider);
@@ -167,11 +168,11 @@ export default function LoginPage() {
         </div>
       </main>
 
-      {/* Dev Login (development only) */}
-      {isDev && (
+      {/* Password login (development or explicit deployment opt-in) */}
+      {allowPasswordLogin && (
         <div className="w-full max-w-md z-10 mt-6">
           <div className="rounded-lg p-6 border-2 border-dashed border-yellow-500/50 bg-yellow-500/5">
-            <h3 className="text-sm font-bold text-yellow-600 mb-3">Dev Login (local only)</h3>
+            <h3 className="text-sm font-bold text-yellow-600 mb-3">Password Login</h3>
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
@@ -211,7 +212,7 @@ export default function LoginPage() {
                 disabled={devLoading}
                 className="w-full py-3 bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded-lg transition-all disabled:opacity-50 text-sm"
               >
-                {devLoading ? 'Signing in...' : 'Dev Sign In'}
+                {devLoading ? 'Signing in...' : 'Sign In'}
               </button>
             </form>
           </div>
