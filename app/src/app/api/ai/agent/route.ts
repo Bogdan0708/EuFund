@@ -632,6 +632,11 @@ function mapSectionRow(row: Record<string, unknown>): AgentSection {
 }
 
 export const POST = withRateLimit(
-  { keyPrefix: 'agent-turn', maxRequests: 30, windowMs: 60_000 },
+  {
+    keyPrefix: 'agent-turn',
+    maxRequests: 30,
+    windowMs: 60_000,
+    failOpenOnError: true,
+  },
   handler,
 )

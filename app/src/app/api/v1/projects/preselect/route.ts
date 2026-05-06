@@ -83,6 +83,7 @@ async function handlePreselect(
     maxRequests: 10,
     windowMs: 60_000,
     keySuffix: user.id,
+    failOpenOnError: true,
   })
   if (!limit.ok) return limit.response as NextResponse
   captureLimitHeaders(limit.headers)

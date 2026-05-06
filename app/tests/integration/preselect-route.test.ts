@@ -183,7 +183,11 @@ describe('POST /api/v1/projects/preselect — error paths', () => {
     await POST(req({ description: 'x'.repeat(50), locale: 'ro' }))
     expect(mockEnforceRateLimit).toHaveBeenCalledWith(
       expect.any(Object),
-      expect.objectContaining({ keyPrefix: 'preselect', keySuffix: USER.id }),
+      expect.objectContaining({
+        keyPrefix: 'preselect',
+        keySuffix: USER.id,
+        failOpenOnError: true,
+      }),
     )
   })
 
