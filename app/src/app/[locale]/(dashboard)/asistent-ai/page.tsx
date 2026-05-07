@@ -28,7 +28,7 @@ function AsistentAIInner({ locale }: { locale: string }) {
       {/* Main content — conversation left, workspace right */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left panel: Conversation */}
-        <div className="w-1/2 border-r border-gray-200 flex flex-col">
+        <div className="w-3/5 border-r border-gray-200 flex flex-col">
           <AgentConversation
             messages={agent.messages}
             status={agent.status}
@@ -38,7 +38,7 @@ function AsistentAIInner({ locale }: { locale: string }) {
         </div>
 
         {/* Right panel: Workspace */}
-        <div className="w-1/2 bg-gray-50">
+        <div className="w-2/5 bg-gray-50">
           <AgentWorkspace
             phase={agent.phase}
             sections={agent.sections}

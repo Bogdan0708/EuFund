@@ -116,11 +116,10 @@ async function handler(req: NextRequest) {
   // Explicit action support in the managed runtime is a follow-up.
   const hasStructuredAction = body.action !== undefined && body.action !== null
 
-  // Service-local hard gate. Main production service leaves this env
-  // unset and therefore never dynamically imports managed-side runtime,
-  // circuit-breaker, or anthropic-client modules. Only `fondeu-pilot`
-  // sets MANAGED_RUNTIME_ENABLED=true. A flag widening mistake in the
-  // shared DB cannot leak managed traffic into production.
+  // Service-local hard gate. Production deploys can set this through the
+  // Cloud Build `_MANAGED_RUNTIME_ENABLED` substitution, but traffic still
+  // requires the DB rollout flags below. Set the substitution/env to false
+  // when the service-level kill switch must block managed imports entirely.
   const managedRuntimeEnabled = process.env.MANAGED_RUNTIME_ENABLED === 'true'
 
   const managedEnabled =

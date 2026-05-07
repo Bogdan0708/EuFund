@@ -7,6 +7,7 @@ import { motion } from 'motion/react';
 import { Icon } from '@/components/ui/ds-icon';
 import { relativeTime } from '@/lib/utils';
 import { staggerContainer, staggerItem, staggerTransition } from '@/lib/motion';
+import { csrfFetch } from '@/lib/csrf/client';
 
 /* ---------- types ---------- */
 type ProjectStatus = 'in_progress' | 'submitted' | 'approved' | 'draft';
@@ -158,6 +159,9 @@ export default function ProiectePage({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterKey>('all');
   const [page] = useState(1);
+  const hiddenProjectIdsRef = useRef<Set<string>>(new Set());
+  const deletingIdsRef = useRef<Set<string>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
 
   const searchTimeoutRef = useRef<NodeJS.Timeout>();
 
@@ -183,7 +187,9 @@ export default function ProiectePage({
     fetch(`/api/v1/projects?${params}`)
       .then((res) => res.json())
       .then((data) => {
-        setProjects(data.data?.items || []);
+        const hiddenIds = hiddenProjectIdsRef.current;
+        const items = data.data?.items || [];
+        setProjects(items.filter((project: ApiProject) => !hiddenIds.has(project.id)));
         setLoading(false);
       })
       .catch((err) => {
@@ -191,6 +197,43 @@ export default function ProiectePage({
         setLoading(false);
       });
   }, [page, search, statusFilter]);
+
+  const setProjectDeleting = (projectId: string, deleting: boolean) => {
+    const next = new Set(deletingIdsRef.current);
+    if (deleting) {
+      next.add(projectId);
+    } else {
+      next.delete(projectId);
+    }
+    deletingIdsRef.current = next;
+    setDeletingIds(next);
+  };
+
+  const handleDelete = async (project: ApiProject, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (deletingIdsRef.current.has(project.id)) return;
+    const confirmed = window.confirm(
+      t('deleteConfirm', { title: project.title || t('untitled') })
+    );
+    if (!confirmed) return;
+    hiddenProjectIdsRef.current.add(project.id);
+    setProjectDeleting(project.id, true);
+    setProjects((list) => list.filter((p) => p.id !== project.id));
+    try {
+      const res = await csrfFetch(`/api/v1/projects/${project.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      hiddenProjectIdsRef.current.delete(project.id);
+      setProjects((list) => {
+        if (list.some((item) => item.id === project.id)) return list;
+        return [project, ...list];
+      });
+      window.alert(t('deleteFailed'));
+    } finally {
+      setProjectDeleting(project.id, false);
+    }
+  };
 
   return (
     <main className="flex-1 px-12 py-10 max-w-7xl mx-auto">
@@ -290,7 +333,18 @@ export default function ProiectePage({
                 key={project.id}
                 variants={staggerItem}
                 transition={staggerTransition}
+                className="relative h-full group"
               >
+                <button
+                  type="button"
+                  onClick={(e) => handleDelete(project, e)}
+                  disabled={deletingIds.has(project.id)}
+                  aria-label={t('delete')}
+                  title={t('delete')}
+                  className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white/80 backdrop-blur hover:bg-red-50 hover:text-red-600 text-on-surface-variant flex items-center justify-center opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto transition-opacity shadow-sm disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  <Icon name="delete" size="sm" />
+                </button>
                 <Link
                   href={`/${locale}/proiecte/${project.id}`}
                   className="glass-card p-8 flex flex-col hover:shadow-[0_20px_40px_rgba(0,0,0,0.04)] transition-all cursor-pointer group h-full"

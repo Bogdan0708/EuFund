@@ -25,6 +25,7 @@ export interface AgentSectionState {
   title: string
   status: SectionStatus
   documentOrder: number
+  content: string | null
 }
 
 export type AgentStatus = 'idle' | 'connecting' | 'streaming' | 'error'
@@ -130,7 +131,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
           if (idx >= 0) {
             return prev.map((s, i) => i === idx ? { ...s, status: event.status } : s)
           }
-          return [...prev, { sectionKey: event.sectionKey, title: event.sectionKey, status: event.status, documentOrder: prev.length }]
+          return [...prev, { sectionKey: event.sectionKey, title: event.sectionKey, status: event.status, documentOrder: prev.length, content: null }]
         })
         break
 

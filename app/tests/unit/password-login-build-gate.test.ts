@@ -27,6 +27,7 @@ describe('Password login deployment gate', () => {
       '--build-arg "NEXT_PUBLIC_ALLOW_PASSWORD_LOGIN=$_NEXT_PUBLIC_ALLOW_PASSWORD_LOGIN"',
     );
     expect(cloudBuild).toContain('--set-env-vars "^|^APP_VERSION=');
-    expect(cloudBuild).toContain('|AUTH_ALLOWED_EMAILS=$_AUTH_ALLOWED_EMAILS"');
+    expect(cloudBuild).toContain('_MANAGED_RUNTIME_ENABLED: "true"');
+    expect(cloudBuild).toContain('|AUTH_ALLOWED_EMAILS=$_AUTH_ALLOWED_EMAILS|MANAGED_RUNTIME_ENABLED=$_MANAGED_RUNTIME_ENABLED"');
   });
 });
