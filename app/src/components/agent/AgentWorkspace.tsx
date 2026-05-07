@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import type { Phase, Warning } from '@/lib/ai/agent/types'
 import type { AgentSectionState } from '@/hooks/useAgent'
 import type { StructuredAction } from '@/lib/ai/agent/types'
@@ -25,15 +26,8 @@ interface Props {
 
 const PHASE_ORDER: Phase[] = ['discovery', 'research', 'structuring', 'drafting', 'review']
 
-const PHASE_LABELS: Record<Phase, string> = {
-  discovery: 'Discovery',
-  research: 'Research',
-  structuring: 'Structuring',
-  drafting: 'Drafting',
-  review: 'Review',
-}
-
 export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnings, onAction, isBusy }: Props) {
+  const t = useTranslations('agent')
   const currentIndex = PHASE_ORDER.indexOf(phase)
 
   return (
@@ -51,7 +45,7 @@ export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnin
                     : 'bg-gray-300'
               }`} />
               <span className={`text-xs ${p === phase ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-                {PHASE_LABELS[p]}
+                {t(`phase.${p}`)}
               </span>
               {i < PHASE_ORDER.length - 1 && <span className="text-gray-300 mx-1">→</span>}
             </div>
@@ -103,8 +97,8 @@ export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnin
 
         {phase === 'discovery' && (
           <div className="text-center py-12 text-gray-400">
-            <p className="text-lg font-medium">Describe your project</p>
-            <p className="text-sm mt-1">Tell the assistant about your organization and project idea</p>
+            <p className="text-lg font-medium">{t('discoveryPrompt')}</p>
+            <p className="text-sm mt-1">{t('discoveryHint')}</p>
           </div>
         )}
       </div>

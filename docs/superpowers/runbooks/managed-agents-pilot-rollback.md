@@ -1,8 +1,9 @@
-# Managed Agents Pilot — Rollback Runbook
+# Managed Agents — Rollback Runbook
 
-Three escalating paths. Main production service (`fondeu-platform`)
-is never touched. Use these in order; each later step's SLO is
-slower.
+Three escalating paths. During the 2026-05 production reactivation,
+`fondeu-platform` may run with `MANAGED_RUNTIME_ENABLED=true` via the
+Cloud Build `_MANAGED_RUNTIME_ENABLED` substitution. Use these in order;
+each later step's SLO is slower.
 
 ## 1. Primary — flag off (target: sub-second propagation)
 
@@ -35,28 +36,31 @@ psql "${DATABASE_URL}" -c \
 Always available regardless of API/middleware state. Preferred when
 the admin UI or its auth path is itself the incident.
 
-## 2. Secondary — unset service-local gate (target: ~30s for revision)
+## 2. Secondary — disable service-local gate (target: ~30s for revision)
 
 ```bash
-gcloud run services update fondeu-pilot --region europe-west2 \
-  --remove-env-vars MANAGED_RUNTIME_ENABLED
+gcloud run services update fondeu-platform --region europe-west2 \
+  --set-env-vars MANAGED_RUNTIME_ENABLED=false
 ```
 
 The route's managed dispatch is gated by
-`process.env.MANAGED_RUNTIME_ENABLED === 'true'` (Task 5). Removing
-the env var makes the managed conjunct short-circuit false — no
+`process.env.MANAGED_RUNTIME_ENABLED === 'true'` (Task 5). Setting the
+env var to `false` makes the managed conjunct short-circuit false — no
 managed import or dispatch happens even if the DB flag is stuck on.
+For the next production deploy, keep the kill switch in place by
+overriding `_MANAGED_RUNTIME_ENABLED=false` in Cloud Build.
 
 ## 3. Nuclear — scale pilot service to zero
 
 ```bash
-gcloud run services update fondeu-pilot --region europe-west2 \
+gcloud run services update fondeu-platform --region europe-west2 \
   --min-instances=0 --max-instances=0
 ```
 
-Use when the pilot service itself is the incident (memory leak,
-runaway costs, uncontrolled error spike). Pilot traffic 503s; users
-retry and hit main production (`fondeu-platform`) which is unaffected.
+Use only when the production service itself is the incident (memory
+leak, runaway costs, uncontrolled error spike). This intentionally
+takes the service unavailable until traffic is redirected or a fixed
+revision is deployed.
 
 ## Verification after rollback
 

@@ -810,6 +810,9 @@
     "startFirstProject": "Start your first project",
     "loading": "Loading projects...",
     "errorLoading": "Error loading projects",
+    "delete": "Delete",
+    "deleteConfirm": "Are you sure you want to delete the project \"{title}\"? This action cannot be undone.",
+    "deleteFailed": "Delete failed. Please try again.",
     "archiveEmpty": "Nothing Archived Yet",
     "archiveTitle": "The Archive is Clear",
     "archiveDescription": "Completed projects that have been moved out of your active workspace will appear here for long-term storage and compliance reporting.",
@@ -1382,6 +1385,42 @@
       "EXTERNAL_DEPENDENCY": "{tool} unavailable: external service error.",
       "INTERNAL": "{tool} encountered an internal error.",
       "GENERIC": "{tool} failed."
+    },
+    "thinking": "Thinking...",
+    "waitingForResponse": "Waiting for response...",
+    "inputPlaceholder": "Describe your project or ask a question...",
+    "send": "Send",
+    "applicationStatus": "Application Status",
+    "sectionsLabel": "Sections",
+    "sectionsCount": "{accepted}/{total} accepted",
+    "eligibility": "Eligibility",
+    "eligibilityHasBlockers": "Has blockers",
+    "eligibilityPassed": "Passed",
+    "markComplete": "Mark Complete",
+    "outlineTitle": "Application Outline",
+    "approveOutline": "Approve & Start Drafting",
+    "accept": "Accept",
+    "revise": "Revise",
+    "showMore": "Show more",
+    "showLess": "Show less",
+    "discoveryPrompt": "Describe your project",
+    "discoveryHint": "Tell the assistant about your organization and project idea",
+    "phase": {
+      "discovery": "Discovery",
+      "research": "Research",
+      "structuring": "Structuring",
+      "drafting": "Drafting",
+      "review": "Review"
+    },
+    "sectionStatus": {
+      "pending": "Pending",
+      "generating": "Generating...",
+      "draft": "Draft",
+      "accepted": "Accepted",
+      "stale": "Stale",
+      "invalidated": "Invalidated",
+      "needs_review": "Needs Review",
+      "failed": "Failed"
     }
   }
 }

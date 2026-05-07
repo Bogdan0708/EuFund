@@ -307,7 +307,7 @@ export function NewProjectView({
       )}
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="w-1/2 border-r border-gray-200 flex flex-col">
+        <div className="w-3/5 border-r border-gray-200 flex flex-col">
           <AgentConversation
             messages={agent.messages}
             status={agent.status}
@@ -315,7 +315,7 @@ export function NewProjectView({
             onSendMessage={handleSendMessage}
           />
         </div>
-        <div className="w-1/2 bg-gray-50">
+        <div className="w-2/5 bg-gray-50">
           <AgentWorkspace
             phase={agent.phase}
             sections={agent.sections}

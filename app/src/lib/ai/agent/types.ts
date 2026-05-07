@@ -261,7 +261,7 @@ export interface UIStateSnapshot {
   stateVersion: number
   outlineFrozen: boolean
   warnings: Warning[]
-  sections: { sectionKey: string; title: string; status: SectionStatus; documentOrder: number }[]
+  sections: { sectionKey: string; title: string; status: SectionStatus; documentOrder: number; content: string | null }[]
   blueprint: CallBlueprint | null
   eligibility: EligibilityResult | null
 }

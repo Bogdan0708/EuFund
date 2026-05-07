@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
       title: s.title,
       status: s.status,
       documentOrder: s.documentOrder,
+      content: s.acceptedContent ?? s.content,
     })),
     blueprint: session.blueprint as UIStateSnapshot['blueprint'],
     eligibility: session.eligibility as UIStateSnapshot['eligibility'],

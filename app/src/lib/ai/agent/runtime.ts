@@ -670,6 +670,7 @@ function buildStatePatch(session: AgentSession, sections: AgentSection[]): Parti
       title: s.title,
       status: s.status,
       documentOrder: s.documentOrder,
+      content: s.acceptedContent ?? s.content,
     })),
   }
 }
@@ -686,6 +687,7 @@ function buildUISnapshot(session: AgentSession, sections: AgentSection[]): impor
       title: s.title,
       status: s.status,
       documentOrder: s.documentOrder,
+      content: s.acceptedContent ?? s.content,
     })),
     blueprint: session.blueprint,
     eligibility: session.eligibility,

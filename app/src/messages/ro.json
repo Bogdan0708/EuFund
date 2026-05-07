@@ -810,6 +810,9 @@
     "startFirstProject": "Începe primul proiect",
     "loading": "Se încarcă proiectele...",
     "errorLoading": "Eroare la încărcarea proiectelor",
+    "delete": "Șterge",
+    "deleteConfirm": "Sigur vrei să ștergi proiectul \"{title}\"? Această acțiune nu poate fi anulată.",
+    "deleteFailed": "Ștergerea a eșuat. Reîncearcă.",
     "archiveEmpty": "Nimic Arhivat Încă",
     "archiveTitle": "Arhiva este Goală",
     "archiveDescription": "Proiectele finalizate care au fost mutate din spațiul tău activ de lucru vor apărea aici pentru stocare pe termen lung și raportare de conformitate.",
@@ -1382,6 +1385,42 @@
       "EXTERNAL_DEPENDENCY": "{tool} indisponibil: eroare la un serviciu extern.",
       "INTERNAL": "{tool} a întâmpinat o eroare internă.",
       "GENERIC": "{tool} a eșuat."
+    },
+    "thinking": "Se gândește...",
+    "waitingForResponse": "Se așteaptă răspunsul...",
+    "inputPlaceholder": "Descrie proiectul tău sau pune o întrebare...",
+    "send": "Trimite",
+    "applicationStatus": "Stare aplicație",
+    "sectionsLabel": "Secțiuni",
+    "sectionsCount": "{accepted}/{total} acceptate",
+    "eligibility": "Eligibilitate",
+    "eligibilityHasBlockers": "Are blocaje",
+    "eligibilityPassed": "Trecut",
+    "markComplete": "Marchează ca finalizat",
+    "outlineTitle": "Schiță aplicație",
+    "approveOutline": "Aprobă și începe redactarea",
+    "accept": "Acceptă",
+    "revise": "Revizuiește",
+    "showMore": "Afișează mai mult",
+    "showLess": "Afișează mai puțin",
+    "discoveryPrompt": "Descrie proiectul tău",
+    "discoveryHint": "Spune-i asistentului despre organizația ta și ideea de proiect",
+    "phase": {
+      "discovery": "Descoperire",
+      "research": "Cercetare",
+      "structuring": "Structurare",
+      "drafting": "Redactare",
+      "review": "Revizuire"
+    },
+    "sectionStatus": {
+      "pending": "În așteptare",
+      "generating": "Se generează...",
+      "draft": "Ciornă",
+      "accepted": "Acceptat",
+      "stale": "Învechit",
+      "invalidated": "Invalidat",
+      "needs_review": "Necesită revizuire",
+      "failed": "Eșuat"
     }
   }
 }
