@@ -130,6 +130,13 @@ export default auth(async (req) => {
   }
 
   const isPublic = publicPaths.some(path => pathname.startsWith(path));
+  // Path-scoped bypass for Cloud Scheduler OIDC requests.
+  // The route handler does the actual OIDC verification; middleware just
+  // stops blocking session-less + CSRF-less requests on this exact path.
+  const isSchedulerBearer =
+    pathname === '/api/v1/admin/discovery/run' &&
+    req.method === 'POST' &&
+    (req.headers.get('authorization')?.startsWith('Bearer ') ?? false);
   const finalizeResponse = (response: NextResponse) => {
     try {
       trackRequest(req.method, pathname, response.status, Date.now() - startedAt);
@@ -150,7 +157,7 @@ export default auth(async (req) => {
   // ═══════════════════════════════════════════════════════════════════
   // 2. AUTHENTICATION ENFORCEMENT
   // ═══════════════════════════════════════════════════════════════════
-  if (!isPublic && !req.auth) {
+  if (!isPublic && !isSchedulerBearer && !req.auth) {
     if (pathname.startsWith('/api/')) {
       log.warn({ ip, path: pathname }, '[middleware] Unauthorized API access');
       const response = NextResponse.json(
@@ -220,7 +227,7 @@ export default auth(async (req) => {
   // ═══════════════════════════════════════════════════════════════════
   // 3. CSRF PROTECTION (state-changing operations)
   // ═══════════════════════════════════════════════════════════════════
-  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && !isSchedulerBearer) {
     const csrfExemptPaths = [
       '/api/auth/callback', // NextAuth requires this
       '/api/auth/session',  // read-only session check
