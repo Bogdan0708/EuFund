@@ -64,6 +64,7 @@
     "diff": "^8.0.4",
     "docxtemplater": "^3.68.3",
     "drizzle-orm": "^0.33.0",
+    "google-auth-library": "^10.6.2",
     "ioredis": "^5.9.3",
     "isomorphic-dompurify": "^3.0.0-rc.2",
     "jose": "^6.2.2",
