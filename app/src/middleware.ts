@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth/edge';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { trackRequest } from '@/lib/monitoring/metrics';
+import { isSchedulerBearerRequest } from '@/lib/auth/scheduler-predicate';
 
 // Edge-safe logger (no pino in Edge runtime)
 const makeLog = (ctx: Record<string, unknown> = {}) => ({
@@ -133,10 +134,11 @@ export default auth(async (req) => {
   // Path-scoped bypass for Cloud Scheduler OIDC requests.
   // The route handler does the actual OIDC verification; middleware just
   // stops blocking session-less + CSRF-less requests on this exact path.
-  const isSchedulerBearer =
-    pathname === '/api/v1/admin/discovery/run' &&
-    req.method === 'POST' &&
-    (req.headers.get('authorization')?.startsWith('Bearer ') ?? false);
+  const isSchedulerBearer = isSchedulerBearerRequest(
+    pathname,
+    req.method,
+    req.headers.get('authorization'),
+  );
   const finalizeResponse = (response: NextResponse) => {
     try {
       trackRequest(req.method, pathname, response.status, Date.now() - startedAt);
