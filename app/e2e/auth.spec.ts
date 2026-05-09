@@ -18,7 +18,7 @@ test.describe('Authentication — Login Page', () => {
     // Dev login box
     await expect(page.locator('input[placeholder="Email"]')).toBeVisible();
     await expect(page.locator('input[placeholder="Password"]')).toBeVisible();
-    await expect(page.locator('button:has-text("Dev Sign In")')).toBeVisible();
+    await expect(page.getByTestId('password-login-submit')).toBeVisible();
   });
 
   test('login page in English loads correctly', async ({ page }) => {
@@ -28,7 +28,7 @@ test.describe('Authentication — Login Page', () => {
     await expect(page.locator('button:has-text("Google")')).toBeVisible();
     await expect(page.locator('button:has-text("Microsoft")')).toBeVisible();
     await expect(page.locator('input[placeholder="Email"]')).toBeVisible();
-    await expect(page.locator('button:has-text("Dev Sign In")')).toBeVisible();
+    await expect(page.getByTestId('password-login-submit')).toBeVisible();
   });
 
   test('login page has correct title', async ({ page }) => {
