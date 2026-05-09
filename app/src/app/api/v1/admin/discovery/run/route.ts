@@ -11,11 +11,26 @@ const SCHEDULER_SA =
   process.env.SCHEDULER_SERVICE_ACCOUNT
   ?? 'fondeu-scheduler@eufunding.iam.gserviceaccount.com';
 
+/**
+ * Reconstruct the public audience URL the Cloud Scheduler OIDC token was
+ * minted for. Cloud Run terminates TLS at the frontend, so `req.url` inside
+ * the container can be `http://...` even when the original request was HTTPS.
+ * Prefer forwarded headers; fall back to `req.url` for non-proxied callers.
+ */
+function resolveAudience(req: NextRequest): string {
+  if (process.env.SCHEDULER_OIDC_AUDIENCE) {
+    return process.env.SCHEDULER_OIDC_AUDIENCE;
+  }
+  const url = new URL(req.url);
+  const proto = req.headers.get('x-forwarded-proto') ?? url.protocol.replace(':', '');
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? url.host;
+  return `${proto}://${host}${url.pathname}`;
+}
+
 export async function POST(req: NextRequest) {
   let authPath: 'scheduler' | 'admin' = 'admin';
   try {
-    const url = new URL(req.url);
-    const audience = `${url.origin}${url.pathname}`;
+    const audience = resolveAudience(req);
 
     const scheduler = await verifySchedulerOIDC(req, audience, SCHEDULER_SA);
     if (scheduler) {
