@@ -25,11 +25,19 @@ export async function loadContext(sessionId: string): Promise<{
   summary: string | null
   totalCount: number
 }> {
+  // Issue #81: filter on runtimeMode='v3' so V3 replay never consumes
+  // managed-runtime rows after a managed→V3 degradation. Managed
+  // assistant rows persist content as AnthropicContentBlock[] with the
+  // tool-use id INSIDE content[] (toolCallId column stays null), and
+  // managed tool_result rows have role='user' (not 'tool'). Without
+  // this filter, the V3 replay loop in runtime.ts hands the model
+  // stringified-JSON-as-text blocks it cannot interpret.
   const rows = await db.select()
     .from(agentMessages)
     .where(and(
       eq(agentMessages.sessionId, sessionId),
       isNull(agentMessages.compactedAt),
+      eq(agentMessages.runtimeMode, 'v3'),
     ))
     .orderBy(asc(agentMessages.sequenceNumber))
 
@@ -40,17 +48,26 @@ export async function loadContext(sessionId: string): Promise<{
     ...(row.toolName ? { toolName: row.toolName } : {}),
   }))
 
-  // Get total count for compaction check
+  // Unfiltered fetch covers the summary lookup AND the V3 depth gauge.
+  // Split decision: `totalCount` is meant to gauge V3 history depth for
+  // the compaction-threshold check, so it counts V3 rows only. The
+  // `summaryRow` lookup stays runtime-agnostic — a managed-runtime
+  // summary can still legitimately apply when V3 replays a degraded
+  // session, and skipping it would discard useful prior context.
   const allRows = await db.select()
     .from(agentMessages)
     .where(eq(agentMessages.sessionId, sessionId))
     .orderBy(desc(agentMessages.sequenceNumber))
 
-  // Check for an existing summary (system_summary type)
+  // Check for an existing summary (system_summary type) regardless of runtimeMode.
   const summaryRow = allRows.find(r => r.messageType === 'system_summary')
   const summary = summaryRow ? (typeof summaryRow.content === 'string' ? summaryRow.content : JSON.stringify(summaryRow.content)) : null
 
-  return { messages, summary, totalCount: allRows.length }
+  // V3-only depth — managed rows would otherwise inflate the count and
+  // trip compaction prematurely on a session that just degraded.
+  const totalCount = allRows.filter(r => (r.runtimeMode ?? 'v3') === 'v3').length
+
+  return { messages, summary, totalCount }
 }
 
 /**
