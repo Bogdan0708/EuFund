@@ -80,6 +80,10 @@ async function perplexitySweep(): Promise<Finding[]> {
       system: 'You search for newly published EU funding calls relevant to Romania. Return ONLY a JSON array of objects with: sourceUrl, sourceDomain, title, program, summary.',
       messages: [{ role: 'user', content: 'Find any new EU funding calls opened in the last 7 days relevant to Romanian organizations. Include PNRR, PEO, POTJ, POCIDIF, and Horizon Europe calls.' }],
       temperature: 0.1,
+      // Discovery requires a Perplexity-grounded answer. A cross-provider
+      // fallback (e.g. Gemini) would generate plausible-but-hallucinated
+      // calls that we'd then insert into discovered_calls. Fail loud instead.
+      noFallback: true,
     })
   } catch (err) {
     await captureException(err, { source: 'perplexitySweep', phase: 'fetch' })
