@@ -50,10 +50,15 @@ export async function loadContext(sessionId: string): Promise<{
 
   // Unfiltered fetch covers the summary lookup AND the V3 depth gauge.
   // Split decision: `totalCount` is meant to gauge V3 history depth for
-  // the compaction-threshold check, so it counts V3 rows only. The
-  // `summaryRow` lookup stays runtime-agnostic — a managed-runtime
-  // summary can still legitimately apply when V3 replays a degraded
-  // session, and skipping it would discard useful prior context.
+  // the compaction-threshold check, so it counts V3 rows only.
+  //
+  // The `summaryRow` lookup stays runtime-agnostic, but note: today every
+  // summary persisted via `appendMessage` below picks up the column default
+  // ('v3') because we do not forward `runtimeMode`, so this is effectively
+  // a no-op in current code. Kept unfiltered as forward-compat in case a
+  // future writer tags summaries by their producing runtime — at which
+  // point the question of whether a managed summary should apply to a V3
+  // replay becomes a real call. Until then, treat this as defensive.
   const allRows = await db.select()
     .from(agentMessages)
     .where(eq(agentMessages.sessionId, sessionId))
