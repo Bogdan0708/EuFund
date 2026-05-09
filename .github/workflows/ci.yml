@@ -216,6 +216,9 @@ jobs:
           VECTOR_PROVIDER: memory
           PLAYWRIGHT_BASE_URL: http://localhost:3000
           PLAYWRIGHT_ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}
+          # Match the seeded admin email so NextAuth's signIn() callback passes
+          # the AUTH_ALLOWED_EMAILS allowlist (fail-closed when empty).
+          AUTH_ALLOWED_EMAILS: godjabogdan@gmail.com
         run: |
           PORT=3000 npm run dev &
           for i in $(seq 1 60); do
