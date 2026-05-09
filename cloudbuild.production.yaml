@@ -49,7 +49,12 @@ steps:
     args:
       - -ceu
       - |
-        IMAGE_TAG="${SHORT_SHA:-$BUILD_ID}"
+        # Cloud Build substitutes $COMMIT_SHA at YAML preprocessing time. Bash's
+        # ${VAR:-default} form does NOT see Cloud Build substitutions as bash env
+        # vars, so we assign first, then default at the bash level. See PR #86 for
+        # the same pattern fix on APP_VERSION/GITHUB_SHA.
+        IMAGE_TAG="$COMMIT_SHA"
+        IMAGE_TAG="${IMAGE_TAG:-$BUILD_ID}"
         IMAGE_REPO="europe-west2-docker.pkg.dev/$PROJECT_ID/fondeu/app"
         IMAGE_URI="$$IMAGE_REPO:$$IMAGE_TAG"
         echo "IMAGE_TAG=$$IMAGE_TAG" > /workspace/deploy.env
@@ -97,7 +102,7 @@ steps:
       - |
         gcloud sql backups create \
           --instance="$_CLOUD_SQL_INSTANCE" \
-          --description="pre-deploy-${SHORT_SHA:-$BUILD_ID}" \
+          --description="pre-deploy-$COMMIT_SHA" \
           --async
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
