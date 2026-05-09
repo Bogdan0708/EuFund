@@ -167,8 +167,58 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     if (history.summary) {
       llmMessages.push({ role: 'system', content: `Previous conversation summary:\n${history.summary}` })
     }
+    // Replay persisted history into router-shape messages.
+    //
+    // history.messages comes from loadContext() (see history.ts) and preserves
+    // toolCallId/toolName for tool_call and tool_result rows. We MUST translate
+    // those back into:
+    //   - role='assistant' + tool_calls[] (for persisted tool_call rows)
+    //   - role='tool' + tool_call_id (for persisted tool_result rows)
+    // so the provider adapters can faithfully reconstruct the OpenAI/Anthropic
+    // tool-use protocol on the 2nd+ turn.
+    //
+    // Dropping these fields was the bug fixed in `chore/v3-replay-fix`: the
+    // previous loop only carried {role, content}, so providers received
+    // tool_call_id='' and the upstream API rejected with
+    //   "tool_call_id of '' not found"
+    // — but only on a session that had previously executed a tool.
     for (const msg of history.messages) {
-      llmMessages.push({ role: msg.role as 'user' | 'assistant' | 'system', content: msg.content })
+      if (msg.role === 'tool') {
+        if (!msg.toolCallId) {
+          // Corrupt persisted row — fail loud rather than send '' upstream.
+          throw new Error(
+            `agent-runtime: tool history row missing toolCallId (sessionId=${session.id})`,
+          )
+        }
+        llmMessages.push({ role: 'tool', content: msg.content, tool_call_id: msg.toolCallId })
+        continue
+      }
+
+      if (msg.role === 'assistant' && msg.toolCallId && msg.toolName) {
+        // Persisted tool_call row — content is JSON-stringified {name, arguments}.
+        let parsed: { name?: unknown; arguments?: unknown }
+        try {
+          parsed = JSON.parse(msg.content) as { name?: unknown; arguments?: unknown }
+        } catch {
+          throw new Error(
+            `agent-runtime: tool_call history row has unparseable content (sessionId=${session.id}, toolCallId=${msg.toolCallId})`,
+          )
+        }
+        const name = typeof parsed.name === 'string' ? parsed.name : msg.toolName
+        const args = typeof parsed.arguments === 'string' ? parsed.arguments : '{}'
+        llmMessages.push({
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ id: msg.toolCallId, type: 'function', function: { name, arguments: args } }],
+        })
+        continue
+      }
+
+      // Plain text message (user / assistant text / system).
+      llmMessages.push({
+        role: msg.role as 'user' | 'assistant' | 'system',
+        content: msg.content,
+      })
     }
     // Add current user message
     if (request.message) {

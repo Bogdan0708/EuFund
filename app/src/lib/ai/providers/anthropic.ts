@@ -20,7 +20,10 @@ async function anthropicCompatGenerate(req: GenerateRequest, signal?: AbortSigna
     ...(req.system ? [{ role: 'system' as const, content: req.system }] : []),
     ...req.messages.map((m) => {
       if (m.role === 'tool') {
-        return { role: 'tool' as const, content: m.content, tool_call_id: m.tool_call_id || '' }
+        if (!m.tool_call_id) {
+          throw new Error('anthropic: tool message missing tool_call_id')
+        }
+        return { role: 'tool' as const, content: m.content, tool_call_id: m.tool_call_id }
       }
       if (m.role === 'assistant' && m.tool_calls?.length) {
         return {

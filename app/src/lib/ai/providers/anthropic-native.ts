@@ -59,10 +59,13 @@ function translateMessages(msgs: GenerateRequest['messages']): {
     }
 
     if (m.role === 'tool') {
+      if (!m.tool_call_id) {
+        throw new Error('anthropic-native: tool message missing tool_call_id')
+      }
       if (!currentToolGroup) currentToolGroup = []
       currentToolGroup.push({
         type: 'tool_result',
-        tool_use_id: m.tool_call_id ?? '',
+        tool_use_id: m.tool_call_id,
         content: m.content,
       })
       continue
