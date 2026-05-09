@@ -23,10 +23,15 @@ export const googleProvider: ProviderClient = {
     const c = getClient()
     const messages = [
       ...(req.system ? [{ role: 'system' as const, content: req.system }] : []),
-      ...req.messages.map(m => m.role === 'tool'
-        ? { role: 'tool' as const, content: m.content, tool_call_id: m.tool_call_id || '' }
-        : { role: m.role, content: m.content }
-      ),
+      ...req.messages.map(m => {
+        if (m.role === 'tool') {
+          if (!m.tool_call_id) {
+            throw new Error('google: tool message missing tool_call_id')
+          }
+          return { role: 'tool' as const, content: m.content, tool_call_id: m.tool_call_id }
+        }
+        return { role: m.role, content: m.content }
+      }),
     ] as OpenAI.ChatCompletionMessageParam[]
     const response = await c.chat.completions.create({
       model: req.model,
