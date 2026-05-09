@@ -3,9 +3,14 @@ import { requirePlatformAdmin } from '@/lib/auth/helpers';
 import { runDiscovery } from '@/lib/discovery/pipeline';
 import { verifySchedulerOIDC } from '@/lib/auth/scheduler';
 import { Errors, FondEUError } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 
 // Pin Node.js runtime — google-auth-library is Node-oriented.
 export const runtime = 'nodejs';
+
+// next.config.mjs strips console.* in production builds (compiler.removeConsole).
+// Use the pino logger directly so Cloud Scheduler runs land in Cloud Logging.
+const log = logger.child({ component: 'discovery-route' });
 
 const SCHEDULER_SA =
   process.env.SCHEDULER_SERVICE_ACCOUNT
@@ -39,18 +44,19 @@ export async function POST(req: NextRequest) {
       await requirePlatformAdmin();
     }
 
-    console.log(JSON.stringify({ event: 'discovery.run.start', authPath }));
+    log.info({ event: 'discovery.run.start', authPath }, 'discovery.run.start');
 
     const result = await runDiscovery();
 
-    console.log(
-      JSON.stringify({
+    log.info(
+      {
         event: 'discovery.run.complete',
         authPath,
         newCalls: result.newCalls,
         duplicates: result.duplicates,
         errorCount: result.errors.length,
-      }),
+      },
+      'discovery.run.complete',
     );
 
     if (result.errors.length > 0 && result.newCalls === 0) {

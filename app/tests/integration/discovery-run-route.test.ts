@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { requirePlatformAdminMock, verifySchedulerOIDCMock, runDiscoveryMock } = vi.hoisted(() => ({
-  requirePlatformAdminMock: vi.fn(),
-  verifySchedulerOIDCMock: vi.fn(),
-  runDiscoveryMock: vi.fn(),
-}));
+const { requirePlatformAdminMock, verifySchedulerOIDCMock, runDiscoveryMock, loggerInfoMock, loggerChildMock } = vi.hoisted(() => {
+  const loggerInfoMock = vi.fn();
+  const loggerChildMock = vi.fn(() => ({ info: loggerInfoMock, warn: vi.fn(), error: vi.fn(), debug: vi.fn() }));
+  return {
+    requirePlatformAdminMock: vi.fn(),
+    verifySchedulerOIDCMock: vi.fn(),
+    runDiscoveryMock: vi.fn(),
+    loggerInfoMock,
+    loggerChildMock,
+  };
+});
 
 vi.mock('@/lib/auth/helpers', () => ({
   requirePlatformAdmin: requirePlatformAdminMock,
@@ -16,6 +22,13 @@ vi.mock('@/lib/auth/scheduler', async () => {
 });
 vi.mock('@/lib/discovery/pipeline', () => ({
   runDiscovery: runDiscoveryMock,
+}));
+vi.mock('@/lib/logger', () => ({
+  logger: { child: loggerChildMock, info: loggerInfoMock, warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  default: { child: loggerChildMock, info: loggerInfoMock, warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  createLogger: loggerChildMock,
+  loggers: {},
+  logError: vi.fn(),
 }));
 
 import { POST } from '@/app/api/v1/admin/discovery/run/route';
@@ -28,6 +41,9 @@ beforeEach(() => {
   requirePlatformAdminMock.mockReset();
   verifySchedulerOIDCMock.mockReset();
   runDiscoveryMock.mockReset();
+  loggerInfoMock.mockReset();
+  // Re-prime child() to keep returning the same mock logger object.
+  loggerChildMock.mockImplementation(() => ({ info: loggerInfoMock, warn: vi.fn(), error: vi.fn(), debug: vi.fn() }));
 });
 
 describe('POST /api/v1/admin/discovery/run', () => {
@@ -81,16 +97,32 @@ describe('POST /api/v1/admin/discovery/run', () => {
     expect(res.status).toBe(503);
   });
 
-  it('logs the auth path and the discovery result', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+  it('logs the auth path and the discovery result via pino (survives next.config removeConsole)', async () => {
+    // next.config.mjs strips console.* in prod (compiler.removeConsole). The
+    // discovery route must use the pino logger so Cloud Scheduler runs are
+    // visible in Cloud Logging.
     verifySchedulerOIDCMock.mockResolvedValue({ source: 'scheduler' });
     runDiscoveryMock.mockResolvedValue({ newCalls: 2, duplicates: 0, errors: [] });
 
     await POST(makeReq({ authorization: 'Bearer good' }));
-    const logs = logSpy.mock.calls.map((args) => String(args[0]));
-    expect(logs.some((l) => l.includes('discovery.run.start'))).toBe(true);
-    expect(logs.some((l) => l.includes('discovery.run.complete'))).toBe(true);
-    logSpy.mockRestore();
+
+    expect(loggerChildMock).toHaveBeenCalledWith(expect.objectContaining({ component: 'discovery-route' }));
+    const messages = loggerInfoMock.mock.calls.map((args) => args[1]);
+    expect(messages).toContain('discovery.run.start');
+    expect(messages).toContain('discovery.run.complete');
+
+    // The structured fields used by Cloud Logging filters must survive.
+    const startCall = loggerInfoMock.mock.calls.find((args) => args[1] === 'discovery.run.start');
+    expect(startCall?.[0]).toMatchObject({ event: 'discovery.run.start', authPath: 'scheduler' });
+
+    const completeCall = loggerInfoMock.mock.calls.find((args) => args[1] === 'discovery.run.complete');
+    expect(completeCall?.[0]).toMatchObject({
+      event: 'discovery.run.complete',
+      authPath: 'scheduler',
+      newCalls: 2,
+      duplicates: 0,
+      errorCount: 0,
+    });
   });
 
   it('returns 500 when discovery throws unexpectedly', async () => {
