@@ -12,6 +12,16 @@ export interface GatewayClient {
     maxTokens?: number
     temperature?: number
     stream?: boolean
+    /**
+     * When true, skip the cross-provider FALLBACK_PROVIDER swap and rethrow
+     * the underlying error instead. Same-provider retry-on-retryable still
+     * runs — `noFallback` only disables the cross-provider swap, which is
+     * what produces hallucinated outputs from a substitute model.
+     *
+     * Used by callers (e.g. discovery) where a wrong-provider response is
+     * worse than a loud failure.
+     */
+    noFallback?: boolean
   }): Promise<{ content: string; tokensUsed: number }>
   embed(text: string): Promise<number[]>
 }
@@ -142,11 +152,14 @@ async function callWithRetry(
   messages: OpenAI.ChatCompletionMessageParam[],
   maxTokens: number,
   temperature: number,
+  noFallback = false,
 ): Promise<{ content: string; tokensUsed: number }> {
   try {
     return await singleCall(provider, model, messages, maxTokens, temperature)
   } catch (err) {
     log.warn({ provider, model, error: err instanceof Error ? err.message : String(err) }, 'Primary call failed')
+
+    let lastErr: unknown = err
 
     if (shouldRetry(err)) {
       const delay = getRetryDelay(err)
@@ -155,7 +168,15 @@ async function callWithRetry(
         return await singleCall(provider, model, messages, maxTokens, temperature)
       } catch (retryErr) {
         log.warn({ provider, model, error: retryErr instanceof Error ? retryErr.message : String(retryErr) }, 'Retry failed')
+        lastErr = retryErr
       }
+    }
+
+    // When the caller opts out of the cross-provider swap, rethrow the
+    // underlying error from the (retried) primary attempt instead of
+    // silently substituting a different model's output.
+    if (noFallback) {
+      throw lastErr instanceof Error ? lastErr : new Error(String(lastErr))
     }
 
     const fallback = FALLBACK_PROVIDER[provider]
@@ -201,9 +222,16 @@ export function createGatewayClient(
         messages.push({ role: m.role as 'user' | 'assistant', content: m.content })
       }
 
-      log.info({ provider: opts.provider, model: opts.model }, 'AI request')
+      log.info({ provider: opts.provider, model: opts.model, noFallback: opts.noFallback === true }, 'AI request')
 
-      return callWithRetry(opts.provider, opts.model, messages, opts.maxTokens ?? 20_000, opts.temperature ?? 0.7)
+      return callWithRetry(
+        opts.provider,
+        opts.model,
+        messages,
+        opts.maxTokens ?? 20_000,
+        opts.temperature ?? 0.7,
+        opts.noFallback === true,
+      )
     },
     async embed(text: string) {
       const client = getEmbeddingClient()
