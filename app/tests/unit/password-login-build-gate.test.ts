@@ -28,6 +28,6 @@ describe('Password login deployment gate', () => {
     );
     expect(cloudBuild).toContain('--set-env-vars "^|^APP_VERSION=');
     expect(cloudBuild).toContain('_MANAGED_RUNTIME_ENABLED: "true"');
-    expect(cloudBuild).toContain('|AUTH_ALLOWED_EMAILS=$_AUTH_ALLOWED_EMAILS|MANAGED_RUNTIME_ENABLED=$_MANAGED_RUNTIME_ENABLED"');
+    expect(cloudBuild).toContain('|AUTH_ALLOWED_EMAILS=$_AUTH_ALLOWED_EMAILS|MANAGED_RUNTIME_ENABLED=$_MANAGED_RUNTIME_ENABLED|SCHEDULER_OIDC_AUDIENCE=$_SCHEDULER_OIDC_AUDIENCE"');
   });
 });
