@@ -50,20 +50,22 @@ vi.mock('@/lib/db', () => {
 
   function filterV3IfRequested(rows: any[], whereArg: unknown): any[] {
     if (!whereArg) return rows
-    const repr = safeStringify(whereArg)
-    // Match the literal SQL value sent to drizzle's eq() — production code
-    // calls eq(agentMessages.runtimeMode, 'v3').
-    const requestsV3 = repr.includes('"v3"')
-    if (!requestsV3) return rows
+    if (!whereContains(whereArg, 'v3')) return rows
     return rows.filter((r) => (r.runtimeMode ?? 'v3') === 'v3')
   }
 
-  function safeStringify(value: unknown): string {
-    try {
-      return JSON.stringify(value)
-    } catch {
-      return ''
+  // Drizzle SQL builders contain circular refs (column → table → columns),
+  // so JSON.stringify throws. Walk the tree manually with a visited set,
+  // looking for the literal value 'v3' anywhere in queryChunks.
+  function whereContains(node: unknown, needle: string, seen = new WeakSet()): boolean {
+    if (node === needle) return true
+    if (typeof node !== 'object' || node === null) return false
+    if (seen.has(node as object)) return false
+    seen.add(node as object)
+    if (Array.isArray(node)) {
+      return node.some((v) => whereContains(v, needle, seen))
     }
+    return Object.values(node as Record<string, unknown>).some((v) => whereContains(v, needle, seen))
   }
 
   return {
@@ -211,9 +213,12 @@ describe('loadContext — runtimeMode filter (Issue #81)', () => {
 
     const ctx = await loadContext('managed-only-session')
     expect(ctx.messages).toEqual([])
-    // The unfiltered totalCount probe still sees both rows so a downstream
-    // depth gauge is honest about session size.
-    expect(ctx.totalCount).toBe(2)
+    // Split decision: totalCount tracks V3 history depth (gauges the V3
+    // compaction-threshold check), so a managed-only session reports 0
+    // even though the underlying table holds 2 rows. This prevents
+    // managed turns from prematurely tripping V3 compaction after a
+    // managed→V3 degradation.
+    expect(ctx.totalCount).toBe(0)
   })
 
   it('returns all rows for a single-runtime V3 session (backward compatibility)', async () => {
