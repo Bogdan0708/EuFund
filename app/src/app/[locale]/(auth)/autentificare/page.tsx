@@ -210,6 +210,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={devLoading}
+                data-testid="password-login-submit"
                 className="w-full py-3 bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded-lg transition-all disabled:opacity-50 text-sm"
               >
                 {devLoading ? 'Signing in...' : 'Sign In'}

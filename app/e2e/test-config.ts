@@ -39,6 +39,6 @@ export async function submitDevLogin(
     { timeout: 15_000 }
   ).catch(() => null);
 
-  await page.locator('button:has-text("Dev Sign In")').click();
+  await page.getByTestId('password-login-submit').click();
   return callbackPromise;
 }
