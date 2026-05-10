@@ -1,5 +1,5 @@
 // app/tests/integration/promotion-e2e.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from '@/lib/db';
 import { agentSessions, projects, orgMembers, organizations, users, callsForProposals, fundingPrograms } from '@/lib/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
@@ -9,7 +9,16 @@ const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 const TEST_CALL_CODE = 'CALL-E2E-PROMO';
 const TEST_PROGRAM_ID = '00000000-0000-0000-0000-000000000003';
 
-describe('promotion E2E regression', () => {
+// Gate the suite on DATABASE_URL: this is a real-DB integration test that
+// reaches the lib/db lazy proxy on import. Without DATABASE_URL the proxy
+// throws synchronously in beforeEach. The build-and-test CI job runs vitest
+// without postgres, so unconditional execution makes CI red there. Local
+// runs and the rls-postgres-check / e2e jobs (which do set DATABASE_URL)
+// continue to exercise the test.
+const HAS_DB = !!process.env.DATABASE_URL;
+const describeIfDb = HAS_DB ? describe : describe.skip;
+
+describeIfDb('promotion E2E regression', () => {
   beforeEach(async () => {
     // 1. Find all orgs for the test user
     const userOrgs = await db.select({ orgId: orgMembers.orgId })

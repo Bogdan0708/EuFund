@@ -10,12 +10,12 @@ export interface RomanianContentInput {
   content: string;
   context: 'document_analysis' | 'proposal_generation' | 'grant_matching' | 'match_grants' | 'compliance_validation';
   documentType?: string;
-  additionalContext?: Record<string, any>;
+  additionalContext?: Record<string, unknown>;
 }
 
 export interface RomanianAnalysisResult {
   context: string;
-  detectedEntities?: any[];
+  detectedEntities?: unknown[];
   administrativeScore?: number;
 }
 

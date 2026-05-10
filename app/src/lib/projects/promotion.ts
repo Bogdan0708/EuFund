@@ -7,7 +7,7 @@
 // drafting workspace attached to that project via agent_sessions.project_id.
 // This module owns the lifecycle transition that links the two.
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { withUserRLS } from '@/lib/db';
 import { agentSessions, projects, users, callsForProposals } from '@/lib/db/schema';
 import { logAudit } from '@/lib/legal/audit';
