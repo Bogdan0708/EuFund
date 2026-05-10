@@ -17,8 +17,32 @@ import { eq } from 'drizzle-orm'
 import { onSectionAccepted, onPhaseTransition } from '@/lib/ai/knowledge/write-back'
 import { isFeatureEnabled } from '@/lib/feature-flags'
 import { logger } from '@/lib/logger'
+import { captureException } from '@/lib/monitoring/sentry'
+import { logAudit } from '@/lib/legal/audit'
+import type { RouterMessage } from '@/lib/ai/providers/types'
 
 const log = logger.child({ component: 'agent-runtime' })
+
+/**
+ * Thrown when V3 history replay detects a corrupt agent_messages row —
+ * missing toolCallId on a tool row, malformed tool_call content, etc.
+ *
+ * Issue #83 item 4: callers wrap the replay loop and fire
+ * `captureException` + `logAudit('agent.history.integrity_violation', ...)`
+ * before re-throwing so observability picks up the integrity failure.
+ */
+export class HistoryIntegrityError extends Error {
+  readonly meta: {
+    sessionId: string
+    toolCallId?: string
+    reason: string
+  }
+  constructor(message: string, meta: { sessionId: string; toolCallId?: string; reason: string }) {
+    super(message)
+    this.name = 'HistoryIntegrityError'
+    this.meta = meta
+  }
+}
 
 interface WriteBackContext {
   action?: NonNullable<AgentRequest['action']>
@@ -151,13 +175,10 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     const sessionStateBlock = buildSessionStateBlock(session, sections)
     const phaseTools = getToolsForPhase(session.currentPhase)
 
-    // Build messages array for LLM
-    const llmMessages: {
-      role: 'user' | 'assistant' | 'system' | 'tool'
-      content: string
-      tool_call_id?: string
-      tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[]
-    }[] = []
+    // Build messages array for LLM. RouterMessage is a discriminated union
+    // (Issue #83 item 6) — tool_call_id only on role='tool', tool_calls only
+    // on role='assistant'. Local push call sites must satisfy the union shape.
+    const llmMessages: RouterMessage[] = []
 
     // Volatile session state — delivered as a role:'system' message so the
     // Anthropic native adapter hoists it to an uncached additional system block
@@ -196,93 +217,149 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     // we cannot recover the lost grouping, so each tool_call becomes its own
     // assistant message, matching pre-#82 behavior.
     type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } }
+
+    // Issue #83 item 1: parseToolCallRow throws on any malformed shape rather
+    // than silently falling back to msg.toolName / '{}'. A malformed tool_call
+    // row represents a write-path bug or data corruption — replay must fail
+    // loud so the wrapping observability catch (item 4) can fire Sentry +
+    // audit before the error bubbles up.
     const parseToolCallRow = (
       msg: typeof history.messages[number],
     ): { toolCall: ToolCall; groupId: string | null } => {
       if (!msg.toolCallId) {
-        throw new Error(
-          `agent-runtime: tool_call history row missing toolCallId (sessionId=${session.id})`,
+        throw new HistoryIntegrityError(
+          `agent-runtime: tool_call history row missing toolCallId`,
+          { sessionId: session.id, reason: 'missing_tool_call_id' },
         )
       }
       let parsed: { name?: unknown; arguments?: unknown; groupId?: unknown }
       try {
         parsed = JSON.parse(msg.content)
       } catch {
-        throw new Error(
-          `agent-runtime: tool_call history row has unparseable content (sessionId=${session.id}, toolCallId=${msg.toolCallId})`,
+        throw new HistoryIntegrityError(
+          `agent-runtime: tool_call history row has unparseable content`,
+          { sessionId: session.id, toolCallId: msg.toolCallId, reason: 'unparseable_content' },
         )
       }
-      const name = typeof parsed.name === 'string' ? parsed.name : (msg.toolName ?? '')
-      const args = typeof parsed.arguments === 'string' ? parsed.arguments : '{}'
+      if (typeof parsed.name !== 'string' || typeof parsed.arguments !== 'string') {
+        throw new HistoryIntegrityError(
+          `agent-runtime: tool_call history row malformed (name or arguments missing)`,
+          { sessionId: session.id, toolCallId: msg.toolCallId, reason: 'malformed_content' },
+        )
+      }
       const groupId = typeof parsed.groupId === 'string' ? parsed.groupId : null
       return {
-        toolCall: { id: msg.toolCallId, type: 'function', function: { name, arguments: args } },
+        toolCall: { id: msg.toolCallId, type: 'function', function: { name: parsed.name, arguments: parsed.arguments } },
         groupId,
       }
     }
 
-    let i = 0
-    while (i < history.messages.length) {
-      const msg = history.messages[i]
+    // Issue #83 item 5: messageType is authoritative. A row whose stored
+    // messageType is 'text' must replay as plain text even if toolCallId
+    // happens to be set (drift defense). Fall back to the role+toolCallId+
+    // toolName inference only when messageType is missing — that path exists
+    // for legacy tests and for forward compat with any caller that hasn't
+    // routed through loadContext.
+    const isToolCallRow = (msg: typeof history.messages[number]): boolean => {
+      if (msg.messageType) return msg.messageType === 'tool_call'
+      return msg.role === 'assistant' && !!msg.toolCallId && !!msg.toolName
+    }
+    const isToolResultRow = (msg: typeof history.messages[number]): boolean => {
+      if (msg.messageType) return msg.messageType === 'tool_result'
+      return msg.role === 'tool'
+    }
 
-      if (msg.role === 'tool') {
-        if (!msg.toolCallId) {
-          // Corrupt persisted row — fail loud rather than send '' upstream.
-          throw new Error(
-            `agent-runtime: tool history row missing toolCallId (sessionId=${session.id})`,
-          )
+    // Issue #83 item 4: wrap the entire replay in a try/catch so any
+    // HistoryIntegrityError gets observability (Sentry + audit) before
+    // bubbling up to the route handler. The throws live deep inside
+    // parseToolCallRow and the tool-row branch, but the observability
+    // belongs at this boundary so it fires once per integrity violation.
+    try {
+      let i = 0
+      while (i < history.messages.length) {
+        const msg = history.messages[i]
+
+        if (isToolResultRow(msg)) {
+          if (!msg.toolCallId) {
+            throw new HistoryIntegrityError(
+              `agent-runtime: tool history row missing toolCallId`,
+              { sessionId: session.id, reason: 'missing_tool_call_id_on_result' },
+            )
+          }
+          llmMessages.push({ role: 'tool', content: msg.content, tool_call_id: msg.toolCallId })
+          i++
+          continue
         }
-        llmMessages.push({ role: 'tool', content: msg.content, tool_call_id: msg.toolCallId })
-        i++
-        continue
-      }
 
-      if (msg.role === 'assistant' && msg.toolCallId && msg.toolName) {
-        const first = parseToolCallRow(msg)
+        if (isToolCallRow(msg)) {
+          const first = parseToolCallRow(msg)
 
-        // Walk forward collecting all tool_call rows that share this groupId,
-        // plus all tool_result rows whose toolCallId matches a collected call.
-        // Stop at any other row shape (different groupId, plain text, user, etc.).
-        const toolCalls: ToolCall[] = [first.toolCall]
-        const toolResults: { content: string; tool_call_id: string }[] = []
-        const collectedIds = new Set<string>([first.toolCall.id])
-        let j = i + 1
+          // Issue #82: batch consecutive same-groupId tool_call rows
+          // (interleaved with their tool_results) into one assistant message.
+          const toolCalls: ToolCall[] = [first.toolCall]
+          const toolResults: { content: string; tool_call_id: string }[] = []
+          const collectedIds = new Set<string>([first.toolCall.id])
+          let j = i + 1
 
-        if (first.groupId !== null) {
-          while (j < history.messages.length) {
-            const next = history.messages[j]
-            if (next.role === 'tool' && next.toolCallId && collectedIds.has(next.toolCallId)) {
-              toolResults.push({ content: next.content, tool_call_id: next.toolCallId })
-              j++
-              continue
-            }
-            if (next.role === 'assistant' && next.toolCallId && next.toolName) {
-              const candidate = parseToolCallRow(next)
-              if (candidate.groupId === first.groupId) {
-                toolCalls.push(candidate.toolCall)
-                collectedIds.add(candidate.toolCall.id)
+          if (first.groupId !== null) {
+            while (j < history.messages.length) {
+              const next = history.messages[j]
+              if (isToolResultRow(next) && next.toolCallId && collectedIds.has(next.toolCallId)) {
+                toolResults.push({ content: next.content, tool_call_id: next.toolCallId })
                 j++
                 continue
               }
+              if (isToolCallRow(next)) {
+                const candidate = parseToolCallRow(next)
+                if (candidate.groupId === first.groupId) {
+                  toolCalls.push(candidate.toolCall)
+                  collectedIds.add(candidate.toolCall.id)
+                  j++
+                  continue
+                }
+              }
+              break
             }
-            break
           }
+
+          llmMessages.push({ role: 'assistant', content: '', tool_calls: toolCalls })
+          for (const tr of toolResults) {
+            llmMessages.push({ role: 'tool', content: tr.content, tool_call_id: tr.tool_call_id })
+          }
+          i = j
+          continue
         }
 
-        llmMessages.push({ role: 'assistant', content: '', tool_calls: toolCalls })
-        for (const tr of toolResults) {
-          llmMessages.push({ role: 'tool', content: tr.content, tool_call_id: tr.tool_call_id })
-        }
-        i = j
-        continue
+        // Plain text message (user / assistant text / system).
+        llmMessages.push({
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: msg.content,
+        })
+        i++
       }
-
-      // Plain text message (user / assistant text / system).
-      llmMessages.push({
-        role: msg.role as 'user' | 'assistant' | 'system',
-        content: msg.content,
-      })
-      i++
+    } catch (err) {
+      if (err instanceof HistoryIntegrityError) {
+        // Fire-and-forget — observability must not block the throw nor change
+        // the rejection semantics. Errors inside captureException/logAudit are
+        // logged by the internals and absorbed.
+        void captureException(err, {
+          component: 'agent-runtime',
+          ...err.meta,
+        })
+        void logAudit({
+          userId: session.userId,
+          action: 'agent.history.integrity_violation',
+          resourceType: 'agent_session',
+          resourceId: session.id,
+          metadata: {
+            reason: err.meta.reason,
+            ...(err.meta.toolCallId ? { toolCallId: err.meta.toolCallId } : {}),
+            // The error message itself is safe (no UUIDs in the string), but
+            // the meta carries them in a structured field for queryability.
+          },
+        })
+      }
+      throw err
     }
     // Add current user message
     if (request.message) {
@@ -551,11 +628,14 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
 
     return { session, sections }
   } catch (error) {
+    // Issue #83 item 2: do NOT emit a 'error' SSE event here. The route's
+    // outer catch (api/ai/agent/route.ts) owns the SSE error envelope, so
+    // emitting from the runtime produced TWO error events for one failure.
+    // Logging stays here — observability is logical, not stream-level.
     log.error(
       { sessionId: session.id, error: error instanceof Error ? error.message : String(error) },
       'Agent turn failed',
     )
-    emit({ type: 'error', message: error instanceof Error ? error.message : 'Agent error', retryable: true })
     throw error
   }
 }

@@ -15,6 +15,10 @@ export interface MessageForLLM {
   content: string
   toolCallId?: string
   toolName?: string
+  // Issue #83 item 5: surface messageType so replay dispatches on the column
+  // value (authoritative) rather than inferring from role + toolCallId + toolName
+  // (drift-prone if toolCallId is set but the row is actually text).
+  messageType?: string
 }
 
 /**
@@ -46,6 +50,7 @@ export async function loadContext(sessionId: string): Promise<{
     content: typeof row.content === 'string' ? row.content : JSON.stringify(row.content),
     ...(row.toolCallId ? { toolCallId: row.toolCallId } : {}),
     ...(row.toolName ? { toolName: row.toolName } : {}),
+    ...(row.messageType ? { messageType: row.messageType } : {}),
   }))
 
   // Unfiltered fetch covers the summary lookup AND the V3 depth gauge.

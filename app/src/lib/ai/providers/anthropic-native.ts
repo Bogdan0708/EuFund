@@ -78,18 +78,24 @@ function translateMessages(msgs: GenerateRequest['messages']): {
       continue
     }
 
-    // assistant
-    if (m.tool_calls && m.tool_calls.length > 0) {
-      const blocks: AnthropicContentBlock[] = []
-      if (m.content && m.content.length > 0) blocks.push({ type: 'text', text: m.content })
-      for (const tc of m.tool_calls) {
-        let input: unknown = {}
-        try { input = JSON.parse(tc.function.arguments) } catch { input = {} }
-        blocks.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input })
+    // Issue #83 item 6: explicit role==='assistant' narrowing is required by
+    // the discriminated RouterMessage — system/tool/user have already
+    // continued out, but TS doesn't auto-narrow after if/else chains with
+    // continue. The branch is exhaustive in practice (every other role
+    // branched + continued above).
+    if (m.role === 'assistant') {
+      if (m.tool_calls && m.tool_calls.length > 0) {
+        const blocks: AnthropicContentBlock[] = []
+        if (m.content && m.content.length > 0) blocks.push({ type: 'text', text: m.content })
+        for (const tc of m.tool_calls) {
+          let input: unknown = {}
+          try { input = JSON.parse(tc.function.arguments) } catch { input = {} }
+          blocks.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input })
+        }
+        out.push({ role: 'assistant', content: blocks })
+      } else {
+        out.push({ role: 'assistant', content: m.content })
       }
-      out.push({ role: 'assistant', content: blocks })
-    } else {
-      out.push({ role: 'assistant', content: m.content })
     }
   }
 
