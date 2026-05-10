@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withUserRLS } from '@/lib/db';
-import { projects, orgMembers, organizations } from '@/lib/db/schema';
+import { projects, orgMembers } from '@/lib/db/schema';
 import { createProjectSchema } from '@/lib/validators';
 import { Errors, FondEUError } from '@/lib/errors';
 import { requireAuth, getPaginationParams } from '@/lib/auth/helpers';
