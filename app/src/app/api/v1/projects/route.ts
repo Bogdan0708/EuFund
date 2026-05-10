@@ -12,59 +12,13 @@ import { logAudit } from '@/lib/legal/audit';
 import { eq, and, isNull, ilike, inArray, desc, count } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
+import { resolveProjectOrgIdInTx } from '@/lib/projects/org-resolver';
+
 const log = logger.child({ component: 'projects-api' });
 type ProjectStatus = NonNullable<typeof projects.$inferSelect.status>;
 
 async function resolveProjectOrgId(userId: string, requestedOrgId?: string): Promise<string> {
-  if (requestedOrgId) {
-    return requestedOrgId;
-  }
-
-  const memberships = await withUserRLS(userId, async (tx) => {
-    return tx.query.orgMembers.findMany({
-      where: eq(orgMembers.userId, userId),
-      columns: { orgId: true },
-      limit: 2,
-    });
-  });
-
-  if (memberships.length === 1) {
-    return memberships[0].orgId;
-  }
-
-  if (memberships.length === 0) {
-    // Auto-create personal org for user
-    const [newOrg] = await withUserRLS(userId, async (tx) => {
-      const [org] = await tx
-        .insert(organizations)
-        .values({
-          name: `Personal Workspace`,
-          orgType: 'pfa',
-        })
-        .returning({ id: organizations.id });
-
-      await tx.insert(orgMembers).values({
-        userId,
-        orgId: org.id,
-        role: 'admin',
-      });
-
-      return [org];
-    });
-
-    return newOrg.id;
-  }
-
-  throw new FondEUError(
-    {
-      code: 'CONFLICT',
-      statusCode: 409,
-      messageEn: 'A valid organization context is required to create a project.',
-      messageRo: 'Este necesar contextul unei organizații valide pentru a crea proiectul.',
-      details: { reason: 'PROJECT_ORG_REQUIRED' },
-      retryable: false,
-    },
-  );
+  return withUserRLS(userId, (tx) => resolveProjectOrgIdInTx(tx, userId, requestedOrgId));
 }
 
 export async function GET(req: NextRequest) {
