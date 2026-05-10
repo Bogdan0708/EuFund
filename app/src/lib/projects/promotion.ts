@@ -39,6 +39,54 @@ export class DryRunRollback<T> extends Error {
   }
 }
 
+// Local threshold — kept local on purpose to avoid importing from
+// preselect.ts, which itself will import this module in Task 10.
+// The value happens to match preselect's MIN_DESCRIPTION_LENGTH (40),
+// but the constraints are conceptually independent: preselect uses it
+// to gate the ranker; we use it to decide whether a description is
+// substantive enough to be a project title.
+const MIN_DESCRIPTION_LEN_FOR_TITLE = 40;
+const TITLE_MAX_LEN = 120;
+
+/** Minimal shape used by the title derivation; kept narrow on purpose. */
+export interface SessionForTitle {
+  selectedCallId: string;
+  messageSummary: string | null;
+  planningArtifact: { preselect?: { description?: string } } | null;
+}
+
+function normalizeWhitespace(s: string): string {
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+function truncate(s: string, max: number): string {
+  return s.length <= max ? s : s.slice(0, max).trimEnd();
+}
+
+export function deriveProjectTitle(
+  session: SessionForTitle,
+  locale: 'ro' | 'en',
+): { title: string; source: TitleSource } {
+  const desc = session.planningArtifact?.preselect?.description;
+  if (typeof desc === 'string') {
+    const normalized = normalizeWhitespace(desc);
+    if (normalized.length >= MIN_DESCRIPTION_LEN_FOR_TITLE) {
+      return { title: truncate(normalized, TITLE_MAX_LEN), source: 'description' };
+    }
+  }
+
+  const summary = session.messageSummary;
+  if (typeof summary === 'string' && summary.trim().length > 0) {
+    return { title: truncate(normalizeWhitespace(summary), TITLE_MAX_LEN), source: 'messageSummary' };
+  }
+
+  const idFragment = session.selectedCallId.slice(0, 12);
+  const title = locale === 'en'
+    ? `Untitled project — ${idFragment}`
+    : `Proiect nou — ${idFragment}`;
+  return { title, source: 'fallback' };
+}
+
 export async function ensureProjectForSession(
   _ctx: ServiceContext,
   _sessionId: string,
