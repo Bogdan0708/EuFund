@@ -182,7 +182,49 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     // tool_call_id='' and the upstream API rejected with
     //   "tool_call_id of '' not found"
     // — but only on a session that had previously executed a tool.
-    for (const msg of history.messages) {
+    //
+    // Issue #82 fix: parallel tool_calls in a single LLM response are persisted
+    // as N consecutive (tool_call, tool_result) row pairs. Each tool_call row
+    // carries a groupId (embedded in content) shared by all calls from the same
+    // LLM response. When replaying, we batch consecutive same-groupId tool_call
+    // rows (interleaved with their tool_results) into ONE assistant message
+    // with tool_calls[N], then emit the tool_results in order. Without this,
+    // Anthropic native interprets the alternating singletons as N sequential
+    // turns rather than one parallel turn — silent semantic shift.
+    //
+    // Legacy rows (pre-fix data, no groupId) fall through to per-row replay —
+    // we cannot recover the lost grouping, so each tool_call becomes its own
+    // assistant message, matching pre-#82 behavior.
+    type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } }
+    const parseToolCallRow = (
+      msg: typeof history.messages[number],
+    ): { toolCall: ToolCall; groupId: string | null } => {
+      if (!msg.toolCallId) {
+        throw new Error(
+          `agent-runtime: tool_call history row missing toolCallId (sessionId=${session.id})`,
+        )
+      }
+      let parsed: { name?: unknown; arguments?: unknown; groupId?: unknown }
+      try {
+        parsed = JSON.parse(msg.content)
+      } catch {
+        throw new Error(
+          `agent-runtime: tool_call history row has unparseable content (sessionId=${session.id}, toolCallId=${msg.toolCallId})`,
+        )
+      }
+      const name = typeof parsed.name === 'string' ? parsed.name : (msg.toolName ?? '')
+      const args = typeof parsed.arguments === 'string' ? parsed.arguments : '{}'
+      const groupId = typeof parsed.groupId === 'string' ? parsed.groupId : null
+      return {
+        toolCall: { id: msg.toolCallId, type: 'function', function: { name, arguments: args } },
+        groupId,
+      }
+    }
+
+    let i = 0
+    while (i < history.messages.length) {
+      const msg = history.messages[i]
+
       if (msg.role === 'tool') {
         if (!msg.toolCallId) {
           // Corrupt persisted row — fail loud rather than send '' upstream.
@@ -191,26 +233,47 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
           )
         }
         llmMessages.push({ role: 'tool', content: msg.content, tool_call_id: msg.toolCallId })
+        i++
         continue
       }
 
       if (msg.role === 'assistant' && msg.toolCallId && msg.toolName) {
-        // Persisted tool_call row — content is JSON-stringified {name, arguments}.
-        let parsed: { name?: unknown; arguments?: unknown }
-        try {
-          parsed = JSON.parse(msg.content) as { name?: unknown; arguments?: unknown }
-        } catch {
-          throw new Error(
-            `agent-runtime: tool_call history row has unparseable content (sessionId=${session.id}, toolCallId=${msg.toolCallId})`,
-          )
+        const first = parseToolCallRow(msg)
+
+        // Walk forward collecting all tool_call rows that share this groupId,
+        // plus all tool_result rows whose toolCallId matches a collected call.
+        // Stop at any other row shape (different groupId, plain text, user, etc.).
+        const toolCalls: ToolCall[] = [first.toolCall]
+        const toolResults: { content: string; tool_call_id: string }[] = []
+        const collectedIds = new Set<string>([first.toolCall.id])
+        let j = i + 1
+
+        if (first.groupId !== null) {
+          while (j < history.messages.length) {
+            const next = history.messages[j]
+            if (next.role === 'tool' && next.toolCallId && collectedIds.has(next.toolCallId)) {
+              toolResults.push({ content: next.content, tool_call_id: next.toolCallId })
+              j++
+              continue
+            }
+            if (next.role === 'assistant' && next.toolCallId && next.toolName) {
+              const candidate = parseToolCallRow(next)
+              if (candidate.groupId === first.groupId) {
+                toolCalls.push(candidate.toolCall)
+                collectedIds.add(candidate.toolCall.id)
+                j++
+                continue
+              }
+            }
+            break
+          }
         }
-        const name = typeof parsed.name === 'string' ? parsed.name : msg.toolName
-        const args = typeof parsed.arguments === 'string' ? parsed.arguments : '{}'
-        llmMessages.push({
-          role: 'assistant',
-          content: '',
-          tool_calls: [{ id: msg.toolCallId, type: 'function', function: { name, arguments: args } }],
-        })
+
+        llmMessages.push({ role: 'assistant', content: '', tool_calls: toolCalls })
+        for (const tr of toolResults) {
+          llmMessages.push({ role: 'tool', content: tr.content, tool_call_id: tr.tool_call_id })
+        }
+        i = j
         continue
       }
 
@@ -219,6 +282,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
         role: msg.role as 'user' | 'assistant' | 'system',
         content: msg.content,
       })
+      i++
     }
     // Add current user message
     if (request.message) {
@@ -309,6 +373,12 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       if (response.toolCalls && response.toolCalls.length > 0) {
         let hasToolCalls = false
 
+        // Issue #82: stamp one groupId per LLM response so replay can batch
+        // parallel tool_calls back into a single assistant message with
+        // tool_calls[N], rather than alternating singletons. See replay loop
+        // above for the read-side counterpart.
+        const groupId = crypto.randomUUID()
+
         for (const toolCall of response.toolCalls) {
           const tool = phaseTools.find(t => t.name === toolCall.name)
           if (!tool) {
@@ -370,11 +440,12 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
             success: toolResult.success,
           })
 
-          // Record tool call and result in history
+          // Record tool call and result in history. groupId in content lets
+          // the replay loop batch parallel tool_calls (Issue #82).
           await appendMessage(session.id, {
             role: 'assistant',
             messageType: 'tool_call',
-            content: { name: toolCall.name, arguments: toolCall.arguments },
+            content: { name: toolCall.name, arguments: toolCall.arguments, groupId },
             toolName: toolCall.name,
             toolCallId: toolCall.id,
             turnId: opts.turnId,
