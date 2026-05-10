@@ -299,6 +299,109 @@ describe('V3 runtime — history replay polish (Issue #83)', () => {
     })
   })
 
+  describe('item 1b (review follow-up): orphan tool_call with no matching tool_result', () => {
+    it('throws HistoryIntegrityError with reason=missing_tool_result when a tool_call has no result row', async () => {
+      // The write path persists (tool_call, tool_result) as two separate
+      // appendMessage awaits. If the second await fails, the row pair leaves
+      // a tool_call with no result. On replay, the loop emits assistant{tool_calls:[X]}
+      // followed by a non-tool message — that's invalid OpenAI/Anthropic
+      // protocol AND it bypasses the integrity classification (the upstream
+      // 400 just looks like a generic error). Detect the orphan locally and
+      // route it through the same observability as other corrupt-row throws.
+      loadContextMock.mockResolvedValue({
+        messages: [
+          { role: 'user', content: 'do parallel things' },
+          {
+            role: 'assistant',
+            messageType: 'tool_call',
+            content: JSON.stringify({ name: 'tool_a', arguments: '{}', groupId: 'g1' }),
+            toolCallId: 'call_a',
+            toolName: 'tool_a',
+          },
+          {
+            role: 'tool',
+            messageType: 'tool_result',
+            content: JSON.stringify({ success: true }),
+            toolCallId: 'call_a',
+            toolName: 'tool_a',
+          },
+          {
+            role: 'assistant',
+            messageType: 'tool_call',
+            content: JSON.stringify({ name: 'tool_b', arguments: '{}', groupId: 'g1' }),
+            toolCallId: 'call_b',
+            toolName: 'tool_b',
+          },
+          // Missing: tool_result for call_b. Simulates a write failure
+          // between the two appendMessage awaits in the write path.
+          { role: 'user', content: 'next message' },
+        ],
+        summary: null,
+        totalCount: 5,
+      })
+
+      await expect(
+        runAgentTurn({
+          session: makeSession({ stateVersion: 1 }),
+          sections: [],
+          request: { message: 'continue', requestId: 'req-orphan', locale: 'ro' },
+          emit,
+          turnId: 'tu-orphan',
+        }),
+      ).rejects.toThrow(/missing.*result|tool_result|missing_tool_result/i)
+
+      expect(captureExceptionMock).toHaveBeenCalledTimes(1)
+      expect(logAuditMock).toHaveBeenCalledTimes(1)
+      const auditCall = logAuditMock.mock.calls[0][0] as {
+        action: string
+        metadata?: { reason?: string; toolCallId?: string }
+      }
+      expect(auditCall.action).toBe('agent.history.integrity_violation')
+      expect(auditCall.metadata?.reason).toBe('missing_tool_result')
+      expect(auditCall.metadata?.toolCallId).toBe('call_b')
+    })
+
+    it('throws missing_tool_result for a singleton tool_call with no result (legacy / non-grouped)', async () => {
+      // Legacy rows (no groupId) also need the orphan check. The replay loop
+      // treats them as singletons today, and a singleton with no following
+      // tool_result is just as broken — same audit reason.
+      loadContextMock.mockResolvedValue({
+        messages: [
+          { role: 'user', content: 'q' },
+          {
+            role: 'assistant',
+            messageType: 'tool_call',
+            // No groupId — legacy shape.
+            content: JSON.stringify({ name: 'tool_a', arguments: '{}' }),
+            toolCallId: 'call_lonely',
+            toolName: 'tool_a',
+          },
+          // No tool_result row. Next is a user message — invalid protocol.
+          { role: 'user', content: 'follow-up' },
+        ],
+        summary: null,
+        totalCount: 3,
+      })
+
+      await expect(
+        runAgentTurn({
+          session: makeSession({ stateVersion: 1 }),
+          sections: [],
+          request: { message: 'continue', requestId: 'req-orphan-legacy', locale: 'ro' },
+          emit,
+          turnId: 'tu-orphan-legacy',
+        }),
+      ).rejects.toThrow()
+
+      const auditCall = logAuditMock.mock.calls[0][0] as {
+        action: string
+        metadata?: { reason?: string; toolCallId?: string }
+      }
+      expect(auditCall.metadata?.reason).toBe('missing_tool_result')
+      expect(auditCall.metadata?.toolCallId).toBe('call_lonely')
+    })
+  })
+
   describe('item 4: Sentry + audit observability on corrupt-row throws', () => {
     it('fires captureException and logAudit before throwing on malformed tool_call', async () => {
       loadContextMock.mockResolvedValue({

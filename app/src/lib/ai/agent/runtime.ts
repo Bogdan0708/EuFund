@@ -301,25 +301,45 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
           const collectedIds = new Set<string>([first.toolCall.id])
           let j = i + 1
 
-          if (first.groupId !== null) {
-            while (j < history.messages.length) {
-              const next = history.messages[j]
-              if (isToolResultRow(next) && next.toolCallId && collectedIds.has(next.toolCallId)) {
-                toolResults.push({ content: next.content, tool_call_id: next.toolCallId })
+          // Always look ahead for matching tool_result rows — even for legacy
+          // singleton tool_calls (groupId=null). The orphan check below relies
+          // on this so a legitimate (call, result) pair lets the call carry
+          // its result through replay AND the orphan case throws cleanly.
+          // Additional tool_call rows are only collected when groupIds match.
+          while (j < history.messages.length) {
+            const next = history.messages[j]
+            if (isToolResultRow(next) && next.toolCallId && collectedIds.has(next.toolCallId)) {
+              toolResults.push({ content: next.content, tool_call_id: next.toolCallId })
+              j++
+              continue
+            }
+            if (first.groupId !== null && isToolCallRow(next)) {
+              const candidate = parseToolCallRow(next)
+              if (candidate.groupId === first.groupId) {
+                toolCalls.push(candidate.toolCall)
+                collectedIds.add(candidate.toolCall.id)
                 j++
                 continue
               }
-              if (isToolCallRow(next)) {
-                const candidate = parseToolCallRow(next)
-                if (candidate.groupId === first.groupId) {
-                  toolCalls.push(candidate.toolCall)
-                  collectedIds.add(candidate.toolCall.id)
-                  j++
-                  continue
-                }
-              }
-              break
             }
+            break
+          }
+
+          // Issue #83 review follow-up: every collected tool_call must have
+          // a matching tool_result. The write path appends call + result as
+          // two separate awaits (runtime.ts:appendMessage pair below); a
+          // failure between them leaves an orphan tool_call in history.
+          // Replay would otherwise emit assistant{tool_calls:[X]} followed
+          // by a non-tool message — invalid OpenAI/Anthropic protocol AND
+          // an upstream 400 that bypasses the integrity-violation classification.
+          // Detect locally so observability fires the same audit/Sentry path.
+          const resultIds = new Set(toolResults.map((tr) => tr.tool_call_id))
+          const orphan = toolCalls.find((tc) => !resultIds.has(tc.id))
+          if (orphan) {
+            throw new HistoryIntegrityError(
+              `agent-runtime: tool_call has no matching tool_result on replay`,
+              { sessionId: session.id, toolCallId: orphan.id, reason: 'missing_tool_result' },
+            )
           }
 
           llmMessages.push({ role: 'assistant', content: '', tool_calls: toolCalls })
