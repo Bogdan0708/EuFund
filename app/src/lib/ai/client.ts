@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { CircuitBreaker, Errors } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { AI_CONFIG } from './config';
-import { resolveAgentModel } from './model-routing';
+import { resolveAgentModel, type TaskType } from './model-routing';
 import { generate } from './providers/router';
 import { zodToJsonSchema } from './utils';
 
@@ -17,24 +17,42 @@ const generationBreaker = new CircuitBreaker('ai-generation', 5, 60000);
 const analysisBreaker = new CircuitBreaker('ai-analysis', 5, 60000);
 const embeddingBreaker = new CircuitBreaker('ai-embedding', 5, 60000);
 
+export interface AIGenerateResult<T = string> {
+  text?: string;
+  object?: T;
+  tokensUsed: number;
+  provider: string;
+  model: string;
+  tier: string;
+  cached?: boolean;
+  romanianOptimized?: boolean;
+}
+
 /**
  * Generate text with retry + circuit breaker.
- * Uses centralized routing policy (standard tier by default).
+ * Uses centralized routing policy.
  */
 export async function aiGenerate(opts: {
   system: string;
   prompt: string;
   temperature?: number;
   maxTokens?: number;
-}): Promise<{ text: string; tokensUsed: number }> {
+  taskType?: TaskType;
+  romanianContext?: string;
+}): Promise<AIGenerateResult> {
   const startTime = performance.now();
-  const resolved = resolveAgentModel({ task: 'editing' }); // standard tier
+  const resolved = resolveAgentModel({ task: opts.taskType || 'editing' });
+  
+  const systemPrompt = opts.romanianContext 
+    ? `${opts.system}\n\nContext Românesc: ${opts.romanianContext}`
+    : opts.system;
+
   try {
     return await generationBreaker.execute(async () => {
       const response = await generate({
         provider: resolved.provider,
         model: resolved.model,
-        system: opts.system,
+        system: systemPrompt,
         messages: [{ role: 'user', content: opts.prompt }],
         maxTokens: opts.maxTokens ?? 20_000,
         temperature: opts.temperature ?? AI_CONFIG.generation.temperature,
@@ -42,6 +60,11 @@ export async function aiGenerate(opts: {
       return {
         text: response.content,
         tokensUsed: response.tokensUsed.input + response.tokensUsed.output,
+        provider: resolved.provider,
+        model: resolved.model,
+        tier: resolved.tier,
+        cached: response.cacheUsage?.hit === 'full' || response.cacheUsage?.hit === 'partial',
+        romanianOptimized: !!opts.romanianContext,
       };
     });
   } catch (error) {
@@ -60,7 +83,7 @@ export async function aiGenerate(opts: {
 
 /**
  * Generate structured output with schema validation.
- * Uses centralized routing policy (budget tier for JSON reliability).
+ * Uses centralized routing policy.
  */
 export async function aiGenerateObject<T extends z.ZodType>(opts: {
   system: string;
@@ -68,15 +91,22 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
   schema: T;
   schemaName: string;
   temperature?: number;
-}): Promise<{ object: z.infer<T>; tokensUsed: number }> {
+  taskType?: TaskType;
+  romanianContext?: string;
+}): Promise<AIGenerateResult<z.infer<T>>> {
   const startTime = performance.now();
-  const resolved = resolveAgentModel({ task: 'structure_extraction' }); // budget tier — best JSON
+  const resolved = resolveAgentModel({ task: opts.taskType || 'structure_extraction' });
+  
+  const systemPrompt = opts.romanianContext 
+    ? `${opts.system}\n\nContext Românesc: ${opts.romanianContext}`
+    : opts.system;
+
   try {
     return await analysisBreaker.execute(async () => {
       const response = await generate({
         provider: resolved.provider,
         model: resolved.model,
-        system: `${opts.system}\n\nReturn only valid JSON that matches this schema: ${JSON.stringify(zodToJsonSchema(opts.schema))}`,
+        system: `${systemPrompt}\n\nReturn only valid JSON that matches this schema: ${JSON.stringify(zodToJsonSchema(opts.schema))}`,
         messages: [{ role: 'user', content: opts.prompt }],
         maxTokens: AI_CONFIG.analysis.maxTokens,
         temperature: opts.temperature ?? AI_CONFIG.analysis.temperature,
@@ -85,6 +115,11 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
       return {
         object,
         tokensUsed: response.tokensUsed.input + response.tokensUsed.output,
+        provider: resolved.provider,
+        model: resolved.model,
+        tier: resolved.tier,
+        cached: response.cacheUsage?.hit === 'full' || response.cacheUsage?.hit === 'partial',
+        romanianOptimized: !!opts.romanianContext,
       };
     });
   } catch (error) {

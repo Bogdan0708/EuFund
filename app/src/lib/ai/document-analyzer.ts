@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { aiGenerateObject } from './client';
 import { wrapUserInput, sanitizeForAI, AI_INPUT_LIMITS } from './sanitize';
 import { logger } from '@/lib/logger';
+import { analyzeRomanianContent, getRomanianDocumentType } from './romanian-specialist';
 
 // ─── PII Detection Patterns ─────────────────────────────────────
 
@@ -89,6 +90,13 @@ export interface AnalysisResult {
   piiDetections: PIIDetection[];
   tokensUsed: number;
   gdprCompliant: boolean;
+  // NEW: Multi-provider metadata
+  provider?: string;
+  model?: string;
+  tier?: string;
+  cached?: boolean;
+  romanianOptimized?: boolean;
+  documentType?: string;
 }
 
 export async function analyzeDocument(input: AnalysisInput): Promise<AnalysisResult> {
@@ -113,6 +121,18 @@ export async function analyzeDocument(input: AnalysisInput): Promise<AnalysisRes
     : safeContent;
 
   const isRo = input.locale !== 'en';
+  const docType = getRomanianDocumentType(input.filename, input.mimeType);
+
+  // Step 3: Romanian specialization (if applicable)
+  const romanianAnalysis = isRo ? await analyzeRomanianContent({
+    content: truncated,
+    context: 'document_analysis',
+    documentType: docType,
+    additionalContext: {
+      projectContext: input.projectContext,
+      callContext: input.callContext
+    }
+  }) : null;
 
   const systemPrompt = isRo
     ? `Ești un expert în analiza documentelor pentru fonduri europene. Analizezi documente în limba română pentru conformitate, calitate și completitudine. Identifici lacune de conformitate și oferi sugestii concrete de îmbunătățire.`
@@ -141,7 +161,7 @@ export async function analyzeDocument(input: AnalysisInput): Promise<AnalysisRes
 Analizează următorul document:
 
 Fișier: ${input.filename}
-Tip: ${input.mimeType}
+Tip: ${input.mimeType} (Detectat: ${docType})
 ${input.projectContext ? `Context proiect: ${safeProjectCtx}` : ''}
 ${input.callContext ? `Context apel: ${safeCallCtx}` : ''}
 
@@ -163,18 +183,35 @@ ${wrappedContent}
 
 Evaluate: document type, language, summary, key findings, compliance gaps, quality score (0-100), completeness score (0-100), and improvement suggestions.`;
 
-  const { object, tokensUsed } = await aiGenerateObject({
+  // Step 4: Multi-provider analysis call
+  const { 
+    object, 
+    tokensUsed, 
+    provider, 
+    model, 
+    tier, 
+    cached, 
+    romanianOptimized 
+  } = await aiGenerateObject({
     system: systemPrompt,
     prompt,
     schema: documentAnalysisSchema,
     schemaName: 'DocumentAnalysis',
     temperature: 0.3,
+    taskType: 'document_analysis',
+    romanianContext: romanianAnalysis?.context,
   });
 
   return {
-    analysis: object,
+    analysis: object!,
     piiDetections,
     tokensUsed,
     gdprCompliant: !hasHighSeverityPII,
+    provider,
+    model,
+    tier,
+    cached,
+    romanianOptimized,
+    documentType: docType,
   };
 }

@@ -1,0 +1,14 @@
+feat(ai): migrate analyzeDocument to multi-provider system (Task 3)
+
+Implements Romanian cultural and administrative specialization for
+document analysis. Upgrades ai-client to support task-based routing
+and enhanced metadata returns.
+
+Changes:
+- Added 'document_analysis' TaskType mapped to 'budget' tier.
+- Created RomanianSpecialist module for context extraction.
+- Upgraded aiGenerateObject to return provider, model, and cached flags.
+- Refactored analyzeDocument to use the new flow and return performance
+  metadata.
+
+Co-Authored-By: Gemini CLI <gemini-cli@google.com>
