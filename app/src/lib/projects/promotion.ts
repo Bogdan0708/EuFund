@@ -7,7 +7,13 @@
 // drafting workspace attached to that project via agent_sessions.project_id.
 // This module owns the lifecycle transition that links the two.
 
+import { and, eq, sql } from 'drizzle-orm';
+import { callsForProposals } from '@/lib/db/schema';
+import { UUID_RE } from '@/lib/validators/patterns';
+import type { Database } from '@/lib/db';
 import type { ServiceContext } from '@/lib/ai/agent/services/types';
+
+type DbTransaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 export type CallResolution = 'id' | 'callCode' | 'externalId' | 'unresolved';
 export type TitleSource = 'description' | 'messageSummary' | 'fallback';
@@ -85,6 +91,56 @@ export function deriveProjectTitle(
     ? `Untitled project — ${idFragment}`
     : `Proiect nou — ${idFragment}`;
   return { title, source: 'fallback' };
+}
+
+export interface ResolveCallResult {
+  id: string | null;
+  title: string | null;
+  resolution: CallResolution;
+}
+
+/**
+ * Three-prong probe against calls_for_proposals.
+ *   1. id (only if input matches UUID_RE)
+ *   2. call_code (globally unique per schema.ts:300)
+ *   3. external_id (NOT globally unique — uniqueness is per source_connector_id;
+ *      LIMIT 2 + exact-one check; multi-match → unresolved to avoid linking the
+ *      wrong FK)
+ */
+export async function resolveCallForId(
+  tx: DbTransaction,
+  rawSelectedCallId: string,
+): Promise<ResolveCallResult> {
+  if (UUID_RE.test(rawSelectedCallId)) {
+    const rows = await tx
+      .select({ id: callsForProposals.id, titleRo: callsForProposals.titleRo })
+      .from(callsForProposals)
+      .where(eq(callsForProposals.id, rawSelectedCallId))
+      .limit(1);
+    if (rows.length === 1) {
+      return { id: rows[0].id, title: rows[0].titleRo, resolution: 'id' };
+    }
+  }
+
+  const codeRows = await tx
+    .select({ id: callsForProposals.id, titleRo: callsForProposals.titleRo })
+    .from(callsForProposals)
+    .where(eq(callsForProposals.callCode, rawSelectedCallId))
+    .limit(1);
+  if (codeRows.length === 1) {
+    return { id: codeRows[0].id, title: codeRows[0].titleRo, resolution: 'callCode' };
+  }
+
+  const extRows = await tx
+    .select({ id: callsForProposals.id, titleRo: callsForProposals.titleRo })
+    .from(callsForProposals)
+    .where(eq(callsForProposals.externalId, rawSelectedCallId))
+    .limit(2);
+  if (extRows.length === 1) {
+    return { id: extRows[0].id, title: extRows[0].titleRo, resolution: 'externalId' };
+  }
+
+  return { id: null, title: null, resolution: 'unresolved' };
 }
 
 export async function ensureProjectForSession(
