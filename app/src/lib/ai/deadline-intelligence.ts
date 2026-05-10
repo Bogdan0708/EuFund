@@ -230,9 +230,14 @@ Provide risk analysis with specific recommendations for this project context.`;
       schema: deadlineAnalysisSchema,
       schemaName: 'DeadlineAnalysis',
       temperature: 0.3,
+      taskType: 'classification',
     });
 
     const ai = aiResult.object;
+
+    if (!ai) {
+      throw new Error('AI analysis failed to produce valid result');
+    }
 
     // Merge deterministic + AI analysis
     const allBottlenecks = [

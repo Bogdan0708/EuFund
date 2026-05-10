@@ -1,14 +1,18 @@
-feat(ai): migrate analyzeDocument to multi-provider system (Task 3)
+feat(ai): complete Task 4 & 5 migration + AI client upgrade
 
-Implements Romanian cultural and administrative specialization for
-document analysis. Upgrades ai-client to support task-based routing
-and enhanced metadata returns.
+Finishes the initial AI migration sprint by migrating grant matching
+and compliance validation to the multi-provider system.
 
 Changes:
-- Added 'document_analysis' TaskType mapped to 'budget' tier.
-- Created RomanianSpecialist module for context extraction.
-- Upgraded aiGenerateObject to return provider, model, and cached flags.
-- Refactored analyzeDocument to use the new flow and return performance
-  metadata.
+- Implemented matchGrants in new grant-matcher module with Romanian
+  specialization and budget-tier routing.
+- Migrated validateCompliance to use the upgraded AI client and
+  task-based routing (classification).
+- Upgraded core ai-client to return enhanced metadata (provider, model,
+  cached status) and support task-specific routing tiers.
+- Fixed type errors across the project caused by the client upgrade
+  (chat, compliance-engine, deadline-intelligence, knowledge-extractor,
+  risk-assessment, RAG pipeline).
+- Added unit tests for grant matching and compliance validation.
 
 Co-Authored-By: Gemini CLI <gemini-cli@google.com>

@@ -45,7 +45,12 @@ Notă: Dacă textul este foarte lung, am inclus doar primele 15.000 de caractere
       schema: extractedCallSchema,
       schemaName: 'ExtractedCall',
       temperature: 0.1, // Low temperature for higher accuracy in data extraction
+      taskType: 'structure_extraction',
     });
+
+    if (!object) {
+      throw new Error('AI failed to extract structured call data');
+    }
 
     log.info({ callCode: object.callCode, tokensUsed }, 'AI extraction successful');
     return object;

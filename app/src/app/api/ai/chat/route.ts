@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         temperature: 0.3,
       });
 
-      const { sanitized: answer, piiRedacted } = sanitizeAIOutput(response.text.trim());
+      const { sanitized: answer, piiRedacted } = sanitizeAIOutput((response.text || '').trim());
 
       return NextResponse.json({
         success: true,

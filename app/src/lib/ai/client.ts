@@ -63,7 +63,7 @@ export async function aiGenerate(opts: {
         provider: resolved.provider,
         model: resolved.model,
         tier: resolved.tier,
-        cached: response.cacheUsage?.hit === 'full' || response.cacheUsage?.hit === 'partial',
+        cached: response.cacheUsage?.hit === 'read',
         romanianOptimized: !!opts.romanianContext,
       };
     });
@@ -118,7 +118,7 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
         provider: resolved.provider,
         model: resolved.model,
         tier: resolved.tier,
-        cached: response.cacheUsage?.hit === 'full' || response.cacheUsage?.hit === 'partial',
+        cached: response.cacheUsage?.hit === 'read',
         romanianOptimized: !!opts.romanianContext,
       };
     });

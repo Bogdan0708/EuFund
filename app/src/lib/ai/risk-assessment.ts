@@ -401,6 +401,10 @@ Provide: technical risks, external risks, risk matrix, predicted outcomes, and a
 
     const ai = result.object;
 
+    if (!ai) {
+      throw new Error('AI failed to produce a valid risk assessment result');
+    }
+
     technical = {
       score: Math.min(100, ai.technicalRiskFactors.length * 20),
       level: scoreToLevel(Math.min(100, ai.technicalRiskFactors.length * 20)),

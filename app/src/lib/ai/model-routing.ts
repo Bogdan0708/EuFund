@@ -24,6 +24,7 @@ export type TaskType =
   | 'editing'
   | 'classification'
   | 'document_analysis'
+  | 'grant_matching'
 
 export interface ModelRoutingContext {
   modelPreference?: string
@@ -98,6 +99,7 @@ function mapTaskToTier(task: TaskType, importance?: string): RoutingTier {
     case 'enhancement':
     case 'classification':
     case 'document_analysis':
+    case 'grant_matching':
       return 'budget'
     case 'freshness_check':
       return 'research'

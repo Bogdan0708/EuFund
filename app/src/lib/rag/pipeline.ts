@@ -250,7 +250,7 @@ export async function ragQuery(opts: RAGQuery): Promise<RAGResult> {
 
   const { text, tokensUsed } = await aiGenerate({ system: systemPrompt, prompt });
 
-  return { answer: text, sources, tokensUsed };
+  return { answer: text || '', sources, tokensUsed };
 }
 
 /**

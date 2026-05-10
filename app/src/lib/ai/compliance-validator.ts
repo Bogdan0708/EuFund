@@ -6,6 +6,7 @@ import { aiGenerateObject } from './client';
 import { runEligibilityRules, type RuleContext, type RuleResult } from '@/lib/rules/eligibility';
 import { hybridSearch } from '@/lib/rag/pipeline';
 import { assessDNSH, type DNSHAssessment } from '@/lib/rules/dnsh';
+import { analyzeRomanianContent } from './romanian-specialist';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -52,6 +53,12 @@ export interface ComplianceResult {
   tokensUsed: number;
   recommendations: string[];
   evaluatedAt: string;
+  // NEW: Multi-provider metadata
+  provider?: string;
+  model?: string;
+  tier?: string;
+  cached?: boolean;
+  romanianOptimized?: boolean;
 }
 
 // ─── AI Compliance Schema ────────────────────────────────────────
@@ -120,7 +127,17 @@ export async function validateCompliance(input: ComplianceInput): Promise<Compli
     score: Math.round(source.score * 1000) / 1000,
   }));
 
-  // Step 3: AI compliance check
+  // Step 3: Romanian Specialization
+  const romanianAnalysis = isRo ? await analyzeRomanianContent({
+    content: `${input.project.title}\n${input.project.summary || ''}`,
+    context: 'compliance_validation',
+    additionalContext: {
+      orgType: input.organization.orgType,
+      budget: input.project.budget
+    }
+  }) : null;
+
+  // Step 4: AI compliance check
   const systemPrompt = isRo
     ? `Ești un expert în conformitate juridică pentru fonduri europene. Verifici proiecte din perspectiva:
 - Regulamentului CPR (2021/1060)
@@ -164,17 +181,27 @@ ${input.project.budget ? `Budget: ${input.project.budget} EUR` : ''}
 
 Check all compliance aspects and provide recommendations.`;
 
-  const { object: aiResult, tokensUsed } = await aiGenerateObject({
+  const { 
+    object: aiResult, 
+    tokensUsed, 
+    provider, 
+    model, 
+    tier, 
+    cached, 
+    romanianOptimized 
+  } = await aiGenerateObject({
     system: systemPrompt,
     prompt,
     schema: aiComplianceSchema,
     schemaName: 'ComplianceCheck',
     temperature: 0.2,
+    taskType: 'classification',
+    romanianContext: romanianAnalysis?.context,
   });
 
-  const normalizedChecks = aiResult.checks.map((check) => {
+  const normalizedChecks = (aiResult?.checks || []).map((check) => {
     const defaultConfidence = check.status === 'pass' ? 0.75 : check.status === 'warning' ? 0.62 : 0.7;
-    const uniqueCitations = [...new Set((check.citations || []).filter((idx) => idx >= 1 && idx <= sourceTrace.length))];
+    const uniqueCitations = [...new Set((check.citations || []).filter((idx: number) => idx >= 1 && idx <= sourceTrace.length))];
     return {
       ...check,
       confidence: typeof check.confidence === 'number' ? check.confidence : defaultConfidence,
@@ -220,7 +247,12 @@ Check all compliance aspects and provide recommendations.`;
     ragSources: ragResults.length,
     sourceTrace,
     tokensUsed,
-    recommendations: aiResult.recommendations,
+    recommendations: aiResult?.recommendations || [],
     evaluatedAt: new Date().toISOString(),
+    provider,
+    model,
+    tier,
+    cached,
+    romanianOptimized,
   };
 }

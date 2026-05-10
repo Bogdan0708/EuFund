@@ -497,6 +497,10 @@ Provide: evaluation scores per criterion, critical issues, improvement plan, and
     tokensUsed = result.tokensUsed;
     const ai = result.object;
 
+    if (!ai) {
+      throw new Error('AI analysis failed to produce valid result');
+    }
+
     // Merge AI evaluation scores into criteria
     for (const evalScore of ai.evaluationScores) {
       if (!criteriaScores[evalScore.criterion]) {
