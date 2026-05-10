@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/helpers'
 import { withRateLimit } from '@/lib/middleware/rate-limit'
 import { runAgentTurn } from '@/lib/ai/agent/runtime'
+import { buildAgentErrorEvent } from '@/lib/ai/agent/error-event'
 import type { AgentEvent, AgentSession, AgentSection } from '@/lib/ai/agent/types'
 import type { AgentRequest } from '@/lib/ai/agent/types'
 import type { DegradedReason } from '@/lib/ai/agent/managed/circuit-breaker'
@@ -351,11 +352,12 @@ function runV3WithSSE(
         const routingCtx = await getAIModelRoutingContext(user.id)
         await runAgentTurn({ session, sections, request: body, emit, routingCtx, turnId })
       } catch (error) {
-        const errorEvent: AgentEvent = {
-          type: 'error',
-          message: error instanceof Error ? error.message : 'Internal error',
-          retryable: true,
-        }
+        // Issue #83 item 3: bilingual + UUID-stripped envelope. The raw
+        // error.message might contain session UUIDs or internal English-only
+        // detail; the helper wraps non-FondEUError throws with Errors.internal()
+        // which has safe Romanian + English text. Detail stays in logs only
+        // (runtime.ts log.error already captures it before re-throw).
+        const errorEvent = buildAgentErrorEvent(error, body.locale)
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`))
       } finally {
         controller.close()

@@ -18,12 +18,15 @@ export interface GenerateResult {
   cacheUsage?: CacheUsage
 }
 
-export interface RouterMessage {
-  role: 'user' | 'assistant' | 'system' | 'tool'
-  content: string
-  tool_call_id?: string
-  tool_calls?: RouterToolCall[]
-}
+// Issue #83 item 6 (P3): discriminated union enforces at compile time that
+// tool_call_id only appears on role='tool' messages, tool_calls only on
+// role='assistant', and tool_call_id is REQUIRED (not optional) when present.
+// This catches the class of bug PR #80 fixed at runtime — providers can no
+// longer be handed a tool message without a tool_call_id.
+export type RouterMessage =
+  | { role: 'user' | 'system'; content: string }
+  | { role: 'assistant'; content: string; tool_calls?: RouterToolCall[] }
+  | { role: 'tool'; content: string; tool_call_id: string }
 
 export interface RouterToolCall {
   id: string

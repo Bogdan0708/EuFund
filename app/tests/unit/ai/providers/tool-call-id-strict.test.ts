@@ -9,6 +9,7 @@
 // made it look like a flaky bug. Throw locally instead.
 
 import { describe, it, expect, vi } from 'vitest'
+import type { RouterMessage } from '@/lib/ai/providers/types'
 
 const createMock = vi.fn()
 const nativeAnthropicCreateMock = vi.fn()
@@ -36,7 +37,11 @@ describe('Provider adapters — strict tool_call_id', () => {
         openaiProvider.generate({
           provider: 'openai',
           model: 'gpt-5.4',
-          messages: [{ role: 'tool', content: '{"ok":true}' }],
+          // Issue #83 item 6: RouterMessage now requires tool_call_id when
+          // role==='tool'. The cast preserves the runtime test (the provider
+          // adapter's defensive throw still has to fire for any non-typed
+          // legacy caller). Same pattern below.
+          messages: [{ role: 'tool', content: '{"ok":true}' } as unknown as RouterMessage],
         }),
       ).rejects.toThrow(/tool_call_id/)
       expect(createMock).not.toHaveBeenCalled()
@@ -62,7 +67,7 @@ describe('Provider adapters — strict tool_call_id', () => {
         anthropicProvider.generate({
           provider: 'anthropic',
           model: 'claude-opus-4-6',
-          messages: [{ role: 'tool', content: '{"ok":true}' }],
+          messages: [{ role: 'tool', content: '{"ok":true}' } as unknown as RouterMessage],
         }),
       ).rejects.toThrow(/tool_call_id/)
     })
@@ -75,7 +80,7 @@ describe('Provider adapters — strict tool_call_id', () => {
         googleProvider.generate({
           provider: 'google',
           model: 'gemini-3-flash',
-          messages: [{ role: 'tool', content: '{"ok":true}' }],
+          messages: [{ role: 'tool', content: '{"ok":true}' } as unknown as RouterMessage],
         }),
       ).rejects.toThrow(/tool_call_id/)
     })
@@ -88,7 +93,7 @@ describe('Provider adapters — strict tool_call_id', () => {
         perplexityProvider.generate({
           provider: 'perplexity',
           model: 'sonar',
-          messages: [{ role: 'tool', content: '{"ok":true}' }],
+          messages: [{ role: 'tool', content: '{"ok":true}' } as unknown as RouterMessage],
         }),
       ).rejects.toThrow(/tool_call_id/)
     })
@@ -101,7 +106,7 @@ describe('Provider adapters — strict tool_call_id', () => {
         anthropicNativeGenerate({
           provider: 'anthropic',
           model: 'claude-opus-4-6',
-          messages: [{ role: 'tool', content: '{"ok":true}' }],
+          messages: [{ role: 'tool', content: '{"ok":true}' } as unknown as RouterMessage],
           cache: { enabled: true },
         }),
       ).rejects.toThrow(/tool_call_id/)

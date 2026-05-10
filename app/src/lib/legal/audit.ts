@@ -90,7 +90,11 @@ export type AuditAction =
   | 'session.outline_frozen'
   | 'session.preselect_completed'
   | 'section.marked_stale'
-  | 'section.rejected';
+  | 'section.rejected'
+  // V3 agent history integrity (Issue #83 item 4) — fired when replay detects
+  // a corrupt agent_messages row (missing toolCallId, malformed tool_call
+  // content, etc.). Represents data corruption / write-path bug / tampering.
+  | 'agent.history.integrity_violation';
 
 export interface AuditEntry {
   userId?: string;
@@ -227,6 +231,7 @@ function inferLegalBasis(action: AuditAction): string {
   if (action.startsWith('ai.')) return 'contract';
   if (action.startsWith('document.')) return 'contract';
   if (action.startsWith('system.')) return 'legitimate_interest';
+  if (action.startsWith('agent.')) return 'legitimate_interest';
   return 'legitimate_interest';
 }
 
