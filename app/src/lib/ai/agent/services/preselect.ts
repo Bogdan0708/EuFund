@@ -5,6 +5,7 @@
 import { withUserRLS } from '@/lib/db'
 import { agentSessions } from '@/lib/db/schema'
 import { logAudit } from '@/lib/legal/audit'
+import { ensureProjectForSession } from '@/lib/projects/promotion'
 import { logger } from '@/lib/logger'
 import { lookupBlueprint } from './blueprint'
 import { searchCalls } from './evidence'
@@ -191,6 +192,14 @@ export async function initializeSession(
       phase,
       blueprintLookupFailed,
     },
+  })
+
+  // Early validation of project promotion (dry-run).
+  // Confirms that the newly created session shell can successfully link to a
+  // projects row. Outcome is recorded in project_promotion_total metrics.
+  const ctx = { userId, sessionId: row.id, locale, now: new Date() } as unknown as ServiceContext
+  await ensureProjectForSession(ctx, row.id, { dryRun: true }).catch((error) => {
+    log.error({ sessionId: row.id, error }, 'dry-run promotion failed in preselect')
   })
 
   return { sessionId: row.id, phase, blueprintKind }
