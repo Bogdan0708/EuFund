@@ -316,9 +316,9 @@ export async function ensureProjectForSession(
         selectedCallResolution: callResult.resolution,
       };
 
-      // Step 8 — dry-run sentinel. Implemented in Task 9.
+      // Step 8 — dry-run sentinel.
       if (opts.dryRun) {
-        throw new Error('dry-run not yet implemented (Task 9)');
+        throw new DryRunRollback(promotionResult);
       }
 
       return promotionResult;

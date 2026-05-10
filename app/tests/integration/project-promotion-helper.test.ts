@@ -140,6 +140,16 @@ describe('ensureProjectForSession — fresh promotion', () => {
     }));
     expect(trackProjectPromotion).toHaveBeenCalledWith('promoted');
   });
+
+  it('rolls back and returns result when dryRun=true', async () => {
+    const out = await ensureProjectForSession(ctx, 'sess-1', { dryRun: true });
+    expect(out.promoted).toBe(true);
+    expect(out.projectId).toBe('new-proj-1');
+    // Audit must NOT have been called due to inner catch -> throw DryRunRollback
+    // and outer catch NOT re-executing logAudit if sentinel is caught.
+    expect(logAudit).not.toHaveBeenCalled();
+    expect(trackProjectPromotion).not.toHaveBeenCalled();
+  });
 });
 
 describe('ensureProjectForSession — already linked', () => {
