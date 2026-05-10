@@ -165,10 +165,9 @@ export async function ensureProjectForSession(
   opts: EnsureOpts = {},
 ): Promise<PromotionResult> {
   const { userId, requestId } = ctx;
-  let pendingAudit: PendingAudit | null = null;
 
   try {
-    const result = await withUserRLS(userId, async (tx) => {
+    const { result, auditData } = await withUserRLS(userId, async (tx): Promise<{ result: PromotionResult; auditData: PendingAudit | null }> => {
       // Step 1 — lock session, ownership-checked
       const sessionRows = await tx
         .select({
@@ -186,17 +185,15 @@ export async function ensureProjectForSession(
         .limit(1);
 
       if (sessionRows.length === 0) {
-        return { promoted: false, reason: 'SESSION_NOT_FOUND' as const };
+        return { result: { promoted: false, reason: 'SESSION_NOT_FOUND' }, auditData: null };
       }
       const session = sessionRows[0];
 
       if (session.projectId === null && session.selectedCallId === null) {
-        return { promoted: false, reason: 'NO_SELECTED_CALL' as const };
+        return { result: { promoted: false, reason: 'NO_SELECTED_CALL' }, auditData: null };
       }
 
       if (session.projectId !== null) {
-        // Branch A: already linked. Lock the project row and check whether the
-        // session's selectedCallId still matches what we recorded at promotion time.
         const projectRows = await tx
           .select({
             id: projects.id,
@@ -208,21 +205,16 @@ export async function ensureProjectForSession(
           .for('update')
           .limit(1);
         if (projectRows.length === 0) {
-          // Project row vanished (hard-deleted somehow). Treat as session_missing
-          // for telemetry — there is nothing to sync into.
-          return { promoted: false, reason: 'SESSION_NOT_FOUND' as const };
+          return { result: { promoted: false, reason: 'SESSION_NOT_FOUND' }, auditData: null };
         }
         const project = projectRows[0];
         const existingMetadata = (project.metadata ?? {}) as Record<string, unknown>;
         const recordedCallId = existingMetadata.rawSelectedCallId as string | undefined;
 
         if (recordedCallId === session.selectedCallId) {
-          // True no-op
-          return { promoted: true, projectId: project.id, created: false, synced: false };
+          return { result: { promoted: true, projectId: project.id, created: false, synced: false }, auditData: null };
         }
 
-        // Either the session's call changed, or the metadata never recorded one
-        // (defensive: project was linked by some other code path).
         const callResult = await resolveCallForId(tx, session.selectedCallId!);
         await tx
           .update(projects)
@@ -234,13 +226,12 @@ export async function ensureProjectForSession(
               rawSelectedCallId: session.selectedCallId,
               resolvedCallTitle: callResult.title,
               selectedCallResolution: callResult.resolution,
-              // promotedAt deliberately preserved from existing metadata
             },
             updatedAt: new Date(),
           })
           .where(eq(projects.id, project.id));
 
-        pendingAudit = {
+        const audit: PendingAudit = {
           kind: 'call_resynced',
           projectId: project.id,
           rawSelectedCallId: session.selectedCallId!,
@@ -248,7 +239,7 @@ export async function ensureProjectForSession(
           selectedCallResolution: callResult.resolution,
         };
 
-        return { promoted: true, projectId: project.id, created: false, synced: true };
+        return { result: { promoted: true, projectId: project.id, created: false, synced: true }, auditData: audit };
       }
 
       // Branch B: fresh promotion
@@ -258,7 +249,7 @@ export async function ensureProjectForSession(
         .where(eq(users.id, userId))
         .limit(1);
       if (userRows.length === 0) {
-        return { promoted: false, reason: 'USER_NOT_FOUND' as const };
+        return { result: { promoted: false, reason: 'USER_NOT_FOUND' }, auditData: null };
       }
 
       const orgId = await resolveProjectOrgIdInTx(tx, userId);
@@ -299,7 +290,7 @@ export async function ensureProjectForSession(
         .set({ projectId: created.id, updatedAt: new Date() })
         .where(eq(agentSessions.id, sessionId));
 
-      pendingAudit = {
+      const audit: PendingAudit = {
         kind: 'promoted',
         projectId: created.id,
         rawSelectedCallId: session.selectedCallId!,
@@ -321,31 +312,31 @@ export async function ensureProjectForSession(
         throw new DryRunRollback(promotionResult);
       }
 
-      return promotionResult;
+      return { result: promotionResult, auditData: audit };
     });
 
     // Step 9 — post-commit audit + metric
-    if (pendingAudit) {
+    if (auditData) {
       await logAudit({
         userId,
         action: 'project.promoted_from_session',
         resourceType: 'project',
-        resourceId: pendingAudit.projectId,
+        resourceId: auditData.projectId,
         metadata: {
           agentSessionId: sessionId,
-          rawSelectedCallId: pendingAudit.rawSelectedCallId,
-          resolvedCallId: pendingAudit.resolvedCallId,
-          selectedCallResolution: pendingAudit.selectedCallResolution,
-          titleSource: pendingAudit.titleSource,
-          kind: pendingAudit.kind,
+          rawSelectedCallId: auditData.rawSelectedCallId,
+          resolvedCallId: auditData.resolvedCallId,
+          selectedCallResolution: auditData.selectedCallResolution,
+          titleSource: auditData.titleSource,
+          kind: auditData.kind,
           requestId,
         },
       });
     }
 
     if (result.promoted) {
-      const outcome = result.created ? 'promoted' : ((result as any).synced ? 'synced' : 'already_linked');
-      trackProjectPromotion(outcome as any);
+      const outcome = result.created ? 'promoted' : (result.synced ? 'synced' : 'already_linked');
+      trackProjectPromotion(outcome);
       log.info({ sessionId, projectId: result.projectId, outcome }, 'session promoted');
     } else {
       const map = {

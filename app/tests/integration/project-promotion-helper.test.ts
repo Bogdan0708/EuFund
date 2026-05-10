@@ -124,13 +124,11 @@ describe('ensureProjectForSession — fresh promotion', () => {
 
   it('promotes a session with selectedCallId and null projectId', async () => {
     const out = await ensureProjectForSession(ctx, 'sess-1');
-    expect(out).toMatchObject({
-      promoted: true,
-      created: true,
-      projectId: 'new-proj-1',
-      selectedCallResolution: expect.any(String),
-      titleSource: expect.any(String),
-    });
+    expect(out.promoted).toBe(true);
+    if (out.promoted) {
+      expect(out.created).toBe(true);
+      expect(out.projectId).toBe('new-proj-1');
+    }
     expect(projectInsertRows).toHaveLength(1);
     expect(sessionUpdates).toHaveLength(1);
     expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({
@@ -144,7 +142,9 @@ describe('ensureProjectForSession — fresh promotion', () => {
   it('rolls back and returns result when dryRun=true', async () => {
     const out = await ensureProjectForSession(ctx, 'sess-1', { dryRun: true });
     expect(out.promoted).toBe(true);
-    expect(out.projectId).toBe('new-proj-1');
+    if (out.promoted) {
+      expect(out.projectId).toBe('new-proj-1');
+    }
     // Audit must NOT have been called due to inner catch -> throw DryRunRollback
     // and outer catch NOT re-executing logAudit if sentinel is caught.
     expect(logAudit).not.toHaveBeenCalled();

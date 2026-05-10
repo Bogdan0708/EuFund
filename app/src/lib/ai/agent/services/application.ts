@@ -12,9 +12,13 @@ import { eq, and } from 'drizzle-orm'
 import { NotFoundError, ConcurrencyError, ValidationError } from './errors'
 import { verifySessionOwnership } from './context-helpers'
 import { logAudit } from '@/lib/legal/audit'
+import { ensureProjectForSession } from '@/lib/projects/promotion'
 import { assertPolicy } from '../policy/enforce'
 import { POLICY_MATRIX } from '../policy/matrix'
+import { logger } from '@/lib/logger'
 import type { AgentSession } from '../types'
+
+const log = logger.child({ component: 'application-service' })
 import type {
   ServiceContext,
   ApplicationState,
@@ -622,6 +626,13 @@ export async function setSelectedCall(
     resourceId: input.sessionId,
     metadata: { callId: input.callId, previousCallId: session.selectedCallId, requestId: ctx.requestId },
   })
+
+  // 7. Promotion / Sync (Self-contained transaction)
+  // Trigger project creation or call-sync whenever a call is selected.
+  // Fails safe: errors are logged by the helper but don't abort the stateVersion bump.
+  await ensureProjectForSession(ctx, input.sessionId).catch((error) => {
+    log.error({ sessionId: input.sessionId, error }, 'auto-promotion failed during setSelectedCall');
+  });
 
   return { newStateVersion }
 }
