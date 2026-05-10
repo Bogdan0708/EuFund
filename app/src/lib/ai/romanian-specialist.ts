@@ -8,14 +8,14 @@ const log = logger.child({ component: 'romanian-specialist' });
 
 export interface RomanianContentInput {
   content: string;
-  context: 'document_analysis' | 'proposal_generation' | 'grant_matching' | 'match_grants' | 'compliance_validation';
+  context: 'document_analysis' | 'proposal_generation' | 'compliance_validation';
   documentType?: string;
-  additionalContext?: Record<string, any>;
+  additionalContext?: Record<string, unknown>;
 }
 
 export interface RomanianAnalysisResult {
   context: string;
-  detectedEntities?: any[];
+  detectedEntities?: unknown[];
   administrativeScore?: number;
 }
 
@@ -53,11 +53,6 @@ ${input.documentType ? `Tip document detectat: ${input.documentType}` : ''}`;
       case 'proposal_generation':
         contextStr = `Generarea propunerii trebuie să respecte stilul formal și birocratic românesc. 
 Utilizează terminologia oficială din ghidurile de finanțare (Solicitant, Eligibilitate, Cheltuieli eligibile).`;
-        break;
-      case 'grant_matching':
-      case 'match_grants':
-        contextStr = `Potrivirea proiectului cu apelurile de finanțare trebuie să țină cont de specificul programelor românești (PNRR, POR, AFIR). 
-Identifică potrivirea cu codurile CAEN și criteriile de eligibilitate regionale din România.`;
         break;
       default:
         contextStr = `Analiză în contextul administrativ și legal din România.`;

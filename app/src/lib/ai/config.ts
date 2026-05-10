@@ -24,10 +24,12 @@ export const AI_CONFIG = {
   },
   // Romanian BERT for local text processing
   romanianBert: {
+    enabled: process.env.ROMANIAN_BERT_ENABLED === 'true',
     model: 'dumitrescustefan/bert-base-romanian-cased-v1',
     // Used for: tokenization, NER, text classification
     // Runs via HuggingFace Inference API or local
     endpoint: process.env.ROMANIAN_BERT_ENDPOINT || 'https://api-inference.huggingface.co/models/dumitrescustefan/bert-base-romanian-cased-v1',
+    cacheTtlMs: Number(process.env.ROMANIAN_BERT_CACHE_TTL_MS || 3_600_000),
   },
   // Vector store
   vectorStore: {

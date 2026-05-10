@@ -2,6 +2,7 @@
 // Owns: rankCandidates, decideSelection, initializeSession.
 // Spec: docs/superpowers/specs/2026-04-18-deterministic-preselect-design.md
 
+import { randomUUID } from 'crypto'
 import { withUserRLS } from '@/lib/db'
 import { agentSessions } from '@/lib/db/schema'
 import { logAudit } from '@/lib/legal/audit'
@@ -121,6 +122,7 @@ export async function initializeSession(
     userId, description, locale, selectedCallId, selectedScore,
     candidates, excludeCallIdsApplied,
   } = params
+  const requestId = randomUUID()
 
   // Blueprint prefetch (best-effort). Match the real BlueprintLookupResult shape:
   //   cached=true  → structured, payload = result.blueprint
@@ -132,8 +134,8 @@ export async function initializeSession(
   let rawEvidenceForArtifact: EvidenceChunk[] | undefined = undefined
 
   try {
-    const ctx = { userId, sessionId: '', locale } as const
-    const result = await lookupBlueprint(ctx as unknown as ServiceContext, selectedCallId)
+    const ctx: ServiceContext = { userId, sessionId: '', requestId, now: new Date() }
+    const result = await lookupBlueprint(ctx, selectedCallId)
     if (result.cached) {
       blueprintKind = 'structured'
       blueprintPayload = result.blueprint
@@ -191,17 +193,17 @@ export async function initializeSession(
       blueprintKind,
       phase,
       blueprintLookupFailed,
+      requestId,
     },
   })
 
   // Early validation of project promotion (dry-run).
   // Confirms that the newly created session shell can successfully link to a
   // projects row. Outcome is recorded in project_promotion_total metrics.
-  const ctx = { userId, sessionId: row.id, locale, now: new Date() } as unknown as ServiceContext
+  const ctx: ServiceContext = { userId, sessionId: row.id, requestId, now: new Date() }
   await ensureProjectForSession(ctx, row.id, { dryRun: true }).catch((error) => {
     log.error({ sessionId: row.id, error }, 'dry-run promotion failed in preselect')
   })
 
   return { sessionId: row.id, phase, blueprintKind }
 }
-

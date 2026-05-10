@@ -140,7 +140,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
         generatedBy: user.id,
         overallScore: String(result.overallScore),
         items: result,
-        modelUsed: 'gpt-4o',
+        modelUsed: result.model ?? null,
         tokensUsed: result.tokensUsed,
       }).returning();
 

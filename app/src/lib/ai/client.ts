@@ -4,6 +4,7 @@
 // Uses the centralized routing policy and provider router.
 
 import { z } from 'zod';
+import { createHash } from 'crypto';
 import { CircuitBreaker, Errors } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { AI_CONFIG } from './config';
@@ -16,6 +17,7 @@ const log = logger.child({ component: 'ai-client' });
 const generationBreaker = new CircuitBreaker('ai-generation', 5, 60000);
 const analysisBreaker = new CircuitBreaker('ai-analysis', 5, 60000);
 const embeddingBreaker = new CircuitBreaker('ai-embedding', 5, 60000);
+const romanianBertCache = new Map<string, { expiresAt: number; result: unknown }>();
 
 export interface AIGenerateResult<T = string> {
   text?: string;
@@ -24,7 +26,6 @@ export interface AIGenerateResult<T = string> {
   provider: string;
   model: string;
   tier: string;
-  cached?: boolean;
   romanianOptimized?: boolean;
 }
 
@@ -63,7 +64,6 @@ export async function aiGenerate(opts: {
         provider: resolved.provider,
         model: resolved.model,
         tier: resolved.tier,
-        cached: response.cacheUsage?.hit === 'read',
         romanianOptimized: !!opts.romanianContext,
       };
     });
@@ -118,7 +118,6 @@ export async function aiGenerateObject<T extends z.ZodType>(opts: {
         provider: resolved.provider,
         model: resolved.model,
         tier: resolved.tier,
-        cached: response.cacheUsage?.hit === 'read',
         romanianOptimized: !!opts.romanianContext,
       };
     });
@@ -198,10 +197,27 @@ export async function queryRomanianBert(opts: {
   const startTime = performance.now();
   const endpoint = AI_CONFIG.romanianBert.endpoint;
   const token = process.env.HUGGINGFACE_TOKEN;
+  const task = opts.task || 'ner';
+
+  if (!AI_CONFIG.romanianBert.enabled) {
+    return [];
+  }
 
   try {
     if (!token) {
       throw Errors.serviceUnavailable('Romanian BERT (no HuggingFace token configured)');
+    }
+
+    const cacheTtlMs = Number.isFinite(AI_CONFIG.romanianBert.cacheTtlMs)
+      ? AI_CONFIG.romanianBert.cacheTtlMs
+      : 0;
+    const cacheKey = createHash('sha256')
+      .update(`${task}\0${opts.inputs}`)
+      .digest('hex');
+    const cached = romanianBertCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.result;
     }
 
     const response = await fetch(endpoint, {
@@ -218,7 +234,11 @@ export async function queryRomanianBert(opts: {
       throw Errors.serviceUnavailable('Romanian BERT');
     }
 
-    return response.json();
+    const result = await response.json();
+    if (cacheTtlMs > 0) {
+      romanianBertCache.set(cacheKey, { expiresAt: now + cacheTtlMs, result });
+    }
+    return result;
   } finally {
     log.info({ operation: 'queryRomanianBert', durationMs: Number((performance.now() - startTime).toFixed(2)) }, 'AI call completed');
   }

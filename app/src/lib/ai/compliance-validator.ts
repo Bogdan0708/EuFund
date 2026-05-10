@@ -7,6 +7,7 @@ import { runEligibilityRules, type RuleContext, type RuleResult } from '@/lib/ru
 import { hybridSearch } from '@/lib/rag/pipeline';
 import { assessDNSH, type DNSHAssessment } from '@/lib/rules/dnsh';
 import { analyzeRomanianContent } from './romanian-specialist';
+import { AI_INPUT_LIMITS, buildBoundaryInstruction, extractPromptBoundaries, sanitizeForAI } from './sanitize';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -57,7 +58,6 @@ export interface ComplianceResult {
   provider?: string;
   model?: string;
   tier?: string;
-  cached?: boolean;
   romanianOptimized?: boolean;
 }
 
@@ -115,7 +115,13 @@ export async function validateCompliance(input: ComplianceInput): Promise<Compli
   });
 
   const ragContext = ragResults.length > 0
-    ? ragResults.map((r, i) => `[Sursa ${i + 1}] ${r.content.substring(0, 500)}`).join('\n\n')
+    ? ragResults.map((r, i) => {
+      const { sanitized } = sanitizeForAI(r.content, {
+        maxLength: 500,
+        label: `LEGAL_SOURCE_${i + 1}`,
+      });
+      return `[Sursa ${i + 1}]\n${sanitized}`;
+    }).join('\n\n')
     : '';
 
   const sourceTrace: ComplianceSourceTrace[] = ragResults.map((source, index) => ({
@@ -148,7 +154,7 @@ export async function validateCompliance(input: ComplianceInput): Promise<Compli
 Oferă evaluări concrete și referințe juridice.
 Pentru fiecare verificare, include:
 - confidence: scor între 0 și 1
-- citations: lista numerelor de surse folosite (de ex. [1, 3], corespondente [Sursa N]).${ragContext ? `\n\nContext legislativ relevant:\n${ragContext}` : ''}`
+- citations: lista numerelor de surse folosite (de ex. [1, 3], corespondente [Sursa N]).`
     : `You are an EU funding legal compliance expert. Check projects for:
 - CPR Regulation (2021/1060)
 - State aid rules
@@ -158,28 +164,58 @@ Pentru fiecare verificare, include:
 Provide concrete assessments and legal references.
 For each check include:
 - confidence: score between 0 and 1
-- citations: source indexes used (e.g. [1, 3], matching [Sursa N]).${ragContext ? `\n\nRelevant legal context:\n${ragContext}` : ''}`;
+- citations: source indexes used (e.g. [1, 3], matching [Sursa N]).`;
+
+  const safeTitle = sanitizeForAI(input.project.title, {
+    maxLength: AI_INPUT_LIMITS.genericField,
+    label: 'PROJECT_TITLE',
+  }).sanitized;
+  const safeSummary = input.project.summary
+    ? sanitizeForAI(input.project.summary, {
+      maxLength: AI_INPUT_LIMITS.projectContext,
+      label: 'PROJECT_SUMMARY',
+    }).sanitized
+    : '';
+  const safeObjectives = input.project.objectives
+    ? sanitizeForAI(input.project.objectives, {
+      maxLength: AI_INPUT_LIMITS.projectContext,
+      label: 'PROJECT_OBJECTIVES',
+    }).sanitized
+    : '';
+  const safeMethodology = input.project.methodology
+    ? sanitizeForAI(input.project.methodology, {
+      maxLength: AI_INPUT_LIMITS.projectContext,
+      label: 'PROJECT_METHODOLOGY',
+    }).sanitized
+    : '';
 
   const prompt = isRo
     ? `Verifică conformitatea următorului proiect:
 
-Titlu: ${input.project.title}
-${input.project.summary ? `Rezumat: ${input.project.summary}` : ''}
-${input.project.objectives ? `Obiective: ${input.project.objectives}` : ''}
-${input.project.methodology ? `Metodologie: ${input.project.methodology}` : ''}
+Titlu: ${safeTitle}
+${input.project.summary ? `Rezumat: ${safeSummary}` : ''}
+${input.project.objectives ? `Obiective: ${safeObjectives}` : ''}
+${input.project.methodology ? `Metodologie: ${safeMethodology}` : ''}
 Organizație: ${input.organization.orgType}${input.organization.orgSize ? ` (${input.organization.orgSize})` : ''}
 ${input.project.budget ? `Buget: ${input.project.budget} EUR` : ''}
 ${input.project.durationMonths ? `Durată: ${input.project.durationMonths} luni` : ''}
+${ragContext ? `\nContext legislativ relevant:\n${ragContext}` : ''}
 
 Verifică toate aspectele de conformitate și oferă recomandări.`
     : `Check compliance for the following project:
 
-Title: ${input.project.title}
-${input.project.summary ? `Summary: ${input.project.summary}` : ''}
+Title: ${safeTitle}
+${input.project.summary ? `Summary: ${safeSummary}` : ''}
+${input.project.objectives ? `Objectives: ${safeObjectives}` : ''}
+${input.project.methodology ? `Methodology: ${safeMethodology}` : ''}
 Organization: ${input.organization.orgType}
 ${input.project.budget ? `Budget: ${input.project.budget} EUR` : ''}
+${input.project.durationMonths ? `Duration: ${input.project.durationMonths} months` : ''}
+${ragContext ? `\nRelevant legal context:\n${ragContext}` : ''}
 
 Check all compliance aspects and provide recommendations.`;
+
+  const boundaryInstruction = buildBoundaryInstruction(extractPromptBoundaries(prompt));
 
   const { 
     object: aiResult, 
@@ -187,10 +223,9 @@ Check all compliance aspects and provide recommendations.`;
     provider, 
     model, 
     tier, 
-    cached, 
     romanianOptimized 
   } = await aiGenerateObject({
-    system: systemPrompt,
+    system: boundaryInstruction ? `${systemPrompt}\n\n${boundaryInstruction}` : systemPrompt,
     prompt,
     schema: aiComplianceSchema,
     schemaName: 'ComplianceCheck',
@@ -252,7 +287,6 @@ Check all compliance aspects and provide recommendations.`;
     provider,
     model,
     tier,
-    cached,
     romanianOptimized,
   };
 }

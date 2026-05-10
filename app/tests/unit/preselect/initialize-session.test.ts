@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { mockDb, mockLookupBlueprint, mockLogAudit, agentSessionsSymbol } = vi.hoisted(() => ({
+const { mockDb, mockLookupBlueprint, mockLogAudit, mockEnsureProjectForSession, agentSessionsSymbol } = vi.hoisted(() => ({
   mockDb: { insert: vi.fn() },
   mockLookupBlueprint: vi.fn(),
   mockLogAudit: vi.fn(),
+  mockEnsureProjectForSession: vi.fn(),
   agentSessionsSymbol: Symbol('agentSessions'),
 }))
 
@@ -13,6 +14,7 @@ vi.mock('@/lib/db', () => ({
 }))
 vi.mock('@/lib/ai/agent/services/blueprint', () => ({ lookupBlueprint: mockLookupBlueprint }))
 vi.mock('@/lib/legal/audit', () => ({ logAudit: mockLogAudit }))
+vi.mock('@/lib/projects/promotion', () => ({ ensureProjectForSession: mockEnsureProjectForSession }))
 vi.mock('@/lib/db/schema', () => ({
   agentSessions: agentSessionsSymbol,
 }))
@@ -26,6 +28,8 @@ beforeEach(() => {
   mockDb.insert.mockReset()
   mockLookupBlueprint.mockReset()
   mockLogAudit.mockReset()
+  mockEnsureProjectForSession.mockReset()
+  mockEnsureProjectForSession.mockResolvedValue({ promoted: true, projectId: 'dry-run', created: true })
 
   // default: insert returns a row with id
   mockDb.insert.mockReturnValue({
@@ -77,14 +81,26 @@ describe('initializeSession — structured blueprint', () => {
     expect(inserted.planningArtifact.preselect.blueprintKind).toBe('structured')
     expect(inserted.planningArtifact.preselect.excludeCallIdsApplied).toEqual([])
 
-    expect(mockLogAudit).toHaveBeenCalledWith(expect.objectContaining({
-      action: 'session.preselect_completed',
-      userId: USER_ID,
-      resourceType: 'agent_session',
-      resourceId: 'session-xyz',
-    }))
-  })
-})
+	    expect(mockLogAudit).toHaveBeenCalledWith(expect.objectContaining({
+	      action: 'session.preselect_completed',
+	      userId: USER_ID,
+	      resourceType: 'agent_session',
+	      resourceId: 'session-xyz',
+	      metadata: expect.objectContaining({
+	        requestId: expect.any(String),
+	      }),
+	    }))
+	    expect(mockEnsureProjectForSession).toHaveBeenCalledWith(
+	      expect.objectContaining({
+	        userId: USER_ID,
+	        sessionId: 'session-xyz',
+	        requestId: expect.any(String),
+	      }),
+	      'session-xyz',
+	      { dryRun: true },
+	    )
+	  })
+	})
 
 describe('initializeSession — raw-evidence blueprint', () => {
   it('creates session with phase=research, blueprint null, blueprintKind=raw_evidence', async () => {

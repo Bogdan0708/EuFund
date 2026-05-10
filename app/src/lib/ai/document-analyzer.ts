@@ -94,7 +94,6 @@ export interface AnalysisResult {
   provider?: string;
   model?: string;
   tier?: string;
-  cached?: boolean;
   romanianOptimized?: boolean;
   documentType?: string;
 }
@@ -190,7 +189,6 @@ Evaluate: document type, language, summary, key findings, compliance gaps, quali
     provider, 
     model, 
     tier, 
-    cached, 
     romanianOptimized 
   } = await aiGenerateObject({
     system: systemPrompt,
@@ -210,7 +208,6 @@ Evaluate: document type, language, summary, key findings, compliance gaps, quali
     provider,
     model,
     tier,
-    cached,
     romanianOptimized,
     documentType: docType,
   };

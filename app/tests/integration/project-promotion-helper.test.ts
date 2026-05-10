@@ -36,12 +36,15 @@ function buildTx() {
               txState.selectPhase = 'call';
               return [txState.projectRow];
             }
-            if (phase === 'user') {
-              txState.selectPhase = 'call';
-              return [{ id: 'user-1' }];
-            }
-            return [];
-          }),
+	            if (phase === 'user') {
+	              txState.selectPhase = 'call';
+	              return [{ id: 'user-1' }];
+	            }
+	            if (phase === 'call') {
+	              return txState.callRows ?? [{ id: 'resolved-call-uuid', titleRo: 'Resolved Call' }];
+	            }
+	            return [];
+	          }),
           for: vi.fn(() => ({
             limit: vi.fn(async () => {
               const phase = txState.selectPhase ?? 'session';
@@ -49,12 +52,15 @@ function buildTx() {
                 txState.selectPhase = sessionRow.projectId ? 'project_lock' : 'user';
                 return [sessionRow];
               }
-              if (phase === 'project_lock') {
-                txState.selectPhase = 'call';
-                return [txState.projectRow];
-              }
-              return [];
-            }),
+	              if (phase === 'project_lock') {
+	                txState.selectPhase = 'call';
+	                return [txState.projectRow];
+	              }
+	              if (phase === 'call') {
+	                return txState.callRows ?? [{ id: 'resolved-call-uuid', titleRo: 'Resolved Call' }];
+	              }
+	              return [];
+	            }),
           })),
         })),
       })),
@@ -114,9 +120,10 @@ const ctx = {
 } as any;
 
 describe('ensureProjectForSession — fresh promotion', () => {
-  beforeEach(() => {
-    txState.selectPhase = 'session';
-    sessionRow.projectId = null;
+	  beforeEach(() => {
+	    txState.selectPhase = 'session';
+	    txState.callRows = undefined;
+	    sessionRow.projectId = null;
     projectInsertRows.length = 0;
     sessionUpdates.length = 0;
     vi.clearAllMocks();
@@ -153,10 +160,13 @@ describe('ensureProjectForSession — fresh promotion', () => {
 });
 
 describe('ensureProjectForSession — already linked', () => {
-  beforeEach(() => {
-    txState.selectPhase = 'session';
-    vi.clearAllMocks();
-  });
+	  beforeEach(() => {
+	    txState.selectPhase = 'session';
+	    txState.callRows = undefined;
+	    projectInsertRows.length = 0;
+	    sessionUpdates.length = 0;
+	    vi.clearAllMocks();
+	  });
 
   it('returns synced=false when callId matches project metadata.rawSelectedCallId', async () => {
     sessionRow.projectId = 'existing-proj';
@@ -182,13 +192,48 @@ describe('ensureProjectForSession — already linked', () => {
       metadata: { rawSelectedCallId: 'CODE-123', resolvedCallTitle: 'Call X', existingExtra: 'keep-me' },
       callId: 'old-call-uuid',
     };
-    const out = await ensureProjectForSession(ctx, 'sess-1');
-    expect(out).toMatchObject({ promoted: true, created: false, synced: true, projectId: 'existing-proj' });
-    expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({
-      action: 'project.promoted_from_session',
-      metadata: expect.objectContaining({ kind: 'call_resynced' }),
-    }));
-    expect(trackProjectPromotion).toHaveBeenCalledWith('synced');
-    sessionRow.projectId = null;
-  });
-});
+	    const out = await ensureProjectForSession(ctx, 'sess-1');
+	    expect(out).toMatchObject({ promoted: true, created: false, synced: true, projectId: 'existing-proj' });
+	    expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({
+	      action: 'project.promoted_from_session',
+	      metadata: expect.objectContaining({
+	        kind: 'call_resynced',
+	        previousRawSelectedCallId: 'CODE-123',
+	        previousResolvedCallId: 'old-call-uuid',
+	      }),
+	    }));
+	    expect(trackProjectPromotion).toHaveBeenCalledWith('synced');
+	    sessionRow.projectId = null;
+	  });
+
+	  it('does not null project.callId when resync cannot resolve the selected call', async () => {
+	    sessionRow.projectId = 'existing-proj';
+	    sessionRow.selectedCallId = 'MISSING-CALL';
+	    txState.callRows = [];
+	    txState.projectRow = {
+	      id: 'existing-proj',
+	      metadata: { rawSelectedCallId: 'CODE-123', resolvedCallTitle: 'Call X' },
+	      callId: 'old-call-uuid',
+	    };
+	    const out = await ensureProjectForSession(ctx, 'sess-1');
+	    expect(out).toMatchObject({
+	      promoted: true,
+	      created: false,
+	      synced: false,
+	      resyncUnresolved: true,
+	      projectId: 'existing-proj',
+	    });
+	    expect(sessionUpdates).toHaveLength(0);
+	    expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({
+	      metadata: expect.objectContaining({
+	        kind: 'call_resync_unresolved',
+	        rawSelectedCallId: 'MISSING-CALL',
+	        resolvedCallId: null,
+	        previousRawSelectedCallId: 'CODE-123',
+	        previousResolvedCallId: 'old-call-uuid',
+	      }),
+	    }));
+	    expect(trackProjectPromotion).toHaveBeenCalledWith('resync_unresolved');
+	    sessionRow.projectId = null;
+	  });
+	});

@@ -1,6 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
+function mockUserLockSelect() {
+  return vi.fn(() => ({
+    from: vi.fn(() => ({
+      where: vi.fn(() => ({
+        for: vi.fn(() => ({
+          limit: vi.fn().mockResolvedValue([{ id: 'user-1' }]),
+        })),
+      })),
+    })),
+  }));
+}
+
 describe('POST /api/v1/projects organization context', () => {
   it('uses the only membership org when orgId is omitted', async () => {
     vi.resetModules();
@@ -15,6 +27,7 @@ describe('POST /api/v1/projects organization context', () => {
           findMany: vi.fn().mockResolvedValue([{ orgId: 'org-1' }]),
         },
       },
+      select: mockUserLockSelect(),
       insert: vi.fn().mockReturnValue({ values: insertValues }),
     };
 
@@ -52,6 +65,7 @@ describe('POST /api/v1/projects organization context', () => {
           findMany: vi.fn().mockResolvedValue([{ orgId: 'org-1' }, { orgId: 'org-2' }]),
         },
       },
+      select: mockUserLockSelect(),
       insert: vi.fn(),
     };
 
@@ -93,6 +107,7 @@ describe('POST /api/v1/projects organization context', () => {
           findMany: vi.fn().mockResolvedValue([]),
         },
       },
+      select: mockUserLockSelect(),
       insert: vi.fn().mockReturnValue({ values: insertValues }),
     };
 

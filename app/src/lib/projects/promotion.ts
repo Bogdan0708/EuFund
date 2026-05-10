@@ -7,7 +7,7 @@
 // drafting workspace attached to that project via agent_sessions.project_id.
 // This module owns the lifecycle transition that links the two.
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { withUserRLS } from '@/lib/db';
 import { agentSessions, projects, users, callsForProposals } from '@/lib/db/schema';
 import { logAudit } from '@/lib/legal/audit';
@@ -33,7 +33,7 @@ export type PromotionResult =
       titleSource: TitleSource;
       selectedCallResolution: CallResolution;
     }
-  | { promoted: true; projectId: string; created: false; synced: boolean }
+  | { promoted: true; projectId: string; created: false; synced: boolean; resyncUnresolved?: boolean }
   | { promoted: false; reason: 'NO_SELECTED_CALL' | 'USER_NOT_FOUND' | 'SESSION_NOT_FOUND' };
 
 export interface EnsureOpts {
@@ -151,11 +151,13 @@ export async function resolveCallForId(
 }
 
 interface PendingAudit {
-  kind: 'promoted' | 'call_resynced';
+  kind: 'promoted' | 'call_resynced' | 'call_resync_unresolved';
   projectId: string;
   rawSelectedCallId: string;
   resolvedCallId: string | null;
   selectedCallResolution: CallResolution;
+  previousRawSelectedCallId?: string | null;
+  previousResolvedCallId?: string | null;
   titleSource?: TitleSource;
 }
 
@@ -210,12 +212,37 @@ export async function ensureProjectForSession(
         const project = projectRows[0];
         const existingMetadata = (project.metadata ?? {}) as Record<string, unknown>;
         const recordedCallId = existingMetadata.rawSelectedCallId as string | undefined;
+        const previousRawSelectedCallId = typeof recordedCallId === 'string' ? recordedCallId : null;
+        const previousResolvedCallId = project.callId;
 
         if (recordedCallId === session.selectedCallId) {
           return { result: { promoted: true, projectId: project.id, created: false, synced: false }, auditData: null };
         }
 
         const callResult = await resolveCallForId(tx, session.selectedCallId!);
+        if (callResult.id === null) {
+          const audit: PendingAudit = {
+            kind: 'call_resync_unresolved',
+            projectId: project.id,
+            rawSelectedCallId: session.selectedCallId!,
+            resolvedCallId: null,
+            selectedCallResolution: callResult.resolution,
+            previousRawSelectedCallId,
+            previousResolvedCallId,
+          };
+
+          return {
+            result: {
+              promoted: true,
+              projectId: project.id,
+              created: false,
+              synced: false,
+              resyncUnresolved: true,
+            },
+            auditData: audit,
+          };
+        }
+
         await tx
           .update(projects)
           .set({
@@ -237,6 +264,8 @@ export async function ensureProjectForSession(
           rawSelectedCallId: session.selectedCallId!,
           resolvedCallId: callResult.id,
           selectedCallResolution: callResult.resolution,
+          previousRawSelectedCallId,
+          previousResolvedCallId,
         };
 
         return { result: { promoted: true, projectId: project.id, created: false, synced: true }, auditData: audit };
@@ -327,6 +356,8 @@ export async function ensureProjectForSession(
           rawSelectedCallId: auditData.rawSelectedCallId,
           resolvedCallId: auditData.resolvedCallId,
           selectedCallResolution: auditData.selectedCallResolution,
+          previousRawSelectedCallId: auditData.previousRawSelectedCallId,
+          previousResolvedCallId: auditData.previousResolvedCallId,
           titleSource: auditData.titleSource,
           kind: auditData.kind,
           requestId,
@@ -335,7 +366,9 @@ export async function ensureProjectForSession(
     }
 
     if (result.promoted) {
-      const outcome = result.created ? 'promoted' : (result.synced ? 'synced' : 'already_linked');
+      const outcome = result.created
+        ? 'promoted'
+        : (result.synced ? 'synced' : (result.resyncUnresolved ? 'resync_unresolved' : 'already_linked'));
       trackProjectPromotion(outcome);
       log.info({ sessionId, projectId: result.projectId, outcome }, 'session promoted');
     } else {
@@ -353,6 +386,7 @@ export async function ensureProjectForSession(
     if (e instanceof DryRunRollback) {
       return e.carried as PromotionResult;
     }
+    trackProjectPromotion('failed');
     log.error({ sessionId, error: e instanceof Error ? e.message : String(e) }, 'promotion failed');
     throw e;
   }

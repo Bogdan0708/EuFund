@@ -144,6 +144,7 @@ export function trackProjectPromotion(
     | 'promoted'
     | 'already_linked'
     | 'synced'
+    | 'resync_unresolved'
     | 'no_selected_call'
     | 'user_missing'
     | 'session_missing'

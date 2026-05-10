@@ -1,7 +1,7 @@
 // app/src/lib/projects/org-resolver.ts
 import { eq } from 'drizzle-orm';
 import type { Database } from '@/lib/db';
-import { organizations, orgMembers } from '@/lib/db/schema';
+import { organizations, orgMembers, users } from '@/lib/db/schema';
 import { FondEUError } from '@/lib/errors';
 
 type DbTransaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -24,6 +24,13 @@ export async function resolveProjectOrgIdInTx(
   if (requestedOrgId) {
     return requestedOrgId;
   }
+
+  await tx
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, userId))
+    .for('update')
+    .limit(1);
 
   const memberships = await tx.query.orgMembers.findMany({
     where: eq(orgMembers.userId, userId),
