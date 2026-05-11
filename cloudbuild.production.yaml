@@ -33,11 +33,13 @@ substitutions:
   _GOOGLE_AI_API_KEY_SECRET_NAME: GOOGLE_AI_API_KEY
   _HEALTHCHECK_SECRET_NAME: ""
   # Opt-in for shared dev/staging deploys only — leave "false" for true production.
-  _ALLOW_PASSWORD_LOGIN: "false"
+  _ALLOW_PASSWORD_LOGIN: "true"
   # Build-time client bundle flag; keep paired with _ALLOW_PASSWORD_LOGIN when enabling password login.
-  _NEXT_PUBLIC_ALLOW_PASSWORD_LOGIN: "false"
+  _NEXT_PUBLIC_ALLOW_PASSWORD_LOGIN: "true"
+  # Build-time client bundle flag; flip to "true" only after wiring SMTP_HOST/SMTP_PORT/SMTP_USER/EMAIL_FROM into --set-env-vars below.
+  _NEXT_PUBLIC_MAGIC_LINK_ENABLED: "false"
   # Comma-separated allowlist. Empty is intentional fail-closed behavior.
-  _AUTH_ALLOWED_EMAILS: ""
+  _AUTH_ALLOWED_EMAILS: "godjabogdan@gmail.com"
   # Pinned audience for Cloud Scheduler OIDC tokens hitting /api/v1/admin/discovery/run.
   # Avoids the resolveAudience() forwarded-header inference path drifting if the load
   # balancer reshapes Host/X-Forwarded-Host. Must match the Scheduler job's audience.
@@ -73,6 +75,7 @@ steps:
         docker build \
           -f infrastructure/Dockerfile.prod \
           --build-arg "NEXT_PUBLIC_ALLOW_PASSWORD_LOGIN=$_NEXT_PUBLIC_ALLOW_PASSWORD_LOGIN" \
+          --build-arg "NEXT_PUBLIC_MAGIC_LINK_ENABLED=$_NEXT_PUBLIC_MAGIC_LINK_ENABLED" \
           -t "$$IMAGE_URI" \
           -t "$$IMAGE_REPO:latest" \
           .

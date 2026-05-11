@@ -20,6 +20,7 @@ export default function LoginPage() {
   const [devLoading, setDevLoading] = useState(false);
   const isDev = process.env.NEXT_PUBLIC_NODE_ENV === 'development' || process.env.NODE_ENV === 'development';
   const allowPasswordLogin = isDev || process.env.NEXT_PUBLIC_ALLOW_PASSWORD_LOGIN === 'true';
+  const magicLinkEnabled = isDev || process.env.NEXT_PUBLIC_MAGIC_LINK_ENABLED === 'true';
 
   const handleOAuthSignIn = async (provider: string) => {
     setOauthLoading(provider);
@@ -129,41 +130,45 @@ export default function LoginPage() {
             </button>
           </div>
 
-          {/* Divider */}
-          <div className="relative flex items-center py-6">
-            <div className="flex-grow border-t border-outline-variant/20" />
-            <span className="flex-shrink mx-4 text-xs font-semibold uppercase tracking-widest text-on-surface">{t('orDivider')}</span>
-            <div className="flex-grow border-t border-outline-variant/20" />
-          </div>
+          {magicLinkEnabled && (
+            <>
+              {/* Divider */}
+              <div className="relative flex items-center py-6">
+                <div className="flex-grow border-t border-outline-variant/20" />
+                <span className="flex-shrink mx-4 text-xs font-semibold uppercase tracking-widest text-on-surface">{t('orDivider')}</span>
+                <div className="flex-grow border-t border-outline-variant/20" />
+              </div>
 
-          {/* Magic Link */}
-          {emailSent ? (
-            <div className="px-4 py-4 rounded-[0.75rem] bg-primary-fixed text-on-primary-fixed text-sm text-center">
-              {t('magicLinkSent')}
-            </div>
-          ) : (
-            <section className="space-y-4">
-              <h2 className="text-sm font-bold text-on-surface-variant px-1">{t('magicLinkTitle')}</h2>
-              <form onSubmit={handleMagicLink} noValidate className="space-y-3">
-                <DsInput
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder={t('magicLinkPlaceholder')}
-                  required
-                />
-                <button
-                  type="submit"
-                  disabled={emailLoading}
-                  className="w-full py-4 bg-primary-container hover:bg-primary text-on-primary font-bold rounded-[0.75rem] transition-all duration-[250ms] active:scale-[0.98] hover:-translate-y-[1px] disabled:opacity-50"
-                >
-                  {emailLoading ? t('sending') : t('magicLinkButton')}
-                </button>
-                <p className="text-[13px] text-on-surface-variant text-center leading-relaxed px-4">
-                  {t('magicLinkHelp')}
-                </p>
-              </form>
-            </section>
+              {/* Magic Link */}
+              {emailSent ? (
+                <div className="px-4 py-4 rounded-[0.75rem] bg-primary-fixed text-on-primary-fixed text-sm text-center">
+                  {t('magicLinkSent')}
+                </div>
+              ) : (
+                <section className="space-y-4">
+                  <h2 className="text-sm font-bold text-on-surface-variant px-1">{t('magicLinkTitle')}</h2>
+                  <form onSubmit={handleMagicLink} noValidate className="space-y-3">
+                    <DsInput
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder={t('magicLinkPlaceholder')}
+                      required
+                    />
+                    <button
+                      type="submit"
+                      disabled={emailLoading}
+                      className="w-full py-4 bg-primary-container hover:bg-primary text-on-primary font-bold rounded-[0.75rem] transition-all duration-[250ms] active:scale-[0.98] hover:-translate-y-[1px] disabled:opacity-50"
+                    >
+                      {emailLoading ? t('sending') : t('magicLinkButton')}
+                    </button>
+                    <p className="text-[13px] text-on-surface-variant text-center leading-relaxed px-4">
+                      {t('magicLinkHelp')}
+                    </p>
+                  </form>
+                </section>
+              )}
+            </>
           )}
         </div>
       </main>
