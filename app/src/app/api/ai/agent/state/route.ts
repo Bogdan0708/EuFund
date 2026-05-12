@@ -1,10 +1,11 @@
 // app/src/app/api/ai/agent/state/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/helpers'
-import type { UIStateSnapshot } from '@/lib/ai/agent/types'
 import { db } from '@/lib/db'
 import { agentSessions, agentSections } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
+import { projectSessionState } from '@/lib/ai/agent/state-projection'
+import type { AgentSession, AgentSection } from '@/lib/ai/agent/types'
 
 export async function GET(req: NextRequest) {
   const user = await requireAuth()
@@ -29,22 +30,6 @@ export async function GET(req: NextRequest) {
     .from(agentSections)
     .where(eq(agentSections.sessionId, sessionId))
 
-  const state: UIStateSnapshot = {
-    sessionId: session.id,
-    phase: session.currentPhase,
-    stateVersion: session.stateVersion,
-    outlineFrozen: session.outlineFrozen,
-    warnings: (session.warnings as UIStateSnapshot['warnings']) || [],
-    sections: sectionRows.map(s => ({
-      sectionKey: s.sectionKey,
-      title: s.title,
-      status: s.status,
-      documentOrder: s.documentOrder,
-      content: s.acceptedContent ?? s.content,
-    })),
-    blueprint: session.blueprint as UIStateSnapshot['blueprint'],
-    eligibility: session.eligibility as UIStateSnapshot['eligibility'],
-  }
-
+  const state = projectSessionState(session as AgentSession, sectionRows as AgentSection[])
   return NextResponse.json(state)
 }
