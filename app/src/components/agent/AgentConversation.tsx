@@ -8,12 +8,16 @@ interface Props {
   messages: AgentMessage[]
   status: AgentStatus
   error: string | null
+  // Optional pre-filled input — used by /panou's hero handoff to seed the
+  // chat input with the user's typed description. Pre-fill only; we do NOT
+  // auto-send, the user has to click Send.
+  initialInput?: string
   onSendMessage: (message: string) => void
 }
 
-export function AgentConversation({ messages, status, error, onSendMessage }: Props) {
+export function AgentConversation({ messages, status, error, initialInput, onSendMessage }: Props) {
   const t = useTranslations('agent')
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState(initialInput ?? '')
   const scrollRef = useRef<HTMLDivElement>(null)
   const isBusy = status === 'streaming' || status === 'connecting'
 

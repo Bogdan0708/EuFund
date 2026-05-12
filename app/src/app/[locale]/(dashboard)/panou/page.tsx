@@ -97,10 +97,16 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
     const trimmed = inputText.trim();
     if (!trimmed || submitting) return;
     setSubmitting(true);
-    // Forward the typed prompt so /proiecte/nou auto-sends it as the first
-    // agent turn. Without this, the typed text was silently dropped and the
-    // user had to retype on the next page.
-    router.push(`/${locale}/proiecte/nou?q=${encodeURIComponent(trimmed)}`);
+    // Hand off via sessionStorage rather than a URL param so the project
+    // description doesn't end up in browser history, server access logs, or
+    // Referer headers. /proiecte/nou reads it on mount and clears the key.
+    // The destination pre-fills the input but does NOT auto-send, so a
+    // crafted authenticated link can't trigger preselect or LLM turns by
+    // itself — the user still has to click Send.
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('fondeu:hero-query', trimmed);
+    }
+    router.push(`/${locale}/proiecte/nou`);
   }
 
   // Derive first name from session

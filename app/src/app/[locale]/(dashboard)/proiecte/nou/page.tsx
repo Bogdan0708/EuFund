@@ -4,9 +4,7 @@ import { NewProjectView } from './NewProjectView'
 
 interface PageProps {
   params: { locale: 'ro' | 'en' }
-  // `q` is the project description forwarded by /panou's hero search so the
-  // typed prompt becomes the first agent turn instead of being dropped.
-  searchParams: { session?: string; q?: string }
+  searchParams: { session?: string }
 }
 
 export default async function NewProjectPage({ params, searchParams }: PageProps) {
@@ -23,11 +21,13 @@ export default async function NewProjectPage({ params, searchParams }: PageProps
     isFeatureEnabled('managed_agent_enabled', { userId: user.id, bypassCache: true }),
   ])
 
+  // The /panou hero search hands off the project description via
+  // sessionStorage rather than a URL parameter, so it isn't visible here.
+  // NewProjectView reads it client-side and pre-fills the chat input.
   return (
     <NewProjectView
       locale={params.locale}
       initialSessionId={searchParams.session}
-      initialQuery={searchParams.q}
       preselectEnabled={preselectFlag && writesFlag && managedFlag && managedRuntimeEnabled}
     />
   )
