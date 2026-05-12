@@ -38,7 +38,7 @@ export function projectSectionsForUI(
     if (row) {
       return {
         sectionKey: row.sectionKey,
-        title: spec.title,
+        title: row.title,
         status: row.status,
         documentOrder: row.documentOrder,
         content: row.acceptedContent ?? row.content,

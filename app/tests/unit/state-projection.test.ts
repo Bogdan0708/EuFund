@@ -98,7 +98,7 @@ describe('projectSessionState', () => {
         evaluationGrid: [], cofinancingRate: 0,
       },
       structureConfidence: 0.9,
-    } as CallBlueprint
+    } as unknown as CallBlueprint
     const session = baseSession({ outline: null, blueprint: bp })
     const out = projectSessionState(session, [])
     expect(out.sections).toEqual([
@@ -115,10 +115,10 @@ describe('projectSessionState', () => {
     const session = baseSession({
       outline: [spec('a', 1, 'A'), spec('b', 2, 'B')],
     })
-    const r = row({ sectionKey: 'a', status: 'accepted', content: 'final', acceptedContent: 'final accepted' })
+    const r = row({ sectionKey: 'a', title: 'Introducere v2', status: 'accepted', content: 'final', acceptedContent: 'final accepted' })
     const out = projectSessionState(session, [r])
     expect(out.sections).toEqual([
-      { sectionKey: 'a', title: 'A', status: 'accepted', documentOrder: 1, content: 'final accepted' },
+      { sectionKey: 'a', title: 'Introducere v2', status: 'accepted', documentOrder: 1, content: 'final accepted' },
       { sectionKey: 'b', title: 'B', status: 'pending', documentOrder: 2, content: null },
     ])
   })
@@ -130,5 +130,14 @@ describe('projectSessionState', () => {
     expect(out.phase).toBe('structuring')
     expect(out.stateVersion).toBe(7)
     expect(out.outlineFrozen).toBe(true)
+  })
+
+  it('uses row.title (not spec.title) when a row exists', () => {
+    const session = baseSession({
+      outline: [spec('a', 1, 'Spec Title')],
+    })
+    const r = row({ sectionKey: 'a', title: 'Row Title', status: 'draft' })
+    const out = projectSessionState(session, [r])
+    expect(out.sections[0].title).toBe('Row Title')
   })
 })
