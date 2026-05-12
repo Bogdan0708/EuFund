@@ -228,3 +228,19 @@ gcloud sql backups restore BACKUP_ID --restore-instance=fondeu-postgres-prod
 **Target market:** 50-100 Romanian EU funding consultancies  
 
 Your enterprise-grade platform (25,392 lines, 8.8/10 rating) with unique competitive advantages is ready for professional deployment and business customer acquisition.
+
+## After PR 1 (Outline Persistence) deploys
+
+Run the backfill against production once, then verify counts:
+
+```bash
+# Dry-run first
+cd app && npx tsx scripts/backfill-session-outline.ts --dry-run
+
+# Apply
+cd app && npx tsx scripts/backfill-session-outline.ts --confirm
+
+# Verify
+psql "$DATABASE_URL" -c "SELECT count(*) FROM agent_sessions WHERE blueprint IS NOT NULL AND outline IS NULL;"
+# Expected: 0
+```
