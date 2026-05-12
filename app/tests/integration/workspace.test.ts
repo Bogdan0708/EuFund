@@ -126,6 +126,8 @@ describe('resolveProjectWorkspace', () => {
       workflowSessions: { projectId: 'project_id', userId: 'user_id', status: 'status', updatedAt: 'updated_at', id: 'id', context: 'context' },
       projectDocuments: { projectId: 'project_id', version: 'version' },
       sectionVersions: { sessionId: 'session_id', sectionId: 'section_id', version: 'version' },
+      agentSessions: { id: 'id', projectId: 'project_id', userId: 'user_id', updatedAt: 'updated_at' },
+      agentSections: { sessionId: 'session_id', documentOrder: 'document_order' },
     }));
 
     vi.doMock('@/lib/logger', () => ({
@@ -165,6 +167,8 @@ describe('resolveProjectWorkspace', () => {
       workflowSessions: { projectId: 'project_id', userId: 'user_id', status: 'status', updatedAt: 'updated_at', id: 'id', context: 'context' },
       projectDocuments: { projectId: 'project_id', version: 'version' },
       sectionVersions: { sessionId: 'session_id', sectionId: 'section_id', version: 'version' },
+      agentSessions: { id: 'id', projectId: 'project_id', userId: 'user_id', updatedAt: 'updated_at' },
+      agentSections: { sessionId: 'session_id', documentOrder: 'document_order' },
     };
 
     vi.doMock('@/lib/db', () => ({
@@ -216,6 +220,130 @@ describe('resolveProjectWorkspace', () => {
     expect(result!.sections[0].content).toBe('Snapshot content');
     expect(result!.sections[0].state).toBe('draft');
     expect(result!.sections[0].currentVersion).toBe(1);
+  });
+
+  it('returns agent mode when project has no workflow session but has V3 agent sections', async () => {
+    // Projects promoted from V3 agent sessions don't have a workflow_sessions
+    // row — ensureProjectForSession only links agentSessions.projectId. Without
+    // this fallback, the /proiecte/[id] page shows zero sections even though
+    // V3 drafted and persisted them to agent_sections. Regression for
+    // investigate report 2026-05-12.
+    const now = new Date('2026-05-12T12:00:00Z');
+    const mockProject = {
+      id: PROJECT_ID,
+      title: 'V3 Project',
+      orgId: '33333333-3333-4333-8333-333333333333',
+      createdBy: USER_ID,
+      deletedAt: null,
+    };
+    const AGENT_SESSION_ID = '55555555-5555-4555-8555-555555555555';
+    const mockAgentSessionRow = { id: AGENT_SESSION_ID };
+    const mockAgentSectionRows = [
+      {
+        id: '66666666-6666-4666-8666-666666666666',
+        sessionId: AGENT_SESSION_ID,
+        sectionKey: 'rezumat',
+        title: 'Rezumat',
+        documentOrder: 0,
+        generationOrder: 11,
+        status: 'accepted',
+        content: 'draft content',
+        acceptedContent: 'final content',
+        modelUsed: 'claude-sonnet-4-6',
+        retryCount: 1,
+        sourcesUsed: null,
+        promptVersion: null,
+        latencyMs: 1500,
+        tokenUsage: { input: 800, output: 400 },
+        errorClass: null,
+        rejectionReason: null,
+        updatedAt: now,
+      },
+      {
+        id: '77777777-7777-4777-8777-777777777777',
+        sessionId: AGENT_SESSION_ID,
+        sectionKey: 'buget',
+        title: 'Buget',
+        documentOrder: 1,
+        generationOrder: 12,
+        status: 'draft',
+        content: 'budget draft',
+        acceptedContent: null,
+        modelUsed: 'claude-sonnet-4-6',
+        retryCount: 0,
+        sourcesUsed: null,
+        promptVersion: null,
+        latencyMs: 1200,
+        tokenUsage: null,
+        errorClass: null,
+        rejectionReason: null,
+        updatedAt: now,
+      },
+    ];
+
+    const mockSchema = {
+      projects: { id: 'id', deletedAt: 'deleted_at' },
+      workflowSessions: { projectId: 'project_id', userId: 'user_id', status: 'status', updatedAt: 'updated_at', id: 'id', context: 'context' },
+      projectDocuments: { projectId: 'project_id', version: 'version' },
+      sectionVersions: { sessionId: 'session_id', sectionId: 'section_id', version: 'version' },
+      agentSessions: { id: 'id', projectId: 'project_id', userId: 'user_id', updatedAt: 'updated_at' },
+      agentSections: { sessionId: 'session_id', documentOrder: 'document_order' },
+    };
+
+    vi.doMock('@/lib/db', () => ({
+      withUserRLS: vi.fn(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const makeTxChain = () => {
+          let lastTable: unknown = null;
+          const chain: Record<string, unknown> = {};
+          chain.select = vi.fn(() => chain);
+          chain.from = vi.fn((table: unknown) => { lastTable = table; return chain; });
+          chain.where = vi.fn(() => chain);
+          chain.orderBy = vi.fn(() => {
+            if (lastTable === mockSchema.workflowSessions) {
+              return Object.assign([] as unknown[], { limit: vi.fn(() => Promise.resolve([])), then: (r: Function) => r([]) });
+            }
+            if (lastTable === mockSchema.agentSections) {
+              // agentSections.orderBy is awaited directly (no .limit) — return a thenable
+              return Object.assign(mockAgentSectionRows, { then: (r: Function) => r(mockAgentSectionRows) });
+            }
+            return chain;
+          });
+          chain.limit = vi.fn(() => {
+            if (lastTable === mockSchema.projectDocuments) {
+              return Promise.resolve([]); // no snapshot
+            }
+            if (lastTable === mockSchema.agentSessions) {
+              return Promise.resolve([mockAgentSessionRow]);
+            }
+            return Promise.resolve([]);
+          });
+          chain.then = vi.fn((resolve: Function) => resolve([]));
+          chain.query = { projects: { findFirst: vi.fn().mockResolvedValue(mockProject) } };
+          return chain;
+        };
+        return fn(makeTxChain());
+      }),
+    }));
+
+    vi.doMock('@/lib/db/schema', () => mockSchema);
+
+    vi.doMock('@/lib/logger', () => ({
+      logger: { child: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) },
+    }));
+
+    const { resolveProjectWorkspace } = await import('@/lib/workspace');
+    const result = await resolveProjectWorkspace(PROJECT_ID, USER_ID);
+
+    expect(result).not.toBeNull();
+    expect(result!.mode).toBe('agent');
+    expect(result!.session).toBeNull();
+    expect(result!.sections).toHaveLength(2);
+    expect(result!.sections[0].id).toBe('66666666-6666-4666-8666-666666666666');
+    expect(result!.sections[0].title).toBe('Rezumat');
+    expect(result!.sections[0].content).toBe('final content'); // acceptedContent preferred
+    expect(result!.sections[0].state).toBe('approved'); // accepted → approved
+    expect(result!.sections[1].title).toBe('Buget');
+    expect(result!.sections[1].state).toBe('draft');
   });
 });
 

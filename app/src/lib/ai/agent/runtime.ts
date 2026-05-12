@@ -116,14 +116,16 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     if (request.action) {
       const actionResult = handleStructuredAction(request.action, session, sections)
       if (actionResult.transitions.length > 0) {
-        // Track phase transitions from direct actions (e.g. approve_outline → drafting)
+        // Track phase transitions from direct actions (e.g. approve_outline → drafting).
+        // Compare against the post-apply phase so the backwards-rejection guard in
+        // applyTransition doesn't surface a spurious phase change to write-back.
         for (const t of actionResult.transitions) {
           const prevPhase = session.currentPhase
           const result = applyTransition(session, sections, t)
           session = result.session
           sections = result.sections
-          if (t.type === 'SET_PHASE' && t.phase !== prevPhase) {
-            phaseTransitionOccurred = { from: prevPhase, to: t.phase }
+          if (t.type === 'SET_PHASE' && session.currentPhase !== prevPhase) {
+            phaseTransitionOccurred = { from: prevPhase, to: session.currentPhase }
           }
           if (t.type === 'SET_SELECTED_CALL') {
             selectedCallChanged = true
@@ -440,10 +442,13 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
               session = result.session
               sections = result.sections
 
-              // Emit phase change and record for write-back
-              if (transition.type === 'SET_PHASE' && transition.phase !== prevPhase) {
-                emit({ type: 'phase_changed', from: prevPhase, to: transition.phase })
-                phaseTransitionOccurred = { from: prevPhase, to: transition.phase }
+              // Emit phase change and record for write-back. Use the post-apply
+              // session.currentPhase, not the requested transition.phase — the
+              // monotonic guard in applyTransition rejects backwards moves silently,
+              // and we must not emit a phase_changed event for a rejected transition.
+              if (transition.type === 'SET_PHASE' && session.currentPhase !== prevPhase) {
+                emit({ type: 'phase_changed', from: prevPhase, to: session.currentPhase })
+                phaseTransitionOccurred = { from: prevPhase, to: session.currentPhase }
               }
               if (transition.type === 'SET_SELECTED_CALL') {
                 selectedCallChanged = true

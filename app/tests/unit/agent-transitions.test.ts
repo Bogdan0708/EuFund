@@ -64,6 +64,41 @@ describe('applyTransition', () => {
     expect(result.session.currentPhase).toBe('research')
   })
 
+  it('SET_PHASE allows same-phase no-op', () => {
+    const session = makeSession({ currentPhase: 'structuring' })
+    const result = applyTransition(session, [], { type: 'SET_PHASE', phase: 'structuring' })
+    expect(result.session.currentPhase).toBe('structuring')
+  })
+
+  it('SET_PHASE rejects backwards moves: structuring → research', () => {
+    // search_calls emits SET_PHASE: 'research' unconditionally when it has matches.
+    // Without the monotonic guard, the model could regress the workflow by calling
+    // search_calls from a later phase. See investigate report 2026-05-12.
+    const session = makeSession({ currentPhase: 'structuring' })
+    const result = applyTransition(session, [], { type: 'SET_PHASE', phase: 'research' })
+    expect(result.session.currentPhase).toBe('structuring')
+  })
+
+  it('SET_PHASE rejects backwards moves: review → drafting', () => {
+    const session = makeSession({ currentPhase: 'review' })
+    const result = applyTransition(session, [], { type: 'SET_PHASE', phase: 'drafting' })
+    expect(result.session.currentPhase).toBe('review')
+  })
+
+  it('SET_PHASE rejects backwards moves: drafting → discovery', () => {
+    const session = makeSession({ currentPhase: 'drafting' })
+    const result = applyTransition(session, [], { type: 'SET_PHASE', phase: 'discovery' })
+    expect(result.session.currentPhase).toBe('drafting')
+  })
+
+  it('SET_PHASE allows forward skip: discovery → drafting', () => {
+    // Forward skips aren't expected in normal flow but the guard must not block them
+    // — phase progression is gated by tool availability, not by this primitive.
+    const session = makeSession({ currentPhase: 'discovery' })
+    const result = applyTransition(session, [], { type: 'SET_PHASE', phase: 'drafting' })
+    expect(result.session.currentPhase).toBe('drafting')
+  })
+
   it('SET_BLUEPRINT stores blueprint', () => {
     const session = makeSession()
     const blueprint = { callId: 'test', program: 'PNRR' } as any
