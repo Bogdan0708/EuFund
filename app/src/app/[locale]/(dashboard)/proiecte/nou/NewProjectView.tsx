@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { useAgent } from '@/hooks/useAgent'
 import { AgentConversation } from '@/components/agent/AgentConversation'
@@ -13,6 +13,10 @@ import { NoMatchGuidance } from './components/NoMatchGuidance'
 interface NewProjectViewProps {
   locale: 'ro' | 'en'
   initialSessionId?: string
+  // First-turn message forwarded from /panou's hero search. When present and
+  // we're not resuming an existing session, it's auto-sent on mount so the
+  // typed prompt isn't lost across the navigation.
+  initialQuery?: string
   preselectEnabled: boolean
 }
 
@@ -45,12 +49,17 @@ type PreselectState =
 export function NewProjectView({
   locale,
   initialSessionId,
+  initialQuery,
   preselectEnabled,
 }: NewProjectViewProps) {
   const tPre = useTranslations('preselect')
   const tPage = useTranslations('projects')
   const agent = useAgent(locale, initialSessionId)
   const [state, setState] = useState<PreselectState>({ kind: 'idle' })
+  // Auto-send the hero query exactly once. Without the ref, React's strict-
+  // mode double-invoke in dev (and any re-render before the in-flight send
+  // resolves) would fire the same first turn twice.
+  const initialQueryConsumedRef = useRef(false)
 
   const handleSendMessage = useCallback(
     async (description: string) => {
@@ -116,6 +125,17 @@ export function NewProjectView({
     },
     [preselectEnabled, initialSessionId, locale, agent, state.kind, tPre],
   )
+
+  // Auto-send the hero query once on mount when we're starting a new session
+  // (not resuming one). Guard against the ref so strict-mode double-invokes
+  // don't fire it twice, and against initialSessionId so resume flows aren't
+  // poisoned with an unrelated first turn.
+  useEffect(() => {
+    if (initialSessionId) return
+    if (!initialQuery || initialQueryConsumedRef.current) return
+    initialQueryConsumedRef.current = true
+    void handleSendMessage(initialQuery)
+  }, [initialQuery, initialSessionId, handleSendMessage])
 
   const handleCandidatePick = useCallback(
     async (callId: string) => {
