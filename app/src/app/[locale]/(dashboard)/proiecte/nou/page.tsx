@@ -4,7 +4,9 @@ import { NewProjectView } from './NewProjectView'
 
 interface PageProps {
   params: { locale: 'ro' | 'en' }
-  searchParams: { session?: string }
+  // `q` is the project description forwarded by /panou's hero search so the
+  // typed prompt becomes the first agent turn instead of being dropped.
+  searchParams: { session?: string; q?: string }
 }
 
 export default async function NewProjectPage({ params, searchParams }: PageProps) {
@@ -25,6 +27,7 @@ export default async function NewProjectPage({ params, searchParams }: PageProps
     <NewProjectView
       locale={params.locale}
       initialSessionId={searchParams.session}
+      initialQuery={searchParams.q}
       preselectEnabled={preselectFlag && writesFlag && managedFlag && managedRuntimeEnabled}
     />
   )

@@ -94,9 +94,13 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
 
   async function handleHeroSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!inputText.trim() || submitting) return;
+    const trimmed = inputText.trim();
+    if (!trimmed || submitting) return;
     setSubmitting(true);
-    router.push(`/${locale}/proiecte/nou`);
+    // Forward the typed prompt so /proiecte/nou auto-sends it as the first
+    // agent turn. Without this, the typed text was silently dropped and the
+    // user had to retype on the next page.
+    router.push(`/${locale}/proiecte/nou?q=${encodeURIComponent(trimmed)}`);
   }
 
   // Derive first name from session
@@ -343,45 +347,10 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
             </div>
           </div>
 
-          {/* Top Funding Matches Sidebar */}
+          {/* Sidebar — fake "Top funding matches" cards were removed (they were
+              hardcoded marketing copy, not real recommendations). When the
+              real recommender lands, restore the section with a proper query. */}
           <div className="space-y-8">
-            <h3 className="text-2xl font-bold tracking-tight">{t('topMatches')}</h3>
-            <div className="space-y-4">
-              {/* Match Card 1 */}
-              <div className="glass p-6 rounded-lg relative overflow-hidden group transition-all hover:translate-y-[-4px]">
-                <div className="absolute top-0 right-0 p-3 bg-primary text-white text-[10px] font-bold rounded-bl-xl">
-                  {t('matchPercent', { percent: 98 })}
-                </div>
-                <h4 className="font-bold text-base pr-12 mb-2">Digital Transformation Grant 2024</h4>
-                <p className="text-xs text-on-surface-variant mb-4">
-                  {t('matchDescription1')}
-                </p>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-primary">€200,000</span>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                    {t('deadline', { date: '15 Nov' })}
-                  </span>
-                </div>
-              </div>
-
-              {/* Match Card 2 */}
-              <div className="glass p-6 rounded-lg relative overflow-hidden group transition-all hover:translate-y-[-4px]">
-                <div className="absolute top-0 right-0 p-3 bg-secondary text-white text-[10px] font-bold rounded-bl-xl">
-                  {t('matchPercent', { percent: 85 })}
-                </div>
-                <h4 className="font-bold text-base pr-12 mb-2">Eco-Innovation Seed Fund</h4>
-                <p className="text-xs text-on-surface-variant mb-4">
-                  {t('matchDescription2')}
-                </p>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-primary">€50,000</span>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                    {t('deadline', { date: '2 Dec' })}
-                  </span>
-                </div>
-              </div>
-            </div>
-
             {/* AI Assistant Floating Teaser */}
             <div
               className="bg-gradient-to-br from-primary to-secondary p-6 rounded-lg text-white shadow-xl shadow-primary/20 relative overflow-hidden group cursor-pointer"
