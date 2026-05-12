@@ -48,14 +48,60 @@ function row(over: Partial<AgentSection>): AgentSection {
     title: 'Introducere',
     status: 'draft',
     documentOrder: 1,
+    generationOrder: 1,
     content: 'body',
     acceptedContent: null,
-    version: 1,
+    modelUsed: null,
+    retryCount: 0,
+    sourcesUsed: null,
+    promptVersion: null,
+    latencyMs: null,
+    tokenUsage: null,
+    errorClass: null,
     rejectionReason: null,
-    createdAt: new Date(0),
     updatedAt: new Date(0),
     ...over,
   } as AgentSection
+}
+
+const defaultNormalized: CallBlueprint['normalized'] = {
+  requiredSections: [],
+  mandatoryAnnexes: [],
+  eligibilityCriteria: [],
+  evaluationGrid: [],
+  cofinancingRate: 0,
+}
+
+function makeBlueprint(over: Partial<CallBlueprint> = {}): CallBlueprint {
+  return {
+    callId: 'C-1',
+    program: 'PNRR',
+    isOpen: true,
+    amendments: [],
+    warnings: [],
+    requiredSections: [],
+    mandatoryAnnexes: [],
+    eligibilityCriteria: [],
+    evaluationGrid: [],
+    cofinancingRate: 0,
+    eligibilityResult: {
+      score: 0,
+      passCount: 0,
+      failCount: 0,
+      failures: [],
+      warnings: [],
+    },
+    sources: [],
+    verifiedAt: '2026-05-12T00:00:00.000Z',
+    raw: {
+      notebookLmResponse: '',
+      perplexityResponse: '',
+      retrievedAt: '2026-05-12T00:00:00.000Z',
+    },
+    normalized: defaultNormalized,
+    structureConfidence: 0.9,
+    ...over,
+  }
 }
 
 describe('projectSessionState', () => {
@@ -84,21 +130,9 @@ describe('projectSessionState', () => {
   })
 
   it('falls back to blueprint.requiredSections when outline is null but blueprint exists', () => {
-    const bp = {
-      callId: 'C-1', program: 'PNRR', isOpen: true, deadline: null,
-      cofinancingRate: 0,
-      sources: {
-        eurLexId: null, portalId: null, cordisId: null,
-        notebookLmResponse: '', perplexityResponse: '',
-        retrievedAt: '2026-05-12T00:00:00.000Z',
-      },
-      normalized: {
-        requiredSections: [spec('x', 1, 'X')],
-        mandatoryAnnexes: [], eligibilityCriteria: [],
-        evaluationGrid: [], cofinancingRate: 0,
-      },
-      structureConfidence: 0.9,
-    } as unknown as CallBlueprint
+    const bp = makeBlueprint({
+      normalized: { ...defaultNormalized, requiredSections: [spec('x', 1, 'X')] },
+    })
     const session = baseSession({ outline: null, blueprint: bp })
     const out = projectSessionState(session, [])
     expect(out.sections).toEqual([
@@ -139,5 +173,19 @@ describe('projectSessionState', () => {
     const r = row({ sectionKey: 'a', title: 'Row Title', status: 'draft' })
     const out = projectSessionState(session, [r])
     expect(out.sections[0].title).toBe('Row Title')
+  })
+
+  it('merges 2 rows with 3-spec outline, keeping the 3rd as virtual pending', () => {
+    const session = baseSession({
+      outline: [spec('a', 1, 'A'), spec('b', 2, 'B'), spec('c', 3, 'C')],
+    })
+    const rowA = row({ sectionKey: 'a', title: 'A actual', status: 'draft', documentOrder: 1, content: 'a-body' })
+    const rowB = row({ sectionKey: 'b', title: 'B actual', status: 'accepted', documentOrder: 2, content: 'b-draft', acceptedContent: 'b-final' })
+    const out = projectSessionState(session, [rowA, rowB])
+    expect(out.sections).toEqual([
+      { sectionKey: 'a', title: 'A actual', status: 'draft', documentOrder: 1, content: 'a-body' },
+      { sectionKey: 'b', title: 'B actual', status: 'accepted', documentOrder: 2, content: 'b-final' },
+      { sectionKey: 'c', title: 'C', status: 'pending', documentOrder: 3, content: null },
+    ])
   })
 })
