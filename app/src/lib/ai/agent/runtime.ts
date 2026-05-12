@@ -15,6 +15,7 @@ import { db } from '@/lib/db'
 import { agentSessions, agentCheckpoints, agentSections } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { onSectionAccepted, onPhaseTransition } from '@/lib/ai/knowledge/write-back'
+import { ensureProjectForSession } from '@/lib/projects/promotion'
 import { isFeatureEnabled } from '@/lib/feature-flags'
 import { logger } from '@/lib/logger'
 
@@ -23,6 +24,13 @@ const log = logger.child({ component: 'agent-runtime' })
 interface WriteBackContext {
   action?: NonNullable<AgentRequest['action']>
   phaseTransition?: { from: string; to: string }
+  // Set when any SET_SELECTED_CALL transition fired this turn. Triggers
+  // ensureProjectForSession in persistSessionState — mirrors what managed's
+  // setSelectedCall service does, so V3 sessions surface in /proiecte the
+  // moment the user (or model) commits to a funding call.
+  selectedCallChanged?: boolean
+  // Forwarded for ServiceContext construction inside persistSessionState.
+  requestId?: string
 }
 
 type EventEmitter = (event: AgentEvent) => void
@@ -74,6 +82,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
   const { request, emit } = opts
   let { session, sections } = opts
   let phaseTransitionOccurred: { from: string; to: string } | undefined
+  let selectedCallChanged = false
 
   try {
     // 1. Load history
@@ -109,10 +118,14 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
           if (t.type === 'SET_PHASE' && t.phase !== prevPhase) {
             phaseTransitionOccurred = { from: prevPhase, to: t.phase }
           }
+          if (t.type === 'SET_SELECTED_CALL') {
+            selectedCallChanged = true
+          }
         }
         const writeBack = {
           action: request.action ?? undefined,
           ...(phaseTransitionOccurred ? { phaseTransition: phaseTransitionOccurred } : {}),
+          ...(selectedCallChanged ? { selectedCallChanged: true, requestId: request.requestId } : {}),
         }
         if (actionResult.skipLLM) {
           // Terminal path — bump version once and persist with write-back
@@ -123,6 +136,10 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
           // end-of-turn persist (line ~337) handles the single version increment
           await persistSessionState(session, sections, writeBack)
         }
+        // Reset write-back flags so the end-of-turn persist doesn't run
+        // ensureProjectForSession / onPhaseTransition a second time.
+        selectedCallChanged = false
+        phaseTransitionOccurred = undefined
       }
       if (actionResult.policyViolation) {
         emit({ type: 'policy_violation', gate: request.action.type, reason: actionResult.policyViolation })
@@ -410,6 +427,9 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
                 emit({ type: 'phase_changed', from: prevPhase, to: transition.phase })
                 phaseTransitionOccurred = { from: prevPhase, to: transition.phase }
               }
+              if (transition.type === 'SET_SELECTED_CALL') {
+                selectedCallChanged = true
+              }
 
               // Handle section upserts — create in-memory section if it doesn't exist
               if (result.sectionUpsert) {
@@ -468,6 +488,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     session = { ...session, stateVersion: session.stateVersion + 1, updatedAt: new Date() }
     await persistSessionState(session, sections, {
       ...(phaseTransitionOccurred ? { phaseTransition: phaseTransitionOccurred } : {}),
+      ...(selectedCallChanged ? { selectedCallChanged: true, requestId: request.requestId } : {}),
     })
 
     // 9. Compact history if needed
@@ -705,6 +726,29 @@ async function persistSessionState(session: AgentSession, sections: AgentSection
       })
     } catch (err) {
       log.warn({ error: err instanceof Error ? err.message : String(err) }, 'Phase transition write-back failed')
+    }
+  }
+
+  // 3. Project promotion — mirrors managed's setSelectedCall path. Whenever a
+  // V3 session commits to a funding call (via resolve_call or the select_call
+  // structured action), promote it to a project so /panou and /proiecte have
+  // a record to surface. Idempotent, fails safe.
+  if (writeBackContext?.selectedCallChanged && writeBackContext?.requestId) {
+    try {
+      await ensureProjectForSession(
+        {
+          userId: session.userId,
+          sessionId: session.id,
+          requestId: writeBackContext.requestId,
+          now: new Date(),
+        },
+        session.id,
+      )
+    } catch (err) {
+      log.warn(
+        { sessionId: session.id, error: err instanceof Error ? err.message : String(err) },
+        'V3 project promotion failed',
+      )
     }
   }
 }

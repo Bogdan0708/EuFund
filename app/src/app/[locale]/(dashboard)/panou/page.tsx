@@ -12,6 +12,7 @@ import { staggerContainer, staggerItem, staggerTransition } from '@/lib/motion';
 
 interface V3Session {
   id: string;
+  projectId: string | null;
   projectTitle: string | null;
   currentPhase: string;
   status: string;
@@ -44,11 +45,16 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
   const { data: session } = useSession();
 
   const [loading, setLoading] = useState(true);
-  const [activeSession, setActiveSession] = useState<V3Session | null>(null);
+  // Active agent sessions for "Continuă activitatea". Hard-coded limit=1
+  // previously stranded older sessions in the DB with no UI to find them.
+  // Now we render up to MAX_ACTIVE rows and link to /proiecte for the rest.
+  const [activeSessions, setActiveSessions] = useState<V3Session[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [inputText, setInputText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [greetingKey, setGreetingKey] = useState('greetingMorning');
+
+  const MAX_ACTIVE = 5;
 
   useEffect(() => {
     const hours = new Date().getHours();
@@ -61,14 +67,14 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
     async function fetchData() {
       try {
         const [sessRes, projRes] = await Promise.all([
-          csrfFetch('/api/ai/agent/sessions?status=active&limit=1'),
+          csrfFetch(`/api/ai/agent/sessions?status=active&limit=${MAX_ACTIVE}`),
           fetch('/api/v1/projects?perPage=3'),
         ]);
 
         if (sessRes.ok) {
           const sessData = await sessRes.json();
           const sessions: V3Session[] = sessData.data ?? [];
-          setActiveSession(sessions[0] ?? null);
+          setActiveSessions(sessions);
         }
 
         if (projRes.ok) {
@@ -116,7 +122,13 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
     );
   }
 
-  const hasReturningContent = projects.length > 0 || !!activeSession;
+  const hasReturningContent = projects.length > 0 || activeSessions.length > 0;
+  // A session row whose projectId matches a row in `projects` would render
+  // twice. Dedupe project rows that already have a corresponding session card.
+  const promotedProjectIds = new Set(
+    activeSessions.map((s) => s.projectId).filter((id): id is string => !!id),
+  );
+  const dedupedProjects = projects.filter((p) => !promotedProjectIds.has(p.id));
 
   return (
     <div className="pt-24 px-6 md:px-12 lg:px-24 max-w-[1400px] mx-auto">
@@ -260,29 +272,30 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
             </div>
 
             <div className="bg-surface-container-low rounded-lg p-1 space-y-1">
-              {/* Active AI session row */}
-              {activeSession && (
+              {/* Active AI session rows */}
+              {activeSessions.map((agentSession) => (
                 <div
+                  key={agentSession.id}
                   className="bg-white rounded-[1.5rem] p-6 shadow-sm flex items-center gap-6 group cursor-pointer border border-transparent hover:border-outline-variant/20 transition-all"
-                  onClick={() => router.push(`/${locale}/proiecte/nou?session=${activeSession.id}`)}
+                  onClick={() => router.push(`/${locale}/proiecte/nou?session=${agentSession.id}`)}
                 >
                   <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-primary/10 flex items-center justify-center text-primary">
                     <Icon name="smart_toy" filled size="lg" />
                   </div>
                   <div className="flex-1">
                     <h4 className="font-bold text-lg">
-                      {activeSession.projectTitle ?? tSession('untitledProject')}
+                      {agentSession.projectTitle ?? tSession('untitledProject')}
                     </h4>
                     <div className="flex items-center gap-3 mt-1">
                       <span className="text-[10px] font-bold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                        {tSession(`phase.${activeSession.currentPhase}`)}
+                        {tSession(`phase.${agentSession.currentPhase}`)}
                       </span>
                       <span className="text-xs text-on-surface-variant">
-                        {tSession('sections', { count: activeSession.sectionCount })}
+                        {tSession('sections', { count: agentSession.sectionCount })}
                       </span>
                       <span className="text-xs text-on-surface-variant flex items-center gap-1">
                         <Icon name="schedule" size="sm" />
-                        {relativeTime(activeSession.updatedAt)}
+                        {relativeTime(agentSession.updatedAt)}
                       </span>
                     </div>
                   </div>
@@ -292,15 +305,15 @@ export default function PanouPage({ params }: { params: { locale: string } }) {
                     size="md"
                   />
                 </div>
-              )}
+              ))}
 
-              {/* Recent project rows */}
-              {projects.map((project, idx) => {
+              {/* Recent project rows (deduped against promoted sessions) */}
+              {dedupedProjects.map((project, idx) => {
                 const pct = getProgressPercent(project.status);
                 return (
                   <div
                     key={project.id}
-                    className={`${idx === 0 && !activeSession ? 'bg-white' : 'bg-white/50'} rounded-[1.5rem] p-6 flex items-center gap-6 group cursor-pointer hover:bg-white transition-all`}
+                    className={`${idx === 0 && activeSessions.length === 0 ? 'bg-white' : 'bg-white/50'} rounded-[1.5rem] p-6 flex items-center gap-6 group cursor-pointer hover:bg-white transition-all`}
                     onClick={() => router.push(`/${locale}/proiecte/${project.id}`)}
                   >
                     <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-primary/10 flex items-center justify-center text-primary">
