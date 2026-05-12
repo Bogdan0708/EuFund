@@ -13,12 +13,10 @@ import { NoMatchGuidance } from './components/NoMatchGuidance'
 interface NewProjectViewProps {
   locale: 'ro' | 'en'
   initialSessionId?: string
-  // First-turn message forwarded from /panou's hero search. When present and
-  // we're not resuming an existing session, it's auto-sent on mount so the
-  // typed prompt isn't lost across the navigation.
-  initialQuery?: string
   preselectEnabled: boolean
 }
+
+const HERO_QUERY_KEY = 'fondeu:hero-query'
 
 type PreselectState =
   | { kind: 'idle' }
@@ -49,17 +47,20 @@ type PreselectState =
 export function NewProjectView({
   locale,
   initialSessionId,
-  initialQuery,
   preselectEnabled,
 }: NewProjectViewProps) {
   const tPre = useTranslations('preselect')
   const tPage = useTranslations('projects')
   const agent = useAgent(locale, initialSessionId)
   const [state, setState] = useState<PreselectState>({ kind: 'idle' })
-  // Auto-send the hero query exactly once. Without the ref, React's strict-
-  // mode double-invoke in dev (and any re-render before the in-flight send
-  // resolves) would fire the same first turn twice.
-  const initialQueryConsumedRef = useRef(false)
+  // Pre-fill from /panou's hero search via sessionStorage (not URL params —
+  // keeps project descriptions out of history/logs/referrers). Read once
+  // on mount, clear the key, then pass the value down to AgentConversation
+  // as its initial input. We deliberately do NOT auto-send: that would
+  // make a crafted authenticated link trigger preselect + LLM work the
+  // moment a logged-in user clicked it. The user still has to click Send.
+  const [initialInput, setInitialInput] = useState<string>('')
+  const heroQueryConsumedRef = useRef(false)
 
   const handleSendMessage = useCallback(
     async (description: string) => {
@@ -126,16 +127,20 @@ export function NewProjectView({
     [preselectEnabled, initialSessionId, locale, agent, state.kind, tPre],
   )
 
-  // Auto-send the hero query once on mount when we're starting a new session
-  // (not resuming one). Guard against the ref so strict-mode double-invokes
-  // don't fire it twice, and against initialSessionId so resume flows aren't
-  // poisoned with an unrelated first turn.
+  // Read the hero query out of sessionStorage exactly once on mount.
+  // Skipped on resume flows (the user came back to an existing session,
+  // not from a fresh hero search), and the key is cleared immediately so
+  // a refresh doesn't re-populate the input.
   useEffect(() => {
-    if (initialSessionId) return
-    if (!initialQuery || initialQueryConsumedRef.current) return
-    initialQueryConsumedRef.current = true
-    void handleSendMessage(initialQuery)
-  }, [initialQuery, initialSessionId, handleSendMessage])
+    if (heroQueryConsumedRef.current || initialSessionId) return
+    if (typeof window === 'undefined') return
+    const queued = window.sessionStorage.getItem(HERO_QUERY_KEY)
+    if (queued) {
+      window.sessionStorage.removeItem(HERO_QUERY_KEY)
+      setInitialInput(queued)
+    }
+    heroQueryConsumedRef.current = true
+  }, [initialSessionId])
 
   const handleCandidatePick = useCallback(
     async (callId: string) => {
@@ -332,6 +337,7 @@ export function NewProjectView({
             messages={agent.messages}
             status={agent.status}
             error={agent.error}
+            initialInput={initialInput}
             onSendMessage={handleSendMessage}
           />
         </div>
