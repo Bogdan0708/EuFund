@@ -104,8 +104,19 @@ describe('agentSectionToSectionResult', () => {
     expect(meta.tokensOut).toBe(0)
   })
 
-  it('returns the agentSections.id as SectionResult.id', () => {
-    const row = makeRow({ id: 'deadbeef-dead-4eef-8eef-deadbeefdead' })
-    expect(agentSectionToSectionResult(row).id).toBe('deadbeef-dead-4eef-8eef-deadbeefdead')
+  it('returns the slug-shaped sectionKey as SectionResult.id (not the row UUID)', () => {
+    // /api/v1/projects/[id]/sections/[sectionId] validates sectionId with
+    // SLUG_RE (/^[a-z][a-z0-9_]{0,63}$/). Returning the row UUID would 400
+    // any future section-detail / export lookup against an agent project.
+    const row = makeRow({ id: 'deadbeef-dead-4eef-8eef-deadbeefdead', sectionKey: 'rezumat' })
+    expect(agentSectionToSectionResult(row).id).toBe('rezumat')
+  })
+
+  it('matches SLUG_RE for all DEFAULT_SECTIONS-style keys', () => {
+    const slugRe = /^[a-z][a-z0-9_]{0,63}$/
+    for (const key of ['context', 'obiective', 'grup_tinta', 'metodologie', 'echipa', 'buget', 'rezumat']) {
+      const row = makeRow({ sectionKey: key })
+      expect(slugRe.test(agentSectionToSectionResult(row).id), `key=${key}`).toBe(true)
+    }
   })
 })

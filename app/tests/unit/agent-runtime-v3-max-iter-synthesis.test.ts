@@ -333,6 +333,120 @@ describe('V3 runtime — cap path forces synthesis when no text was persisted', 
     expect(writes[0][1].content).toMatch(/couldn't generate a response/i)
   })
 
+  it('appends a synthetic tool_result for unknown tool calls so synthesis can ship a balanced message list', async () => {
+    // Code review finding 2026-05-12: when the model called a tool name not
+    // in phaseTools, the runtime `continue`d without adding a tool_result —
+    // but the assistant tool_use was already pushed to llmMessages. The
+    // forced synthesis call then sent an unbalanced assistant message and
+    // Anthropic 400'd ("tool_use blocks must be followed by tool_result").
+    generateMock.mockReset()
+    // Iteration 1: model invokes a tool that isn't registered for this phase
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      toolCalls: [{ id: 'tc-unknown', name: 'nonexistent_tool', arguments: '{}' }],
+    })
+    // Synthesis call returns text
+    generateMock.mockResolvedValueOnce({
+      content: 'Sorry, that tool is not available right now.',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+
+    const events: AgentEvent[] = []
+    await runAgentTurn({
+      session: makeSession(),
+      sections: [],
+      request: makeRequest('?'),
+      emit: (e) => events.push(e),
+      turnId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    })
+
+    // 1 iteration + 1 synthesis = 2 generate calls
+    expect(generateMock).toHaveBeenCalledTimes(2)
+    const synthesisCall = generateMock.mock.calls[1][0]
+
+    // The messages payload must contain a tool_result for the unknown tool_call
+    // (otherwise Anthropic rejects the assistant tool_use dangling alone).
+    const toolResults = synthesisCall.messages.filter((m: { role: string; tool_call_id?: string }) =>
+      m.role === 'tool' && m.tool_call_id === 'tc-unknown',
+    )
+    expect(toolResults).toHaveLength(1)
+    expect(toolResults[0].content).toMatch(/Unknown tool/i)
+
+    // And the user sees the synthesis text
+    const writes = appendMessageMock.mock.calls.filter(
+      (args) => args[1]?.role === 'assistant' && args[1]?.messageType === 'text',
+    )
+    expect(writes).toHaveLength(1)
+    expect(writes[0][1].content).toBe('Sorry, that tool is not available right now.')
+  })
+
+  it('appends a synthetic tool_result when checkPolicyGate blocks a tool call', async () => {
+    // Same recovery requirement, different early-exit cause. Pick a tool whose
+    // policy gate WILL refuse to keep the test deterministic: `generate_section`
+    // is blocked unless outline is approved, frozen, eligibility has passed,
+    // etc. In discovery phase with no outline at all, the gate denies.
+    generateMock.mockReset()
+
+    // Replace fake tool with a `generate_section` shim — name matches what
+    // checkPolicyGate inspects.
+    const generateSectionShim = {
+      name: 'generate_section',
+      category: 'generation' as const,
+      description: 'fake generate_section for policy-gate test',
+      inputSchema: z.object({ sectionKey: z.string().optional() }),
+      execute: vi.fn(),
+      timeout: 5_000,
+    }
+    getToolsForPhaseMock.mockReturnValue([generateSectionShim])
+
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      toolCalls: [{ id: 'tc-blocked', name: 'generate_section', arguments: '{"sectionKey":"x"}' }],
+    })
+    generateMock.mockResolvedValueOnce({
+      content: 'You need to approve the outline before drafting sections.',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+
+    const events: AgentEvent[] = []
+    await runAgentTurn({
+      // discovery + no outline → checkPreGenerate denies generate_section
+      session: makeSession({ currentPhase: 'discovery', outline: null, outlineFrozen: false }),
+      sections: [],
+      request: makeRequest('draft something'),
+      emit: (e) => events.push(e),
+      turnId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    })
+
+    // Tool must NOT have run
+    expect(generateSectionShim.execute).not.toHaveBeenCalled()
+
+    // policy_violation event should have fired (the runtime emits one)
+    const violations = events.filter((e) => e.type === 'policy_violation')
+    expect(violations.length).toBeGreaterThanOrEqual(1)
+
+    // Synthesis call shipped — and its messages include a tool_result for the
+    // blocked call so Anthropic doesn't reject the assistant tool_use.
+    expect(generateMock).toHaveBeenCalledTimes(2)
+    const synthesisCall = generateMock.mock.calls[1][0]
+    const toolResults = synthesisCall.messages.filter((m: { role: string; tool_call_id?: string }) =>
+      m.role === 'tool' && m.tool_call_id === 'tc-blocked',
+    )
+    expect(toolResults).toHaveLength(1)
+    // The synthetic content surfaces the gate reason so the model can recover
+    expect(toolResults[0].content).toMatch(/outline/i)
+  })
+
   it('does NOT force a synthesis call when the model returned text before hitting the cap', async () => {
     // Reset: first iteration emits text only — break before max iter.
     generateMock.mockReset()

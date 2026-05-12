@@ -77,8 +77,12 @@ function mapAgentStatusToState(status: string): SectionResult['state'] {
 export function agentSectionToSectionResult(row: typeof agentSections.$inferSelect): SectionResult {
   const content = row.acceptedContent ?? row.content ?? '';
   const tokens = (row.tokenUsage ?? {}) as { input?: number; output?: number; in?: number; out?: number };
+  // Surface the slug-shaped sectionKey, not the row UUID, so /proiecte routes
+  // that validate the section identifier with SLUG_RE (sections/[sectionId])
+  // don't 400. The legacy workflow_sessions store uses slug-style ids too
+  // ('sec-1', 'rezumat', etc.) — agent mode mirrors that contract.
   return {
-    id: row.id,
+    id: row.sectionKey,
     title: row.title,
     content,
     order: row.documentOrder,

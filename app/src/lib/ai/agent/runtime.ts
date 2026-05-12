@@ -350,6 +350,17 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
           const tool = phaseTools.find(t => t.name === toolCall.name)
           if (!tool) {
             log.warn({ tool: toolCall.name }, 'Unknown tool called by LLM')
+            // Synthetic tool_result keeps the assistant tool_use ↔ tool_result
+            // pairing balanced. Without this, the next LLM call (next loop
+            // iteration OR the no-text forced synthesis at the bottom of the
+            // turn) ships an assistant message with a dangling tool_use, and
+            // Anthropic rejects with 400 "tool_use blocks must be followed by
+            // tool_result blocks" — the user sees only the fallback string.
+            llmMessages.push({
+              role: 'tool',
+              content: JSON.stringify({ success: false, error: `Unknown tool '${toolCall.name}'` }),
+              tool_call_id: toolCall.id,
+            })
             continue
           }
 
@@ -357,6 +368,14 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
           const gate = checkPolicyGate(tool.name, session, sections)
           if (!gate.allowed) {
             emit({ type: 'policy_violation', gate: tool.name, reason: gate.reason || 'Policy gate blocked' })
+            // Same as the unknown-tool branch: balance the tool_use with a
+            // synthetic tool_result carrying the gate reason so synthesis (or
+            // the next iteration) doesn't ship a dangling tool_use upstream.
+            llmMessages.push({
+              role: 'tool',
+              content: JSON.stringify({ success: false, error: gate.reason || 'Policy gate blocked' }),
+              tool_call_id: toolCall.id,
+            })
             continue
           }
 
