@@ -1,7 +1,7 @@
 // app/src/lib/ai/agent/runtime.ts
 import type {
   AgentSession, AgentSection, AgentEvent, AgentRequest,
-  StateTransition, ToolContext, ToolResult,
+  StateTransition, ToolContext, ToolResult, UIStateSnapshot,
 } from './types'
 import { applyTransition } from './transitions'
 import { buildSystemPrompt, buildSessionStateBlock } from './prompt'
@@ -18,6 +18,7 @@ import { onSectionAccepted, onPhaseTransition } from '@/lib/ai/knowledge/write-b
 import { ensureProjectForSession } from '@/lib/projects/promotion'
 import { isFeatureEnabled } from '@/lib/feature-flags'
 import { logger } from '@/lib/logger'
+import { projectSectionsForUI, projectSessionState } from './state-projection'
 
 const log = logger.child({ component: 'agent-runtime' })
 
@@ -921,41 +922,7 @@ async function persistSessionState(session: AgentSession, sections: AgentSection
   }
 }
 
-// SET_OUTLINE writes session.outline but does NOT persist agent_sections rows
-// — those only exist once a section is drafted. Without this fallback, a
-// session that just entered `structuring` has session.outline populated but
-// `sections` is empty, so AgentWorkspace can't render OutlineView (its guard
-// is sections.length > 0). User sees nothing, can't approve, dead-ends.
-//
-// We synthesize a section snapshot from the outline spec when no real rows
-// exist yet. Status = 'pending' (the SECTION_STATUSES value that means
-// "specified but not yet generated"). Once generate_section runs, real rows
-// take over via the regular sections.map path.
-function projectSectionsForUI(
-  session: AgentSession,
-  sections: AgentSection[],
-): { sectionKey: string; title: string; status: import('./types').SectionStatus; documentOrder: number; content: string | null }[] {
-  if (sections.length > 0) {
-    return sections.map(s => ({
-      sectionKey: s.sectionKey,
-      title: s.title,
-      status: s.status,
-      documentOrder: s.documentOrder,
-      content: s.acceptedContent ?? s.content,
-    }))
-  }
-  const outline = session.outline ?? []
-  if (outline.length === 0) return []
-  return outline.map((spec, i) => ({
-    sectionKey: spec.id,
-    title: spec.title,
-    status: 'pending' as const,
-    documentOrder: typeof spec.order === 'number' ? spec.order : i + 1,
-    content: null,
-  }))
-}
-
-function buildStatePatch(session: AgentSession, sections: AgentSection[]): Partial<import('./types').UIStateSnapshot> {
+function buildStatePatch(session: AgentSession, sections: AgentSection[]): Partial<UIStateSnapshot> {
   return {
     phase: session.currentPhase,
     stateVersion: session.stateVersion,
@@ -965,15 +932,6 @@ function buildStatePatch(session: AgentSession, sections: AgentSection[]): Parti
   }
 }
 
-function buildUISnapshot(session: AgentSession, sections: AgentSection[]): import('./types').UIStateSnapshot {
-  return {
-    sessionId: session.id,
-    phase: session.currentPhase,
-    stateVersion: session.stateVersion,
-    outlineFrozen: session.outlineFrozen,
-    warnings: session.warnings,
-    sections: projectSectionsForUI(session, sections),
-    blueprint: session.blueprint,
-    eligibility: session.eligibility,
-  }
+function buildUISnapshot(session: AgentSession, sections: AgentSection[]): UIStateSnapshot {
+  return projectSessionState(session, sections)
 }

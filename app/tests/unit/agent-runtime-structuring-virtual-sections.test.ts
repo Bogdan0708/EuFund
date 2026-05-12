@@ -190,12 +190,19 @@ describe('V3 runtime — virtual sections from outline', () => {
     })
 
     const done = events.find(e => e.type === 'done') as Extract<AgentEvent, { type: 'done' }> | undefined
-    // Real sections take precedence; we do NOT also stuff the outline in.
-    expect(done!.finalState.sections).toHaveLength(1)
+    // Centralized key-based merge: real row for 'context-si-justificare' takes
+    // precedence; 'obiective' (in outline but no row yet) appears as virtual
+    // 'pending'. Total = 2 (1 real + 1 virtual).
+    expect(done!.finalState.sections).toHaveLength(2)
     expect(done!.finalState.sections[0]).toMatchObject({
       sectionKey: 'context-si-justificare',
       status: 'draft',
       content: 'Some drafted content',
+    })
+    expect(done!.finalState.sections[1]).toMatchObject({
+      sectionKey: 'obiective',
+      status: 'pending',
+      content: null,
     })
   })
 })

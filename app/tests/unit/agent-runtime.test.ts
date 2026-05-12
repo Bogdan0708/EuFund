@@ -173,7 +173,9 @@ describe('Agent Runtime', () => {
     const session = makeSession({
       currentPhase: 'drafting',
       outlineFrozen: true,
-      blueprint: { program: 'PNRR' } as any,
+      // normalized.requiredSections: [] so outlineFromBlueprint returns [] and
+      // the centralized projection doesn't crash on a partial stub.
+      blueprint: { program: 'PNRR', normalized: { requiredSections: [] } } as any,
     })
     const sections: AgentSection[] = [{
       id: '33333333-3333-4333-8333-333333333333',
