@@ -21,6 +21,7 @@ import type {
 } from '../types'
 import type { ServiceContext } from '../services/types'
 import { getAnthropicClient } from '@/lib/ai/anthropic-client'
+import { projectSessionState } from '../state-projection'
 import { getManagedTools, WRITE_TOOL_NAMES } from './tools'
 import { translateAnthropicEvent, createTranslatorContext } from './translator'
 import { buildManagedSystemPrompt } from './prompt'
@@ -610,20 +611,5 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
 }
 
 function buildUISnapshot(session: AgentSession, sections: AgentSection[]): UIStateSnapshot {
-  return {
-    sessionId: session.id,
-    phase: session.currentPhase,
-    stateVersion: session.stateVersion,
-    outlineFrozen: session.outlineFrozen,
-    warnings: session.warnings,
-    sections: sections.map(s => ({
-      sectionKey: s.sectionKey,
-      title: s.title,
-      status: s.status,
-      documentOrder: s.documentOrder,
-      content: s.acceptedContent ?? s.content,
-    })),
-    blueprint: session.blueprint,
-    eligibility: session.eligibility,
-  }
+  return projectSessionState(session, sections)
 }
