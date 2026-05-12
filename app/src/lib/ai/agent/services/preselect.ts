@@ -8,9 +8,10 @@ import { agentSessions } from '@/lib/db/schema'
 import { logAudit } from '@/lib/legal/audit'
 import { ensureProjectForSession } from '@/lib/projects/promotion'
 import { logger } from '@/lib/logger'
-import { lookupBlueprint } from './blueprint'
+import { lookupBlueprint, outlineFromBlueprint } from './blueprint'
 import { searchCalls } from './evidence'
 import type { CallMatch, ServiceContext, EvidenceChunk } from './types'
+import type { CallBlueprint } from '@/lib/ai/agent/types'
 
 // Rollout-tunable defaults; tune against real traces after 20-50 sessions.
 export const SCORE_FLOOR = 0.35
@@ -170,6 +171,11 @@ export async function initializeSession(
     ...(rawEvidenceForArtifact !== undefined ? { rawEvidence: rawEvidenceForArtifact } : {}),
   }
 
+  const outlinePayload =
+    blueprintKind === 'structured' && blueprintPayload
+      ? outlineFromBlueprint(blueprintPayload as CallBlueprint)
+      : null
+
   const [row] = await withUserRLS(userId, (tx) =>
     tx.insert(agentSessions).values({
       userId,
@@ -177,6 +183,7 @@ export async function initializeSession(
       selectedCallId,
       currentPhase: phase,
       blueprint: blueprintPayload,
+      outline: outlinePayload,
       planningArtifact: { preselect: artifact },
     }).returning({ id: agentSessions.id }),
   )
