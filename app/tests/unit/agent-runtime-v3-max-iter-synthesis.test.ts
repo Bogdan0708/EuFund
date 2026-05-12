@@ -172,8 +172,9 @@ describe('V3 runtime — cap path forces synthesis when no text was persisted', 
     // 6th call must omit `tools` (forced text)
     const synthesisCall = generateMock.mock.calls[5][0]
     expect(synthesisCall.tools).toBeUndefined()
-    // System prompt carries the cap instruction
-    expect(synthesisCall.system).toMatch(/Iteration Cap Reached/i)
+    // System prompt carries the cap-hit instruction (mentions the iteration count)
+    expect(synthesisCall.system).toMatch(/Response Required/i)
+    expect(synthesisCall.system).toMatch(/tool-call iterations/i)
 
     // Final assistant text was persisted via appendMessage
     const assistantTextWrites = appendMessageMock.mock.calls.filter(
@@ -233,6 +234,103 @@ describe('V3 runtime — cap path forces synthesis when no text was persisted', 
     )
     expect(writes).toHaveLength(1)
     expect(writes[0][1].content).toMatch(/reached the tool-call limit/i)
+  })
+
+  it('forces synthesis when the model exits early with empty content and no tool calls', async () => {
+    // User report 2026-05-12: "doar a facut tool call dar nici un raspuns" —
+    // the model returned an empty assistant turn (no text, no tools) after a
+    // single tool round. The cap was never hit, so the original synthesis
+    // gate (`iteration >= MAX`) did not fire and the SSE closed silently.
+    generateMock.mockReset()
+    // Iteration 1: a tool call, no text
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      toolCalls: [{ id: 'tc-0', name: 'fake_search', arguments: '{"query":"q"}' }],
+    })
+    // Iteration 2: model goes empty — no text, no tools. Without the fix the
+    // loop breaks here and the turn ends with no assistant text persisted.
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+    // Synthesis call — returns real text.
+    generateMock.mockResolvedValueOnce({
+      content: 'Iată ce am găsit cu fake_search.',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+
+    const events: AgentEvent[] = []
+    await runAgentTurn({
+      session: makeSession(),
+      sections: [],
+      request: makeRequest('?'),
+      emit: (e) => events.push(e),
+      turnId: '88888888-8888-4888-8888-888888888888',
+    })
+
+    // Iterations 1+2 ran, then synthesis = 3 generate() calls
+    expect(generateMock).toHaveBeenCalledTimes(3)
+    const synthesisCall = generateMock.mock.calls[2][0]
+    expect(synthesisCall.tools).toBeUndefined()
+    expect(synthesisCall.system).toMatch(/Response Required/i)
+    // The cap-specific phrasing should NOT appear when we exited early
+    expect(synthesisCall.system).not.toMatch(/tool-call iterations/i)
+    expect(synthesisCall.system).toMatch(/stopped before responding/i)
+
+    const writes = appendMessageMock.mock.calls.filter(
+      (args) => args[1]?.role === 'assistant' && args[1]?.messageType === 'text',
+    )
+    expect(writes).toHaveLength(1)
+    expect(writes[0][1].content).toBe('Iată ce am găsit cu fake_search.')
+  })
+
+  it('falls back to early-exit message (NOT the cap-limit copy) when synthesis returns empty after early exit', async () => {
+    generateMock.mockReset()
+    // One tool round, then empty assistant — same shape as above.
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      toolCalls: [{ id: 'tc-0', name: 'fake_search', arguments: '{"query":"q"}' }],
+    })
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+    // Synthesis also returns empty — fallback should fire.
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+
+    const events: AgentEvent[] = []
+    await runAgentTurn({
+      session: makeSession({ locale: 'en' }),
+      sections: [],
+      request: makeRequest('?'),
+      emit: (e) => events.push(e),
+      turnId: '99999999-9999-4999-8999-999999999999',
+    })
+
+    const writes = appendMessageMock.mock.calls.filter(
+      (args) => args[1]?.role === 'assistant' && args[1]?.messageType === 'text',
+    )
+    expect(writes).toHaveLength(1)
+    // Should be the early-exit fallback, not the cap-limit fallback
+    expect(writes[0][1].content).not.toMatch(/reached the tool-call limit/i)
+    expect(writes[0][1].content).toMatch(/couldn't generate a response/i)
   })
 
   it('does NOT force a synthesis call when the model returned text before hitting the cap', async () => {

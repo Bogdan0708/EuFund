@@ -507,24 +507,33 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       }
     }
 
-    // 7.5. Cap path — forced synthesis when the loop exhausted iterations
-    // without ever persisting assistant text. Without this, the SSE stream
-    // returns `done` carrying zero chat content and the UI looks like it
-    // crashed (see the 2026-05-12 09:35 prod incident). Make one more LLM
-    // call WITHOUT tools so the model is forced into text output, using the
-    // accumulated llmMessages so it has all the tool results it just
-    // collected. If that call fails or returns empty, fall back to a
-    // localized cap message so the user always sees SOMETHING.
-    if (iteration >= MAX_TOOL_ITERATIONS && !assistantTextPersistedThisTurn) {
+    // 7.5. No-text path — forced synthesis when the loop exits without ever
+    // persisting assistant text. Two ways to land here:
+    //   (a) cap path: iteration >= MAX_TOOL_ITERATIONS (original 51c5f33b fix)
+    //   (b) early exit: model returned tool_calls + no text, the tools all got
+    //       blocked / unknown (hasToolCalls=false → break at line ~503), OR
+    //       model returned no tool_calls and empty content (break at ~327).
+    // Without this, the SSE stream returns `done` carrying zero chat content
+    // and the UI looks like it crashed (2026-05-12 09:35 prod incident, plus
+    // the 2026-05-12 user report: "doar a facut tool call dar nici un raspuns").
+    // Make one more LLM call WITHOUT tools so the model is forced into text
+    // output, using the accumulated llmMessages so it has all the tool results
+    // it just collected. If that call fails or returns empty, fall back to a
+    // localized message so the user always sees SOMETHING.
+    if (!assistantTextPersistedThisTurn) {
+      const capHit = iteration >= MAX_TOOL_ITERATIONS
       log.info(
-        { sessionId: session.id, iteration, requestId: request.requestId },
-        'V3 cap hit with no assistant text — forcing synthesis call',
+        { sessionId: session.id, iteration, capHit, requestId: request.requestId },
+        'V3 turn exited with no assistant text — forcing synthesis call',
       )
       const synthesisLanguage = session.locale === 'ro' ? 'Romanian' : 'English'
+      const capNote = capHit
+        ? `You used all ${MAX_TOOL_ITERATIONS} tool-call iterations without responding to the user.`
+        : 'You stopped before responding to the user.'
       const synthesisSystem = `${systemPrompt}
 
-## Iteration Cap Reached
-You used all ${MAX_TOOL_ITERATIONS} tool-call iterations without responding to the user. Summarize what you found so far in ${synthesisLanguage}. If the user's request was ambiguous, ask one specific clarifying question instead. Do NOT request more tool calls — they are no longer available.`
+## Response Required
+${capNote} Summarize what you found so far in ${synthesisLanguage}. If the user's request was ambiguous, ask one specific clarifying question instead. Do NOT request more tool calls — they are no longer available.`
 
       try {
         const finalResponse = await generate({
@@ -558,9 +567,13 @@ You used all ${MAX_TOOL_ITERATIONS} tool-call iterations without responding to t
       }
 
       if (!assistantTextPersistedThisTurn) {
-        const fallback = session.locale === 'ro'
-          ? 'Am atins limita pașilor de explorare pentru această tură fără să găsesc un răspuns concludent. Te rog reformulează cererea sau cere-mi să sintetizez ce am găsit.'
-          : 'I reached the tool-call limit for this turn without arriving at a conclusive answer. Please rephrase your request or ask me to summarize what I found.'
+        const fallback = capHit
+          ? (session.locale === 'ro'
+            ? 'Am atins limita pașilor de explorare pentru această tură fără să găsesc un răspuns concludent. Te rog reformulează cererea sau cere-mi să sintetizez ce am găsit.'
+            : 'I reached the tool-call limit for this turn without arriving at a conclusive answer. Please rephrase your request or ask me to summarize what I found.')
+          : (session.locale === 'ro'
+            ? 'Nu am putut formula un răspuns pentru această tură. Te rog reformulează cererea.'
+            : "I couldn't generate a response for this turn. Please rephrase your request.")
         emit({ type: 'text_delta', content: fallback })
         await appendMessage(session.id, {
           role: 'assistant',
@@ -620,9 +633,21 @@ export function handleStructuredAction(
       if (!session.selectedCallId) {
         return { transitions: [], skipLLM: true, policyViolation: 'POLICY_NO_CALL_SELECTED: cannot approve outline before a funding call has been selected' }
       }
-      if (session.eligibility == null || session.eligibility.failCount > 0) {
-        const failCount = session.eligibility?.failCount ?? 'unknown'
-        return { transitions: [], skipLLM: true, policyViolation: `POLICY_ELIGIBILITY_NOT_PASSED: eligibility check must pass with zero failures before outline approval (failCount: ${failCount})` }
+      if (session.eligibility == null) {
+        // Eligibility has never been run for this session — the model skipped
+        // run_eligibility during research/structuring. Surface a clear message
+        // instead of `failCount: unknown` so the user knows what to ask for.
+        const msg = session.locale === 'ro'
+          ? 'POLICY_ELIGIBILITY_NOT_CHECKED: verificarea de eligibilitate nu a fost încă efectuată pentru această sesiune. Cere asistentului să ruleze verificarea de eligibilitate înainte de aprobarea structurii.'
+          : "POLICY_ELIGIBILITY_NOT_CHECKED: eligibility hasn't been verified for this session yet. Ask the assistant to run an eligibility check before approving the outline."
+        return { transitions: [], skipLLM: true, policyViolation: msg }
+      }
+      if (session.eligibility.failCount > 0) {
+        const failCount = session.eligibility.failCount
+        const msg = session.locale === 'ro'
+          ? `POLICY_ELIGIBILITY_NOT_PASSED: verificarea de eligibilitate are ${failCount} eșec(uri) critic(e). Rezolvă-le înainte de aprobarea structurii.`
+          : `POLICY_ELIGIBILITY_NOT_PASSED: eligibility check has ${failCount} hard failure(s). Address them before approving the outline.`
+        return { transitions: [], skipLLM: true, policyViolation: msg }
       }
       if (session.outlineFrozen) {
         return { transitions: [], skipLLM: true, policyViolation: 'POLICY_OUTLINE_ALREADY_FROZEN: outline has already been approved and frozen' }
