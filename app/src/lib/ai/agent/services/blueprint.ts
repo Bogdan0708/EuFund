@@ -276,6 +276,19 @@ export function materializeCachedSections(
   })
 }
 
+/**
+ * Project a full CallBlueprint into the SectionSpec[] shape used for
+ * agent_sessions.outline. Idempotent on already-full SectionSpec rows;
+ * materializes partial cached rows via materializeCachedSections so
+ * downstream code can always assume the 12-field SectionSpec contract.
+ */
+export function outlineFromBlueprint(blueprint: CallBlueprint): SectionSpec[] {
+  return materializeCachedSections(
+    blueprint.normalized.requiredSections,
+    blueprint.structureConfidence,
+  )
+}
+
 export function buildBlueprintFromCache(
   row: typeof callKnowledge.$inferSelect,
   norm: Record<string, unknown>,
