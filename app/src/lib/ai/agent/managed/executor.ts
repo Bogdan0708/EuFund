@@ -466,6 +466,7 @@ async function dispatchTool(
       await db.update(agentSessions)
         .set({
           blueprint: fullBlueprint as never,
+          outline: blueprint.outlineFromBlueprint(fullBlueprint) as never,
           currentPhase: 'structuring',
           stateVersion: sql`${agentSessions.stateVersion} + 1`,
           updatedAt: new Date(),
