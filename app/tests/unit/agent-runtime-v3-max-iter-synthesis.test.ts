@@ -38,6 +38,11 @@ vi.mock('@/lib/ai/agent/history', () => ({
   loadContext: vi.fn().mockResolvedValue({ messages: [], summary: null, totalCount: 0 }),
   appendMessage: appendMessageMock,
   compactIfNeeded: vi.fn().mockResolvedValue({ compacted: false }),
+  // Identity passthrough — this test set never replays prior turns, so the
+  // V3 history doesn't carry orphan tool_use blocks to repair. Each test
+  // builds the assistant tool_call + tool_result pairing in-band via the
+  // generateMock sequence.
+  ensureV3PairingInvariant: (messages: unknown[]) => messages,
 }))
 
 vi.mock('@/lib/ai/agent/managed/history', () => ({

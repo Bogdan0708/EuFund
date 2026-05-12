@@ -8,7 +8,7 @@ import { buildSystemPrompt, buildSessionStateBlock } from './prompt'
 import { checkPolicyGate } from './policies'
 import { getToolsForPhase } from './tools/registry'
 import './tools/index' // Side-effect: registers all tools
-import { loadContext, appendMessage, compactIfNeeded } from './history'
+import { loadContext, appendMessage, compactIfNeeded, ensureV3PairingInvariant, type RouterMessage } from './history'
 import { markTurnCompleted } from './managed/history'
 import { zodToJsonSchema } from './utils'
 import { db } from '@/lib/db'
@@ -141,8 +141,14 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
           session = { ...session, stateVersion: session.stateVersion + 1, updatedAt: new Date() }
           await persistSessionState(session, sections, writeBack)
         } else {
-          // Non-terminal — persist action state without version bump;
-          // end-of-turn persist (line ~337) handles the single version increment
+          // Non-terminal — bump too, so a client polling between this persist
+          // and end-of-turn (or after an LLM-loop crash) sees the state has
+          // changed. End-of-turn at ~line 629 bumps again; clients treat
+          // stateVersion as an opaque change token, not a strict +1 counter,
+          // so a per-turn jump of +2 is fine. Without this bump, the action's
+          // mutations land in DB but stateVersion stays the same — a stale
+          // client could then PATCH with the old version, pass CAS, and clobber.
+          session = { ...session, stateVersion: session.stateVersion + 1, updatedAt: new Date() }
           await persistSessionState(session, sections, writeBack)
         }
         // Reset write-back flags so the end-of-turn persist doesn't run
@@ -249,6 +255,32 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     // Add current user message
     if (request.message) {
       llmMessages.push({ role: 'user', content: request.message })
+    }
+
+    // Strip orphan tool_use blocks from the replayed history. A previous turn
+    // that persisted `tool_call` rows but crashed before persisting the matching
+    // `tool_result` row will otherwise hand the next turn an unbalanced
+    // assistant message and the upstream call 400s ("tool_use blocks must be
+    // followed by tool_result blocks"). The synthesis broadening at the bottom
+    // of this turn makes more LLM calls per session, so this latent pre-PR
+    // bug is more likely to surface — port the managed-runtime invariant.
+    //
+    // Pass a shallow copy so we can safely clear-and-refill llmMessages even
+    // if the invariant returns its input reference (which the production code
+    // does not, but a future refactor or a test mock might).
+    {
+      const before = llmMessages.length
+      const repaired = ensureV3PairingInvariant([...llmMessages] as RouterMessage[])
+      if (repaired.length !== before) {
+        log.warn(
+          { sessionId: session.id, before, after: repaired.length },
+          'V3 replay: stripped orphan tool_use/tool_result blocks from history',
+        )
+      }
+      llmMessages.length = 0
+      for (const m of repaired) {
+        llmMessages.push(m as (typeof llmMessages)[number])
+      }
     }
 
     // 5. Call LLM with tool loop (max iterations to prevent runaway)

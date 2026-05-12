@@ -42,6 +42,7 @@ vi.mock('@/lib/ai/agent/history', () => ({
     return 0
   }),
   compactIfNeeded: vi.fn(async () => ({ compacted: false })),
+  ensureV3PairingInvariant: (m: unknown[]) => m,
 }))
 
 vi.mock('@/lib/ai/providers/router', () => ({ generate: generateMock }))

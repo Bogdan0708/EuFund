@@ -24,11 +24,11 @@ function formatWarnings(warnings: { code: string; message: string; severity: str
 }
 
 const PHASE_GUIDANCE: Record<Phase, string> = {
-  discovery: 'Help the user describe their project and organization. Ask about sector, region, budget range, timeline. When ready, search for matching calls.',
-  research: 'Search for matching calls. When the user selects one, resolve it and present the blueprint. Run eligibility checks.',
-  structuring: 'Extract and present the required application structure. Show the outline for approval. Address any eligibility issues.',
-  drafting: 'Generate sections one at a time in generation order. After each, offer: accept, regenerate with feedback, or skip. Show progress.',
-  review: 'Validate the full application. Show missing items, warnings, annexes checklist. Guide toward completion.',
+  discovery: 'Help the user describe their project and organization. Ask about sector, region, budget range, timeline. When ready, use the search_calls tool to find matching calls — never invent calls inline.',
+  research: 'Use resolve_call / get_call_blueprint to load the call. Use run_eligibility to verify eligibility. Present the blueprint and eligibility result to the user — do not write the blueprint content yourself.',
+  structuring: 'Use extract_structure to derive the required application outline from the call evidence — never write the outline as free-form text. After the tool returns, present the sections for approval and address any eligibility issues.',
+  drafting: 'Always use the generate_section tool to produce section content — NEVER write full section drafts as chat text. The tool persists drafts to structured storage; chat text is not saved as a section and disappears on refresh. After each tool result, offer: accept, regenerate with feedback, or skip.',
+  review: 'Use validate_application and check_missing_annexes to assess completeness. Show missing items, warnings, annexes checklist as concise summaries — never re-author section content here.',
 }
 
 /**

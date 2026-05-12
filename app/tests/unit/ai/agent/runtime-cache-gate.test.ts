@@ -31,6 +31,7 @@ vi.mock('@/lib/ai/agent/history', () => ({
   loadContext: async () => ({ summary: null, messages: [], totalCount: 0 }),
   appendMessage: vi.fn().mockResolvedValue(0),
   compactIfNeeded: vi.fn().mockResolvedValue({ compacted: false }),
+  ensureV3PairingInvariant: (m: unknown[]) => m,
 }))
 vi.mock('@/lib/ai/agent/tools/registry', () => ({ getToolsForPhase: () => [] }))
 vi.mock('@/lib/ai/agent/tools/index', () => ({}))

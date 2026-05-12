@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { agentSectionToSectionResult } from '@/lib/workspace'
+import { SLUG_RE } from '@/lib/validators/patterns'
 import type { agentSections } from '@/lib/db/schema'
 
 type AgentSectionRow = typeof agentSections.$inferSelect
@@ -106,17 +107,33 @@ describe('agentSectionToSectionResult', () => {
 
   it('returns the slug-shaped sectionKey as SectionResult.id (not the row UUID)', () => {
     // /api/v1/projects/[id]/sections/[sectionId] validates sectionId with
-    // SLUG_RE (/^[a-z][a-z0-9_]{0,63}$/). Returning the row UUID would 400
+    // SLUG_RE (lib/validators/patterns.ts). Returning the row UUID would 400
     // any future section-detail / export lookup against an agent project.
     const row = makeRow({ id: 'deadbeef-dead-4eef-8eef-deadbeefdead', sectionKey: 'rezumat' })
     expect(agentSectionToSectionResult(row).id).toBe('rezumat')
   })
 
-  it('matches SLUG_RE for all DEFAULT_SECTIONS-style keys', () => {
-    const slugRe = /^[a-z][a-z0-9_]{0,63}$/
-    for (const key of ['context', 'obiective', 'grup_tinta', 'metodologie', 'echipa', 'buget', 'rezumat']) {
+  it('preserves kebab-case sectionKeys produced by V3 structure extraction', () => {
+    // extract-structure.ts:52 prompts the LLM for "kebab-case identifier
+    // (e.g. context-si-justificare)" and services/blueprint.ts:216 slugifies
+    // section titles using `-`. SLUG_RE now permits `-` for exactly this
+    // reason — see lib/validators/patterns.ts.
+    const row = makeRow({ sectionKey: 'context-si-justificare' })
+    expect(agentSectionToSectionResult(row).id).toBe('context-si-justificare')
+  })
+
+  it('matches SLUG_RE for both legacy and V3 section-key shapes', () => {
+    const keys = [
+      // legacy DEFAULT_SECTIONS shape (underscore)
+      'context', 'obiective', 'grup_tinta', 'metodologie', 'echipa', 'buget', 'rezumat',
+      // V3 extract-structure shape (kebab)
+      'context-si-justificare', 'analiza-stakeholderi', 'plan-de-actiune',
+      // route-style slugs already in the wild from older snapshots
+      'sec-1', 'sec-42',
+    ]
+    for (const key of keys) {
       const row = makeRow({ sectionKey: key })
-      expect(slugRe.test(agentSectionToSectionResult(row).id), `key=${key}`).toBe(true)
+      expect(SLUG_RE.test(agentSectionToSectionResult(row).id), `key=${key}`).toBe(true)
     }
   })
 })
