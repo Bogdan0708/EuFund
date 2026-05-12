@@ -12,7 +12,10 @@ vi.mock('@/lib/db', () => ({
   db: mockDb,
   withUserRLS: (_u: string, fn: any) => fn(mockDb),
 }))
-vi.mock('@/lib/ai/agent/services/blueprint', () => ({ lookupBlueprint: mockLookupBlueprint }))
+vi.mock('@/lib/ai/agent/services/blueprint', () => ({
+  lookupBlueprint: mockLookupBlueprint,
+  outlineFromBlueprint: vi.fn().mockReturnValue({ sections: [] }),
+}))
 vi.mock('@/lib/legal/audit', () => ({ logAudit: mockLogAudit }))
 vi.mock('@/lib/projects/promotion', () => ({ ensureProjectForSession: mockEnsureProjectForSession }))
 vi.mock('@/lib/db/schema', () => ({

@@ -16,7 +16,10 @@ vi.mock('@/lib/logger', () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
-vi.mock('@/lib/ai/agent/services/blueprint', () => ({ lookupBlueprint: vi.fn() }))
+vi.mock('@/lib/ai/agent/services/blueprint', () => ({
+  lookupBlueprint: vi.fn(),
+  outlineFromBlueprint: vi.fn().mockReturnValue(null),
+}))
 vi.mock('@/lib/ai/agent/services/evidence', () => ({ searchCalls: vi.fn() }))
 
 describe('initializeSession — rawEvidence stash', () => {
