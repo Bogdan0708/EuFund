@@ -31,6 +31,8 @@ async function main() {
 
   let scanned = 0
   let updated = 0
+  let wouldUpdate = 0
+  let failed = 0
   let lastId: string | null = null
 
   // Pagination by id is RLS-friendly and stable under concurrent inserts.
@@ -54,23 +56,33 @@ async function main() {
     for (const row of rows) {
       scanned++
       if (!row.blueprint) continue
-      const outline = outlineFromBlueprint(row.blueprint as CallBlueprint)
-      if (outline.length === 0) {
-        log.warn({ sessionId: row.id }, 'blueprint produced empty outline; skipping')
-        continue
+      try {
+        const outline = outlineFromBlueprint(row.blueprint as CallBlueprint)
+        if (outline.length === 0) {
+          log.warn({ sessionId: row.id }, 'blueprint produced empty outline; skipping')
+          continue
+        }
+        if (!dryRun) {
+          await db.update(agentSessions)
+            .set({ outline: outline as never, updatedAt: new Date() })
+            .where(eq(agentSessions.id, row.id))
+          updated++
+        } else {
+          wouldUpdate++
+        }
+      } catch (err) {
+        failed++
+        log.warn(
+          { sessionId: row.id, error: err instanceof Error ? err.message : String(err) },
+          'outline_materialization_failed; skipping row',
+        )
       }
-      if (!dryRun) {
-        await db.update(agentSessions)
-          .set({ outline: outline as never, updatedAt: new Date() })
-          .where(eq(agentSessions.id, row.id))
-      }
-      updated++
     }
     lastId = rows[rows.length - 1].id
-    log.info({ scanned, updated, lastId }, 'progress')
+    log.info({ scanned, updated, wouldUpdate, failed, lastId }, 'progress')
   }
 
-  log.info({ scanned, updated, dryRun }, 'done')
+  log.info({ scanned, updated, wouldUpdate, failed, dryRun }, 'done')
 }
 
 main().catch(err => {
