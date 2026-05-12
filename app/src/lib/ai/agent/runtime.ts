@@ -83,6 +83,13 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
   let { session, sections } = opts
   let phaseTransitionOccurred: { from: string; to: string } | undefined
   let selectedCallChanged = false
+  // Tracks whether ANY assistant text message was appended for this turn.
+  // The tool loop can finish without producing user-facing text (model spends
+  // all MAX_TOOL_ITERATIONS on tool calls). When that happens, the cap path
+  // below forces a final synthesis call so the user sees a response rather
+  // than a silent SSE close. Flip this true at every appendMessage of an
+  // assistant text message.
+  let assistantTextPersistedThisTurn = false
 
   try {
     // 1. Load history
@@ -313,13 +320,24 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
             content: response.content,
             turnId: opts.turnId,
           })
+          assistantTextPersistedThisTurn = true
         }
         break
       }
 
-      // Otherwise emit any text and continue to tool processing.
+      // Otherwise emit any text AND persist it before processing tools.
+      // Pre-fix this branch only emitted text via SSE; the agent_messages
+      // row was never written, so a refresh during a tool turn lost the
+      // model's narration (audit found this alongside the cap-hit bug).
       if (response.content) {
         emit({ type: 'text_delta', content: response.content })
+        await appendMessage(session.id, {
+          role: 'assistant',
+          messageType: 'text',
+          content: response.content,
+          turnId: opts.turnId,
+        })
+        assistantTextPersistedThisTurn = true
       }
 
       // Handle tool calls
@@ -481,6 +499,71 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
         // Continue loop — next iteration calls LLM with tool results
       } else {
         break
+      }
+    }
+
+    // 7.5. Cap path — forced synthesis when the loop exhausted iterations
+    // without ever persisting assistant text. Without this, the SSE stream
+    // returns `done` carrying zero chat content and the UI looks like it
+    // crashed (see the 2026-05-12 09:35 prod incident). Make one more LLM
+    // call WITHOUT tools so the model is forced into text output, using the
+    // accumulated llmMessages so it has all the tool results it just
+    // collected. If that call fails or returns empty, fall back to a
+    // localized cap message so the user always sees SOMETHING.
+    if (iteration >= MAX_TOOL_ITERATIONS && !assistantTextPersistedThisTurn) {
+      log.info(
+        { sessionId: session.id, iteration, requestId: request.requestId },
+        'V3 cap hit with no assistant text — forcing synthesis call',
+      )
+      const synthesisLanguage = session.locale === 'ro' ? 'Romanian' : 'English'
+      const synthesisSystem = `${systemPrompt}
+
+## Iteration Cap Reached
+You used all ${MAX_TOOL_ITERATIONS} tool-call iterations without responding to the user. Summarize what you found so far in ${synthesisLanguage}. If the user's request was ambiguous, ask one specific clarifying question instead. Do NOT request more tool calls — they are no longer available.`
+
+      try {
+        const finalResponse = await generate({
+          provider: 'anthropic',
+          model: 'claude-opus-4-6',
+          system: synthesisSystem,
+          messages: llmMessages,
+          // Omit tools entirely — the router doesn't expose tool_choice
+          // (see types.ts), but no `tools` array means the model has no
+          // tool surface at all and must emit text.
+          ...(v3CacheEnabled
+            ? { cache: { enabled: true as const, breakpoints: ['system'] as Array<'system' | 'tools'> } }
+            : {}),
+        })
+        const finalText = finalResponse.content?.trim()
+        if (finalText) {
+          emit({ type: 'text_delta', content: finalText })
+          await appendMessage(session.id, {
+            role: 'assistant',
+            messageType: 'text',
+            content: finalText,
+            turnId: opts.turnId,
+          })
+          assistantTextPersistedThisTurn = true
+        }
+      } catch (err) {
+        log.warn(
+          { sessionId: session.id, error: err instanceof Error ? err.message : String(err) },
+          'V3 forced synthesis call failed',
+        )
+      }
+
+      if (!assistantTextPersistedThisTurn) {
+        const fallback = session.locale === 'ro'
+          ? 'Am atins limita pașilor de explorare pentru această tură fără să găsesc un răspuns concludent. Te rog reformulează cererea sau cere-mi să sintetizez ce am găsit.'
+          : 'I reached the tool-call limit for this turn without arriving at a conclusive answer. Please rephrase your request or ask me to summarize what I found.'
+        emit({ type: 'text_delta', content: fallback })
+        await appendMessage(session.id, {
+          role: 'assistant',
+          messageType: 'text',
+          content: fallback,
+          turnId: opts.turnId,
+        })
+        assistantTextPersistedThisTurn = true
       }
     }
 
