@@ -12,7 +12,9 @@ import type { SectionResult } from '@/lib/ai/agent/types';
 interface SectionsResponse {
   sections: SectionResult[];
   sessionId: string | null;
-  source: 'session' | 'snapshot';
+  // 'agent' surfaces V3 agent_sections for projects promoted from a V3 session
+  // — read-only, no associated workflow_sessions row. See lib/workspace.ts.
+  source: 'session' | 'snapshot' | 'agent';
   readOnly: boolean;
 }
 

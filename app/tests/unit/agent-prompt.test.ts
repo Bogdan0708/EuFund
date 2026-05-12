@@ -90,12 +90,14 @@ describe('buildSessionStateBlock (volatile tail, delivered as role:system messag
     expect(block).toContain('draft')
   })
 
-  it('includes session knowledge summary when present', () => {
-    const session = {
-      ...makeSession({ currentPhase: 'drafting' }),
-      _knowledgeSummary: '3 pages: brief, decision_log, section_pattern(methodology)',
-    } as any
-    const block = buildSessionStateBlock(session, [])
+  it('includes session knowledge summary when passed', () => {
+    // knowledgeSummary now arrives as an explicit parameter rather than via
+    // a smuggled `_knowledgeSummary` field on the session — round-4 audit.
+    const block = buildSessionStateBlock(
+      makeSession({ currentPhase: 'drafting' }),
+      [],
+      '3 pages: brief, decision_log, section_pattern(methodology)',
+    )
     expect(block).toContain('Session knowledge')
     expect(block).toContain('3 pages')
   })

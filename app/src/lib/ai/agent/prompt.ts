@@ -1,8 +1,6 @@
 import type { AgentSession, AgentSection, Phase, EligibilityResult } from './types'
 import type { CallBlueprint } from '@/lib/ai/agent/types'
 
-type SessionWithKnowledgeSummary = AgentSession & { _knowledgeSummary?: string }
-
 function formatEligibility(elig: EligibilityResult | null): string {
   if (!elig) return 'Not checked yet'
   if (elig.failCount > 0) return `BLOCKED — ${elig.failCount} hard failures`
@@ -69,11 +67,19 @@ ${PHASE_GUIDANCE[session.currentPhase]}
  *
  * This preserves the exact content the model saw pre-split; only the delivery
  * mechanism changes (single cached block → cached prefix + uncached state block).
+ *
+ * `knowledgeSummary` is the optional pre-computed kindCounts string from
+ * lib/ai/knowledge/session-knowledge. Passed explicitly to avoid mutating the
+ * caller's session object via a smuggled `_knowledgeSummary` field — that
+ * mutation was a real footgun for parallel turns and test isolation.
  */
-export function buildSessionStateBlock(session: AgentSession, sections: AgentSection[]): string {
+export function buildSessionStateBlock(
+  session: AgentSession,
+  sections: AgentSection[],
+  knowledgeSummary?: string,
+): string {
   const bp = session.blueprint as CallBlueprint | null
 
-  const knowledgeSummary = (session as SessionWithKnowledgeSummary)._knowledgeSummary
   const knowledgeLine = knowledgeSummary
     ? `- Session knowledge: ${knowledgeSummary}`
     : '- Session knowledge: none yet'

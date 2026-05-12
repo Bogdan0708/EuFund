@@ -12,7 +12,7 @@ import type { SectionResult } from '@/lib/ai/agent/types';
 type SectionsResponse = {
   sections: SectionResult[];
   sessionId: string | null;
-  source: 'session' | 'snapshot';
+  source: 'session' | 'snapshot' | 'agent';
   readOnly: boolean;
 };
 

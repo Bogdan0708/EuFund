@@ -154,6 +154,48 @@ describe('ensureV3PairingInvariant', () => {
     expect(ensureV3PairingInvariant(input)).toEqual(input)
   })
 
+  it('drops a tool message that appears first in the array (no preceding assistant)', () => {
+    // Replay edge: a session's first surviving uncompacted row is a stale
+    // tool_result (compaction window trimmed off the matching tool_call).
+    // The walk-backward at runtime.ts:101 immediately hits out.length===0,
+    // matched=false, message gets dropped. Without this test, a refactor
+    // that initializes `matched=true` for empty `out` would pass silently.
+    const input: RouterMessage[] = [
+      { role: 'tool', content: '{}', tool_call_id: 'tc-stale' },
+      { role: 'user', content: 'continue' },
+    ]
+    expect(ensureV3PairingInvariant(input)).toEqual([{ role: 'user', content: 'continue' }])
+  })
+
+  it('drops a stale tool message whose preceding assistant got its tool_calls trimmed', () => {
+    // Cascade through the OUTPUT array, not the input. Assistant turn 1 has
+    // a text response + orphan tool_call (no matching tool message until
+    // turn 2). The forward-scan only collects tool messages contiguous to
+    // the assistant, so turn 1's tool_call is orphaned and trimmed; the
+    // assistant rebuilds as text-only. Turn 2's stale tool message then
+    // looks BACKWARD through `out` and finds the rebuilt assistant which no
+    // longer carries tool_calls → falls through matched=false → drop.
+    const input: RouterMessage[] = [
+      {
+        role: 'assistant',
+        content: 'Let me look that up.',
+        tool_calls: [{ id: 'tc-orphan', type: 'function', function: { name: 'x', arguments: '{}' } }],
+      },
+      // Non-tool message between assistant and the stale tool: prevents the
+      // forward-scan from matching the orphan tc-orphan.
+      { role: 'user', content: 'wait, never mind — what about budget?' },
+      // Stale tool message referencing the (now-trimmed) orphan id.
+      { role: 'tool', content: '{}', tool_call_id: 'tc-orphan' },
+      { role: 'user', content: 'next' },
+    ]
+    const out = ensureV3PairingInvariant(input)
+    expect(out).toEqual([
+      { role: 'assistant', content: 'Let me look that up.' },
+      { role: 'user', content: 'wait, never mind — what about budget?' },
+      { role: 'user', content: 'next' },
+    ])
+  })
+
   it('does not mutate the input array', () => {
     const input: RouterMessage[] = [
       {

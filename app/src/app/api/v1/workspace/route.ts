@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/helpers';
 import { withUserRLS } from '@/lib/db';
-import { projects, workflowSessions, projectDocuments, projectFiles, agentSessions, agentSections } from '@/lib/db/schema';
+import { projects, workflowSessions, projectDocuments, projectFiles, agentSessions, agentSections, agentTurns } from '@/lib/db/schema';
 import { eq, and, inArray, isNull, desc, count } from 'drizzle-orm';
 import { Errors, FondEUError } from '@/lib/errors';
 import { normalizeSections, agentSectionToSectionResult } from '@/lib/workspace';
@@ -91,6 +91,11 @@ export async function GET() {
       // the resolveProjectWorkspace fall-through so the /documente index
       // surfaces those projects too. One batched pair of queries for all 50
       // projects, no N+1.
+      //
+      // CRITICAL: classify by most-recent agent_turns.runtimeMode. agent_sessions
+      // has no runtime_mode column; managed runtime also writes to agent_sections.
+      // Without this gate, managed-promoted projects (which lack workflow_sessions
+      // by design) would render in V3-mode UI in /documente. See round-4 audit.
       const projectsWithoutWorkflow = projectIds.filter((id) => !sessionByProject.has(id));
       const agentSessionByProject = new Map<string, typeof agentSessions.$inferSelect>();
       const agentSectionsBySession = new Map<string, (typeof agentSections.$inferSelect)[]>();
@@ -104,11 +109,42 @@ export async function GET() {
           ))
           .orderBy(desc(agentSessions.updatedAt));
 
-        // One row per project — most-recent wins (orderBy desc above).
+        // Most-recent agent_session per project (orderBy desc above) — candidate
+        // for runtime classification.
+        const candidatesByProject = new Map<string, typeof agentSessions.$inferSelect>();
         for (const s of linkedAgentSessions) {
           if (!s.projectId) continue;
-          if (!agentSessionByProject.has(s.projectId)) {
-            agentSessionByProject.set(s.projectId, s);
+          if (!candidatesByProject.has(s.projectId)) {
+            candidatesByProject.set(s.projectId, s);
+          }
+        }
+
+        // Batched classification: latest agent_turn per candidate session. A
+        // session with no turns is treated as V3 (new sessions enter the V3
+        // runtime by default; managed turns always produce a turn row).
+        const candidateSessionIds = Array.from(candidatesByProject.values()).map((s) => s.id);
+        const v3SessionIds = new Set<string>(candidateSessionIds);
+        if (candidateSessionIds.length > 0) {
+          const allTurns = await tx
+            .select({ sessionId: agentTurns.sessionId, runtimeMode: agentTurns.runtimeMode })
+            .from(agentTurns)
+            .where(inArray(agentTurns.sessionId, candidateSessionIds))
+            .orderBy(desc(agentTurns.startedAt));
+          const latestRuntimeBySession = new Map<string, string>();
+          for (const t of allTurns) {
+            if (!latestRuntimeBySession.has(t.sessionId)) {
+              latestRuntimeBySession.set(t.sessionId, t.runtimeMode);
+            }
+          }
+          for (const id of candidateSessionIds) {
+            const mode = latestRuntimeBySession.get(id);
+            if (mode === 'managed') v3SessionIds.delete(id);
+          }
+        }
+
+        for (const [projectId, session] of candidatesByProject) {
+          if (v3SessionIds.has(session.id)) {
+            agentSessionByProject.set(projectId, session);
           }
         }
 

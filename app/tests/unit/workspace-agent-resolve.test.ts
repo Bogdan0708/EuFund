@@ -88,6 +88,7 @@ vi.mock('@/lib/db/schema', () => ({
   sectionVersions: { __table: 'section_versions', sessionId: 'session_id', sectionId: 'section_id', version: 'version' },
   agentSessions: { __table: 'agent_sessions', id: 'id', projectId: 'project_id', userId: 'user_id', updatedAt: 'updated_at' },
   agentSections: { __table: 'agent_sections', sessionId: 'session_id', documentOrder: 'document_order' },
+  agentTurns: { __table: 'agent_turns', sessionId: 'session_id', runtimeMode: 'runtime_mode', startedAt: 'started_at' },
 }))
 
 beforeEach(() => {
@@ -155,6 +156,8 @@ describe('resolveProjectWorkspace — V3 agent fallback', () => {
           ['workflow_sessions', { rows: [], resolveOnOrderBy: true }],
           ['project_documents', { rows: [] }],
           ['agent_sessions', { rows: [{ id: AGENT_SESSION_ID }] }],
+          // Latest turn is V3 → fallback fires
+          ['agent_turns', { rows: [{ runtimeMode: 'v3' }] }],
           ['agent_sections', { rows: agentSectionRows, resolveOnOrderBy: true }],
         ]),
       })),
@@ -212,6 +215,7 @@ describe('resolveProjectWorkspace — V3 agent fallback', () => {
           ['workflow_sessions', { rows: [], resolveOnOrderBy: true }],
           ['project_documents', { rows: [] }],
           ['agent_sessions', { rows: [{ id: AGENT_SESSION_ID }] }],
+          ['agent_turns', { rows: [{ runtimeMode: 'v3' }] }],
           ['agent_sections', { rows: [], resolveOnOrderBy: true }],
         ]),
       })),
@@ -221,5 +225,94 @@ describe('resolveProjectWorkspace — V3 agent fallback', () => {
     // No agent sections → no agent mode → fall through to empty snapshot
     expect(result!.mode).toBe('snapshot')
     expect(result!.sections).toEqual([])
+  })
+
+  it('does NOT surface agent_sections when the most recent turn is managed', async () => {
+    // Cross-runtime gate: agent_sections is shared between V3 and managed.
+    // A managed session whose project lacks a workflow_session would
+    // otherwise leak through this V3-flavored fallback. See round-4 audit.
+    const agentSectionRows = [
+      {
+        id: '88888888-8888-4888-8888-888888888888',
+        sessionId: AGENT_SESSION_ID,
+        sectionKey: 'rezumat',
+        title: 'Rezumat',
+        documentOrder: 0,
+        generationOrder: 11,
+        status: 'accepted',
+        content: 'managed content',
+        acceptedContent: null,
+        modelUsed: 'claude-sonnet-4-6',
+        retryCount: 0,
+        sourcesUsed: null,
+        promptVersion: null,
+        latencyMs: 1500,
+        tokenUsage: null,
+        errorClass: null,
+        rejectionReason: null,
+        updatedAt: now,
+      },
+    ]
+    withUserRLSMock.mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) =>
+      fn(buildTx({
+        project: mockProject,
+        resultsByTable: new Map([
+          ['workflow_sessions', { rows: [], resolveOnOrderBy: true }],
+          ['project_documents', { rows: [] }],
+          ['agent_sessions', { rows: [{ id: AGENT_SESSION_ID }] }],
+          // Latest turn is managed → fallback must NOT fire even though
+          // agent_sections rows exist for this session.
+          ['agent_turns', { rows: [{ runtimeMode: 'managed' }] }],
+          ['agent_sections', { rows: agentSectionRows, resolveOnOrderBy: true }],
+        ]),
+      })),
+    )
+
+    const result = await resolveProjectWorkspace(PROJECT_ID, USER_ID)
+    expect(result).not.toBeNull()
+    expect(result!.mode).toBe('snapshot')
+    expect(result!.sections).toEqual([])
+  })
+
+  it('treats a session with no turns as V3 (new session — managed always emits a turn)', async () => {
+    const agentSectionRows = [
+      {
+        id: '99999999-9999-4999-8999-999999999999',
+        sessionId: AGENT_SESSION_ID,
+        sectionKey: 'rezumat',
+        title: 'Rezumat',
+        documentOrder: 0,
+        generationOrder: 11,
+        status: 'accepted',
+        content: 'fresh content',
+        acceptedContent: null,
+        modelUsed: 'claude-sonnet-4-6',
+        retryCount: 0,
+        sourcesUsed: null,
+        promptVersion: null,
+        latencyMs: 1500,
+        tokenUsage: null,
+        errorClass: null,
+        rejectionReason: null,
+        updatedAt: now,
+      },
+    ]
+    withUserRLSMock.mockImplementation(async (_userId: string, fn: (tx: unknown) => Promise<unknown>) =>
+      fn(buildTx({
+        project: mockProject,
+        resultsByTable: new Map([
+          ['workflow_sessions', { rows: [], resolveOnOrderBy: true }],
+          ['project_documents', { rows: [] }],
+          ['agent_sessions', { rows: [{ id: AGENT_SESSION_ID }] }],
+          // No turns yet — treat as V3 (default runtime), fallback proceeds.
+          ['agent_turns', { rows: [] }],
+          ['agent_sections', { rows: agentSectionRows, resolveOnOrderBy: true }],
+        ]),
+      })),
+    )
+
+    const result = await resolveProjectWorkspace(PROJECT_ID, USER_ID)
+    expect(result!.mode).toBe('agent')
+    expect(result!.sections).toHaveLength(1)
   })
 })

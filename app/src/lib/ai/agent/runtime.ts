@@ -34,7 +34,6 @@ interface WriteBackContext {
 }
 
 type EventEmitter = (event: AgentEvent) => void
-type SessionWithKnowledgeSummary = AgentSession & { _knowledgeSummary?: string }
 
 export interface RuntimeOptions {
   session: AgentSession
@@ -168,19 +167,24 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     }
 
     // 4. Build prompt and tool definitions
-    // Inject session knowledge summary for prompt
+    // Compute the session knowledge summary as a local — pass through to
+    // buildSessionStateBlock explicitly rather than smuggling it onto
+    // `session._knowledgeSummary`. The previous approach mutated the
+    // caller's session object, which broke test isolation and was a real
+    // data race risk under parallel turns. See round-4 audit 2026-05-12.
+    let knowledgeSummary: string | undefined
     try {
       const { getSessionKnowledge } = await import('@/lib/ai/knowledge/session-knowledge')
       const pages = await getSessionKnowledge(session.id)
       if (pages.length > 0) {
         const kindCounts = new Map<string, number>()
         for (const p of pages) kindCounts.set(p.kind, (kindCounts.get(p.kind) ?? 0) + 1)
-        ;(session as SessionWithKnowledgeSummary)._knowledgeSummary = `${pages.length} pages: ${[...kindCounts.entries()].map(([k, c]) => c > 1 ? `${k}(${c})` : k).join(', ')}`
+        knowledgeSummary = `${pages.length} pages: ${[...kindCounts.entries()].map(([k, c]) => c > 1 ? `${k}(${c})` : k).join(', ')}`
       }
     } catch { /* non-critical */ }
 
     const systemPrompt = buildSystemPrompt(session, sections)
-    const sessionStateBlock = buildSessionStateBlock(session, sections)
+    const sessionStateBlock = buildSessionStateBlock(session, sections, knowledgeSummary)
     const phaseTools = getToolsForPhase(session.currentPhase)
 
     // Build messages array for LLM
