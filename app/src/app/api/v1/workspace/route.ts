@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/helpers';
 import { withUserRLS } from '@/lib/db';
-import { projects, workflowSessions, projectDocuments, projectFiles } from '@/lib/db/schema';
+import { projects, workflowSessions, projectDocuments, projectFiles, agentSessions, agentSections } from '@/lib/db/schema';
 import { eq, and, inArray, isNull, desc, count } from 'drizzle-orm';
 import { Errors, FondEUError } from '@/lib/errors';
-import { normalizeSections } from '@/lib/workspace';
+import { normalizeSections, agentSectionToSectionResult } from '@/lib/workspace';
 import type { SectionResult } from '@/lib/ai/agent/types';
 
 export async function GET() {
   try {
     const user = await requireAuth();
 
-    const { userProjects, sessionByProject, docByProject, fileCountMap } = await withUserRLS(user.id, async (tx) => {
+    const { userProjects, sessionByProject, docByProject, fileCountMap, agentSessionByProject, agentSectionsBySession } = await withUserRLS(user.id, async (tx) => {
       const userProjects = await tx
         .select()
         .from(projects)
@@ -20,7 +20,14 @@ export async function GET() {
         .limit(50);
 
       if (userProjects.length === 0) {
-        return { userProjects: [] as typeof userProjects, sessionByProject: new Map<string, typeof workflowSessions.$inferSelect>(), docByProject: new Map<string, typeof projectDocuments.$inferSelect>(), fileCountMap: new Map<string, number>() };
+        return {
+          userProjects: [] as typeof userProjects,
+          sessionByProject: new Map<string, typeof workflowSessions.$inferSelect>(),
+          docByProject: new Map<string, typeof projectDocuments.$inferSelect>(),
+          fileCountMap: new Map<string, number>(),
+          agentSessionByProject: new Map<string, typeof agentSessions.$inferSelect>(),
+          agentSectionsBySession: new Map<string, (typeof agentSections.$inferSelect)[]>(),
+        };
       }
 
       const projectIds = userProjects.map((p) => p.id);
@@ -79,7 +86,49 @@ export async function GET() {
 
       const fileCountMap = new Map(fileCounts.map((f) => [f.projectId, Number(f.fileCount)]));
 
-      return { userProjects, sessionByProject, docByProject, fileCountMap };
+      // V3 fallback. Projects promoted from V3 agent sessions don't have a
+      // workflow_sessions row, only agent_sessions linked via projectId. Mirror
+      // the resolveProjectWorkspace fall-through so the /documente index
+      // surfaces those projects too. One batched pair of queries for all 50
+      // projects, no N+1.
+      const projectsWithoutWorkflow = projectIds.filter((id) => !sessionByProject.has(id));
+      const agentSessionByProject = new Map<string, typeof agentSessions.$inferSelect>();
+      const agentSectionsBySession = new Map<string, (typeof agentSections.$inferSelect)[]>();
+      if (projectsWithoutWorkflow.length > 0) {
+        const linkedAgentSessions = await tx
+          .select()
+          .from(agentSessions)
+          .where(and(
+            inArray(agentSessions.projectId, projectsWithoutWorkflow),
+            eq(agentSessions.userId, user.id),
+          ))
+          .orderBy(desc(agentSessions.updatedAt));
+
+        // One row per project — most-recent wins (orderBy desc above).
+        for (const s of linkedAgentSessions) {
+          if (!s.projectId) continue;
+          if (!agentSessionByProject.has(s.projectId)) {
+            agentSessionByProject.set(s.projectId, s);
+          }
+        }
+
+        const linkedSessionIds = Array.from(agentSessionByProject.values()).map((s) => s.id);
+        if (linkedSessionIds.length > 0) {
+          const allAgentSections = await tx
+            .select()
+            .from(agentSections)
+            .where(inArray(agentSections.sessionId, linkedSessionIds))
+            .orderBy(agentSections.documentOrder);
+
+          for (const row of allAgentSections) {
+            const bucket = agentSectionsBySession.get(row.sessionId) ?? [];
+            bucket.push(row);
+            agentSectionsBySession.set(row.sessionId, bucket);
+          }
+        }
+      }
+
+      return { userProjects, sessionByProject, docByProject, fileCountMap, agentSessionByProject, agentSectionsBySession };
     });
 
     if (userProjects.length === 0) {
@@ -89,9 +138,12 @@ export async function GET() {
     const result = userProjects.map((p) => {
       const session = sessionByProject.get(p.id);
       const doc = docByProject.get(p.id);
+      const agentSession = agentSessionByProject.get(p.id);
+      const agentRows = agentSession ? agentSectionsBySession.get(agentSession.id) ?? [] : [];
 
       let sections: SectionResult[] = [];
-      let mode: 'session' | 'snapshot' = 'snapshot';
+      let mode: 'session' | 'snapshot' | 'agent' = 'snapshot';
+      let lastEditedAt: Date | null = null;
 
       if (session) {
         const ctx = session.context as { projectSections?: unknown[] } | null;
@@ -100,8 +152,17 @@ export async function GET() {
         // The per-project sections view (GET /api/v1/projects/:id/sections) does reconcile.
         sections = normalizeSections(ctx?.projectSections ?? [], session.createdAt.toISOString());
         mode = 'session';
+        lastEditedAt = session.updatedAt;
+      } else if (agentRows.length > 0) {
+        // V3 agent fallback — mirrors resolveProjectWorkspace in lib/workspace.ts.
+        // /documente was rendering 0 sections for V3-promoted projects because
+        // the legacy workflow_sessions path never matched.
+        sections = agentRows.map(agentSectionToSectionResult);
+        mode = 'agent';
+        lastEditedAt = agentSession?.updatedAt ?? null;
       } else if (doc) {
         sections = normalizeSections((doc.sections ?? []) as unknown[], doc.createdAt.toISOString());
+        lastEditedAt = doc.updatedAt;
       }
 
       const stateBreakdown = { draft: 0, reviewed: 0, approved: 0 };
@@ -114,7 +175,7 @@ export async function GET() {
         title: p.title,
         sectionCount: sections.length,
         stateBreakdown,
-        lastEditedAt: (session?.updatedAt ?? doc?.updatedAt ?? p.updatedAt ?? new Date()).toISOString(),
+        lastEditedAt: (lastEditedAt ?? p.updatedAt ?? new Date()).toISOString(),
         mode,
         hasUploadedFiles: (fileCountMap.get(p.id) ?? 0) > 0,
       };

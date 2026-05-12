@@ -136,4 +136,16 @@ describe('agentSectionToSectionResult', () => {
       expect(SLUG_RE.test(agentSectionToSectionResult(row).id), `key=${key}`).toBe(true)
     }
   })
+
+  it('accepts a sectionKey up to the agent_sections column cap (100 chars) and rejects beyond', () => {
+    // Aligns with `agent_sections.sectionKey` varchar(100). If SLUG_RE were
+    // shorter than the column, a key the DB accepted could still 400 the
+    // single-section detail/export routes.
+    const at100 = 'a' + 'b'.repeat(99)
+    const at101 = 'a' + 'b'.repeat(100)
+    expect(at100.length).toBe(100)
+    expect(at101.length).toBe(101)
+    expect(SLUG_RE.test(at100)).toBe(true)
+    expect(SLUG_RE.test(at101)).toBe(false)
+  })
 })

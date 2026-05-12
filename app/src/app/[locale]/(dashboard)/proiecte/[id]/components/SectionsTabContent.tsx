@@ -98,12 +98,8 @@ export function SectionsTabContent({ projectId }: { projectId: string }) {
               </div>
 
               <a
-                href={data.readOnly ? undefined : `/${locale}/proiecte/${projectId}/sectiuni/${section.id}`}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shrink-0 ${
-                  data.readOnly
-                    ? 'text-on-surface-variant/50 cursor-not-allowed'
-                    : 'text-primary hover:bg-primary/10'
-                }`}
+                href={`/${locale}/proiecte/${projectId}/sectiuni/${section.id}`}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shrink-0 text-primary hover:bg-primary/10"
               >
                 <Icon name={data.readOnly ? 'visibility' : 'edit'} size="sm" />
                 {data.readOnly ? t('viewAction') : t('editAction')}

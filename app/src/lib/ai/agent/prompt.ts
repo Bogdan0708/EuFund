@@ -28,7 +28,7 @@ const PHASE_GUIDANCE: Record<Phase, string> = {
   research: 'Use resolve_call / get_call_blueprint to load the call. Use run_eligibility to verify eligibility. Present the blueprint and eligibility result to the user — do not write the blueprint content yourself.',
   structuring: 'Use extract_structure to derive the required application outline from the call evidence — never write the outline as free-form text. After the tool returns, present the sections for approval and address any eligibility issues.',
   drafting: 'Always use the generate_section tool to produce section content — NEVER write full section drafts as chat text. The tool persists drafts to structured storage; chat text is not saved as a section and disappears on refresh. After each tool result, offer: accept, regenerate with feedback, or skip.',
-  review: 'Use validate_application and check_missing_annexes to assess completeness. Show missing items, warnings, annexes checklist as concise summaries — never re-author section content here.',
+  review: 'Use validate_application and list_missing_annexes to assess completeness. Show missing items, warnings, annexes checklist as concise summaries — never re-author section content here.',
 }
 
 /**
