@@ -1,5 +1,5 @@
 // app/tests/integration/promotion-e2e.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from '@/lib/db';
 import { agentSessions, projects, orgMembers, organizations, users, callsForProposals, fundingPrograms } from '@/lib/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
@@ -9,7 +9,14 @@ const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 const TEST_CALL_CODE = 'CALL-E2E-PROMO';
 const TEST_PROGRAM_ID = '00000000-0000-0000-0000-000000000003';
 
-describe('promotion E2E regression', () => {
+// This suite needs a live Postgres (it calls db.select/.delete in beforeEach
+// against real schemas). The `build-and-test` CI job runs `npm test` without
+// a DB service, so without this guard the module-load throw inside the lazy
+// `db` proxy fails every run. Local dev with `.env.local` and the `e2e` job
+// have DATABASE_URL set — those still execute the suite.
+const HAS_DB = !!process.env.DATABASE_URL;
+
+describe.skipIf(!HAS_DB)('promotion E2E regression', () => {
   beforeEach(async () => {
     // 1. Find all orgs for the test user
     const userOrgs = await db.select({ orgId: orgMembers.orgId })
