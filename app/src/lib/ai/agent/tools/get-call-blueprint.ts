@@ -1,11 +1,12 @@
 import { z } from 'zod'
 import { registerTool } from './registry'
 import type { ToolResult } from '../types'
-import type { CallBlueprint, SectionSpec } from '@/lib/ai/agent/types'
+import type { CallBlueprint } from '@/lib/ai/agent/types'
 import { db } from '@/lib/db'
 import { callKnowledge } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
+import { buildBlueprintFromCache } from '@/lib/ai/agent/services/blueprint'
 
 const log = logger.child({ component: 'tool-get-call-blueprint' })
 
@@ -30,37 +31,11 @@ async function execute(input: Input): Promise<ToolResult<CallBlueprint | null>> 
       }
     }
 
+    // Single hydration path shared with lookupBlueprint — materializes
+    // partial cached section rows into full SectionSpec[] and passes
+    // through rows that already carry the full shape.
     const norm = (row.normalized ?? {}) as Record<string, unknown>
-    const requiredSections = (norm.requiredSections ?? []) as { title: string; description: string; evaluationWeight?: number }[]
-    const mandatoryAnnexes = (norm.mandatoryAnnexes ?? []) as string[]
-    const eligibilityCriteria = (norm.eligibilityCriteria ?? []) as string[]
-    const evaluationGrid = (norm.evaluationGrid ?? []) as { criterion: string; maxPoints: number }[]
-    const cofinancingRate = (norm.cofinancingRate ?? 0) as number
-
-    const blueprint: CallBlueprint = {
-      callId: row.callId,
-      program: row.program,
-      isOpen: true, // Will be updated by freshness check
-      amendments: [],
-      warnings: [],
-      requiredSections,
-      mandatoryAnnexes,
-      eligibilityCriteria,
-      evaluationGrid,
-      cofinancingRate,
-      eligibilityResult: { score: 0, passCount: 0, failCount: 0, failures: [], warnings: [] },
-      sources: (row.sourceDocs as string[]) || [],
-      verifiedAt: row.contentExtractedAt.toISOString(),
-      raw: { notebookLmResponse: '[cached]', perplexityResponse: '', retrievedAt: row.contentExtractedAt.toISOString() },
-      normalized: {
-        requiredSections: (norm.requiredSections ?? []) as SectionSpec[],
-        mandatoryAnnexes,
-        eligibilityCriteria,
-        evaluationGrid,
-        cofinancingRate,
-      },
-      structureConfidence: row.structureConfidence,
-    }
+    const blueprint = buildBlueprintFromCache(row, norm)
 
     log.info({ callId: input.callId, status: row.status, confidence: row.structureConfidence }, 'Blueprint loaded from cache')
 
