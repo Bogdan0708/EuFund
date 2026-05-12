@@ -223,37 +223,71 @@ function slugifyTitle(title: string, fallbackIdx: number): string {
   return slug || `section-${fallbackIdx + 1}`
 }
 
-function materializeCachedSections(
-  partial: { title: string; description: string; evaluationWeight?: number }[],
-  structureConfidence: number,
-): SectionSpec[] {
-  return partial.map((s, i) => ({
-    id: slugifyTitle(s.title, i),
-    title: s.title,
-    description: s.description,
-    order: i + 1,
-    generationOrder: i + 1,
-    importance: 'standard' as const,
-    expectedLength: 'medium' as const,
-    dependsOn: [],
-    modelHint: (s.evaluationWeight && s.evaluationWeight > 0 ? 'heavy' : 'light') as 'heavy' | 'light',
-    evaluationWeight: s.evaluationWeight,
-    mandatory: true,
-    confidence: structureConfidence,
-  }))
+/**
+ * Cached `requiredSections` can come from two writers:
+ *   - save_call_blueprint / migration 0008 path: only persists the partial
+ *     shape `{ title, description, evaluationWeight? }`, lossy on purpose.
+ *   - resolve_call LLM-extraction path (tools/resolve-call.ts:122): writes
+ *     the full SectionSpec for the LLM-derived outline.
+ *
+ * We can't know which producer wrote a given row, so detect the shape on
+ * read. Rows that already carry id+order are passed through (preserves
+ * dependsOn, importance, mandatory, etc.); rows missing those fields are
+ * synthesized with sensible defaults so the downstream contract holds.
+ */
+function isFullSectionSpec(s: unknown): s is SectionSpec {
+  if (!s || typeof s !== 'object') return false
+  const r = s as Record<string, unknown>
+  return typeof r.id === 'string' && r.id.length > 0 && typeof r.order === 'number'
 }
 
-function buildBlueprintFromCache(
+export function materializeCachedSections(
+  cached: unknown[],
+  structureConfidence: number,
+): SectionSpec[] {
+  return cached.map((entry, i): SectionSpec => {
+    if (isFullSectionSpec(entry)) return entry
+    const partial = (entry ?? {}) as { title?: string; description?: string; evaluationWeight?: number }
+    const title = partial.title ?? `Section ${i + 1}`
+    const description = partial.description ?? ''
+    return {
+      id: slugifyTitle(title, i),
+      title,
+      description,
+      order: i + 1,
+      generationOrder: i + 1,
+      importance: 'standard',
+      expectedLength: 'medium',
+      dependsOn: [],
+      modelHint: partial.evaluationWeight && partial.evaluationWeight > 0 ? 'heavy' : 'light',
+      evaluationWeight: partial.evaluationWeight,
+      mandatory: true,
+      confidence: structureConfidence,
+    }
+  })
+}
+
+export function buildBlueprintFromCache(
   row: typeof callKnowledge.$inferSelect,
   norm: Record<string, unknown>,
 ): CallBlueprint {
-  const partialSections = (norm.requiredSections ?? []) as { title: string; description: string; evaluationWeight?: number }[]
+  const cachedSections = (norm.requiredSections ?? []) as unknown[]
   const mandatoryAnnexes = (norm.mandatoryAnnexes ?? []) as string[]
   const eligibilityCriteria = (norm.eligibilityCriteria ?? []) as string[]
   const evaluationGrid = (norm.evaluationGrid ?? []) as { criterion: string; maxPoints: number }[]
   const cofinancingRate = (norm.cofinancingRate ?? 0) as number
 
-  const materialized = materializeCachedSections(partialSections, row.structureConfidence)
+  const materialized = materializeCachedSections(cachedSections, row.structureConfidence)
+
+  // CallBlueprint.requiredSections (the lossy storage shape) is rebuilt from
+  // the materialized data so it's always populated even if the partial
+  // writer left fields off — keeps anything that snoops the top-level
+  // field consistent with `.normalized.requiredSections`.
+  const lossyRequiredSections = materialized.map(s => ({
+    title: s.title,
+    description: s.description,
+    evaluationWeight: s.evaluationWeight,
+  }))
 
   return {
     callId: row.callId,
@@ -261,9 +295,7 @@ function buildBlueprintFromCache(
     isOpen: true,
     amendments: [],
     warnings: [],
-    // Storage-shape (lossy) — kept for shape parity with the API contract
-    // of CallBlueprint.requiredSections.
-    requiredSections: partialSections,
+    requiredSections: lossyRequiredSections,
     mandatoryAnnexes,
     eligibilityCriteria,
     evaluationGrid,

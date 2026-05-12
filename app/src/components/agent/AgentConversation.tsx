@@ -21,6 +21,17 @@ export function AgentConversation({ messages, status, error, initialInput, onSen
   const scrollRef = useRef<HTMLDivElement>(null)
   const isBusy = status === 'streaming' || status === 'connecting'
 
+  // The `initialInput` prop usually arrives AFTER mount (parent reads
+  // sessionStorage in a useEffect, then setState rerenders this component).
+  // useState() only honors its argument on the first mount, so without this
+  // sync the hero handoff silently dropped the typed prompt. Only sync when
+  // the seed is non-empty AND the user hasn't started typing — otherwise we'd
+  // clobber edits if the prop changed again.
+  useEffect(() => {
+    if (initialInput && input === '') setInput(initialInput)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialInput])
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
