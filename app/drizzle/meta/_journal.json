@@ -239,6 +239,13 @@
       "when": 1776988800003,
       "tag": "0033_v3_prompt_cache_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1776988800004,
+      "tag": "0034_knowledge_layer_tables",
+      "breakpoints": true
     }
   ]
 }

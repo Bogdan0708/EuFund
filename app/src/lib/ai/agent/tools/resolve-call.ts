@@ -35,14 +35,27 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<CallB
     if (lookup.cached && lookup.blueprint) {
       log.info({ callId: input.callId, source: 'cache', confidence: lookup.blueprint.structureConfidence }, 'Resolved from cache')
 
+      // Promote the cached blueprint's section list onto the session outline so
+      // the agent can advance to structuring. A cache hit without sections
+      // would otherwise pin the model in research with no tool to escape.
+      const cachedSections = (lookup.blueprint.normalized?.requiredSections ?? []) as SectionSpec[]
+      const transitions: StateTransition[] = [
+        { type: 'SET_SELECTED_CALL', callId: input.callId },
+        { type: 'SET_BLUEPRINT', blueprint: lookup.blueprint },
+      ]
+      if (cachedSections.length > 0) {
+        transitions.push(
+          { type: 'SET_OUTLINE', outline: cachedSections },
+          { type: 'SET_PHASE', phase: 'structuring' as const },
+        )
+      } else {
+        transitions.push({ type: 'SET_PHASE', phase: 'research' as const })
+      }
+
       return {
         success: true,
         data: lookup.blueprint,
-        stateTransitions: [
-          { type: 'SET_SELECTED_CALL', callId: input.callId },
-          { type: 'SET_BLUEPRINT', blueprint: lookup.blueprint },
-          { type: 'SET_PHASE', phase: 'research' as const },
-        ],
+        stateTransitions: transitions,
         checkpoint: { type: 'call_selected', payload: { callId: input.callId, source: 'cache' } },
         telemetry: { latencyMs: Date.now() - start },
       }
@@ -130,7 +143,7 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<CallB
       { type: 'SET_SELECTED_CALL', callId: input.callId },
       { type: 'SET_BLUEPRINT', blueprint },
       { type: 'SET_OUTLINE', outline: sections },
-      { type: 'SET_PHASE', phase: 'research' as const },
+      { type: 'SET_PHASE', phase: 'structuring' as const },
     ]
 
     return {
