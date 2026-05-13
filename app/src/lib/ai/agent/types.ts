@@ -287,6 +287,7 @@ export interface AgentRequest {
   requestId: string
   locale: 'ro' | 'en'
   stateVersion?: number
+  focusedSectionKey?: string
 }
 
 // ── SectionResult (canonical home) ──────────────────────────────
