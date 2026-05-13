@@ -9,6 +9,7 @@ import { db, withUserRLS } from '@/lib/db'
 import { agentSessions, agentSections } from '@/lib/db/schema'
 import { logAudit } from '@/lib/legal/audit'
 import { logger } from '@/lib/logger'
+import { metrics } from '@/lib/monitoring/metrics'
 import { ConcurrencyError, ValidationError, NotFoundError } from './errors'
 import { lookupBlueprint, outlineFromBlueprint } from './blueprint'
 import { searchCalls } from './evidence'
@@ -16,6 +17,13 @@ import type { ServiceContext } from './types'
 import type { AgentSession, CallBlueprint, SectionSpec } from '../types'
 
 const log = logger.child({ component: 'change-call-service' })
+
+function bucketizeSectionsDiscarded(n: number): string {
+  if (n === 0) return '0'
+  if (n <= 3) return '1-3'
+  if (n <= 10) return '4-10'
+  return '10+'
+}
 
 export interface ChangeCallInput {
   sessionId: string
@@ -148,6 +156,12 @@ export async function changeCall(
       .from(agentSessions)
       .where(eq(agentSessions.id, input.sessionId))
       .limit(1)
+
+    metrics.inc('change_call_total', {
+      from_blueprint: session.blueprint ? 'yes' : 'no',
+      to_blueprint: blueprintSource === 'cached' ? 'yes' : 'no',
+      sections_discarded_bucket: bucketizeSectionsDiscarded(sectionsDiscarded),
+    })
 
     await logAudit({
       userId: ctx.userId,
