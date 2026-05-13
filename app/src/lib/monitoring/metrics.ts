@@ -101,6 +101,7 @@ metrics.counter('ai_cache_reads_tokens_total', 'Router AI cache read tokens');
 metrics.counter('ai_cache_writes_tokens_total', 'Router AI cache write tokens');
 metrics.counter('ai_cache_disabled_total', 'Router AI cache disable reasons');
 metrics.counter('project_promotion_total', 'Session-to-project promotion outcomes');
+metrics.counter('policy_violation_total', 'Policy gate rejections from assertPolicy');
 
 function normalizePath(path: string): string {
   return path

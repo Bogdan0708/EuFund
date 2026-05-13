@@ -290,7 +290,7 @@ export async function saveSectionDraft(
   // 3. Enforce policy gates (Phase 3a defense-in-depth; managed runtime relies on this in 3b)
   assertPolicy(POLICY_MATRIX.saveSectionDraft, session as unknown as AgentSession, {
     sectionKey: input.sectionKey,
-  })
+  }, 'saveSectionDraft')
 
   const newStateVersion = session.stateVersion + 1
 
@@ -439,7 +439,7 @@ export async function approveSection(
 
   // Policy gates (outline frozen + section state allowlist).
   // Only runs for paths that will actually mutate.
-  assertPolicy(POLICY_MATRIX.approveSection, session as unknown as AgentSession, { sectionState: section.status })
+  assertPolicy(POLICY_MATRIX.approveSection, session as unknown as AgentSession, { sectionState: section.status }, 'approveSection')
 
   const newStateVersion = session.stateVersion + 1
 
@@ -509,7 +509,7 @@ export async function rollbackSection(
   }
 
   // 3. Enforce policy gates — outline must be frozen
-  assertPolicy(POLICY_MATRIX.rollbackSection, session as unknown as AgentSession)
+  assertPolicy(POLICY_MATRIX.rollbackSection, session as unknown as AgentSession, {}, 'rollbackSection')
 
   // Load the section
   const sectionRows = await db
@@ -670,7 +670,7 @@ export async function rejectSection(
   }
 
   // Policy gate — outline frozen + allowed section state
-  assertPolicy(POLICY_MATRIX.rejectSection, session as unknown as AgentSession, { sectionState: section.status })
+  assertPolicy(POLICY_MATRIX.rejectSection, session as unknown as AgentSession, { sectionState: section.status }, 'rejectSection')
 
   const newStateVersion = session.stateVersion + 1
 
@@ -753,7 +753,7 @@ export async function markSectionStale(
   }
 
   // Policy gate — requires outline frozen + allowed section state
-  assertPolicy(POLICY_MATRIX.markSectionStale, session as unknown as AgentSession, { sectionState: section.status })
+  assertPolicy(POLICY_MATRIX.markSectionStale, session as unknown as AgentSession, { sectionState: section.status }, 'markSectionStale')
 
   const newStateVersion = session.stateVersion + 1
 

@@ -433,7 +433,7 @@ export async function setApplicationStatus(
   }
 
   // Policy gate
-  assertPolicy(POLICY_MATRIX.setApplicationStatus, session as unknown as AgentSession)
+  assertPolicy(POLICY_MATRIX.setApplicationStatus, session as unknown as AgentSession, {}, 'setApplicationStatus')
 
   // Completed-specific gate: validate_application must pass
   if (input.status === 'completed') {
@@ -591,7 +591,7 @@ export async function setSelectedCall(
   }
 
   // 4. Policy gate — cannot reselect once outline is frozen
-  assertPolicy(POLICY_MATRIX.setSelectedCall, session as unknown as AgentSession)
+  assertPolicy(POLICY_MATRIX.setSelectedCall, session as unknown as AgentSession, {}, 'setSelectedCall')
 
   // 5. Mutate (atomic CAS: WHERE includes stateVersion guard)
   const newStateVersion = session.stateVersion + 1
@@ -656,7 +656,7 @@ export async function freezeOutline(
   }
 
   // 4. Policy gate
-  assertPolicy(POLICY_MATRIX.freezeOutline, session as unknown as AgentSession)
+  assertPolicy(POLICY_MATRIX.freezeOutline, session as unknown as AgentSession, {}, 'freezeOutline')
 
   // 5. Mutate: set outlineFrozen=true and advance phase to drafting
   // Atomic CAS: WHERE includes stateVersion guard to prevent double-freeze races.
