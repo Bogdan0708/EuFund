@@ -11,7 +11,6 @@ type RouteParams = { params: Promise<{ id: string }> }
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const user = await requireAuth()
   const { id: sessionId } = await params
-  const locale = (req.headers.get('x-locale') as 'ro' | 'en') ?? 'ro'
 
   let body: unknown
   try {
@@ -35,7 +34,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       sessionId,
     )
   } catch (err) {
-    return errorToResponse(err, locale)
+    return errorToResponse(err)
   }
 
   return NextResponse.json(snapshot)

@@ -26,7 +26,6 @@ type RouteParams = { params: Promise<{ id: string }> }
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const user = await requireAuth()
   const { id: sessionId } = await params
-  const locale = (req.headers.get('x-locale') as 'ro' | 'en') ?? 'ro'
 
   let body: unknown
   try {
@@ -75,7 +74,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       },
     )
   } catch (err) {
-    return errorToResponse(err, locale)
+    return errorToResponse(err)
   }
 
   // changeCall already returns the updated session — no need to re-read it.

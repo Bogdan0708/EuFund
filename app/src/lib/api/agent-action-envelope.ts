@@ -51,10 +51,7 @@ async function getMessage(
   }
 }
 
-export async function errorToResponse(
-  err: unknown,
-  locale: 'ro' | 'en',
-): Promise<NextResponse> {
+export async function errorToResponse(err: unknown): Promise<NextResponse> {
   if (err instanceof ValidationError) {
     const code = uiCodeFor(err.policyCode ?? err.code)
     return NextResponse.json(
