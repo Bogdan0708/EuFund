@@ -1404,7 +1404,13 @@
       "ELIGIBILITY_INPUTS_MISSING": "Datele pentru eligibilitate nu sunt disponibile.",
       "NOT_FOUND": "Resursă inexistentă.",
       "FORBIDDEN": "Acces interzis.",
-      "INTERNAL": "Eroare internă."
+      "INTERNAL": "Eroare internă.",
+      "NO_SECTION_TO_GENERATE": "Toate secțiunile sunt deja generate.",
+      "ELIGIBILITY_INPUT_REQUIRED": "Mai avem nevoie de câteva informații despre proiect.",
+      "ELIGIBILITY_FAILED": "Cererea nu trece de verificarea de eligibilitate.",
+      "GENERATION_INVALID": "Conținutul generat nu este valid. Reîncearcă.",
+      "GENERATION_TIMEOUT": "Timpul de generare a expirat. Reîncearcă.",
+      "PROVIDER_ERROR": "Eroare de furnizor AI. Reîncearcă."
     },
     "thinking": "Se gândește...",
     "waitingForResponse": "Se așteaptă răspunsul...",
@@ -1445,7 +1451,8 @@
     },
     "actions": {
       "freezeOutline": "Înghețează schița",
-      "export": "Exportă"
+      "export": "Exportă",
+      "generateNextSection": "Generează următoarea secțiune"
     }
   }
 }

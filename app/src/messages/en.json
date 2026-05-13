@@ -1404,7 +1404,13 @@
       "ELIGIBILITY_INPUTS_MISSING": "Eligibility inputs not available.",
       "NOT_FOUND": "Resource not found.",
       "FORBIDDEN": "Forbidden.",
-      "INTERNAL": "Internal error."
+      "INTERNAL": "Internal error.",
+      "NO_SECTION_TO_GENERATE": "All sections are already drafted.",
+      "ELIGIBILITY_INPUT_REQUIRED": "We need a bit more information about the project.",
+      "ELIGIBILITY_FAILED": "The application does not pass eligibility.",
+      "GENERATION_INVALID": "Generated content was invalid. Try again.",
+      "GENERATION_TIMEOUT": "Generation timed out. Try again.",
+      "PROVIDER_ERROR": "AI provider error. Try again."
     },
     "thinking": "Thinking...",
     "waitingForResponse": "Waiting for response...",
@@ -1445,7 +1451,8 @@
     },
     "actions": {
       "freezeOutline": "Freeze outline",
-      "export": "Export"
+      "export": "Export",
+      "generateNextSection": "Generate next section"
     }
   }
 }

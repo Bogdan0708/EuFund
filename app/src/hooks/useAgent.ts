@@ -387,6 +387,57 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     return snapshot
   }, [applyFinalState])
 
+  // Run the deterministic /sections/generate SSE endpoint. The route runs
+  // ensureDraftingReady (eligibility → freeze) BEFORE opening the stream,
+  // so 4xx responses are surfaced as thrown Errors before any deltas
+  // arrive. On the streaming path, deltas are observed but not yet wired
+  // into local section state — the `done` event carries the final
+  // UIStateSnapshot which `applyFinalState` writes atomically.
+  const generateSection = useCallback(async (
+    args: { sectionKey?: string; projectSummary?: string } = {},
+  ): Promise<UIStateSnapshot> => {
+    const sid = sessionIdRef.current
+    if (!sid) throw new Error('No session to generate against')
+
+    const res = await csrfFetch(`/api/v1/agent-sessions/${sid}/sections/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sectionKey: args.sectionKey ?? focusedSectionKeyRef.current ?? undefined,
+        projectSummary: args.projectSummary,
+        expectedStateVersion: stateVersionRef.current,
+      }),
+    })
+
+    if (!res.ok) {
+      let payload: { error?: { code?: string; messageRo?: string; messageEn?: string } } = {}
+      try { payload = await res.json() } catch { /* ignore */ }
+      const code = payload.error?.code ?? `HTTP_${res.status}`
+      const localized = locale === 'ro' ? payload.error?.messageRo : payload.error?.messageEn
+      throw new Error(localized || code)
+    }
+
+    const reader = res.body?.getReader()
+    if (!reader) throw new Error('No response body')
+
+    let finalSnapshot: UIStateSnapshot | null = null
+    for await (const { event, data } of parseSSEStream(reader)) {
+      if (event === 'done') {
+        finalSnapshot = data as UIStateSnapshot
+        applyFinalState(finalSnapshot)
+      } else if (event === 'error') {
+        const e = data as { code?: string; messageRo?: string; messageEn?: string }
+        const localized = locale === 'ro' ? e.messageRo : e.messageEn
+        throw new Error(localized || e.code || 'GENERATION_FAILED')
+      }
+      // `start` and `delta` events are observed but not yet wired into
+      // local section state — Task 9 / future work will add live append.
+    }
+
+    if (!finalSnapshot) throw new Error('Stream ended without done event')
+    return finalSnapshot
+  }, [applyFinalState, locale])
+
   // ── Public API ──────────────────────────────────────────────
 
   const sendMessage = useCallback((message: string) => {
@@ -445,6 +496,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     reconnect,
     adoptSession,
     runAction,
+    generateSection,
     setFocusedSectionKey,
   }
 }

@@ -28,11 +28,14 @@ interface Props {
   // PR 4: invoked when the user focuses a section card — used by chat
   // to scope `save_section_draft` to a single section in the trimmed mode.
   setFocusedSectionKey?: (key: string | null) => void
+  // PR 5: flag-gated Generate button — POSTs to /sections/generate SSE endpoint.
+  generateEnabled?: boolean
+  onGenerate?: () => Promise<void> | void
 }
 
 const PHASE_ORDER: Phase[] = ['discovery', 'research', 'structuring', 'drafting', 'review']
 
-export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnings, onAction, isBusy, outlineFrozen, actionsEnabled, runAction, setFocusedSectionKey }: Props) {
+export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnings, onAction, isBusy, outlineFrozen, actionsEnabled, runAction, setFocusedSectionKey, generateEnabled, onGenerate }: Props) {
   const t = useTranslations('agent')
   const currentIndex = PHASE_ORDER.indexOf(phase)
 
@@ -80,6 +83,16 @@ export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnin
           >
             {t('actions.export')}
           </button>
+          {generateEnabled && phase === 'drafting' && (
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => { onGenerate?.() }}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {t('actions.generateNextSection')}
+            </button>
+          )}
         </div>
       )}
 
