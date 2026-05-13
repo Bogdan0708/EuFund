@@ -1,17 +1,25 @@
 // ── Policy Matrix ────────────────────────────────────────────────────────
-// Declarative rules for every Phase 3 state-changing operation.
-//
-// This file is purely declarative. Procedural logic (idempotency checks,
-// validation-application preconditions, rejection-reason comparison, etc.)
-// lives in the service functions, not here. The matrix describes:
+// Declarative rules for every state-changing operation. This file is purely
+// declarative; procedural logic (idempotency checks, validation-application
+// preconditions, rejection-reason comparison, etc.) lives in service
+// functions, not here. The matrix describes:
 //   - which invariants must hold before the mutation
 //   - which error code is raised when a gate fails
 //   - which audit action string tags the event
 //
-// LEGACY AUDIT STRINGS: Some rules reuse the legacy V3 audit action
-// strings (e.g. `project.version_save`, `section.state_change`) on
-// purpose, to preserve hash-chain continuity across the V3 → managed
-// migration. Do not rename them without a coordinated audit migration.
+// LEGACY AUDIT STRINGS: Some rules reuse the legacy V3 audit action strings
+// (e.g. `project.version_save`, `section.state_change`) on purpose, to
+// preserve hash-chain continuity across the V3 → managed migration. Do not
+// rename them without a coordinated audit migration.
+//
+// ── Code-enforced invariants ────────────────────────────────────────────
+// 1. Outline-before-freeze: outlineFrozen === true ⇒
+//    outline !== null && outline.length >= 1.
+// 2. Outline-before-section: every agent_sections.sectionKey for a session
+//    matches some SectionSpec.id in agent_sessions.outline for that session.
+//    Enforced by saveSectionDraft policy.
+// 3. Phase-monotonic-frozen: once outlineFrozen === true, phase cannot
+//    regress below `drafting`. Already implicit; restated for clarity.
 
 import type { SectionStatus, SessionStatus } from '../types'
 
@@ -24,6 +32,8 @@ export interface PolicyRule {
   requiresCallSelected?: boolean
   requiresOutlineFrozen?: boolean
   forbidsOutlineFrozen?: boolean
+  requiresOutlinePresent?: boolean
+  requiresSectionKeyInOutline?: boolean
   requiresEligibility: EligibilityRequirement
   allowedSectionStates?: SectionStatus[]
   forbidIfSectionState?: SectionStatus[]
@@ -36,6 +46,8 @@ export interface PolicyErrorCodes {
   noCall?: string
   outlineFrozen?: string      // raised when forbidsOutlineFrozen is violated
   outlineNotFrozen?: string   // raised when requiresOutlineFrozen is violated
+  outlineMissing?: string
+  sectionNotInOutline?: string
   eligibility?: string
   sectionWrongState?: string
 }
@@ -58,6 +70,7 @@ export const POLICY_MATRIX = {
     requiresStateVersion: true,
     requiresSessionStatus: ['active'],
     requiresCallSelected: true,
+    requiresOutlinePresent: true,
     requiresEligibility: 'passed',
     forbidsOutlineFrozen: true,
     auditAction: 'session.outline_frozen',
@@ -66,6 +79,7 @@ export const POLICY_MATRIX = {
       noCall: 'POLICY_NO_CALL_SELECTED',
       eligibility: 'POLICY_ELIGIBILITY_NOT_PASSED',
       outlineFrozen: 'POLICY_OUTLINE_ALREADY_FROZEN',
+      outlineMissing: 'POLICY_OUTLINE_NOT_READY',
     },
   },
   saveSectionDraft: {
@@ -73,12 +87,16 @@ export const POLICY_MATRIX = {
     requiresStateVersion: true,
     requiresSessionStatus: ['active'],
     requiresOutlineFrozen: true,
+    requiresOutlinePresent: true,
+    requiresSectionKeyInOutline: true,
     requiresEligibility: 'passed',
     auditAction: 'project.version_save',
     errorCodes: {
       sessionStatus: 'POLICY_SESSION_NOT_ACTIVE',
       outlineNotFrozen: 'POLICY_OUTLINE_NOT_FROZEN',
       eligibility: 'POLICY_ELIGIBILITY_NOT_PASSED',
+      outlineMissing: 'POLICY_OUTLINE_NOT_READY',
+      sectionNotInOutline: 'POLICY_SECTION_NOT_IN_OUTLINE',
     },
   },
   approveSection: {
