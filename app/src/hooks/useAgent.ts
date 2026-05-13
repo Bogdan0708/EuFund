@@ -404,12 +404,15 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
         ...body,
       })
       if (name === 'export') {
-        const bundle = result as { downloadUrl?: string }
-        if (bundle && typeof bundle.downloadUrl === 'string' && bundle.downloadUrl.length > 0) {
-          if (typeof window !== 'undefined') {
-            window.open(bundle.downloadUrl, '_blank', 'noopener')
-          }
-        }
+        // Export returns ExportSnapshot { snapshotId, format, downloadUrl,
+        // expiresAt }. The downloadUrl is a placeholder until a real
+        // file backend (GCS/S3) is wired — see comment in
+        // `lib/ai/agent/services/application.ts` around createExportSnapshot.
+        // Auto-opening it lands the user on a 404, which is worse than
+        // doing nothing. Just record the action; an in-app downloader
+        // is a separate follow-up.
+        // (Intentionally do not applyFinalState — the response shape
+        // is not a UIStateSnapshot.)
       } else {
         applyFinalState(result as UIStateSnapshot)
       }
