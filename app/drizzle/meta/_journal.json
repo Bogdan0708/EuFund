@@ -253,6 +253,13 @@
       "when": 1776988800005,
       "tag": "0035_prompt_cache_rollout_step_1",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1778803200000,
+      "tag": "0036_preselect_no_auto_send_flag",
+      "breakpoints": true
     }
   ]
 }
