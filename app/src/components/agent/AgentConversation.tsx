@@ -53,7 +53,7 @@ export function AgentConversation({ messages, status, error, initialInput, onSen
           </div>
         )}
         {messages.map(msg => (
-          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div key={msg.id} data-testid="agent-message" className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
               msg.role === 'user'
                 ? 'bg-blue-600 text-white'
