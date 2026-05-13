@@ -14,6 +14,7 @@ interface NewProjectViewProps {
   locale: 'ro' | 'en'
   initialSessionId?: string
   preselectEnabled: boolean
+  noAutoSend: boolean
 }
 
 const HERO_QUERY_KEY = 'fondeu:hero-query'
@@ -48,9 +49,11 @@ export function NewProjectView({
   locale,
   initialSessionId,
   preselectEnabled,
+  noAutoSend,
 }: NewProjectViewProps) {
   const tPre = useTranslations('preselect')
   const tPage = useTranslations('projects')
+  const tAgent = useTranslations('agent')
   const agent = useAgent(locale, initialSessionId)
   const [state, setState] = useState<PreselectState>({ kind: 'idle' })
   // Pre-fill from /panou's hero search via sessionStorage (not URL params —
@@ -122,9 +125,11 @@ export function NewProjectView({
         callTitle: result.candidates[0]?.title ?? result.selectedCallId,
         description,
       })
-      await agent.sendMessage(description)
+      if (!noAutoSend) {
+        await agent.sendMessage(description)
+      }
     },
-    [preselectEnabled, initialSessionId, locale, agent, state.kind, tPre],
+    [preselectEnabled, initialSessionId, locale, agent, state.kind, tPre, noAutoSend],
   )
 
   // Read the hero query out of sessionStorage exactly once on mount.
@@ -207,10 +212,12 @@ export function NewProjectView({
           callTitle: result.candidates[0]?.title ?? result.selectedCallId,
           description,
         })
-        await agent.sendMessage(description)
+        if (!noAutoSend) {
+          await agent.sendMessage(description)
+        }
       }
     },
-    [state, locale, agent, tPre],
+    [state, locale, agent, tPre, noAutoSend],
   )
 
   const handleChangeRequested = useCallback(async () => {
@@ -339,6 +346,11 @@ export function NewProjectView({
             error={agent.error}
             initialInput={initialInput}
             onSendMessage={handleSendMessage}
+            welcomeMessage={
+              noAutoSend && state.kind === 'selected' && agent.messages.length === 0
+                ? tAgent('welcomeAfterPreselect')
+                : undefined
+            }
           />
         </div>
         <div className="w-2/5 bg-gray-50">

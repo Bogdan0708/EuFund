@@ -1386,9 +1386,14 @@
       "INTERNAL": "{tool} encountered an internal error.",
       "GENERIC": "{tool} failed."
     },
+    "errors": {
+      "POLICY_OUTLINE_NOT_READY": "Outline isn't ready yet. Try again in a moment.",
+      "POLICY_SECTION_NOT_IN_OUTLINE": "The selected section isn't part of this outline."
+    },
     "thinking": "Thinking...",
     "waitingForResponse": "Waiting for response...",
     "inputPlaceholder": "Describe your project or ask a question...",
+    "welcomeAfterPreselect": "I've selected the call. Ask me anything about the application, or continue from the workspace panel.",
     "send": "Send",
     "applicationStatus": "Application Status",
     "sectionsLabel": "Sections",

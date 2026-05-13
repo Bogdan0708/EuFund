@@ -1386,9 +1386,14 @@
       "INTERNAL": "{tool} a întâmpinat o eroare internă.",
       "GENERIC": "{tool} a eșuat."
     },
+    "errors": {
+      "POLICY_OUTLINE_NOT_READY": "Schița apelului încă nu este pregătită. Reîncearcă într-o clipă.",
+      "POLICY_SECTION_NOT_IN_OUTLINE": "Secțiunea selectată nu face parte din schiță."
+    },
     "thinking": "Se gândește...",
     "waitingForResponse": "Se așteaptă răspunsul...",
     "inputPlaceholder": "Descrie proiectul tău sau pune o întrebare...",
+    "welcomeAfterPreselect": "Am selectat apelul. Scrie-mi întrebări despre cerere sau continuă din panoul de lucru.",
     "send": "Trimite",
     "applicationStatus": "Stare aplicație",
     "sectionsLabel": "Secțiuni",

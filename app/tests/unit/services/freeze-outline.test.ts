@@ -10,6 +10,10 @@ vi.mock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }))
 
 const eligiblePassing = { results: [], score: 100, passCount: 5, failCount: 0, warningCount: 2 }
 
+const STUB_OUTLINE = [
+  { id: 'context', title: 'Context', description: '', order: 1, generationOrder: 1, importance: 'standard', expectedLength: 'medium', dependsOn: [], modelHint: 'light' },
+]
+
 function mockSessionSelect(overrides: any) {
   const session = {
     id: '11111111-1111-4111-8111-111111111111',
@@ -18,6 +22,7 @@ function mockSessionSelect(overrides: any) {
     stateVersion: 0,
     selectedCallId: 'CALL-42',
     outlineFrozen: false,
+    outline: STUB_OUTLINE,
     eligibility: eligiblePassing,
     currentPhase: 'research' as const,
     ...overrides,

@@ -15,7 +15,7 @@ export function SelectedCallBanner({
 }: SelectedCallBannerProps) {
   const t = useTranslations('preselect.banner')
   return (
-    <div className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-4 py-2 text-sm">
+    <div data-testid="selected-call-banner" className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-4 py-2 text-sm">
       <div>
         <span className="font-medium text-gray-500">{t('label')}:</span>{' '}
         <span className="font-semibold text-gray-900">{callTitle}</span>
