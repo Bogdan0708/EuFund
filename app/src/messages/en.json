@@ -1452,7 +1452,8 @@
     "actions": {
       "freezeOutline": "Freeze outline",
       "export": "Export",
-      "generateNextSection": "Generate next section"
+      "generateNextSection": "Generate next section",
+      "generateNextSectionHint": "The app will check eligibility, freeze the outline if needed, then generate the section in one click."
     }
   }
 }

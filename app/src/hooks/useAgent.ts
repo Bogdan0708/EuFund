@@ -373,18 +373,36 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   // returned UIStateSnapshot into local state via applyFinalState.
   // Automatically passes the current stateVersion as expectedStateVersion
   // unless caller overrides it in `body`.
+  //
+  // UX contract: clear prior error on entry; surface error + status='error'
+  // on throw so AgentWorkspace's `disabled={isBusy}` + error banner light
+  // up. Callers that `.catch(() => {})` rely on this state, not on
+  // returned values.
   const runAction = useCallback(async (
     name: string,
     body: Record<string, unknown> = {},
   ): Promise<UIStateSnapshot> => {
     const sid = sessionIdRef.current
-    if (!sid) throw new Error('No session to act on')
-    const snapshot = await callAction<UIStateSnapshot>(sid, name, {
-      expectedStateVersion: stateVersionRef.current,
-      ...body,
-    })
-    applyFinalState(snapshot)
-    return snapshot
+    if (!sid) {
+      const msg = 'No session to act on'
+      setStatus('error')
+      setError(msg)
+      throw new Error(msg)
+    }
+    setError(null)
+    try {
+      const snapshot = await callAction<UIStateSnapshot>(sid, name, {
+        expectedStateVersion: stateVersionRef.current,
+        ...body,
+      })
+      applyFinalState(snapshot)
+      return snapshot
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Action failed'
+      setStatus('error')
+      setError(msg)
+      throw err
+    }
   }, [applyFinalState])
 
   // Run the deterministic /sections/generate SSE endpoint. The route runs
@@ -393,49 +411,70 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   // arrive. On the streaming path, deltas are observed but not yet wired
   // into local section state — the `done` event carries the final
   // UIStateSnapshot which `applyFinalState` writes atomically.
+  //
+  // UX contract: set status=streaming on entry so the workspace buttons
+  // disable (isBusy=true), clear any prior error, restore status=idle on
+  // success, surface error string + status=error on failure. The Generate
+  // button's `disabled` binding reads this state.
   const generateSection = useCallback(async (
     args: { sectionKey?: string; projectSummary?: string } = {},
   ): Promise<UIStateSnapshot> => {
     const sid = sessionIdRef.current
-    if (!sid) throw new Error('No session to generate against')
-
-    const res = await csrfFetch(`/api/v1/agent-sessions/${sid}/sections/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sectionKey: args.sectionKey ?? focusedSectionKeyRef.current ?? undefined,
-        projectSummary: args.projectSummary,
-        expectedStateVersion: stateVersionRef.current,
-      }),
-    })
-
-    if (!res.ok) {
-      let payload: { error?: { code?: string; messageRo?: string; messageEn?: string } } = {}
-      try { payload = await res.json() } catch { /* ignore */ }
-      const code = payload.error?.code ?? `HTTP_${res.status}`
-      const localized = locale === 'ro' ? payload.error?.messageRo : payload.error?.messageEn
-      throw new Error(localized || code)
+    if (!sid) {
+      const msg = 'No session to generate against'
+      setStatus('error')
+      setError(msg)
+      throw new Error(msg)
     }
 
-    const reader = res.body?.getReader()
-    if (!reader) throw new Error('No response body')
+    setStatus('streaming')
+    setError(null)
 
-    let finalSnapshot: UIStateSnapshot | null = null
-    for await (const { event, data } of parseSSEStream(reader)) {
-      if (event === 'done') {
-        finalSnapshot = data as UIStateSnapshot
-        applyFinalState(finalSnapshot)
-      } else if (event === 'error') {
-        const e = data as { code?: string; messageRo?: string; messageEn?: string }
-        const localized = locale === 'ro' ? e.messageRo : e.messageEn
-        throw new Error(localized || e.code || 'GENERATION_FAILED')
+    try {
+      const res = await csrfFetch(`/api/v1/agent-sessions/${sid}/sections/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sectionKey: args.sectionKey ?? focusedSectionKeyRef.current ?? undefined,
+          projectSummary: args.projectSummary,
+          expectedStateVersion: stateVersionRef.current,
+        }),
+      })
+
+      if (!res.ok) {
+        let payload: { error?: { code?: string; messageRo?: string; messageEn?: string } } = {}
+        try { payload = await res.json() } catch { /* ignore */ }
+        const code = payload.error?.code ?? `HTTP_${res.status}`
+        const localized = locale === 'ro' ? payload.error?.messageRo : payload.error?.messageEn
+        throw new Error(localized || code)
       }
-      // `start` and `delta` events are observed but not yet wired into
-      // local section state — Task 9 / future work will add live append.
-    }
 
-    if (!finalSnapshot) throw new Error('Stream ended without done event')
-    return finalSnapshot
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response body')
+
+      let finalSnapshot: UIStateSnapshot | null = null
+      for await (const { event, data } of parseSSEStream(reader)) {
+        if (event === 'done') {
+          finalSnapshot = data as UIStateSnapshot
+          applyFinalState(finalSnapshot)
+        } else if (event === 'error') {
+          const e = data as { code?: string; messageRo?: string; messageEn?: string }
+          const localized = locale === 'ro' ? e.messageRo : e.messageEn
+          throw new Error(localized || e.code || 'GENERATION_FAILED')
+        }
+        // `start` and `delta` events are observed but not yet wired into
+        // local section state — Task 9 / future work will add live append.
+      }
+
+      if (!finalSnapshot) throw new Error('Stream ended without done event')
+      setStatus('idle')
+      return finalSnapshot
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Generation failed'
+      setStatus('error')
+      setError(msg)
+      throw err
+    }
   }, [applyFinalState, locale])
 
   // ── Public API ──────────────────────────────────────────────

@@ -83,12 +83,13 @@ export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnin
           >
             {t('actions.export')}
           </button>
-          {generateEnabled && phase === 'drafting' && (
+          {generateEnabled && (phase === 'research' || phase === 'structuring' || phase === 'drafting') && (
             <button
               type="button"
               disabled={isBusy}
               onClick={() => { onGenerate?.() }}
               className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={t('actions.generateNextSectionHint')}
             >
               {t('actions.generateNextSection')}
             </button>

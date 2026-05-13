@@ -22,6 +22,8 @@ import { projectSessionState } from '@/lib/ai/agent/state-projection'
 import { GenerationInvalidError, ConcurrencyError } from '@/lib/ai/agent/services/errors'
 import { trackGenerateSectionTotal, trackGenerateSectionLatency } from '@/lib/monitoring/metrics'
 import { logger } from '@/lib/logger'
+import { isFeatureEnabled } from '@/lib/feature-flags'
+import { enforceRateLimit } from '@/lib/middleware/rate-limit'
 import type { AgentSession, AgentSection } from '@/lib/ai/agent/types'
 import type { ServiceContext } from '@/lib/ai/agent/services/types'
 
@@ -101,6 +103,38 @@ function sagaErrorEnvelope(
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const start = Date.now()
   const user = await requireAuth()
+
+  // Kill-switch gate. `bypassCache: true` per CLAUDE.md — a 60s LRU cache
+  // would otherwise delay an emergency disable during a flag flip.
+  const flagOn = await isFeatureEnabled('generate_section_endpoint_enabled', {
+    userId: user.id,
+    bypassCache: true,
+  })
+  if (!flagOn) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'GENERATE_SECTION_DISABLED',
+          messageRo: 'Generarea automată de secțiuni nu este activă.',
+          messageEn: 'Section generation is not enabled.',
+        },
+      },
+      { status: 404 },
+    )
+  }
+
+  // Rate-limit per user. Generation is the most expensive call in the
+  // product (Opus on heavy, ~4k output tokens + ~10k input). Cap by user
+  // to prevent a single tab in a loop from draining the Anthropic budget.
+  const rl = await enforceRateLimit(req, {
+    keyPrefix: 'generate-section',
+    keySuffix: user.id,
+    maxRequests: 20,
+    windowMs: 60 * 60 * 1000,
+    failOpenOnError: false,
+  })
+  if (!rl.ok) return rl.response
+
   const { id: sessionId } = await params
 
   let body: unknown

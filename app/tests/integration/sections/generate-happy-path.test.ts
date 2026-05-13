@@ -13,6 +13,12 @@ vi.mock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }))
 vi.mock('@/lib/logger', () => ({
   logger: { child: vi.fn(() => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() })) },
 }))
+vi.mock('@/lib/feature-flags', () => ({
+  isFeatureEnabled: vi.fn().mockResolvedValue(true),
+}))
+vi.mock('@/lib/middleware/rate-limit', () => ({
+  enforceRateLimit: vi.fn().mockResolvedValue({ ok: true, headers: {} }),
+}))
 
 const mockSession = {
   id: 's1',

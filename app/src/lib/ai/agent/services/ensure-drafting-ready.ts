@@ -9,7 +9,7 @@
 
 import type { AgentSection, AgentSession, SectionSpec } from '../types'
 import type { ServiceContext } from './types'
-import { ValidationError } from './errors'
+import { ValidationError, ConcurrencyError } from './errors'
 import { runEligibilityForSession, freezeOutline } from './application'
 
 export type EnsureReadyResult =
@@ -31,6 +31,16 @@ export async function ensureDraftingReady(
   rows: AgentSection[],
   ctx: ServiceContext,
 ): Promise<EnsureReadyResult> {
+  // Step 0: preflight CAS — refuse stale clients BEFORE running any
+  // service write or model call. The inner services (eligibility, freeze,
+  // save) each enforce their own CAS, but if eligibility was already
+  // populated and outline already frozen, none of them runs and a stale
+  // expectedStateVersion would only surface at saveSectionDraft time —
+  // after the model already streamed. This avoids that wasted call.
+  if (session.stateVersion !== args.expectedStateVersion) {
+    throw new ConcurrencyError(args.expectedStateVersion, session.stateVersion)
+  }
+
   // Step 1: outline must be present
   if (!session.outline || session.outline.length === 0) {
     return { ok: false, code: 'OUTLINE_NOT_READY' }
