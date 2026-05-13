@@ -30,7 +30,10 @@ const log = logger.child({ component: 'api-sections-generate' })
 
 type RouteParams = { params: Promise<{ id: string }> }
 
-async function loadSessionAndRows(sessionId: string, userId: string) {
+async function loadSessionAndRows(
+  sessionId: string,
+  userId: string,
+): Promise<{ session: AgentSession | null; rows: AgentSection[] }> {
   const [session] = await db
     .select()
     .from(agentSessions)
@@ -39,7 +42,10 @@ async function loadSessionAndRows(sessionId: string, userId: string) {
   const rows = session
     ? await db.select().from(agentSections).where(eq(agentSections.sessionId, sessionId))
     : []
-  return { session, rows }
+  return {
+    session: (session ?? null) as AgentSession | null,
+    rows: rows as AgentSection[],
+  }
 }
 
 function sseLine(event: string, data: unknown): Uint8Array {
@@ -92,6 +98,7 @@ function sagaErrorEnvelope(
 }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- used by TODO(PR5-Task6) trackGenerateSectionLatency
   const start = Date.now()
   const user = await requireAuth()
   const { id: sessionId } = await params
@@ -156,13 +163,13 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   let ready: Awaited<ReturnType<typeof ensureDraftingReady>>
   try {
     ready = await ensureDraftingReady(
-      initial.session as AgentSession,
+      initial.session,
       {
         expectedStateVersion: parsed.data.expectedStateVersion,
         sectionKey: parsed.data.sectionKey,
         projectSummary: parsed.data.projectSummary,
       },
-      initial.rows as AgentSection[],
+      initial.rows,
       svcCtx,
     )
   } catch (err) {
@@ -232,6 +239,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   // `ready` is narrowed to `{ ok: true; sectionSpec: SectionSpec; stateVersion: number }`
   // Capture in a const so closures see the narrowed type.
   const readyOk = ready
+  // Destructure after null guard so the stream closure captures narrowed (non-null) types.
+  const postSession = post.session
+  const postRows = post.rows
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -242,9 +252,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
         let full = ''
         for await (const d of streamSectionGeneration(svcCtx, {
-          session: post.session as AgentSession,
+          session: postSession,
           spec: readyOk.sectionSpec,
-          priorSections: post.rows as AgentSection[],
+          priorSections: postRows,
         })) {
           if (d.type === 'delta') {
             full += d.content
@@ -277,7 +287,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         }
 
         controller.enqueue(
-          sseLine('done', projectSessionState(final.session as AgentSession, final.rows as AgentSection[])),
+          sseLine('done', projectSessionState(final.session, final.rows)),
         )
         // TODO(PR5-Task6): trackGenerateSectionTotal({ outcome: 'success' })
       } catch (err) {
@@ -304,8 +314,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         // TODO(PR5-Task6): trackGenerateSectionTotal({ outcome: 'failure', reason: code })
       } finally {
         // TODO(PR5-Task6): trackGenerateSectionLatency((Date.now() - start) / 1000)
-        // `start` is referenced here so the linter sees it used while Task 6 lands.
-        void start
         controller.close()
       }
     },
