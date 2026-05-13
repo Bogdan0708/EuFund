@@ -67,8 +67,10 @@ describe('MANAGED_TOOLS', () => {
   })
 
   it('write tool descriptions include the confirmation rule', () => {
+    // PR 4: save_section_draft is a chat-scoped write (model never picks
+    // the section) and no longer carries the user-confirmation phrase.
     const writeNames = [
-      'save_section_draft', 'approve_revision', 'rollback_section',
+      'approve_revision', 'rollback_section',
       'set_application_status', 'set_selected_call', 'freeze_outline',
       'mark_section_stale', 'reject_section',
     ]

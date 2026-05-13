@@ -59,6 +59,9 @@ export function translateAnthropicEvent(
           'INTERNAL:',
           'GENERIC:',
           'PARALLEL_WRITE_BLOCKED:',
+          'NO_SECTION_FOCUSED:',
+          'INVALID_FOCUSED_SECTION:',
+          'EXPECTED_STATE_VERSION_MISSING:',
         ]
 
         for (const prefix of RAW_ERROR_PREFIXES) {

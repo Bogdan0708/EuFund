@@ -367,6 +367,7 @@ export function NewProjectView({
             outlineFrozen={agent.outlineFrozen}
             actionsEnabled={actionsEnabled}
             runAction={agent.runAction}
+            setFocusedSectionKey={agent.setFocusedSectionKey}
           />
         </div>
       </div>

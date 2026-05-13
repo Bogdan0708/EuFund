@@ -84,6 +84,18 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   const sessionIdRef = useRef<string | null>(null)
   sessionIdRef.current = sessionId
 
+  // PR 4: focused section id from the UI. Mirrored to a ref so sendRequest
+  // can observe synchronous updates from click handlers without waiting for
+  // the next render cycle, same pattern as sessionIdRef.
+  const [focusedSectionKey, setFocusedSectionKeyState] = useState<string | null>(null)
+  const focusedSectionKeyRef = useRef<string | null>(null)
+  focusedSectionKeyRef.current = focusedSectionKey
+
+  const setFocusedSectionKey = useCallback((key: string | null) => {
+    focusedSectionKeyRef.current = key
+    setFocusedSectionKeyState(key)
+  }, [])
+
   // ── Event handler ──────────────────────────────────────────
 
   const applyFinalState = useCallback((state: UIStateSnapshot) => {
@@ -223,6 +235,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
       requestId: `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       locale,
       stateVersion: stateVersionRef.current,
+      focusedSectionKey: focusedSectionKeyRef.current ?? undefined,
     }
 
     // Add user message to UI immediately
@@ -485,11 +498,13 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     sections,
     blueprint,
     eligibility,
+    focusedSectionKey,
     // Actions
     sendMessage,
     sendAction,
     reconnect,
     adoptSession,
     runAction,
+    setFocusedSectionKey,
   }
 }

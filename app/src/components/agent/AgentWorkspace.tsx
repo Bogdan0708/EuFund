@@ -25,11 +25,14 @@ interface Props {
   outlineFrozen: boolean
   actionsEnabled: boolean
   runAction: (name: string, body?: Record<string, unknown>) => Promise<unknown>
+  // PR 4: invoked when the user focuses a section card — used by chat
+  // to scope `save_section_draft` to a single section in the trimmed mode.
+  setFocusedSectionKey?: (key: string | null) => void
 }
 
 const PHASE_ORDER: Phase[] = ['discovery', 'research', 'structuring', 'drafting', 'review']
 
-export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnings, onAction, isBusy, outlineFrozen, actionsEnabled, runAction }: Props) {
+export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnings, onAction, isBusy, outlineFrozen, actionsEnabled, runAction, setFocusedSectionKey }: Props) {
   const t = useTranslations('agent')
   const currentIndex = PHASE_ORDER.indexOf(phase)
   const runWorkspaceAction = (name: string, body: Record<string, unknown> = {}) => {
@@ -108,13 +111,20 @@ export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnin
             {sections
               .sort((a, b) => a.documentOrder - b.documentOrder)
               .map(section => (
-                <SectionCard
+                <div
                   key={section.sectionKey}
-                  section={section}
-                  onAccept={() => onAction({ type: 'accept_section', sectionKey: section.sectionKey })}
-                  onReject={() => onAction({ type: 'reject_section', sectionKey: section.sectionKey, reason: 'Needs revision' })}
-                  disabled={isBusy}
-                />
+                  onClick={() => setFocusedSectionKey?.(section.sectionKey)}
+                  onFocusCapture={() => setFocusedSectionKey?.(section.sectionKey)}
+                  // Wrapper is interactive only to set focus; SectionCard
+                  // owns its own buttons (accept/reject) which still fire.
+                >
+                  <SectionCard
+                    section={section}
+                    onAccept={() => onAction({ type: 'accept_section', sectionKey: section.sectionKey })}
+                    onReject={() => onAction({ type: 'reject_section', sectionKey: section.sectionKey, reason: 'Needs revision' })}
+                    disabled={isBusy}
+                  />
+                </div>
               ))}
           </div>
         )}

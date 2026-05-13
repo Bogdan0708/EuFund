@@ -50,6 +50,7 @@ function AsistentAIInner({ locale }: { locale: string }) {
             outlineFrozen={agent.outlineFrozen}
             actionsEnabled={false}
             runAction={agent.runAction}
+            setFocusedSectionKey={agent.setFocusedSectionKey}
           />
         </div>
       </div>

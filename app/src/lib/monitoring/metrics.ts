@@ -103,6 +103,7 @@ metrics.counter('ai_cache_disabled_total', 'Router AI cache disable reasons');
 metrics.counter('project_promotion_total', 'Session-to-project promotion outcomes');
 metrics.counter('policy_violation_total', 'Policy gate rejections from assertPolicy');
 metrics.counter('change_call_total', 'Number of change-call operations');
+metrics.counter('iteration_cap_hit_total', 'Total agent turns that hit the tool-loop iteration cap');
 
 function normalizePath(path: string): string {
   return path
@@ -153,4 +154,8 @@ export function trackProjectPromotion(
     | 'failed',
 ): void {
   metrics.inc('project_promotion_total', { outcome });
+}
+
+export function trackIterationCapHit(runtime: 'v3' | 'managed'): void {
+  metrics.inc('iteration_cap_hit_total', { runtime });
 }
