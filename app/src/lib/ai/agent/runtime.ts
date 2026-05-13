@@ -337,7 +337,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       },
     }))
 
-    const MAX_TOOL_ITERATIONS = chatToolsTrimmed ? 3 : 5
+    const MAX_TOOL_ITERATIONS = chatToolsTrimmed ? 5 : 5
     let iteration = 0
 
     while (iteration < MAX_TOOL_ITERATIONS) {

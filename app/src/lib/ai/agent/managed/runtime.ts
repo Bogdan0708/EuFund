@@ -240,7 +240,10 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     userId: serviceCtx.userId,
     bypassCache: true,
   })
-  const MAX_ITER = chatToolsTrimmed ? 3 : ITERATION_CAP
+  // PR 4 live-test: 3 iterations was too tight in practice — even simple
+  // questions need ~3-4 read calls (get_application_state + list_sections +
+  // get_section). Bumped to 5 to keep cost pressure but unblock real chat.
+  const MAX_ITER = chatToolsTrimmed ? 5 : ITERATION_CAP
 
   // Extend the route-supplied serviceCtx with managed-runtime-only context
   // the executor needs for the trimmed save_section_draft tool: which
