@@ -288,7 +288,9 @@ export async function saveSectionDraft(
   }
 
   // 3. Enforce policy gates (Phase 3a defense-in-depth; managed runtime relies on this in 3b)
-  assertPolicy(POLICY_MATRIX.saveSectionDraft, session as unknown as AgentSession)
+  assertPolicy(POLICY_MATRIX.saveSectionDraft, session as unknown as AgentSession, {
+    sectionKey: input.sectionKey,
+  })
 
   const newStateVersion = session.stateVersion + 1
 
