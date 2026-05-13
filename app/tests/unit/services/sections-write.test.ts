@@ -51,6 +51,10 @@ const baseCtx: ServiceContext = {
   now: new Date('2026-04-09T10:00:00Z'),
 }
 
+const OUTLINE_WITH_CONTEXT = [
+  { id: 'context', title: 'Context', description: '', order: 1, generationOrder: 1, importance: 'standard', expectedLength: 'medium', dependsOn: [], modelHint: 'light' },
+]
+
 function makeSessionRow(overrides: Record<string, unknown> = {}) {
   return {
     id: SESSION_ID,
@@ -59,6 +63,7 @@ function makeSessionRow(overrides: Record<string, unknown> = {}) {
     stateVersion: 5,
     selectedCallId: 'call-1',
     outlineFrozen: true,
+    outline: OUTLINE_WITH_CONTEXT,
     eligibility: { results: [], score: 100, passCount: 1, failCount: 0, warningCount: 0 },
     updatedAt: new Date(),
     ...overrides,
