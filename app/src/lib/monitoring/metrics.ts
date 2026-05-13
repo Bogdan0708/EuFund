@@ -104,6 +104,8 @@ metrics.counter('project_promotion_total', 'Session-to-project promotion outcome
 metrics.counter('policy_violation_total', 'Policy gate rejections from assertPolicy');
 metrics.counter('change_call_total', 'Number of change-call operations');
 metrics.counter('iteration_cap_hit_total', 'Total agent turns that hit the tool-loop iteration cap');
+metrics.counter('generate_section_total', 'Outcomes of /sections/generate requests');
+metrics.histogram('generate_section_latency_seconds', 'Wall-clock latency of /sections/generate end-to-end', [0.5, 1, 2, 5, 10, 20, 30, 60]);
 
 function normalizePath(path: string): string {
   return path
@@ -158,4 +160,19 @@ export function trackProjectPromotion(
 
 export function trackIterationCapHit(runtime: 'v3' | 'managed'): void {
   metrics.inc('iteration_cap_hit_total', { runtime });
+}
+
+type GenerateSectionOutcome = 'success' | 'failure' | 'precondition'
+
+export function trackGenerateSectionTotal(args: {
+  outcome: GenerateSectionOutcome
+  reason?: string
+}): void {
+  const labels: Record<string, string> = { outcome: args.outcome }
+  if (args.reason) labels.reason = args.reason
+  metrics.inc('generate_section_total', labels)
+}
+
+export function trackGenerateSectionLatency(seconds: number): void {
+  metrics.observe('generate_section_latency_seconds', {}, seconds)
 }

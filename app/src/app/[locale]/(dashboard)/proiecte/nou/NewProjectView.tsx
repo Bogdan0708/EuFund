@@ -16,6 +16,7 @@ interface NewProjectViewProps {
   preselectEnabled: boolean
   noAutoSend: boolean
   actionsEnabled: boolean
+  generateEnabled: boolean
 }
 
 const HERO_QUERY_KEY = 'fondeu:hero-query'
@@ -52,6 +53,7 @@ export function NewProjectView({
   preselectEnabled,
   noAutoSend,
   actionsEnabled,
+  generateEnabled,
 }: NewProjectViewProps) {
   const tPre = useTranslations('preselect')
   const tPage = useTranslations('projects')
@@ -284,6 +286,15 @@ export function NewProjectView({
     setState({ kind: 'idle' })
   }, [])
 
+  const onGenerate = useCallback(async () => {
+    try {
+      await agent.generateSection({})
+    } catch (err) {
+      // Error surfaces via agent.error / status
+      void err
+    }
+  }, [agent])
+
   // Map server error codes to localized messages via the preselect.errors.* namespace.
   const errorMessage = (code: string, fallback: string): string => {
     try {
@@ -368,6 +379,8 @@ export function NewProjectView({
             actionsEnabled={actionsEnabled}
             runAction={agent.runAction}
             setFocusedSectionKey={agent.setFocusedSectionKey}
+            generateEnabled={generateEnabled}
+            onGenerate={onGenerate}
           />
         </div>
       </div>

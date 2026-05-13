@@ -313,15 +313,26 @@ export async function saveSectionDraft(
         .set({ content: input.content, status: 'draft', updatedAt: new Date() })
         .where(eq(agentSections.id, sectionId))
     } else {
-      // Create new section with minimal required fields
+      // Create new section. Pull title/order from the session outline spec
+      // so the UI does not render the section key as the title or lose
+      // document order. State-projection prefers row metadata over spec
+      // metadata once a row exists, so a one-time correct seed matters.
+      const outline = (session.outline ?? []) as Array<{
+        id: string
+        title?: string
+        order?: number
+        generationOrder?: number
+      }>
+      const spec = outline.find((s) => s.id === input.sectionKey)
       const inserted = await tx
         .insert(agentSections)
         .values({
           sessionId: input.sessionId,
           sectionKey: input.sectionKey,
-          title: input.sectionKey,
-          documentOrder: 0,
-          generationOrder: 0,
+          title: spec?.title ?? input.sectionKey,
+          documentOrder: typeof spec?.order === 'number' ? spec.order : 0,
+          generationOrder:
+            typeof spec?.generationOrder === 'number' ? spec.generationOrder : 0,
           status: 'draft',
           content: input.content,
         })

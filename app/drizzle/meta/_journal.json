@@ -274,6 +274,13 @@
       "when": 1778803200002,
       "tag": "0038_chat_tools_trimmed_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1778803200003,
+      "tag": "0039_generate_section_endpoint_flag",
+      "breakpoints": true
     }
   ]
 }

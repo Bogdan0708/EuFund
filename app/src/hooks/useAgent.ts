@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import { csrfFetch } from '@/lib/csrf/client'
 import { formatToolError } from '@/lib/ai/agent/format-tool-error'
 import { callAction } from '@/lib/agent-actions/client'
+import { parseSSEStream } from '@/lib/sse/parse'
 import type {
   AgentEvent, AgentRequest, StructuredAction, UIStateSnapshot,
   Phase, Warning, SectionStatus,
@@ -262,29 +263,14 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
       const reader = response.body?.getReader()
       if (!reader) throw new Error('No response body')
 
-      const decoder = new TextDecoder()
-      let buffer = ''
       let assistantMsgId: string | null = null
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const json = line.slice(6).trim()
-          if (!json) continue
-
-          try {
-            const event: AgentEvent = JSON.parse(json)
-            handleEvent(event, assistantMsgId, (id) => { assistantMsgId = id })
-          } catch {
-            // Skip malformed events
-          }
+      for await (const { data } of parseSSEStream(reader)) {
+        if (!data || typeof data !== 'object' || !('type' in data)) continue
+        try {
+          handleEvent(data as AgentEvent, assistantMsgId, (id) => { assistantMsgId = id })
+        } catch {
+          // Skip malformed event-handling errors (mirrors prior try/catch)
         }
       }
 
@@ -387,19 +373,136 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   // returned UIStateSnapshot into local state via applyFinalState.
   // Automatically passes the current stateVersion as expectedStateVersion
   // unless caller overrides it in `body`.
+  //
+  // UX contract: status='streaming' on entry so AgentWorkspace's
+  // `disabled={isBusy}` toggles; clear prior error; status='idle' on
+  // success; status='error' + error message on throw. Callers that
+  // `.catch(() => {})` rely on this state, not on returned values.
+  //
+  // Response-shape note: most /actions/* endpoints return a UIStateSnapshot
+  // that we merge into local state via applyFinalState. `export` is the
+  // exception — it returns an ExportSnapshot bundle (snapshotId, format,
+  // downloadUrl, expiresAt). For that name we skip applyFinalState and,
+  // if there's a downloadUrl, open it in a new tab so the file lands on
+  // disk. Bumping `stateVersion` is also skipped (export doesn't mutate).
   const runAction = useCallback(async (
     name: string,
     body: Record<string, unknown> = {},
+  ): Promise<unknown> => {
+    const sid = sessionIdRef.current
+    if (!sid) {
+      const msg = 'No session to act on'
+      setStatus('error')
+      setError(msg)
+      throw new Error(msg)
+    }
+    setStatus('streaming')
+    setError(null)
+    try {
+      const result = await callAction<unknown>(sid, name, {
+        expectedStateVersion: stateVersionRef.current,
+        ...body,
+      })
+      if (name === 'export') {
+        // Export returns ExportSnapshot { snapshotId, format, downloadUrl,
+        // expiresAt }. The downloadUrl is a placeholder until a real
+        // file backend (GCS/S3) is wired — see comment in
+        // `lib/ai/agent/services/application.ts` around createExportSnapshot.
+        // Auto-opening it lands the user on a 404, which is worse than
+        // doing nothing. Just record the action; an in-app downloader
+        // is a separate follow-up.
+        // (Intentionally do not applyFinalState — the response shape
+        // is not a UIStateSnapshot.)
+      } else {
+        applyFinalState(result as UIStateSnapshot)
+      }
+      setStatus('idle')
+      return result
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Action failed'
+      setStatus('error')
+      setError(msg)
+      throw err
+    }
+  }, [applyFinalState])
+
+  // Run the deterministic /sections/generate SSE endpoint. The route runs
+  // ensureDraftingReady (eligibility → freeze) BEFORE opening the stream,
+  // so 4xx responses are surfaced as thrown Errors before any deltas
+  // arrive. On the streaming path, deltas are observed but not yet wired
+  // into local section state — the `done` event carries the final
+  // UIStateSnapshot which `applyFinalState` writes atomically.
+  //
+  // UX contract: set status=streaming on entry so the workspace buttons
+  // disable (isBusy=true), clear any prior error, restore status=idle on
+  // success, surface error string + status=error on failure. The Generate
+  // button's `disabled` binding reads this state.
+  const generateSection = useCallback(async (
+    args: { sectionKey?: string; projectSummary?: string } = {},
   ): Promise<UIStateSnapshot> => {
     const sid = sessionIdRef.current
-    if (!sid) throw new Error('No session to act on')
-    const snapshot = await callAction<UIStateSnapshot>(sid, name, {
-      expectedStateVersion: stateVersionRef.current,
-      ...body,
-    })
-    applyFinalState(snapshot)
-    return snapshot
-  }, [applyFinalState])
+    if (!sid) {
+      const msg = 'No session to generate against'
+      setStatus('error')
+      setError(msg)
+      throw new Error(msg)
+    }
+
+    setStatus('streaming')
+    setError(null)
+
+    try {
+      // Only pass sectionKey when the caller explicitly supplied one
+      // (e.g. a per-card Regenerate button). The top-bar Generate button
+      // omits it on purpose so the saga auto-picks the next pending
+      // section by generationOrder. Don't fall back to focusedSectionKey
+      // here — focus is sticky and would silently retarget a section the
+      // user already rejected/accepted.
+      const res = await csrfFetch(`/api/v1/agent-sessions/${sid}/sections/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sectionKey: args.sectionKey,
+          projectSummary: args.projectSummary,
+          expectedStateVersion: stateVersionRef.current,
+        }),
+      })
+
+      if (!res.ok) {
+        let payload: { error?: { code?: string; messageRo?: string; messageEn?: string } } = {}
+        try { payload = await res.json() } catch { /* ignore */ }
+        const code = payload.error?.code ?? `HTTP_${res.status}`
+        const localized = locale === 'ro' ? payload.error?.messageRo : payload.error?.messageEn
+        throw new Error(localized || code)
+      }
+
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response body')
+
+      let finalSnapshot: UIStateSnapshot | null = null
+      for await (const { event, data } of parseSSEStream(reader)) {
+        if (event === 'done') {
+          finalSnapshot = data as UIStateSnapshot
+          applyFinalState(finalSnapshot)
+        } else if (event === 'error') {
+          const e = data as { code?: string; messageRo?: string; messageEn?: string }
+          const localized = locale === 'ro' ? e.messageRo : e.messageEn
+          throw new Error(localized || e.code || 'GENERATION_FAILED')
+        }
+        // `start` and `delta` events are observed but not yet wired into
+        // local section state — Task 9 / future work will add live append.
+      }
+
+      if (!finalSnapshot) throw new Error('Stream ended without done event')
+      setStatus('idle')
+      return finalSnapshot
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Generation failed'
+      setStatus('error')
+      setError(msg)
+      throw err
+    }
+  }, [applyFinalState, locale])
 
   // ── Public API ──────────────────────────────────────────────
 
@@ -459,6 +562,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     reconnect,
     adoptSession,
     runAction,
+    generateSection,
     setFocusedSectionKey,
   }
 }

@@ -100,7 +100,6 @@ describe('initializeSession — structured blueprint', () => {
 	        requestId: expect.any(String),
 	      }),
 	      'session-xyz',
-	      { dryRun: true },
 	    )
 	  })
 	})
