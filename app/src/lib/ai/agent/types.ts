@@ -212,6 +212,18 @@ export interface ToolContext {
   requestId: string
   locale: 'ro' | 'en'
   routingCtx?: import('../model-routing').ModelRoutingContext
+  /**
+   * PR 4: the section the user has focused in the UI. Populated by the
+   * runtime from the agent request body when present. Tools that target a
+   * specific section may fall back to this when the model omits the key.
+   */
+  focusedSectionKey?: string
+  /**
+   * PR 4: true when the `chat_tools_trimmed` feature flag is on for this
+   * turn. Rule tools use this to switch off persistence (read-only adapter
+   * mode) — persistence stays exclusive to PR 3 REST action endpoints.
+   */
+  chatToolsTrimmed?: boolean
 }
 
 export interface ToolDefinition<TInput = unknown, TOutput = unknown> {

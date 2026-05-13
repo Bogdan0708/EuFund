@@ -18,9 +18,29 @@ import { onSectionAccepted, onPhaseTransition } from '@/lib/ai/knowledge/write-b
 import { ensureProjectForSession } from '@/lib/projects/promotion'
 import { isFeatureEnabled } from '@/lib/feature-flags'
 import { logger } from '@/lib/logger'
+import { trackIterationCapHit } from '@/lib/monitoring/metrics'
 import { projectSectionsForUI, projectSessionState } from './state-projection'
 
 const log = logger.child({ component: 'agent-runtime' })
+
+// PR 4: when chat_tools_trimmed is on, the V3 tool surface shrinks to
+// reads + rule-decisions-as-read-only + a single scoped section write
+// (`generate_section`). Navigation/decision writes go through PR 3's
+// deterministic REST endpoints; the chat surface stops carrying them.
+const V3_CHAT_ALLOWED_NON_READS: ReadonlySet<string> = new Set([
+  'run_eligibility',
+  'validate_section',
+  'validate_application',
+  'generate_section',
+])
+
+export function trimToChatSurface(
+  toolList: ReadonlyArray<import('./types').ToolDefinition>,
+): import('./types').ToolDefinition[] {
+  return toolList.filter(
+    (t) => t.category === 'read' || V3_CHAT_ALLOWED_NON_READS.has(t.name),
+  )
+}
 
 interface WriteBackContext {
   action?: NonNullable<AgentRequest['action']>
@@ -187,7 +207,15 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
 
     const systemPrompt = buildSystemPrompt(session, sections)
     const sessionStateBlock = buildSessionStateBlock(session, sections, knowledgeSummary)
+
+    const chatToolsTrimmed = await isFeatureEnabled('chat_tools_trimmed', {
+      userId: session.userId,
+      bypassCache: true,
+    })
+    const planningModel = chatToolsTrimmed ? 'claude-sonnet-4-6' : 'claude-opus-4-6'
+
     const phaseTools = getToolsForPhase(session.currentPhase)
+    const finalPhaseTools = chatToolsTrimmed ? trimToChatSurface(phaseTools) : phaseTools
 
     // Build messages array for LLM
     const llmMessages: {
@@ -300,7 +328,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       userId: session.userId,
     })
 
-    const toolSchemas = phaseTools.map(tool => ({
+    const toolSchemas = finalPhaseTools.map(tool => ({
       type: 'function' as const,
       function: {
         name: tool.name,
@@ -309,7 +337,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       },
     }))
 
-    const MAX_TOOL_ITERATIONS = 5
+    const MAX_TOOL_ITERATIONS = chatToolsTrimmed ? 3 : 5
     let iteration = 0
 
     while (iteration < MAX_TOOL_ITERATIONS) {
@@ -317,7 +345,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
 
       const response = await generate({
         provider: 'anthropic',
-        model: 'claude-opus-4-6',
+        model: planningModel,
         system: systemPrompt,
         messages: llmMessages,
         tools: toolSchemas.length > 0 ? toolSchemas : undefined,
@@ -385,7 +413,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
         let hasToolCalls = false
 
         for (const toolCall of response.toolCalls) {
-          const tool = phaseTools.find(t => t.name === toolCall.name)
+          const tool = finalPhaseTools.find(t => t.name === toolCall.name)
           if (!tool) {
             log.warn({ tool: toolCall.name }, 'Unknown tool called by LLM')
             // Synthetic tool_result keeps the assistant tool_use ↔ tool_result
@@ -436,6 +464,8 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
             requestId: request.requestId,
             locale: session.locale,
             routingCtx: opts.routingCtx,
+            focusedSectionKey: opts.focusedSectionKey,
+            chatToolsTrimmed,
           }
 
           let toolResult: ToolResult
@@ -583,6 +613,9 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
         { sessionId: session.id, iteration, capHit, requestId: request.requestId },
         'V3 turn exited with no assistant text — forcing synthesis call',
       )
+      if (capHit) {
+        trackIterationCapHit('v3')
+      }
       const synthesisLanguage = session.locale === 'ro' ? 'Romanian' : 'English'
       const capNote = capHit
         ? `You used all ${MAX_TOOL_ITERATIONS} tool-call iterations without responding to the user.`
@@ -595,7 +628,7 @@ ${capNote} Summarize what you found so far in ${synthesisLanguage}. If the user'
       try {
         const finalResponse = await generate({
           provider: 'anthropic',
-          model: 'claude-opus-4-6',
+          model: planningModel,
           system: synthesisSystem,
           messages: llmMessages,
           // Omit tools entirely — the router doesn't expose tool_choice

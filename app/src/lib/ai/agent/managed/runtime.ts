@@ -82,6 +82,7 @@ import { compactIfNeeded } from '../history'
 import { reloadSessionAndSections } from './reload'
 import { isFeatureEnabled } from '@/lib/feature-flags'
 import { logger } from '@/lib/logger'
+import { trackIterationCapHit } from '@/lib/monitoring/metrics'
 import { addUsage, computeAnthropicCostMicros, type UsageLike } from '@/lib/ai/cost/anthropic-pricing'
 
 const log = logger.child({ component: 'managed-runtime' })
@@ -475,6 +476,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
       requestId: request.requestId,
       iterationCount,
     }, 'managed turn hit iteration cap')
+    trackIterationCapHit('managed')
     const capMessage = session.locale === 'ro'
       ? '\n\n(Limita de iterații atinsă. Vă rog, clarificați întrebarea.)'
       : '\n\n(Reached tool iteration limit. Please clarify your request.)'
