@@ -47,6 +47,9 @@ function AsistentAIInner({ locale }: { locale: string }) {
             warnings={agent.warnings}
             onAction={agent.sendAction}
             isBusy={agent.status === 'streaming' || agent.status === 'connecting'}
+            outlineFrozen={agent.outlineFrozen}
+            actionsEnabled={false}
+            runAction={agent.runAction}
           />
         </div>
       </div>

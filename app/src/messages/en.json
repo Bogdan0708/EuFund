@@ -1442,6 +1442,10 @@
       "invalidated": "Invalidated",
       "needs_review": "Needs Review",
       "failed": "Failed"
+    },
+    "actions": {
+      "freezeOutline": "Freeze outline",
+      "export": "Export"
     }
   }
 }

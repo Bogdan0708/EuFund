@@ -15,6 +15,7 @@ interface NewProjectViewProps {
   initialSessionId?: string
   preselectEnabled: boolean
   noAutoSend: boolean
+  actionsEnabled: boolean
 }
 
 const HERO_QUERY_KEY = 'fondeu:hero-query'
@@ -50,6 +51,7 @@ export function NewProjectView({
   initialSessionId,
   preselectEnabled,
   noAutoSend,
+  actionsEnabled,
 }: NewProjectViewProps) {
   const tPre = useTranslations('preselect')
   const tPage = useTranslations('projects')
@@ -362,6 +364,9 @@ export function NewProjectView({
             warnings={agent.warnings}
             onAction={agent.sendAction}
             isBusy={agent.status === 'streaming' || agent.status === 'connecting'}
+            outlineFrozen={agent.outlineFrozen}
+            actionsEnabled={actionsEnabled}
+            runAction={agent.runAction}
           />
         </div>
       </div>

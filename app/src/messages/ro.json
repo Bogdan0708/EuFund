@@ -1442,6 +1442,10 @@
       "invalidated": "Invalidat",
       "needs_review": "Necesită revizuire",
       "failed": "Eșuat"
+    },
+    "actions": {
+      "freezeOutline": "Înghețează schița",
+      "export": "Exportă"
     }
   }
 }
