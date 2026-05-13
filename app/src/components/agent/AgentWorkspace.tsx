@@ -128,8 +128,21 @@ export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnin
                 >
                   <SectionCard
                     section={section}
-                    onAccept={() => onAction({ type: 'accept_section', sectionKey: section.sectionKey })}
-                    onReject={() => onAction({ type: 'reject_section', sectionKey: section.sectionKey, reason: 'Needs revision' })}
+                    onAccept={() => {
+                      if (actionsEnabled) {
+                        // PR 3 deterministic REST path. Error surfaces via useAgent.error.
+                        runAction('accept-section', { sectionKey: section.sectionKey }).catch(() => {})
+                      } else {
+                        onAction({ type: 'accept_section', sectionKey: section.sectionKey })
+                      }
+                    }}
+                    onReject={() => {
+                      if (actionsEnabled) {
+                        runAction('reject-section', { sectionKey: section.sectionKey, reason: 'Needs revision' }).catch(() => {})
+                      } else {
+                        onAction({ type: 'reject_section', sectionKey: section.sectionKey, reason: 'Needs revision' })
+                      }
+                    }}
                     disabled={isBusy}
                   />
                 </div>

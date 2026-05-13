@@ -378,10 +378,17 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   // `disabled={isBusy}` toggles; clear prior error; status='idle' on
   // success; status='error' + error message on throw. Callers that
   // `.catch(() => {})` rely on this state, not on returned values.
+  //
+  // Response-shape note: most /actions/* endpoints return a UIStateSnapshot
+  // that we merge into local state via applyFinalState. `export` is the
+  // exception — it returns an ExportSnapshot bundle (snapshotId, format,
+  // downloadUrl, expiresAt). For that name we skip applyFinalState and,
+  // if there's a downloadUrl, open it in a new tab so the file lands on
+  // disk. Bumping `stateVersion` is also skipped (export doesn't mutate).
   const runAction = useCallback(async (
     name: string,
     body: Record<string, unknown> = {},
-  ): Promise<UIStateSnapshot> => {
+  ): Promise<unknown> => {
     const sid = sessionIdRef.current
     if (!sid) {
       const msg = 'No session to act on'
@@ -392,13 +399,22 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     setStatus('streaming')
     setError(null)
     try {
-      const snapshot = await callAction<UIStateSnapshot>(sid, name, {
+      const result = await callAction<unknown>(sid, name, {
         expectedStateVersion: stateVersionRef.current,
         ...body,
       })
-      applyFinalState(snapshot)
+      if (name === 'export') {
+        const bundle = result as { downloadUrl?: string }
+        if (bundle && typeof bundle.downloadUrl === 'string' && bundle.downloadUrl.length > 0) {
+          if (typeof window !== 'undefined') {
+            window.open(bundle.downloadUrl, '_blank', 'noopener')
+          }
+        }
+      } else {
+        applyFinalState(result as UIStateSnapshot)
+      }
       setStatus('idle')
-      return snapshot
+      return result
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Action failed'
       setStatus('error')
@@ -433,11 +449,17 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     setError(null)
 
     try {
+      // Only pass sectionKey when the caller explicitly supplied one
+      // (e.g. a per-card Regenerate button). The top-bar Generate button
+      // omits it on purpose so the saga auto-picks the next pending
+      // section by generationOrder. Don't fall back to focusedSectionKey
+      // here — focus is sticky and would silently retarget a section the
+      // user already rejected/accepted.
       const res = await csrfFetch(`/api/v1/agent-sessions/${sid}/sections/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sectionKey: args.sectionKey ?? focusedSectionKeyRef.current ?? undefined,
+          sectionKey: args.sectionKey,
           projectSummary: args.projectSummary,
           expectedStateVersion: stateVersionRef.current,
         }),
