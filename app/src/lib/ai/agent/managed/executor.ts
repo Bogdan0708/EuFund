@@ -45,7 +45,6 @@ import { inputSchema as validateSectionSchema } from '../mcp/rules/validate-sect
 import { inputSchema as validateApplicationSchema } from '../mcp/rules/validate-application'
 import { inputSchema as checkMissingAnnexesSchema } from '../mcp/rules/check-missing-annexes'
 // Phase 3b write schemas
-import { inputSchema as saveSectionDraftSchema } from '../mcp/write/save-section-draft'
 import { inputSchema as approveRevisionSchema } from '../mcp/write/approve-revision'
 import { inputSchema as rollbackSectionSchema } from '../mcp/write/rollback-section'
 import { inputSchema as setApplicationStatusSchema } from '../mcp/write/set-application-status'
@@ -277,7 +276,7 @@ function truncateResult(toolName: string, result: unknown): unknown {
   }
 }
 
-async function dispatchTool(
+export async function dispatchTool(
   name: string,
   rawInput: unknown,
   ctx: ServiceContext,
@@ -361,9 +360,34 @@ async function dispatchTool(
     }
     // ── Phase 3b write tools ───────────────────────────────────────────────
     case 'save_section_draft': {
-      const i = saveSectionDraftSchema.parse(rawInput)
+      // PR 4: managed tool schema is content-only ({ content }). The model
+      // never picks the section — the user focuses one in the UI and the
+      // route threads the id through as ctx.focusedSectionKey. The model
+      // MAY still emit a sectionKey for back-compat with legacy serialized
+      // turns; defer to it when present.
+      const i = rawInput as { content: string; sectionKey?: string }
       requireSession(ctx)
-      return sections.saveSectionDraft(ctx, { ...i, sessionId: ctx.sessionId })
+      const sectionKey = i.sectionKey ?? ctx.focusedSectionKey
+      if (!sectionKey) {
+        throw new ValidationError(
+          'sectionKey',
+          'No section is currently focused; ask the user to focus a section in the workspace first.',
+          'NO_SECTION_FOCUSED',
+        )
+      }
+      if (typeof ctx.expectedStateVersion !== 'number') {
+        throw new ValidationError(
+          'expectedStateVersion',
+          'Managed runtime did not provide expectedStateVersion. Retry after reload.',
+          'EXPECTED_STATE_VERSION_MISSING',
+        )
+      }
+      return sections.saveSectionDraft(ctx, {
+        sessionId: ctx.sessionId,
+        sectionKey,
+        content: i.content,
+        expectedStateVersion: ctx.expectedStateVersion,
+      })
     }
     case 'approve_revision': {
       const i = approveRevisionSchema.parse(rawInput)
