@@ -20,6 +20,7 @@ import { streamSectionGeneration } from '@/lib/ai/agent/services/section-generat
 import { saveSectionDraft } from '@/lib/ai/agent/services/sections'
 import { projectSessionState } from '@/lib/ai/agent/state-projection'
 import { GenerationInvalidError, ConcurrencyError } from '@/lib/ai/agent/services/errors'
+import { trackGenerateSectionTotal, trackGenerateSectionLatency } from '@/lib/monitoring/metrics'
 import { logger } from '@/lib/logger'
 import type { AgentSession, AgentSection } from '@/lib/ai/agent/types'
 import type { ServiceContext } from '@/lib/ai/agent/services/types'
@@ -98,7 +99,6 @@ function sagaErrorEnvelope(
 }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- used by TODO(PR5-Task6) trackGenerateSectionLatency
   const start = Date.now()
   const user = await requireAuth()
   const { id: sessionId } = await params
@@ -174,7 +174,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     )
   } catch (err) {
     if (err instanceof ConcurrencyError) {
-      // TODO(PR5-Task6): trackGenerateSectionTotal({ outcome: 'precondition', reason: 'CONCURRENCY_CONFLICT' })
+      trackGenerateSectionTotal({ outcome: 'precondition', reason: 'CONCURRENCY_CONFLICT' })
       return NextResponse.json(
         {
           error: {
@@ -205,7 +205,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   if (!ready.ok) {
-    // TODO(PR5-Task6): trackGenerateSectionTotal({ outcome: 'precondition', reason: ready.code })
+    trackGenerateSectionTotal({ outcome: 'precondition', reason: ready.code })
     return NextResponse.json(
       {
         error: sagaErrorEnvelope(
@@ -282,14 +282,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
               messageEn: 'Session not found.',
             }),
           )
-          // TODO(PR5-Task6): trackGenerateSectionTotal({ outcome: 'failure', reason: 'NOT_FOUND' })
+          trackGenerateSectionTotal({ outcome: 'failure', reason: 'NOT_FOUND' })
           return
         }
 
         controller.enqueue(
           sseLine('done', projectSessionState(final.session, final.rows)),
         )
-        // TODO(PR5-Task6): trackGenerateSectionTotal({ outcome: 'success' })
+        trackGenerateSectionTotal({ outcome: 'success' })
       } catch (err) {
         let code = 'PROVIDER_ERROR'
         let messageRo = 'Eroare de furnizor AI. Reîncearcă.'
@@ -311,9 +311,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         }
 
         controller.enqueue(sseLine('error', { code, messageRo, messageEn }))
-        // TODO(PR5-Task6): trackGenerateSectionTotal({ outcome: 'failure', reason: code })
+        trackGenerateSectionTotal({ outcome: 'failure', reason: code })
       } finally {
-        // TODO(PR5-Task6): trackGenerateSectionLatency((Date.now() - start) / 1000)
+        trackGenerateSectionLatency((Date.now() - start) / 1000)
         controller.close()
       }
     },
