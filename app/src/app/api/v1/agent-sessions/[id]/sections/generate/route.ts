@@ -126,12 +126,19 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   // Rate-limit per user. Generation is the most expensive call in the
   // product (Opus on heavy, ~4k output tokens + ~10k input). Cap by user
   // to prevent a single tab in a loop from draining the Anthropic budget.
+  //
+  // failOpenOnError: true — Redis disconnects on idle in dev and the
+  // first request after reconnect-needed throws inside checkRateLimit,
+  // which under `failOpenOnError: false` returns 429 to a legitimate
+  // user. The actual cap (20/hour) is generous AND the user pays for
+  // their own model usage, so falling open on Redis transient errors
+  // is the right cost/UX trade-off.
   const rl = await enforceRateLimit(req, {
     keyPrefix: 'generate-section',
     keySuffix: user.id,
     maxRequests: 20,
     windowMs: 60 * 60 * 1000,
-    failOpenOnError: false,
+    failOpenOnError: true,
   })
   if (!rl.ok) return rl.response
 

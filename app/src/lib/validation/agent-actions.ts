@@ -40,7 +40,13 @@ export const rollbackSectionBody = z.object({
   expectedStateVersion: z.number().int().nonnegative(),
 });
 
-export const exportBody = z.object({}).strict();
+// Export is a read-like operation that does not bump stateVersion. We
+// accept (and ignore) `expectedStateVersion` so the generic
+// `useAgent.runAction` helper, which auto-injects the current version
+// for all action calls, does not trip strict-mode validation here.
+export const exportBody = z.object({
+  expectedStateVersion: z.number().int().nonnegative().optional(),
+}).strict();
 
 export type RunEligibilityBody = z.infer<typeof runEligibilityBody>;
 export type FreezeOutlineBody = z.infer<typeof freezeOutlineBody>;
