@@ -32,6 +32,11 @@ const PHASE_ORDER: Phase[] = ['discovery', 'research', 'structuring', 'drafting'
 export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnings, onAction, isBusy, outlineFrozen, actionsEnabled, runAction }: Props) {
   const t = useTranslations('agent')
   const currentIndex = PHASE_ORDER.indexOf(phase)
+  const runWorkspaceAction = (name: string, body: Record<string, unknown> = {}) => {
+    void runAction(name, body).catch(() => {
+      // useAgent owns user-visible action errors.
+    })
+  }
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
@@ -59,19 +64,9 @@ export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnin
       {/* Action bar — flag-gated */}
       {actionsEnabled && (
         <div className="px-4 py-2 border-b border-gray-200 bg-white flex flex-wrap gap-2">
-          {phase === 'structuring' && !outlineFrozen && sections.length > 0 && (
-            <button
-              type="button"
-              onClick={() => { runAction('freeze-outline', {}).catch(() => { /* error surfaces via useAgent.error */ }) }}
-              disabled={isBusy}
-              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {t('actions.freezeOutline')}
-            </button>
-          )}
           <button
             type="button"
-            onClick={() => { runAction('export', {}).catch(() => { /* error surfaces via useAgent.error */ }) }}
+            onClick={() => { runWorkspaceAction('export') }}
             disabled={isBusy}
             className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -94,7 +89,18 @@ export function AgentWorkspace({ phase, sections, blueprint, eligibility, warnin
         ) : null}
 
         {sections.length > 0 && phase === 'structuring' && (
-          <OutlineView sections={sections} onApprove={() => onAction({ type: 'approve_outline' })} disabled={isBusy} />
+          <OutlineView
+            sections={sections}
+            onApprove={() => {
+              if (actionsEnabled) {
+                runWorkspaceAction('freeze-outline')
+                return
+              }
+              onAction({ type: 'approve_outline' })
+            }}
+            disabled={isBusy || (actionsEnabled && outlineFrozen)}
+            approveLabel={actionsEnabled ? t('actions.freezeOutline') : undefined}
+          />
         )}
 
         {sections.length > 0 && (phase === 'drafting' || phase === 'review') && (

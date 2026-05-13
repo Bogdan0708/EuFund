@@ -16,6 +16,7 @@ import {
   AuthorizationError,
 } from '@/lib/ai/agent/services/errors'
 import { getTranslations } from 'next-intl/server'
+import { isFeatureEnabled } from '@/lib/feature-flags'
 
 const POLICY_TO_UI_CODE: Record<string, string> = {
   POLICY_OUTLINE_NOT_READY: 'OUTLINE_NOT_READY',
@@ -111,5 +112,28 @@ export async function errorToResponse(err: unknown): Promise<NextResponse> {
       },
     },
     { status: 500 },
+  )
+}
+
+export async function requireDeterministicActionsEnabled(
+  userId: string,
+): Promise<NextResponse | null> {
+  const enabled = await isFeatureEnabled('deterministic_actions_enabled', {
+    userId,
+    bypassCache: true,
+  })
+
+  if (enabled) return null
+
+  const code = 'DETERMINISTIC_ACTIONS_DISABLED'
+  return NextResponse.json(
+    {
+      error: {
+        code,
+        messageRo: await getMessage('ro', code, 'Acțiunile deterministe nu sunt active.'),
+        messageEn: await getMessage('en', code, 'Deterministic actions are not enabled.'),
+      },
+    },
+    { status: 404 },
   )
 }

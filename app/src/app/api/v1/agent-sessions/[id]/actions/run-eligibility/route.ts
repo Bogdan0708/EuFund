@@ -16,7 +16,7 @@ import { projectSessionState } from '@/lib/ai/agent/state-projection'
 import { db } from '@/lib/db'
 import { agentSessions, agentSections } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
-import { errorToResponse } from '@/lib/api/agent-action-envelope'
+import { errorToResponse, requireDeterministicActionsEnabled } from '@/lib/api/agent-action-envelope'
 import type { AgentSession, AgentSection } from '@/lib/ai/agent/types'
 
 export const dynamic = 'force-dynamic'
@@ -25,6 +25,9 @@ type RouteParams = { params: Promise<{ id: string }> }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const user = await requireAuth()
+  const flagResponse = await requireDeterministicActionsEnabled(user.id)
+  if (flagResponse) return flagResponse
+
   const { id: sessionId } = await params
 
   let body: unknown

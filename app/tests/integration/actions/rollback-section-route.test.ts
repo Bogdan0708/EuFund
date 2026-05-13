@@ -8,6 +8,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+const { isFeatureEnabledMock } = vi.hoisted(() => ({
+  isFeatureEnabledMock: vi.fn(),
+}))
+
+vi.mock('@/lib/feature-flags', () => ({
+  isFeatureEnabled: isFeatureEnabledMock,
+}))
+
 vi.mock('@/lib/auth/helpers', () => ({
   requireAuth: vi.fn().mockResolvedValue({ id: 'u1', tier: 'free' }),
 }))
@@ -75,6 +83,7 @@ vi.mock('@/lib/ai/agent/state-projection', () => ({
 describe('POST /api/v1/agent-sessions/[id]/actions/rollback-section', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    isFeatureEnabledMock.mockResolvedValue(true)
     rollbackSectionSpy.mockResolvedValue({
       content: 'old content',
       restoredVersion: 1,

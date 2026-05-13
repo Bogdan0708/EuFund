@@ -1,4 +1,12 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+const { isFeatureEnabledMock } = vi.hoisted(() => ({
+  isFeatureEnabledMock: vi.fn(),
+}))
+
+vi.mock('@/lib/feature-flags', () => ({
+  isFeatureEnabled: isFeatureEnabledMock,
+}))
 
 vi.mock('@/lib/auth/helpers', () => ({ requireAuth: vi.fn().mockResolvedValue({ id: 'u1', tier: 'free' }) }))
 vi.mock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }))
@@ -14,6 +22,17 @@ vi.mock('@/lib/ai/agent/services/application', () => ({
 }))
 
 describe('POST /actions/export', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    isFeatureEnabledMock.mockResolvedValue(true)
+    createExportSnapshotSpy.mockResolvedValue({
+      snapshotId: 'snap-1',
+      format: 'json',
+      downloadUrl: 'https://x/snap-1',
+      expiresAt: new Date('2026-12-31'),
+    })
+  })
+
   it('200 on empty body, returns snapshot', async () => {
     const { POST } = await import('@/app/api/v1/agent-sessions/[id]/actions/export/route')
     const res = await POST(

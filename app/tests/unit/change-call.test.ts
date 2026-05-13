@@ -12,44 +12,46 @@ const dbState: { session: Record<string, unknown> | null; sectionsDeleted: numbe
   sectionsDeleted: 0,
 }
 
-vi.mock('@/lib/db', () => ({
-  db: {
-    select: () => ({
-      from: (table: Record<string, unknown>) => {
-        // Distinguish agentSections queries (no limit — count sections) from
-        // agentSessions queries (with limit — fetch single session).
-        const isSections = table === agentSectionsStub
-        return {
-          where: () => ({
-            // For agentSections, return empty array (no sections to discard).
-            // Calling .limit() means it's an agentSessions query → return session.
-            limit: async () => (dbState.session ? [dbState.session] : []),
-            // Thenable: when no .limit() is chained, behave like a direct await.
-            then: (resolve: (v: unknown[]) => void) =>
-              resolve(isSections ? [] : (dbState.session ? [dbState.session] : [])),
-          }),
-        }
-      },
-    }),
-    update: () => ({
-      set: (s: Record<string, unknown>) => ({
+const dbMock = {
+  select: () => ({
+    from: (table: Record<string, unknown>) => {
+      // Distinguish agentSections queries (no limit — count sections) from
+      // agentSessions queries (with limit — fetch single session).
+      const isSections = table === agentSectionsStub
+      return {
         where: () => ({
-          returning: () => {
-            dbState.session = { ...(dbState.session ?? {}), ...s, stateVersion: (typeof s.stateVersion === 'number' ? s.stateVersion : (dbState.session?.stateVersion as number ?? 0) + 1) }
-            // Return one row to signal CAS success (non-empty means the WHERE matched).
-            return Promise.resolve([{ id: dbState.session?.id ?? 's1' }])
-          },
+          // For agentSections, return empty array (no sections to discard).
+          // Calling .limit() means it's an agentSessions query → return session.
+          limit: async () => (dbState.session ? [dbState.session] : []),
+          // Thenable: when no .limit() is chained, behave like a direct await.
+          then: (resolve: (v: unknown[]) => void) =>
+            resolve(isSections ? [] : (dbState.session ? [dbState.session] : [])),
         }),
+      }
+    },
+  }),
+  update: () => ({
+    set: (s: Record<string, unknown>) => ({
+      where: () => ({
+        returning: () => {
+          dbState.session = { ...(dbState.session ?? {}), ...s, stateVersion: (typeof s.stateVersion === 'number' ? s.stateVersion : (dbState.session?.stateVersion as number ?? 0) + 1) }
+          // Return one row to signal CAS success (non-empty means the WHERE matched).
+          return Promise.resolve([{ id: dbState.session?.id ?? 's1' }])
+        },
       }),
     }),
-    delete: () => ({
-      where: async () => {
-        dbState.sectionsDeleted += 1
-        return undefined
-      },
-    }),
-  },
-  withUserRLS: async (_uid: string, fn: () => Promise<unknown>) => fn(),
+  }),
+  delete: () => ({
+    where: async () => {
+      dbState.sectionsDeleted += 1
+      return undefined
+    },
+  }),
+}
+
+vi.mock('@/lib/db', () => ({
+  db: dbMock,
+  withUserRLS: async (_uid: string, fn: (tx: typeof dbMock) => Promise<unknown>) => fn(dbMock),
 }))
 
 // Stub used to distinguish table references in the select mock above.

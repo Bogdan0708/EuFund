@@ -1402,6 +1402,7 @@
       "VALIDATION_NO_OP": "No-op.",
       "INVALID_CALL_ID": "Unknown call.",
       "ELIGIBILITY_INPUTS_MISSING": "Eligibility inputs not available.",
+      "DETERMINISTIC_ACTIONS_DISABLED": "Deterministic actions are not enabled.",
       "NOT_FOUND": "Resource not found.",
       "FORBIDDEN": "Forbidden.",
       "INTERNAL": "Internal error."
@@ -1409,7 +1410,7 @@
     "thinking": "Thinking...",
     "waitingForResponse": "Waiting for response...",
     "inputPlaceholder": "Describe your project or ask a question...",
-    "welcomeAfterPreselect": "I've selected the call. Click \"Generate draft\" to begin, or ask me anything about the application.",
+    "welcomeAfterPreselect": "I've selected the call. Ask me anything about the application, or continue from the workspace panel.",
     "send": "Send",
     "applicationStatus": "Application Status",
     "sectionsLabel": "Sections",

@@ -7,6 +7,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+const { isFeatureEnabledMock } = vi.hoisted(() => ({
+  isFeatureEnabledMock: vi.fn(),
+}))
+
+vi.mock('@/lib/feature-flags', () => ({
+  isFeatureEnabled: isFeatureEnabledMock,
+}))
+
 vi.mock('@/lib/auth/helpers', () => ({
   requireAuth: vi.fn().mockResolvedValue({ id: 'u1', tier: 'free' }),
 }))
@@ -83,6 +91,7 @@ vi.mock('@/lib/ai/agent/state-projection', () => ({
 describe('POST /api/v1/agent-sessions/[id]/actions/run-eligibility', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    isFeatureEnabledMock.mockResolvedValue(true)
     runEligibilitySpy.mockResolvedValue({
       newStateVersion: 2,
       decision: { results: [], score: 100, passCount: 0, failCount: 0, warningCount: 0 },

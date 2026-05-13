@@ -7,6 +7,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+const { isFeatureEnabledMock } = vi.hoisted(() => ({
+  isFeatureEnabledMock: vi.fn(),
+}))
+
+vi.mock('@/lib/feature-flags', () => ({
+  isFeatureEnabled: isFeatureEnabledMock,
+}))
+
 vi.mock('@/lib/auth/helpers', () => ({
   requireAuth: vi.fn().mockResolvedValue({ id: 'u1', tier: 'free' }),
 }))
@@ -70,6 +78,7 @@ vi.mock('@/lib/ai/agent/state-projection', () => ({
 describe('POST /api/v1/agent-sessions/[id]/actions/freeze-outline', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    isFeatureEnabledMock.mockResolvedValue(true)
     freezeOutlineSpy.mockResolvedValue({ newStateVersion: 4 })
   })
 
@@ -137,5 +146,27 @@ describe('POST /api/v1/agent-sessions/[id]/actions/freeze-outline', () => {
     expect(res.status).toBe(400)
     const json = await res.json()
     expect(json.error.code).toBe('BAD_JSON')
+  })
+
+  it('returns 404 when deterministic actions are disabled', async () => {
+    isFeatureEnabledMock.mockResolvedValue(false)
+    const { POST } = await import(
+      '@/app/api/v1/agent-sessions/[id]/actions/freeze-outline/route'
+    )
+    const res = await POST(
+      new Request(
+        'http://localhost/api/v1/agent-sessions/s1/actions/freeze-outline',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expectedStateVersion: 3 }),
+        },
+      ) as never,
+      { params: Promise.resolve({ id: 's1' }) } as never,
+    )
+    expect(res.status).toBe(404)
+    const json = await res.json()
+    expect(json.error.code).toBe('DETERMINISTIC_ACTIONS_DISABLED')
+    expect(freezeOutlineSpy).not.toHaveBeenCalled()
   })
 })

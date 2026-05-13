@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/helpers'
 import { exportBody } from '@/lib/validation/agent-actions'
 import { createExportSnapshot } from '@/lib/ai/agent/services/application'
-import { errorToResponse } from '@/lib/api/agent-action-envelope'
+import { errorToResponse, requireDeterministicActionsEnabled } from '@/lib/api/agent-action-envelope'
 import { randomUUID } from 'crypto'
 
 export const dynamic = 'force-dynamic'
@@ -10,6 +10,9 @@ type RouteParams = { params: Promise<{ id: string }> }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const user = await requireAuth()
+  const flagResponse = await requireDeterministicActionsEnabled(user.id)
+  if (flagResponse) return flagResponse
+
   const { id: sessionId } = await params
 
   let body: unknown

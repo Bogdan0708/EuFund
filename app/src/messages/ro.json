@@ -1402,6 +1402,7 @@
       "VALIDATION_NO_OP": "Nicio schimbare.",
       "INVALID_CALL_ID": "Apel necunoscut.",
       "ELIGIBILITY_INPUTS_MISSING": "Datele pentru eligibilitate nu sunt disponibile.",
+      "DETERMINISTIC_ACTIONS_DISABLED": "Acțiunile deterministe nu sunt active.",
       "NOT_FOUND": "Resursă inexistentă.",
       "FORBIDDEN": "Acces interzis.",
       "INTERNAL": "Eroare internă."
@@ -1409,7 +1410,7 @@
     "thinking": "Se gândește...",
     "waitingForResponse": "Se așteaptă răspunsul...",
     "inputPlaceholder": "Descrie proiectul tău sau pune o întrebare...",
-    "welcomeAfterPreselect": "Am selectat apelul. Apasă „Generează schiță\" pentru a începe sau scrie-mi întrebări despre cerere.",
+    "welcomeAfterPreselect": "Am selectat apelul. Scrie-mi întrebări despre cerere sau continuă din panoul de lucru.",
     "send": "Trimite",
     "applicationStatus": "Stare aplicație",
     "sectionsLabel": "Secțiuni",
