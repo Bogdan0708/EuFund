@@ -80,4 +80,28 @@ describe('outlineFromBlueprint', () => {
   it('returns empty array for blueprint with zero sections', () => {
     expect(outlineFromBlueprint(makeBlueprint([]))).toEqual([])
   })
+
+  it('falls back to top-level requiredSections when normalized is missing', () => {
+    const bp = {
+      ...makeBlueprint([]),
+      normalized: undefined,
+      requiredSections: [{ title: 'Fallback', description: 'Legacy shape' }],
+    } as unknown as CallBlueprint
+    const out = outlineFromBlueprint(bp)
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({
+      id: 'fallback',
+      title: 'Fallback',
+      description: 'Legacy shape',
+      order: 1,
+    })
+  })
+
+  it('returns empty array when persisted requiredSections is malformed', () => {
+    const bp = {
+      ...makeBlueprint([]),
+      normalized: { requiredSections: 'not-an-array' },
+    } as unknown as CallBlueprint
+    expect(outlineFromBlueprint(bp)).toEqual([])
+  })
 })

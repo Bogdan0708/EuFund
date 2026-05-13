@@ -14,6 +14,16 @@ import { outlineFromBlueprint } from './services/blueprint'
 
 type UISection = UIStateSnapshot['sections'][number]
 
+function projectRow(row: AgentSection): UISection {
+  return {
+    sectionKey: row.sectionKey,
+    title: row.title,
+    status: row.status,
+    documentOrder: row.documentOrder,
+    content: row.acceptedContent ?? row.content,
+  }
+}
+
 export function projectSectionsForUI(
   session: AgentSession,
   sectionRows: AgentSection[],
@@ -26,7 +36,9 @@ export function projectSectionsForUI(
   if ((!outline || outline.length === 0) && session.blueprint) {
     outline = outlineFromBlueprint(session.blueprint)
   }
-  if (!outline || outline.length === 0) return []
+  if (!outline || outline.length === 0) {
+    return sectionRows.map(projectRow)
+  }
 
   const rowsByKey = new Map<string, AgentSection>()
   for (const row of sectionRows) {
@@ -37,10 +49,10 @@ export function projectSectionsForUI(
     const row = rowsByKey.get(spec.id)
     if (row) {
       return {
-        sectionKey: row.sectionKey,
-        title: row.title,
+        sectionKey: spec.id,
+        title: spec.title,
         status: row.status,
-        documentOrder: row.documentOrder,
+        documentOrder: typeof spec.order === 'number' ? spec.order : i + 1,
         content: row.acceptedContent ?? row.content,
       }
     }

@@ -63,10 +63,15 @@ async function main() {
           continue
         }
         if (!dryRun) {
-          await db.update(agentSessions)
+          const updatedRows = await db.update(agentSessions)
             .set({ outline: outline as never, updatedAt: new Date() })
-            .where(eq(agentSessions.id, row.id))
-          updated++
+            .where(and(eq(agentSessions.id, row.id), isNull(agentSessions.outline)))
+            .returning({ id: agentSessions.id })
+          if (updatedRows.length > 0) {
+            updated++
+          } else {
+            log.info({ sessionId: row.id }, 'outline already populated; skipped concurrent update')
+          }
         } else {
           wouldUpdate++
         }

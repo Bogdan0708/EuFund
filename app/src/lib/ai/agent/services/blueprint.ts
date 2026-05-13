@@ -283,9 +283,11 @@ export function materializeCachedSections(
  * downstream code can always assume the 12-field SectionSpec contract.
  */
 export function outlineFromBlueprint(blueprint: CallBlueprint): SectionSpec[] {
+  const rawSections = blueprint.normalized?.requiredSections ?? blueprint.requiredSections ?? []
+  const sections = Array.isArray(rawSections) ? rawSections : []
   return materializeCachedSections(
-    blueprint.normalized.requiredSections,
-    blueprint.structureConfidence,
+    sections,
+    blueprint.structureConfidence ?? 0.3,
   )
 }
 

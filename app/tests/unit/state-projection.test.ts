@@ -107,7 +107,7 @@ function makeBlueprint(over: Partial<CallBlueprint> = {}): CallBlueprint {
 describe('projectSessionState', () => {
   it('projects real rows when present', () => {
     const session = baseSession({ outline: [spec('intro', 1, 'Introducere')] })
-    const r = row({ sectionKey: 'intro', status: 'draft', content: 'body' })
+    const r = row({ sectionKey: 'intro', title: 'intro', documentOrder: 0, status: 'draft', content: 'body' })
     const out = projectSessionState(session, [r])
     expect(out.sections).toEqual([{
       sectionKey: 'intro',
@@ -145,6 +145,25 @@ describe('projectSessionState', () => {
     expect(projectSessionState(session, []).sections).toEqual([])
   })
 
+  it('falls back to persisted rows when outline and blueprint are unavailable', () => {
+    const session = baseSession({ outline: null, blueprint: null })
+    const r = row({
+      sectionKey: 'saved-section',
+      title: 'Saved Section',
+      documentOrder: 7,
+      status: 'draft',
+      content: 'saved content',
+    })
+    const out = projectSessionState(session, [r])
+    expect(out.sections).toEqual([{
+      sectionKey: 'saved-section',
+      title: 'Saved Section',
+      status: 'draft',
+      documentOrder: 7,
+      content: 'saved content',
+    }])
+  })
+
   it('merges rows over virtual entries on the same sectionKey', () => {
     const session = baseSession({
       outline: [spec('a', 1, 'A'), spec('b', 2, 'B')],
@@ -152,7 +171,7 @@ describe('projectSessionState', () => {
     const r = row({ sectionKey: 'a', title: 'Introducere v2', status: 'accepted', content: 'final', acceptedContent: 'final accepted' })
     const out = projectSessionState(session, [r])
     expect(out.sections).toEqual([
-      { sectionKey: 'a', title: 'Introducere v2', status: 'accepted', documentOrder: 1, content: 'final accepted' },
+      { sectionKey: 'a', title: 'A', status: 'accepted', documentOrder: 1, content: 'final accepted' },
       { sectionKey: 'b', title: 'B', status: 'pending', documentOrder: 2, content: null },
     ])
   })
@@ -166,13 +185,18 @@ describe('projectSessionState', () => {
     expect(out.outlineFrozen).toBe(true)
   })
 
-  it('uses row.title (not spec.title) when a row exists', () => {
+  it('uses spec title and order when a matching row exists', () => {
     const session = baseSession({
-      outline: [spec('a', 1, 'Spec Title')],
+      outline: [spec('a', 3, 'Spec Title')],
     })
-    const r = row({ sectionKey: 'a', title: 'Row Title', status: 'draft' })
+    const r = row({ sectionKey: 'a', title: 'Row Title', documentOrder: 0, status: 'draft' })
     const out = projectSessionState(session, [r])
-    expect(out.sections[0].title).toBe('Row Title')
+    expect(out.sections[0]).toMatchObject({
+      sectionKey: 'a',
+      title: 'Spec Title',
+      documentOrder: 3,
+      status: 'draft',
+    })
   })
 
   it('merges 2 rows with 3-spec outline, keeping the 3rd as virtual pending', () => {
@@ -183,8 +207,8 @@ describe('projectSessionState', () => {
     const rowB = row({ sectionKey: 'b', title: 'B actual', status: 'accepted', documentOrder: 2, content: 'b-draft', acceptedContent: 'b-final' })
     const out = projectSessionState(session, [rowA, rowB])
     expect(out.sections).toEqual([
-      { sectionKey: 'a', title: 'A actual', status: 'draft', documentOrder: 1, content: 'a-body' },
-      { sectionKey: 'b', title: 'B actual', status: 'accepted', documentOrder: 2, content: 'b-final' },
+      { sectionKey: 'a', title: 'A', status: 'draft', documentOrder: 1, content: 'a-body' },
+      { sectionKey: 'b', title: 'B', status: 'accepted', documentOrder: 2, content: 'b-final' },
       { sectionKey: 'c', title: 'C', status: 'pending', documentOrder: 3, content: null },
     ])
   })
