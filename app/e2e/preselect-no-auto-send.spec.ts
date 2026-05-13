@@ -7,8 +7,8 @@
 //   - DB has no agent_turns row for the new session until user explicitly acts
 //
 // Pre-condition: feature flag `preselect_no_auto_send` is toggled on via
-//   beforeAll / restored to false in afterAll. Requires DATABASE_URL env var
-//   to be set so the DB pre/post-conditions can be inspected.
+//   beforeAll / restored to its exact previous state in afterAll. Requires
+//   DATABASE_URL env var to be set so the DB pre/post-conditions can be inspected.
 //
 // Skips gracefully when DATABASE_URL is absent (informational, not merge gate).
 // Requires: dev server on localhost:3002, auth storage state at
@@ -18,6 +18,11 @@ import { test, expect } from '@playwright/test'
 import postgres from 'postgres'
 
 const DATABASE_URL = process.env.DATABASE_URL
+const FLAG_KEY = 'preselect_no_auto_send'
+
+type FlagSnapshot =
+  | { exists: false }
+  | { exists: true; enabled: boolean; description: string | null; targeting: string | null }
 
 // Helper: create a short-lived postgres.js connection, run `fn`, then end it.
 async function withDb<T>(fn: (sql: ReturnType<typeof postgres>) => Promise<T>): Promise<T> {
@@ -29,22 +34,65 @@ async function withDb<T>(fn: (sql: ReturnType<typeof postgres>) => Promise<T>): 
   }
 }
 
+async function readFlag(sql: ReturnType<typeof postgres>): Promise<FlagSnapshot> {
+  const rows = await sql<Array<{ enabled: boolean; description: string | null; targeting: string | null }>>`
+    SELECT enabled, description, targeting::text AS targeting
+    FROM   feature_flags
+    WHERE  key = ${FLAG_KEY}
+  `
+  const row = rows[0]
+  return row ? { exists: true, ...row } : { exists: false }
+}
+
 test.describe('preselect no-auto-send', () => {
   // Skip the entire suite when DATABASE_URL is absent so CI without a live DB
   // doesn't hard-fail on these informational-only tests.
   test.skip(!DATABASE_URL, 'DATABASE_URL not set — skipping DB-dependent E2E')
 
+  let previousFlag: FlagSnapshot | null = null
+
   test.beforeAll(async () => {
-    await withDb(sql =>
-      sql`UPDATE feature_flags SET enabled = true WHERE key = 'preselect_no_auto_send'`,
-    )
+    previousFlag = await withDb(async sql => {
+      const snapshot = await readFlag(sql)
+      await sql`
+        INSERT INTO feature_flags (key, enabled, description, targeting, created_at, updated_at)
+        VALUES (
+          ${FLAG_KEY},
+          true,
+          'E2E override: preselect no-auto-send bootstrap path',
+          '{}'::jsonb,
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (key) DO UPDATE
+        SET enabled = EXCLUDED.enabled,
+            description = EXCLUDED.description,
+            targeting = EXCLUDED.targeting,
+            updated_at = NOW()
+      `
+      return snapshot
+    })
   })
 
   test.afterAll(async () => {
-    // Restore flag to off so the flag state doesn't leak into other test runs.
-    await withDb(sql =>
-      sql`UPDATE feature_flags SET enabled = false WHERE key = 'preselect_no_auto_send'`,
-    )
+    // Restore the exact prior flag state so this E2E cannot leak global flag
+    // changes into later tests or developer environments.
+    if (!previousFlag) return
+    const snapshot = previousFlag
+    await withDb(async sql => {
+      if (!snapshot.exists) {
+        await sql`DELETE FROM feature_flags WHERE key = ${FLAG_KEY}`
+        return
+      }
+      await sql`
+        UPDATE feature_flags
+        SET enabled = ${snapshot.enabled},
+            description = ${snapshot.description},
+            targeting = ${snapshot.targeting}::jsonb,
+            updated_at = NOW()
+        WHERE key = ${FLAG_KEY}
+      `
+    })
   })
 
   test('preselect selected → static welcome, no agent SSE, no agent_turns row', async ({ page }) => {
