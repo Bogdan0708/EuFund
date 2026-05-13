@@ -39,6 +39,7 @@ function makeCtx(): ServiceContext {
     requestId: 'req-1',
     now: new Date(),
     allowWrites: true,
+    expectedStateVersion: 0,
   }
 }
 
