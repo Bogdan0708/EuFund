@@ -61,11 +61,17 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<Eligi
       warn: eligibility.warningCount,
     }, 'Eligibility check completed')
 
+    // PR 4: in chat-trimmed mode, rule tools return verdicts to the model
+    // but stop persisting them — the `/actions/run-eligibility` REST
+    // endpoint (PR 3) is the only path that writes eligibility into the
+    // session.
     return {
       success: true,
       data: eligibility,
       warnings,
-      stateTransitions: [{ type: 'SET_ELIGIBILITY', result: eligibility }],
+      stateTransitions: ctx.chatToolsTrimmed
+        ? undefined
+        : [{ type: 'SET_ELIGIBILITY', result: eligibility }],
       telemetry: { latencyMs: Date.now() - start },
     }
   } catch (error) {

@@ -30,13 +30,17 @@ async function execute(_input: Record<string, never>, ctx: ToolContext): Promise
       total: validation.summary.totalSections,
     }, 'Application validated')
 
+    // PR 4: stateTransitions are suppressed in chat-trimmed mode; the
+    // section-status REST actions (PR 3) own persistence.
     return {
       success: true,
       data: validation,
       warnings: validation.issues.filter(i => i.severity !== 'info').map(i => `[${i.code}] ${i.message}`),
-      stateTransitions: validation.passed
-        ? [{ type: 'SET_PHASE', phase: 'review' as const }]
-        : undefined,
+      stateTransitions: ctx.chatToolsTrimmed
+        ? undefined
+        : validation.passed
+          ? [{ type: 'SET_PHASE', phase: 'review' as const }]
+          : undefined,
       telemetry: { latencyMs: Date.now() - start },
     }
   } catch (error) {

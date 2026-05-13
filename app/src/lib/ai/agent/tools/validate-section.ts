@@ -41,6 +41,8 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<Valid
 
     const errorCount = result.issues.filter(i => i.severity === 'error').length
 
+    // PR 4: stateTransitions are suppressed in chat-trimmed mode; the
+    // section-status REST actions (PR 3) own persistence.
     return {
       success: true,
       data: {
@@ -49,9 +51,11 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<Valid
         score: result.score,
       },
       warnings: result.issues.filter(i => i.severity !== 'info').map(i => `[${i.code}] ${i.message}`),
-      stateTransitions: errorCount === 0
-        ? [{ type: 'REJECT_SECTION' as const, sectionKey: input.sectionKey, reason: 'Validation passed — ready for review' }]
-        : undefined,
+      stateTransitions: ctx.chatToolsTrimmed
+        ? undefined
+        : errorCount === 0
+          ? [{ type: 'REJECT_SECTION' as const, sectionKey: input.sectionKey, reason: 'Validation passed — ready for review' }]
+          : undefined,
       telemetry: { latencyMs: Date.now() - start },
     }
   } catch (error) {
