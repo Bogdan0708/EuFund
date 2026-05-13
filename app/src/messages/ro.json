@@ -1388,7 +1388,24 @@
     },
     "errors": {
       "POLICY_OUTLINE_NOT_READY": "Schița apelului încă nu este pregătită. Reîncearcă într-o clipă.",
-      "POLICY_SECTION_NOT_IN_OUTLINE": "Secțiunea selectată nu face parte din schiță."
+      "POLICY_SECTION_NOT_IN_OUTLINE": "Secțiunea selectată nu face parte din schiță.",
+      "OUTLINE_NOT_READY": "Schița nu este pregătită.",
+      "OUTLINE_NOT_FROZEN": "Schița trebuie înghețată înainte.",
+      "OUTLINE_ALREADY_FROZEN": "Schița este deja înghețată.",
+      "SECTION_NOT_IN_OUTLINE": "Secțiunea nu face parte din schiță.",
+      "SESSION_NOT_ACTIVE": "Sesiunea nu este activă.",
+      "NO_CALL_SELECTED": "Niciun apel selectat.",
+      "ELIGIBILITY_NOT_PASSED": "Eligibilitatea nu este îndeplinită.",
+      "SECTION_WRONG_STATE": "Starea secțiunii nu permite operația.",
+      "BLUEPRINT_PHASE_GATE": "Operația nu este permisă în faza curentă.",
+      "CONCURRENCY_CONFLICT": "Datele s-au schimbat între timp. Reîncarcă.",
+      "VALIDATION_NO_OP": "Nicio schimbare.",
+      "INVALID_CALL_ID": "Apel necunoscut.",
+      "ELIGIBILITY_INPUTS_MISSING": "Datele pentru eligibilitate nu sunt disponibile.",
+      "DETERMINISTIC_ACTIONS_DISABLED": "Acțiunile deterministe nu sunt active.",
+      "NOT_FOUND": "Resursă inexistentă.",
+      "FORBIDDEN": "Acces interzis.",
+      "INTERNAL": "Eroare internă."
     },
     "thinking": "Se gândește...",
     "waitingForResponse": "Se așteaptă răspunsul...",
@@ -1426,6 +1443,10 @@
       "invalidated": "Invalidat",
       "needs_review": "Necesită revizuire",
       "failed": "Eșuat"
+    },
+    "actions": {
+      "freezeOutline": "Înghețează schița",
+      "export": "Exportă"
     }
   }
 }

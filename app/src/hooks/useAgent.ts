@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { csrfFetch } from '@/lib/csrf/client'
 import { formatToolError } from '@/lib/ai/agent/format-tool-error'
+import { ActionError, callAction } from '@/lib/agent-actions/client'
 import type {
   AgentEvent, AgentRequest, StructuredAction, UIStateSnapshot,
   Phase, Warning, SectionStatus,
@@ -29,6 +30,28 @@ export interface AgentSectionState {
 }
 
 export type AgentStatus = 'idle' | 'connecting' | 'streaming' | 'error'
+
+function isUIStateSnapshot(value: unknown): value is UIStateSnapshot {
+  if (!value || typeof value !== 'object') return false
+  const state = value as Partial<UIStateSnapshot>
+  return (
+    typeof state.sessionId === 'string' &&
+    typeof state.phase === 'string' &&
+    typeof state.stateVersion === 'number' &&
+    typeof state.outlineFrozen === 'boolean' &&
+    Array.isArray(state.warnings) &&
+    Array.isArray(state.sections)
+  )
+}
+
+function formatActionError(error: unknown, locale: 'ro' | 'en'): string {
+  if (error instanceof ActionError) {
+    const primary = locale === 'ro' ? error.messageRo : error.messageEn
+    const secondary = locale === 'ro' ? error.messageEn : error.messageRo
+    return primary || secondary || error.code
+  }
+  return error instanceof Error ? error.message : 'Action failed'
+}
 
 // ── Hook ────────────────────────────────────────────────────────
 
@@ -68,6 +91,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     sessionIdRef.current = state.sessionId
     setPhase(state.phase)
     setStateVersion(state.stateVersion)
+    stateVersionRef.current = state.stateVersion
     setOutlineFrozen(state.outlineFrozen)
     setWarnings(state.warnings)
     setSections(state.sections)
@@ -369,6 +393,47 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSessionId])
 
+  // Run a deterministic action against the current session. Merges the
+  // returned UIStateSnapshot into local state via applyFinalState.
+  // Automatically passes the current stateVersion as expectedStateVersion
+  // unless caller overrides it in `body`. Export is intentionally excluded:
+  // it is non-idempotent but does not mutate session state, and its route body
+  // is strict-empty.
+  const runAction = useCallback(async (
+    name: string,
+    body: Record<string, unknown> = {},
+  ): Promise<unknown> => {
+    const sid = sessionIdRef.current
+    if (!sid) {
+      const message = 'No session to act on'
+      setStatus('error')
+      setError(message)
+      throw new Error(message)
+    }
+
+    setStatus('connecting')
+    setError(null)
+
+    try {
+      const payload = name === 'export'
+        ? body
+        : {
+            expectedStateVersion: stateVersionRef.current,
+            ...body,
+          }
+      const result = await callAction<unknown>(sid, name, payload)
+      if (isUIStateSnapshot(result)) {
+        applyFinalState(result)
+      }
+      setStatus('idle')
+      return result
+    } catch (err) {
+      setStatus('error')
+      setError(formatActionError(err, locale))
+      throw err
+    }
+  }, [applyFinalState, locale])
+
   // ── Public API ──────────────────────────────────────────────
 
   const sendMessage = useCallback((message: string) => {
@@ -425,5 +490,6 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     sendAction,
     reconnect,
     adoptSession,
+    runAction,
   }
 }
