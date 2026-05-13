@@ -13,9 +13,10 @@ interface Props {
   // auto-send, the user has to click Send.
   initialInput?: string
   onSendMessage: (message: string) => void
+  welcomeMessage?: string
 }
 
-export function AgentConversation({ messages, status, error, initialInput, onSendMessage }: Props) {
+export function AgentConversation({ messages, status, error, initialInput, onSendMessage, welcomeMessage }: Props) {
   const t = useTranslations('agent')
   const [input, setInput] = useState(initialInput ?? '')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -46,6 +47,11 @@ export function AgentConversation({ messages, status, error, initialInput, onSen
   return (
     <div className="flex flex-col h-full">
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.length === 0 && welcomeMessage && (
+          <div className="px-2 py-6 text-sm text-gray-600" data-testid="agent-welcome">
+            {welcomeMessage}
+          </div>
+        )}
         {messages.map(msg => (
           <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${

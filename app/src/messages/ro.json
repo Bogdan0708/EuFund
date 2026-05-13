@@ -1393,6 +1393,7 @@
     "thinking": "Se gândește...",
     "waitingForResponse": "Se așteaptă răspunsul...",
     "inputPlaceholder": "Descrie proiectul tău sau pune o întrebare...",
+    "welcomeAfterPreselect": "Am selectat apelul. Apasă „Generează schiță\" pentru a începe sau scrie-mi întrebări despre cerere.",
     "send": "Trimite",
     "applicationStatus": "Stare aplicație",
     "sectionsLabel": "Secțiuni",

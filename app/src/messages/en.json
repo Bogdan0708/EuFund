@@ -1393,6 +1393,7 @@
     "thinking": "Thinking...",
     "waitingForResponse": "Waiting for response...",
     "inputPlaceholder": "Describe your project or ask a question...",
+    "welcomeAfterPreselect": "I've selected the call. Click \"Generate draft\" to begin, or ask me anything about the application.",
     "send": "Send",
     "applicationStatus": "Application Status",
     "sectionsLabel": "Sections",
