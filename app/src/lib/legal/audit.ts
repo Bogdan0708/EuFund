@@ -87,6 +87,7 @@ export type AuditAction =
   | 'funding_ai.review_queue_update'
   // Phase 3 managed-agent mutations (new narrow mutation services)
   | 'session.call_selected'
+  | 'session.call_changed'
   | 'session.outline_frozen'
   | 'session.preselect_completed'
   | 'section.marked_stale'
