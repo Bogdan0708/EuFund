@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import { csrfFetch } from '@/lib/csrf/client'
 import { formatToolError } from '@/lib/ai/agent/format-tool-error'
 import { callAction } from '@/lib/agent-actions/client'
+import { parseSSEStream } from '@/lib/sse/parse'
 import type {
   AgentEvent, AgentRequest, StructuredAction, UIStateSnapshot,
   Phase, Warning, SectionStatus,
@@ -262,29 +263,14 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
       const reader = response.body?.getReader()
       if (!reader) throw new Error('No response body')
 
-      const decoder = new TextDecoder()
-      let buffer = ''
       let assistantMsgId: string | null = null
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const json = line.slice(6).trim()
-          if (!json) continue
-
-          try {
-            const event: AgentEvent = JSON.parse(json)
-            handleEvent(event, assistantMsgId, (id) => { assistantMsgId = id })
-          } catch {
-            // Skip malformed events
-          }
+      for await (const { data } of parseSSEStream(reader)) {
+        if (!data || typeof data !== 'object' || !('type' in data)) continue
+        try {
+          handleEvent(data as AgentEvent, assistantMsgId, (id) => { assistantMsgId = id })
+        } catch {
+          // Skip malformed event-handling errors (mirrors prior try/catch)
         }
       }
 
