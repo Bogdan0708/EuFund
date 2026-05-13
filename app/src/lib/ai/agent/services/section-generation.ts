@@ -7,6 +7,7 @@ import type { AgentSection, AgentSession, SectionSpec } from '../types'
 import type { ServiceContext } from './types'
 import { getAnthropicClient } from '@/lib/ai/anthropic-client'
 import { retrieveEvidence } from './evidence'
+import { GenerationInvalidError } from './errors'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ component: 'section-generation' })
@@ -21,6 +22,8 @@ export type GenerationDelta =
   | { type: 'delta'; content: string }
   | { type: 'final'; content: string; model: string }
 
+// Minimum acceptable draft length, in chars. Guards against empty or
+// truncated streams; ~80 chars is one short paragraph.
 const MIN_LEN = 80
 const MAX_TOKENS = 4096
 const EVIDENCE_CHUNKS = 8
@@ -38,7 +41,7 @@ export async function* streamSectionGeneration(
   const { session, spec } = input
   const callId = session.selectedCallId
   if (!callId) {
-    throw new Error('GENERATION_INVALID: no selectedCallId on session')
+    throw new GenerationInvalidError('other', 'Session has no selectedCallId — cannot generate section')
   }
 
   // Pre-fetch evidence (zero-tool generation: no model lookup loop).
@@ -68,11 +71,14 @@ export async function* streamSectionGeneration(
 
   if (full.length < MIN_LEN) {
     log.warn({ sessionId: session.id, sectionKey: spec.id, length: full.length }, 'generated output below MIN_LEN')
-    throw new Error('GENERATION_INVALID: output below minimum length')
+    throw new GenerationInvalidError(
+      full.length === 0 ? 'empty' : 'too_short',
+      `Section draft length ${full.length} is below minimum ${MIN_LEN}`,
+    )
   }
   if (looksLikeRefusal(full)) {
     log.warn({ sessionId: session.id, sectionKey: spec.id }, 'generated output looks like refusal')
-    throw new Error('GENERATION_INVALID: output looks like a refusal')
+    throw new GenerationInvalidError('refusal_detected', 'Generated content matches a refusal heuristic')
   }
 
   yield { type: 'final', content: full, model }
