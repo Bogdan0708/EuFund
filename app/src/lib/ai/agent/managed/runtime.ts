@@ -107,6 +107,7 @@ export interface ManagedRuntimeOptions {
   // tagged with it. Owned by the route — the route inserts the claim
   // row before opening the SSE Response and passes the id in here.
   turnId: string
+  focusedSectionKey?: string
 }
 
 export interface ManagedTurnResult {

@@ -102,6 +102,26 @@ async function handler(req: NextRequest) {
     log.info({ sessionId: session.id, userId: user.id }, 'New agent session created')
   }
 
+  // If the request specifies focusedSectionKey, verify it belongs to this session's outline.
+  // Sessions with no outline (e.g. fresh discovery) fail closed — UI must only set focus
+  // once an outline exists.
+  if (body.focusedSectionKey) {
+    const outline = (session.outline ?? []) as { id: string }[]
+    const found = outline.some((s) => s.id === body.focusedSectionKey)
+    if (!found) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'INVALID_FOCUSED_SECTION',
+            messageRo: 'Secțiune invalidă pentru această sesiune.',
+            messageEn: 'Invalid section for this session.',
+          },
+        },
+        { status: 400 },
+      )
+    }
+  }
+
   // Decide which runtime to dispatch to.
   //
   // Phase 2 compatibility guard: the managed runtime only consumes
@@ -349,7 +369,7 @@ function runV3WithSSE(
 
       try {
         const routingCtx = await getAIModelRoutingContext(user.id)
-        await runAgentTurn({ session, sections, request: body, emit, routingCtx, turnId })
+        await runAgentTurn({ session, sections, request: body, emit, routingCtx, turnId, focusedSectionKey: body.focusedSectionKey })
       } catch (error) {
         const errorEvent: AgentEvent = {
           type: 'error',
@@ -434,6 +454,7 @@ function runManagedWithSSE(
           emit,
           serviceCtx,
           turnId,
+          focusedSectionKey: body.focusedSectionKey,
         })
         firstOutputPersisted = result.firstOutputPersisted
 

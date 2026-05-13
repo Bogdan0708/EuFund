@@ -47,6 +47,7 @@ export interface RuntimeOptions {
   // markTurnCompleted() immediately before each `done` emit so the
   // reconciliation cron can distinguish completed turns from abandoned ones.
   turnId: string
+  focusedSectionKey?: string
 }
 
 // V3 doesn't track per-turn token usage or cost the way managed does.
