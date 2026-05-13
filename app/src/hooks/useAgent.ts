@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { csrfFetch } from '@/lib/csrf/client'
 import { formatToolError } from '@/lib/ai/agent/format-tool-error'
+import { callAction } from '@/lib/agent-actions/client'
 import type {
   AgentEvent, AgentRequest, StructuredAction, UIStateSnapshot,
   Phase, Warning, SectionStatus,
@@ -369,6 +370,24 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSessionId])
 
+  // Run a deterministic action against the current session. Merges the
+  // returned UIStateSnapshot into local state via applyFinalState.
+  // Automatically passes the current stateVersion as expectedStateVersion
+  // unless caller overrides it in `body`.
+  const runAction = useCallback(async (
+    name: string,
+    body: Record<string, unknown> = {},
+  ): Promise<UIStateSnapshot> => {
+    const sid = sessionIdRef.current
+    if (!sid) throw new Error('No session to act on')
+    const snapshot = await callAction<UIStateSnapshot>(sid, name, {
+      expectedStateVersion: stateVersionRef.current,
+      ...body,
+    })
+    applyFinalState(snapshot)
+    return snapshot
+  }, [applyFinalState])
+
   // ── Public API ──────────────────────────────────────────────
 
   const sendMessage = useCallback((message: string) => {
@@ -425,5 +444,6 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
     sendAction,
     reconnect,
     adoptSession,
+    runAction,
   }
 }
