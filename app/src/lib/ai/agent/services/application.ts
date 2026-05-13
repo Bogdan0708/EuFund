@@ -13,6 +13,8 @@ import { NotFoundError, ConcurrencyError, ValidationError } from './errors'
 import { verifySessionOwnership } from './context-helpers'
 import { logAudit } from '@/lib/legal/audit'
 import { ensureProjectForSession } from '@/lib/projects/promotion'
+import { runEligibility } from './eligibility'
+import type { EligibilityInput } from './eligibility'
 import { assertPolicy } from '../policy/enforce'
 import { POLICY_MATRIX } from '../policy/matrix'
 import { logger } from '@/lib/logger'
@@ -695,4 +697,149 @@ export async function freezeOutline(
   })
 
   return { newStateVersion }
+}
+
+// ── runEligibilityForSession ───────────────────────────────────────────────
+
+export interface RunEligibilityForSessionInput {
+  sessionId: string
+  expectedStateVersion: number
+  /** Free-text project summary — ignored if structured inputs are available on the session. */
+  projectSummary?: string
+}
+
+export interface RunEligibilityForSessionResult {
+  newStateVersion: number
+  decision: import('./types').EligibilityDecision
+}
+
+/**
+ * Thin wrapper that runs the deterministic eligibility rules engine against
+ * a session's selected call, persists the result, and bumps stateVersion.
+ *
+ * Input derivation: attempts to read structured org/project fields from
+ * `session.planningArtifact`. If structured inputs are unavailable, throws
+ * `ValidationError('eligibility', ..., 'ELIGIBILITY_INPUTS_MISSING')`.
+ *
+ * Write contract:
+ *   1. Verify session ownership
+ *   2. CAS-check expectedStateVersion
+ *   3. Validate session.selectedCallId is non-null
+ *   4. Derive EligibilityInput from planningArtifact (throws if unavailable)
+ *   5. Call pure-rules runEligibility(ctx, input, callId)
+ *   6. CAS-update session.eligibility = decision, stateVersion += 1
+ *   7. Audit as session.eligibility_run
+ *   8. Return { newStateVersion, decision }
+ */
+export async function runEligibilityForSession(
+  ctx: ServiceContext,
+  input: RunEligibilityForSessionInput,
+): Promise<RunEligibilityForSessionResult> {
+  // 1. Verify ownership
+  const session = await verifySessionOwnership(ctx, input.sessionId)
+
+  // 2. CAS check
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  // 3. Validate selectedCallId
+  if (!session.selectedCallId) {
+    throw new ValidationError(
+      'selectedCallId',
+      'No call selected — run preselect before eligibility check',
+      'NO_CALL_SELECTED',
+    )
+  }
+
+  // 4. Derive EligibilityInput from planningArtifact
+  const artifact = session.planningArtifact as Record<string, unknown> | null
+  const derived = deriveEligibilityInput(artifact)
+  if (!derived) {
+    throw new ValidationError(
+      'eligibility',
+      'Structured eligibility inputs not available on session. Provide org/project data and retry.',
+      'ELIGIBILITY_INPUTS_MISSING',
+    )
+  }
+
+  // 5. Run pure-rules eligibility
+  const decision = await runEligibility(ctx, derived, session.selectedCallId)
+
+  // 6. CAS-update: persist decision + bump stateVersion
+  const newStateVersion = session.stateVersion + 1
+  const casResult = await db
+    .update(agentSessions)
+    .set({
+      eligibility: decision,
+      stateVersion: newStateVersion,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(agentSessions.id, input.sessionId),
+      eq(agentSessions.stateVersion, input.expectedStateVersion),
+    ))
+    .returning({ id: agentSessions.id })
+
+  if (casResult.length === 0) {
+    const [current] = await db
+      .select({ stateVersion: agentSessions.stateVersion })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, input.sessionId))
+      .limit(1)
+    throw new ConcurrencyError(input.expectedStateVersion, current?.stateVersion ?? -1)
+  }
+
+  // 7. Audit
+  await logAudit({
+    userId: ctx.userId,
+    action: 'session.eligibility_run',
+    resourceType: 'agent_session',
+    resourceId: input.sessionId,
+    metadata: {
+      callId: session.selectedCallId,
+      score: decision.score,
+      passCount: decision.passCount,
+      failCount: decision.failCount,
+      warningCount: decision.warningCount,
+      requestId: ctx.requestId,
+    },
+  })
+
+  // 8. Return
+  return { newStateVersion, decision }
+}
+
+// ── deriveEligibilityInput ─────────────────────────────────────────────────
+
+/**
+ * Best-effort extraction of structured EligibilityInput from a session's
+ * planningArtifact JSONB blob. Returns null when the artifact does not
+ * carry the necessary structured fields.
+ *
+ * Accepted shapes:
+ *   - planningArtifact.eligibilityInputs (explicit cache from a future UI step)
+ *
+ * Rejected shapes (cannot derive):
+ *   - preselect v1 artifact (has rankedAt, description, selectedCallId — no org/project)
+ *   - V3 artifact (has projectSummary, keyAssumptions — no structured org/project)
+ *   - null / missing
+ */
+function deriveEligibilityInput(
+  artifact: Record<string, unknown> | null,
+): EligibilityInput | null {
+  if (!artifact) return null
+
+  // Explicit structured inputs stashed by a future UI step or migration
+  if (artifact.eligibilityInputs && typeof artifact.eligibilityInputs === 'object') {
+    const ei = artifact.eligibilityInputs as Record<string, unknown>
+    if (ei.organization && typeof ei.organization === 'object') {
+      return {
+        organization: ei.organization as EligibilityInput['organization'],
+        project: (ei.project as EligibilityInput['project']) ?? {},
+      }
+    }
+  }
+
+  return null
 }
