@@ -61,7 +61,7 @@ export async function changeCall(
     if (session.outlineFrozen) {
       throw new ValidationError(
         'outlineFrozen',
-        'POLICY_OUTLINE_ALREADY_FROZEN: Cannot change call while outline is frozen',
+        'Cannot change call while outline is frozen',
         'POLICY_OUTLINE_ALREADY_FROZEN',
       )
     }
@@ -69,7 +69,7 @@ export async function changeCall(
     if (session.selectedCallId === input.newCallId) {
       throw new ValidationError(
         'newCallId',
-        'VALIDATION_NO_OP: New call is identical to current call',
+        'New call is identical to current call',
         'VALIDATION_NO_OP',
       )
     }
@@ -112,7 +112,7 @@ export async function changeCall(
     await db.delete(agentSections).where(eq(agentSections.sessionId, input.sessionId))
 
     const newStateVersion = (session.stateVersion as number) + 1
-    await db
+    const casResult = await db
       .update(agentSessions)
       .set({
         selectedCallId: input.newCallId,
@@ -131,6 +131,17 @@ export async function changeCall(
           eq(agentSessions.stateVersion, input.expectedStateVersion),
         ),
       )
+      .returning({ id: agentSessions.id })
+
+    if (casResult.length === 0) {
+      // Another writer committed between our pre-read and this UPDATE.
+      const [current] = await db
+        .select({ stateVersion: agentSessions.stateVersion })
+        .from(agentSessions)
+        .where(eq(agentSessions.id, input.sessionId))
+        .limit(1)
+      throw new ConcurrencyError(input.expectedStateVersion, current?.stateVersion ?? -1)
+    }
 
     const [updated] = await db
       .select()

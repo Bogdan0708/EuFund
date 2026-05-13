@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { ValidationError, ConcurrencyError } from '@/lib/ai/agent/services/errors'
 
 // drizzle-orm is not installed in worktree node_modules — mock the operators.
 vi.mock('drizzle-orm', () => ({
@@ -32,10 +33,13 @@ vi.mock('@/lib/db', () => ({
     }),
     update: () => ({
       set: (s: Record<string, unknown>) => ({
-        where: () => {
-          dbState.session = { ...(dbState.session ?? {}), ...s, stateVersion: (typeof s.stateVersion === 'number' ? s.stateVersion : (dbState.session?.stateVersion as number ?? 0) + 1) }
-          return Promise.resolve()
-        },
+        where: () => ({
+          returning: () => {
+            dbState.session = { ...(dbState.session ?? {}), ...s, stateVersion: (typeof s.stateVersion === 'number' ? s.stateVersion : (dbState.session?.stateVersion as number ?? 0) + 1) }
+            // Return one row to signal CAS success (non-empty means the WHERE matched).
+            return Promise.resolve([{ id: dbState.session?.id ?? 's1' }])
+          },
+        }),
       }),
     }),
     delete: () => ({
@@ -103,7 +107,7 @@ describe('changeCall service', () => {
     await expect(changeCall(
       { userId: 'u1', sessionId: 's1', requestId: 'r', now: new Date() },
       { sessionId: 's1', newCallId: 'C-1', expectedStateVersion: 3 },
-    )).rejects.toThrow(/VALIDATION_NO_OP/)
+    )).rejects.toMatchObject({ policyCode: 'VALIDATION_NO_OP' })
   })
 
   it('rejects when outline is frozen', async () => {
@@ -112,7 +116,7 @@ describe('changeCall service', () => {
     await expect(changeCall(
       { userId: 'u1', sessionId: 's1', requestId: 'r', now: new Date() },
       { sessionId: 's1', newCallId: 'C-2', expectedStateVersion: 3 },
-    )).rejects.toThrow(/POLICY_OUTLINE_ALREADY_FROZEN/)
+    )).rejects.toMatchObject({ policyCode: 'POLICY_OUTLINE_ALREADY_FROZEN' })
   })
 
   it('rejects when expectedStateVersion does not match (CAS conflict)', async () => {
@@ -120,6 +124,6 @@ describe('changeCall service', () => {
     await expect(changeCall(
       { userId: 'u1', sessionId: 's1', requestId: 'r', now: new Date() },
       { sessionId: 's1', newCallId: 'C-2', expectedStateVersion: 999 },
-    )).rejects.toThrow(/[Cc]oncurren/)
+    )).rejects.toMatchObject({ expected: 999, actual: 3 })
   })
 })
