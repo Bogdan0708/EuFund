@@ -45,24 +45,51 @@ describe('managed executor — save_section_draft section-key injection', () => 
     })
   })
 
-  it("prefers the model's sectionKey over ctx.focusedSectionKey if both are present", async () => {
+  it('refuses model-supplied sectionKey when it does not match ctx.focusedSectionKey', async () => {
+    const { dispatchTool } = await import('@/lib/ai/agent/managed/executor')
+    const { ValidationError } = await import('@/lib/ai/agent/services/errors')
+
+    let caught: unknown = null
+    try {
+      await dispatchTool(
+        'save_section_draft',
+        { content: 'body', sectionKey: 'model-picked' },
+        {
+          userId: '11111111-1111-4111-8111-111111111111',
+          sessionId: '22222222-2222-4222-8222-222222222222',
+          requestId: 'req-2',
+          now: new Date(),
+          allowWrites: true,
+          focusedSectionKey: 'ctx-focus',
+          expectedStateVersion: 7,
+        },
+      )
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).toBeInstanceOf(ValidationError)
+    expect((caught as { policyCode?: string }).policyCode).toBe('WRONG_SECTION_TARGET')
+    expect(saveSpy).not.toHaveBeenCalled()
+  })
+
+  it('accepts model-supplied sectionKey when it matches ctx.focusedSectionKey', async () => {
     const { dispatchTool } = await import('@/lib/ai/agent/managed/executor')
     await dispatchTool(
       'save_section_draft',
-      { content: 'body', sectionKey: 'model-picked' },
+      { content: 'body', sectionKey: 'intro' },
       {
         userId: '11111111-1111-4111-8111-111111111111',
         sessionId: '22222222-2222-4222-8222-222222222222',
-        requestId: 'req-2',
+        requestId: 'req-2b',
         now: new Date(),
         allowWrites: true,
-        focusedSectionKey: 'ctx-fallback',
+        focusedSectionKey: 'intro',
         expectedStateVersion: 7,
       },
     )
-
     const [, calledInput] = saveSpy.mock.calls[0]
-    expect(calledInput).toMatchObject({ sectionKey: 'model-picked' })
+    expect(calledInput).toMatchObject({ sectionKey: 'intro' })
   })
 
   it('throws ValidationError with policyCode=NO_SECTION_FOCUSED when neither key is available', async () => {

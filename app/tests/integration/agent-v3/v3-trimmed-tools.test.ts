@@ -31,10 +31,10 @@ describe('V3 trimToChatSurface', () => {
     expect(names.has('validate_application')).toBe(true)
   })
 
-  it("keeps `generate_section` (V3's scoped chat write)", () => {
+  it('removes `generate_section` — section authoring goes through /sections/generate (PR 5)', () => {
     const trimmed = trimToChatSurface(getToolRegistry())
     const names = new Set(trimmed.map((t) => t.name))
-    expect(names.has('generate_section')).toBe(true)
+    expect(names.has('generate_section')).toBe(false)
   })
 
   it('removes navigation/decision writes that should go through REST actions', () => {

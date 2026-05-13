@@ -360,14 +360,32 @@ export async function dispatchTool(
     }
     // ── Phase 3b write tools ───────────────────────────────────────────────
     case 'save_section_draft': {
-      // PR 4: managed tool schema is content-only ({ content }). The model
-      // never picks the section — the user focuses one in the UI and the
-      // route threads the id through as ctx.focusedSectionKey. The model
-      // MAY still emit a sectionKey for back-compat with legacy serialized
-      // turns; defer to it when present.
+      // PR 4: managed tool schema is content-only ({ content }) when the
+      // chat_tools_trimmed flag is on. The runtime signals trim mode by
+      // threading `ctx.focusedSectionKey` from the request — its presence is
+      // the proxy for "the app owns target section selection." Enforcement:
+      //   - Trimmed (focusedSectionKey set): the model MUST NOT redirect
+      //     the write. If it supplies a different sectionKey, refuse so it
+      //     can correct itself next turn. Architectural invariant from the
+      //     app-owned-workflow design: writes only target the UI focus.
+      //   - Legacy (no focusedSectionKey in ctx): fall back to the model's
+      //     sectionKey to preserve the pre-PR4 contract for non-trimmed
+      //     sessions and other callers.
       const i = rawInput as { content: string; sectionKey?: string }
       requireSession(ctx)
-      const sectionKey = i.sectionKey ?? ctx.focusedSectionKey
+      if (
+        ctx.focusedSectionKey &&
+        typeof i.sectionKey === 'string' &&
+        i.sectionKey.length > 0 &&
+        i.sectionKey !== ctx.focusedSectionKey
+      ) {
+        throw new ValidationError(
+          'sectionKey',
+          `Tool refused: model supplied sectionKey "${i.sectionKey}" does not match the focused section "${ctx.focusedSectionKey}". The target section is selected by the user in the UI; do not pass sectionKey.`,
+          'WRONG_SECTION_TARGET',
+        )
+      }
+      const sectionKey = ctx.focusedSectionKey ?? i.sectionKey
       if (!sectionKey) {
         throw new ValidationError(
           'sectionKey',

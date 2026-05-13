@@ -24,14 +24,14 @@ import { projectSectionsForUI, projectSessionState } from './state-projection'
 const log = logger.child({ component: 'agent-runtime' })
 
 // PR 4: when chat_tools_trimmed is on, the V3 tool surface shrinks to
-// reads + rule-decisions-as-read-only + a single scoped section write
-// (`generate_section`). Navigation/decision writes go through PR 3's
-// deterministic REST endpoints; the chat surface stops carrying them.
+// reads + rule-decisions-as-read-only. Writes — including section drafts —
+// go through deterministic REST endpoints (`/actions/*` from PR 3, and
+// `/sections/generate` from PR 5). Chat owns clarification + revision
+// only; it does not own workflow or content authorship via tool calls.
 const V3_CHAT_ALLOWED_NON_READS: ReadonlySet<string> = new Set([
   'run_eligibility',
   'validate_section',
   'validate_application',
-  'generate_section',
 ])
 
 export function trimToChatSurface(
