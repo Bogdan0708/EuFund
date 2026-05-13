@@ -374,10 +374,10 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   // Automatically passes the current stateVersion as expectedStateVersion
   // unless caller overrides it in `body`.
   //
-  // UX contract: clear prior error on entry; surface error + status='error'
-  // on throw so AgentWorkspace's `disabled={isBusy}` + error banner light
-  // up. Callers that `.catch(() => {})` rely on this state, not on
-  // returned values.
+  // UX contract: status='streaming' on entry so AgentWorkspace's
+  // `disabled={isBusy}` toggles; clear prior error; status='idle' on
+  // success; status='error' + error message on throw. Callers that
+  // `.catch(() => {})` rely on this state, not on returned values.
   const runAction = useCallback(async (
     name: string,
     body: Record<string, unknown> = {},
@@ -389,6 +389,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
       setError(msg)
       throw new Error(msg)
     }
+    setStatus('streaming')
     setError(null)
     try {
       const snapshot = await callAction<UIStateSnapshot>(sid, name, {
@@ -396,6 +397,7 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
         ...body,
       })
       applyFinalState(snapshot)
+      setStatus('idle')
       return snapshot
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Action failed'
