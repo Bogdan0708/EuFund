@@ -10,7 +10,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { requireAuth } from '@/lib/auth/helpers'
-import { withRateLimit } from '@/lib/middleware/rate-limit'
 import { runEligibilityBody } from '@/lib/validation/agent-actions'
 import { runEligibilityForSession } from '@/lib/ai/agent/services/application'
 import { projectSessionState } from '@/lib/ai/agent/state-projection'
@@ -20,12 +19,13 @@ import { eq, and } from 'drizzle-orm'
 import { errorToResponse } from '@/lib/api/agent-action-envelope'
 import type { AgentSession, AgentSection } from '@/lib/ai/agent/types'
 
-async function handler(
-  req: NextRequest,
-  ctx: { params: Promise<{ id: string }> },
-) {
+export const dynamic = 'force-dynamic'
+
+type RouteParams = { params: Promise<{ id: string }> }
+
+export async function POST(req: NextRequest, { params }: RouteParams) {
   const user = await requireAuth()
-  const { id: sessionId } = await ctx.params
+  const { id: sessionId } = await params
   const locale = (req.headers.get('x-locale') as 'ro' | 'en') ?? 'ro'
 
   let body: unknown
@@ -107,9 +107,3 @@ async function handler(
     projectSessionState(session as AgentSession, sectionRows as AgentSection[]),
   )
 }
-
-export const POST = withRateLimit(handler, {
-  limit: 30,
-  windowSec: 60,
-  keySuffix: 'eligibility',
-})
