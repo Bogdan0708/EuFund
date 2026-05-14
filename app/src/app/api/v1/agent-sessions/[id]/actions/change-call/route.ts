@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { requireAuth } from '@/lib/auth/helpers'
+import { enforceRateLimit } from '@/lib/middleware/rate-limit'
 import { changeCallBody } from '@/lib/validation/agent-actions'
 import { changeCall } from '@/lib/ai/agent/services/change-call'
 import { projectSessionState } from '@/lib/ai/agent/state-projection'
@@ -25,6 +26,15 @@ type RouteParams = { params: Promise<{ id: string }> }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const user = await requireAuth()
+  const rl = await enforceRateLimit(req, {
+    keyPrefix: 'action-change-call',
+    keySuffix: user.id,
+    maxRequests: 20,
+    windowMs: 60 * 60 * 1000,
+    failOpenOnError: true,
+  })
+  if (!rl.ok) return rl.response
+
   const { id: sessionId } = await params
 
   let body: unknown

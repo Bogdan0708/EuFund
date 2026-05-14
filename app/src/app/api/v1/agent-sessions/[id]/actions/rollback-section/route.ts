@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { requireAuth } from '@/lib/auth/helpers'
+import { enforceRateLimit } from '@/lib/middleware/rate-limit'
 import { rollbackSectionBody } from '@/lib/validation/agent-actions'
 import { rollbackSection } from '@/lib/ai/agent/services/sections'
 import { projectSessionState } from '@/lib/ai/agent/state-projection'
@@ -24,6 +25,15 @@ type RouteParams = { params: Promise<{ id: string }> }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const user = await requireAuth()
+  const rl = await enforceRateLimit(req, {
+    keyPrefix: 'action-rollback-section',
+    keySuffix: user.id,
+    maxRequests: 60,
+    windowMs: 60 * 60 * 1000,
+    failOpenOnError: true,
+  })
+  if (!rl.ok) return rl.response
+
   const { id: sessionId } = await params
 
   let body: unknown

@@ -13,6 +13,7 @@ vi.mock('@/lib/auth/helpers', () => ({
 
 vi.mock('@/lib/middleware/rate-limit', () => ({
   withRateLimit: (h: unknown) => h,
+  enforceRateLimit: vi.fn().mockResolvedValue({ ok: true, headers: {} }),
 }))
 
 vi.mock('@/lib/legal/audit', () => ({ logAudit: vi.fn() }))
