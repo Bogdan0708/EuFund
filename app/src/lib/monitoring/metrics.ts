@@ -1,8 +1,3 @@
-import { logger } from '@/lib/logger';
-import { createHash } from 'node:crypto';
-
-const log = logger.child({ component: 'metrics' });
-
 /**
  * Super-minimal Prometheus-compatible metrics registry.
  * This is the V1 implementation; V2 will move to OTel.
