@@ -11,7 +11,7 @@ import { randomUUID } from 'crypto'
 
 const log = logger.child({ component: 'action-bridge' })
 
-export type BridgeOutcome = 
+export type BridgeOutcome =
   | 'success'        // Mutation applied successfully
   | 'no_op'          // Preconditions met but no change needed (idempotent)
   | 'policy_error'   // Rejected by service-layer policy gate
@@ -47,19 +47,19 @@ function planAction(
 ): { name: string; input: Record<string, unknown> } {
   switch (action.type) {
     case 'select_call':
-      return { 
-        name: 'set_selected_call', 
-        input: { callId: action.callId, expectedStateVersion } 
+      return {
+        name: 'set_selected_call',
+        input: { callId: action.callId, expectedStateVersion }
       }
     case 'approve_outline':
-      return { 
-        name: 'freeze_outline', 
-        input: { expectedStateVersion } 
+      return {
+        name: 'freeze_outline',
+        input: { expectedStateVersion }
       }
     case 'accept_section':
-      return { 
-        name: 'approve_revision', 
-        input: { sectionKey: action.sectionKey, expectedStateVersion } 
+      return {
+        name: 'approve_revision',
+        input: { sectionKey: action.sectionKey, expectedStateVersion }
       }
     case 'regenerate_section':
       throw new BridgeUnsupportedActionError(
@@ -67,14 +67,14 @@ function planAction(
         'Regeneration must use the deterministic /sections/generate endpoint.',
       )
     case 'reject_section':
-      return { 
-        name: 'reject_section', 
-        input: { sectionKey: action.sectionKey, reason: action.reason, expectedStateVersion } 
+      return {
+        name: 'reject_section',
+        input: { sectionKey: action.sectionKey, reason: action.reason, expectedStateVersion }
       }
     case 'mark_complete':
-      return { 
-        name: 'set_application_status', 
-        input: { status: 'completed', expectedStateVersion } 
+      return {
+        name: 'set_application_status',
+        input: { status: 'completed', expectedStateVersion }
       }
     case 'request_refresh':
       throw new BridgeReadOnlyActionError()
@@ -138,10 +138,10 @@ export async function bridgeStructuredAction(
   expectedStateVersion: number,
 ): Promise<BridgeResult> {
   const start = Date.now()
-  
+
   try {
     const { name, input } = planAction(action, expectedStateVersion)
-    
+
     log.info({ actionType: action.type, toolName: name }, 'bridging structured action')
 
     const result = await executeManagedTool(
@@ -153,7 +153,7 @@ export async function bridgeStructuredAction(
 
     if (result.isError) {
       const { outcome, code } = classifyToolError(result.content)
-      
+
       trackManagedActionBridge(action.type, outcome, duration, code)
       return {
         outcome,
@@ -172,9 +172,9 @@ export async function bridgeStructuredAction(
       typeof nextVersion === 'number' && nextVersion > expectedStateVersion
     const actionMutates = MUTATING_ACTIONS.has(action.type)
     const outcome: BridgeOutcome = actionMutates && stateVersionBumped ? 'success' : 'no_op'
-    
+
     trackManagedActionBridge(action.type, outcome, duration)
-    
+
     return {
       outcome,
       summary: result.content,

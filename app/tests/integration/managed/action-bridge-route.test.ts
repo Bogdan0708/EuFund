@@ -134,7 +134,7 @@ describe('Managed Action Bridge — Route Integration', () => {
       body.action,
       expect.any(Number)
     )
-    
+
     expect(mockRunManaged).not.toHaveBeenCalled()
   })
 
