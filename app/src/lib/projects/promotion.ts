@@ -281,7 +281,12 @@ export async function ensureProjectForSession(
         return { result: { promoted: false, reason: 'USER_NOT_FOUND' }, auditData: null };
       }
 
-      const orgId = await resolveProjectOrgIdInTx(tx, userId);
+      // Agent-driven promotion: no UI in the loop, so we cannot prompt the
+      // user to disambiguate when they belong to 2+ orgs. Auto-pick the
+      // oldest membership (their "primary" org). The explicit POST
+      // /api/v1/projects route does NOT pass this flag — it keeps the 409
+      // contract so API clients stay deliberate.
+      const orgId = await resolveProjectOrgIdInTx(tx, userId, undefined, { autoPickOnAmbiguous: true });
 
       const callResult = await resolveCallForId(tx, session.selectedCallId!);
       const titleResult = deriveProjectTitle(
