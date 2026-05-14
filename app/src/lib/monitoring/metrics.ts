@@ -61,6 +61,12 @@ class MetricsRegistry {
     }
     return output;
   }
+
+  // Back-compat alias for callers (e.g. /api/metrics/route.ts) that use the
+  // master-side method name. Delegates to expose().
+  toPrometheus(): string {
+    return this.expose();
+  }
 }
 
 export const metrics = new MetricsRegistry();
@@ -99,6 +105,16 @@ metrics.counter('managed_action_bridge_total', 'Managed action bridge outcomes')
 metrics.histogram('managed_action_bridge_duration_ms', 'Managed action bridge duration', [50, 100, 250, 500, 1000]);
 metrics.counter('storage_cleanup_errors_total', 'Total storage cleanup failures');
 
+// Master-side counters/histograms used by middleware, circuit-breaker, router.
+// Kept alongside the branch's newer counterparts (trackHttpRequest et al.) so
+// both surfaces compile until a follow-up unification PR collapses them.
+metrics.histogram('http_request_duration_seconds', 'HTTP request duration in seconds', [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]);
+metrics.counter('http_request_errors_total', 'Total HTTP request errors');
+metrics.histogram('external_api_duration_seconds', 'External API call duration', [0.1, 0.25, 0.5, 1, 2, 5, 10]);
+metrics.counter('external_api_calls_total', 'Total external API calls');
+metrics.counter('external_api_errors_total', 'Total external API errors');
+metrics.counter('ai_cache_calls_total', 'Router AI cache call outcomes');
+
 function normalizePath(path: string): string {
   return path
     .replace(/\/[0-9a-fA-F-]{36}(\/|$)/g, '/:id$1') // UUIDs
@@ -108,6 +124,39 @@ function normalizePath(path: string): string {
 export function trackHttpRequest(method: string, path: string, status: number): void {
   const normalizedPath = normalizePath(path);
   metrics.inc('http_requests_total', { method, path: normalizedPath, status: String(status) });
+}
+
+// Master-side wrapper that adds duration tracking + error labelling on top of
+// the count-only trackHttpRequest. Consumed by middleware.ts and tests.
+export function trackRequest(method: string, path: string, statusCode: number, durationMs: number): void {
+  const labels = { method, path: normalizePath(path), status: String(statusCode) };
+  metrics.inc('http_requests_total', labels);
+  metrics.observe('http_request_duration_seconds', labels, durationMs / 1000);
+  if (statusCode >= 400) {
+    metrics.inc('http_request_errors_total', labels);
+  }
+}
+
+export function trackExternalAPI(api: string, success: boolean, durationMs: number): void {
+  metrics.inc('external_api_calls_total', { api });
+  metrics.observe('external_api_duration_seconds', { api }, durationMs / 1000);
+  if (!success) metrics.inc('external_api_errors_total', { api });
+}
+
+export function trackAiCacheCall(provider: string, model: string, hit: string): void {
+  metrics.inc('ai_cache_calls_total', { provider, model, hit });
+}
+
+export function trackAiCacheReadTokens(provider: string, model: string, task: string, tokens: number): void {
+  if (tokens > 0) metrics.inc('ai_cache_reads_tokens_total', { provider, model, task }, tokens);
+}
+
+export function trackAiCacheWriteTokens(provider: string, model: string, task: string, tokens: number): void {
+  if (tokens > 0) metrics.inc('ai_cache_writes_tokens_total', { provider, model, task }, tokens);
+}
+
+export function trackAiCacheDisabled(reason: 'global_kill_switch' | 'request_disabled'): void {
+  metrics.inc('ai_cache_disabled_total', { reason });
 }
 
 export function trackAICompletion(model: string, provider: string, tokens: number, costUsd: number): void {
@@ -124,7 +173,20 @@ export function trackRAGSearch(provider: string, status: 'success' | 'error'): v
   metrics.inc(status === 'success' ? 'rag_search_total' : 'rag_search_errors_total', { provider });
 }
 
-export function trackProjectPromotion(outcome: 'success' | 'failure' | 'no_op'): void {
+export function trackProjectPromotion(
+  outcome:
+    | 'success'
+    | 'failure'
+    | 'no_op'
+    | 'promoted'
+    | 'already_linked'
+    | 'synced'
+    | 'resync_unresolved'
+    | 'no_selected_call'
+    | 'user_missing'
+    | 'session_missing'
+    | 'failed',
+): void {
   metrics.inc('project_promotion_total', { outcome });
 }
 
