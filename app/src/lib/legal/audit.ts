@@ -44,6 +44,9 @@ export type AuditAction =
   | 'section.export'
   | 'project.version_save'
   | 'project.export'
+  | 'project.file_uploaded'
+  | 'project.file_deleted'
+  | 'project.submission_doc_updated'
   | 'project.status_change'
   | 'project.evidence_append'
   | 'project.comment_add'
@@ -91,6 +94,7 @@ export type AuditAction =
   | 'session.outline_frozen'
   | 'session.preselect_completed'
   | 'session.eligibility_run'
+  | 'session.create'
   | 'section.marked_stale'
   | 'section.rejected';
 
