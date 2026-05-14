@@ -94,7 +94,7 @@ export type AuditAction =
   | 'session.outline_frozen'
   | 'session.preselect_completed'
   | 'session.eligibility_run'
-  | 'session.create'
+  | 'session.created'
   | 'section.marked_stale'
   | 'section.rejected';
 
