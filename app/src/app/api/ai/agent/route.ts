@@ -214,7 +214,7 @@ async function handler(req: NextRequest) {
       return new Response(
         sseEvent({
           type: 'error',
-          message: error.messageRo,
+          message: body.locale === 'en' ? error.messageEn : error.messageRo,
           retryable: false,
           error,
         }),
@@ -246,7 +246,7 @@ async function handler(req: NextRequest) {
       return new Response(
         sseEvent({
           type: 'error',
-          message: error.messageRo,
+          message: body.locale === 'en' ? error.messageEn : error.messageRo,
           retryable: bridgeResult.outcome === 'concurrency',
           error,
         }),

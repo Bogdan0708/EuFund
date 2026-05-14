@@ -102,6 +102,7 @@ metrics.counter('generate_section_total', 'Outcomes of /sections/generate reques
 metrics.histogram('generate_section_latency_seconds', 'Wall-clock latency of /sections/generate end-to-end', [0.5, 1, 2, 5, 10, 20, 30, 60]);
 metrics.counter('managed_action_bridge_total', 'Managed action bridge outcomes');
 metrics.histogram('managed_action_bridge_duration_ms', 'Managed action bridge duration', [50, 100, 250, 500, 1000]);
+metrics.counter('storage_cleanup_errors_total', 'Total storage cleanup failures');
 
 function normalizePath(path: string): string {
   return path
@@ -160,4 +161,8 @@ export function trackManagedActionBridge(
   const labels = { action_type: actionType, outcome, code: code || 'none' };
   metrics.inc('managed_action_bridge_total', labels);
   metrics.observe('managed_action_bridge_duration_ms', { action_type: actionType }, durationMs);
+}
+
+export function trackStorageCleanupError(service: string): void {
+  metrics.inc('storage_cleanup_errors_total', { service });
 }
