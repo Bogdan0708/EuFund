@@ -32,17 +32,22 @@ vi.mock('@/lib/ai/agent/services/blueprint', () => ({
   outlineFromBlueprint: vi.fn().mockReturnValue(null),
 }))
 
+import { randomUUID } from 'crypto'
 import postgres from 'postgres'
 import { changeCall } from '@/lib/ai/agent/services/change-call'
 import { ConcurrencyError } from '@/lib/ai/agent/services/errors'
 
 const sql = postgres(process.env.DATABASE_URL!, { max: 4 })
-const TEST_USER_ID = '11111111-1111-4111-8111-111111111112'
+// Per-run TEST_USER_ID + email keeps the test idempotent across re-runs and
+// safe in shared CI databases (no email-uniqueness collisions when the prior
+// run's user row hasn't been cleaned up).
+const TEST_USER_ID = randomUUID()
+const TEST_USER_EMAIL = `changecall-tx-${TEST_USER_ID}@local`
 
 async function seedSessionWithSections(): Promise<{ sessionId: string }> {
   await sql`
     INSERT INTO users (id, email, password_hash, full_name)
-    VALUES (${TEST_USER_ID}::uuid, 'changecall-tx-test@local', 'unused', 'Test')
+    VALUES (${TEST_USER_ID}::uuid, ${TEST_USER_EMAIL}, 'unused', 'Test')
     ON CONFLICT (id) DO NOTHING
   `
 
@@ -74,6 +79,7 @@ async function seedSessionWithSections(): Promise<{ sessionId: string }> {
 async function cleanup(sessionId: string): Promise<void> {
   await sql`DELETE FROM agent_sections WHERE session_id = ${sessionId}::uuid`
   await sql`DELETE FROM agent_sessions WHERE id = ${sessionId}::uuid`
+  await sql`DELETE FROM users WHERE id = ${TEST_USER_ID}::uuid`
 }
 
 describe('changeCall: transactional integrity', () => {
