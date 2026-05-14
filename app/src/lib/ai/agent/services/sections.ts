@@ -7,8 +7,11 @@
 // ./errors, ./types, and @/lib/legal/audit. No V3 or MCP imports.
 
 import { db } from '@/lib/db'
+import type { Database } from '@/lib/db'
 import { agentSessions, agentSections, agentSectionVersions, projectDocuments } from '@/lib/db/schema'
 import { eq, and, max, desc, inArray } from 'drizzle-orm'
+
+type DbTx = Parameters<Parameters<Database['transaction']>[0]>[0]
 import { createHash } from 'crypto'
 import { NotFoundError, ConcurrencyError, ValidationError, ExternalDependencyError } from './errors'
 import { verifySessionOwnership } from './context-helpers'
@@ -80,7 +83,7 @@ async function assertSessionOwnership(
 }
 
 async function syncAgentProjectDocumentSnapshot(
-  tx: any,
+  tx: DbTx,
   projectId: string | null,
   sessionId: string,
 ): Promise<void> {
