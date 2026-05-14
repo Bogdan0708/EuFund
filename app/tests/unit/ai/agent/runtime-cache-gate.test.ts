@@ -31,6 +31,7 @@ vi.mock('@/lib/ai/agent/history', () => ({
   loadContext: async () => ({ summary: null, messages: [], totalCount: 0 }),
   appendMessage: vi.fn().mockResolvedValue(0),
   compactIfNeeded: vi.fn().mockResolvedValue({ compacted: false }),
+  ensureV3PairingInvariant: (m: unknown[]) => m,
 }))
 vi.mock('@/lib/ai/agent/tools/registry', () => ({ getToolsForPhase: () => [] }))
 vi.mock('@/lib/ai/agent/tools/index', () => ({}))
@@ -148,9 +149,11 @@ describe('V3 runtime — cache opt-in flag gating (PR 2b)', () => {
       'v3_prompt_cache_enabled',
       { userId: SESSION_USER_ID },
     )
-    // Scope invariant: flag is resolved once per turn, not once per tool-loop
-    // iteration. Guards against a future refactor moving the call into the
-    // while(iteration<MAX_TOOL_ITERATIONS) loop.
-    expect(isFeatureEnabledMock).toHaveBeenCalledTimes(1)
+    // PR 4: V3 runtime now reads two flags per turn — v3_prompt_cache_enabled
+    // and chat_tools_trimmed. Both are read once per turn (not per iteration).
+    expect(isFeatureEnabledMock).toHaveBeenCalledTimes(2)
+    const flagKeys = isFeatureEnabledMock.mock.calls.map((c: unknown[]) => c[0] as string)
+    expect(flagKeys).toContain('v3_prompt_cache_enabled')
+    expect(flagKeys).toContain('chat_tools_trimmed')
   })
 })

@@ -38,6 +38,11 @@ vi.mock('@/lib/ai/agent/history', () => ({
   loadContext: vi.fn().mockResolvedValue({ messages: [], summary: null, totalCount: 0 }),
   appendMessage: appendMessageMock,
   compactIfNeeded: vi.fn().mockResolvedValue({ compacted: false }),
+  // Identity passthrough — this test set never replays prior turns, so the
+  // V3 history doesn't carry orphan tool_use blocks to repair. Each test
+  // builds the assistant tool_call + tool_result pairing in-band via the
+  // generateMock sequence.
+  ensureV3PairingInvariant: (messages: unknown[]) => messages,
 }))
 
 vi.mock('@/lib/ai/agent/managed/history', () => ({
@@ -172,8 +177,9 @@ describe('V3 runtime — cap path forces synthesis when no text was persisted', 
     // 6th call must omit `tools` (forced text)
     const synthesisCall = generateMock.mock.calls[5][0]
     expect(synthesisCall.tools).toBeUndefined()
-    // System prompt carries the cap instruction
-    expect(synthesisCall.system).toMatch(/Iteration Cap Reached/i)
+    // System prompt carries the cap-hit instruction (mentions the iteration count)
+    expect(synthesisCall.system).toMatch(/Response Required/i)
+    expect(synthesisCall.system).toMatch(/tool-call iterations/i)
 
     // Final assistant text was persisted via appendMessage
     const assistantTextWrites = appendMessageMock.mock.calls.filter(
@@ -233,6 +239,217 @@ describe('V3 runtime — cap path forces synthesis when no text was persisted', 
     )
     expect(writes).toHaveLength(1)
     expect(writes[0][1].content).toMatch(/reached the tool-call limit/i)
+  })
+
+  it('forces synthesis when the model exits early with empty content and no tool calls', async () => {
+    // User report 2026-05-12: "doar a facut tool call dar nici un raspuns" —
+    // the model returned an empty assistant turn (no text, no tools) after a
+    // single tool round. The cap was never hit, so the original synthesis
+    // gate (`iteration >= MAX`) did not fire and the SSE closed silently.
+    generateMock.mockReset()
+    // Iteration 1: a tool call, no text
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      toolCalls: [{ id: 'tc-0', name: 'fake_search', arguments: '{"query":"q"}' }],
+    })
+    // Iteration 2: model goes empty — no text, no tools. Without the fix the
+    // loop breaks here and the turn ends with no assistant text persisted.
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+    // Synthesis call — returns real text.
+    generateMock.mockResolvedValueOnce({
+      content: 'Iată ce am găsit cu fake_search.',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+
+    const events: AgentEvent[] = []
+    await runAgentTurn({
+      session: makeSession(),
+      sections: [],
+      request: makeRequest('?'),
+      emit: (e) => events.push(e),
+      turnId: '88888888-8888-4888-8888-888888888888',
+    })
+
+    // Iterations 1+2 ran, then synthesis = 3 generate() calls
+    expect(generateMock).toHaveBeenCalledTimes(3)
+    const synthesisCall = generateMock.mock.calls[2][0]
+    expect(synthesisCall.tools).toBeUndefined()
+    expect(synthesisCall.system).toMatch(/Response Required/i)
+    // The cap-specific phrasing should NOT appear when we exited early
+    expect(synthesisCall.system).not.toMatch(/tool-call iterations/i)
+    expect(synthesisCall.system).toMatch(/stopped before responding/i)
+
+    const writes = appendMessageMock.mock.calls.filter(
+      (args) => args[1]?.role === 'assistant' && args[1]?.messageType === 'text',
+    )
+    expect(writes).toHaveLength(1)
+    expect(writes[0][1].content).toBe('Iată ce am găsit cu fake_search.')
+  })
+
+  it('falls back to early-exit message (NOT the cap-limit copy) when synthesis returns empty after early exit', async () => {
+    generateMock.mockReset()
+    // One tool round, then empty assistant — same shape as above.
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      toolCalls: [{ id: 'tc-0', name: 'fake_search', arguments: '{"query":"q"}' }],
+    })
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+    // Synthesis also returns empty — fallback should fire.
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+
+    const events: AgentEvent[] = []
+    await runAgentTurn({
+      session: makeSession({ locale: 'en' }),
+      sections: [],
+      request: makeRequest('?'),
+      emit: (e) => events.push(e),
+      turnId: '99999999-9999-4999-8999-999999999999',
+    })
+
+    const writes = appendMessageMock.mock.calls.filter(
+      (args) => args[1]?.role === 'assistant' && args[1]?.messageType === 'text',
+    )
+    expect(writes).toHaveLength(1)
+    // Should be the early-exit fallback, not the cap-limit fallback
+    expect(writes[0][1].content).not.toMatch(/reached the tool-call limit/i)
+    expect(writes[0][1].content).toMatch(/couldn't generate a response/i)
+  })
+
+  it('appends a synthetic tool_result for unknown tool calls so synthesis can ship a balanced message list', async () => {
+    // Code review finding 2026-05-12: when the model called a tool name not
+    // in phaseTools, the runtime `continue`d without adding a tool_result —
+    // but the assistant tool_use was already pushed to llmMessages. The
+    // forced synthesis call then sent an unbalanced assistant message and
+    // Anthropic 400'd ("tool_use blocks must be followed by tool_result").
+    generateMock.mockReset()
+    // Iteration 1: model invokes a tool that isn't registered for this phase
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      toolCalls: [{ id: 'tc-unknown', name: 'nonexistent_tool', arguments: '{}' }],
+    })
+    // Synthesis call returns text
+    generateMock.mockResolvedValueOnce({
+      content: 'Sorry, that tool is not available right now.',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+
+    const events: AgentEvent[] = []
+    await runAgentTurn({
+      session: makeSession(),
+      sections: [],
+      request: makeRequest('?'),
+      emit: (e) => events.push(e),
+      turnId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    })
+
+    // 1 iteration + 1 synthesis = 2 generate calls
+    expect(generateMock).toHaveBeenCalledTimes(2)
+    const synthesisCall = generateMock.mock.calls[1][0]
+
+    // The messages payload must contain a tool_result for the unknown tool_call
+    // (otherwise Anthropic rejects the assistant tool_use dangling alone).
+    const toolResults = synthesisCall.messages.filter((m: { role: string; tool_call_id?: string }) =>
+      m.role === 'tool' && m.tool_call_id === 'tc-unknown',
+    )
+    expect(toolResults).toHaveLength(1)
+    expect(toolResults[0].content).toMatch(/Unknown tool/i)
+
+    // And the user sees the synthesis text
+    const writes = appendMessageMock.mock.calls.filter(
+      (args) => args[1]?.role === 'assistant' && args[1]?.messageType === 'text',
+    )
+    expect(writes).toHaveLength(1)
+    expect(writes[0][1].content).toBe('Sorry, that tool is not available right now.')
+  })
+
+  it('appends a synthetic tool_result when checkPolicyGate blocks a tool call', async () => {
+    // Same recovery requirement, different early-exit cause. Pick a tool whose
+    // policy gate WILL refuse to keep the test deterministic: `generate_section`
+    // is blocked unless outline is approved, frozen, eligibility has passed,
+    // etc. In discovery phase with no outline at all, the gate denies.
+    generateMock.mockReset()
+
+    // Replace fake tool with a `generate_section` shim — name matches what
+    // checkPolicyGate inspects.
+    const generateSectionShim = {
+      name: 'generate_section',
+      category: 'generation' as const,
+      description: 'fake generate_section for policy-gate test',
+      inputSchema: z.object({ sectionKey: z.string().optional() }),
+      execute: vi.fn(),
+      timeout: 5_000,
+    }
+    getToolsForPhaseMock.mockReturnValue([generateSectionShim])
+
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      toolCalls: [{ id: 'tc-blocked', name: 'generate_section', arguments: '{"sectionKey":"x"}' }],
+    })
+    generateMock.mockResolvedValueOnce({
+      content: 'You need to approve the outline before drafting sections.',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+
+    const events: AgentEvent[] = []
+    await runAgentTurn({
+      // discovery + no outline → checkPreGenerate denies generate_section
+      session: makeSession({ currentPhase: 'discovery', outline: null, outlineFrozen: false }),
+      sections: [],
+      request: makeRequest('draft something'),
+      emit: (e) => events.push(e),
+      turnId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    })
+
+    // Tool must NOT have run
+    expect(generateSectionShim.execute).not.toHaveBeenCalled()
+
+    // policy_violation event should have fired (the runtime emits one)
+    const violations = events.filter((e) => e.type === 'policy_violation')
+    expect(violations.length).toBeGreaterThanOrEqual(1)
+
+    // Synthesis call shipped — and its messages include a tool_result for the
+    // blocked call so Anthropic doesn't reject the assistant tool_use.
+    expect(generateMock).toHaveBeenCalledTimes(2)
+    const synthesisCall = generateMock.mock.calls[1][0]
+    const toolResults = synthesisCall.messages.filter((m: { role: string; tool_call_id?: string }) =>
+      m.role === 'tool' && m.tool_call_id === 'tc-blocked',
+    )
+    expect(toolResults).toHaveLength(1)
+    // The synthetic content surfaces the gate reason so the model can recover
+    expect(toolResults[0].content).toMatch(/outline/i)
   })
 
   it('does NOT force a synthesis call when the model returned text before hitting the cap', async () => {

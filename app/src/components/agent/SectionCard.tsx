@@ -54,7 +54,7 @@ export function SectionCard({ section, onAccept, onReject, disabled = false }: P
           )}
         </div>
       )}
-      {section.status === 'draft' && (
+      {(section.status === 'draft' || section.status === 'needs_review' || section.status === 'failed') && (
         <div className="flex gap-2 mt-3">
           <button onClick={onAccept} disabled={disabled} className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
             {t('accept')}

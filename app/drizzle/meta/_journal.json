@@ -253,6 +253,34 @@
       "when": 1776988800005,
       "tag": "0035_prompt_cache_rollout_step_1",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1778803200000,
+      "tag": "0036_preselect_no_auto_send_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1778803200001,
+      "tag": "0037_deterministic_actions_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1778803200002,
+      "tag": "0038_chat_tools_trimmed_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1778803200003,
+      "tag": "0039_generate_section_endpoint_flag",
+      "breakpoints": true
     }
   ]
 }

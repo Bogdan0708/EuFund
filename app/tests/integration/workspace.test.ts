@@ -126,6 +126,8 @@ describe('resolveProjectWorkspace', () => {
       workflowSessions: { projectId: 'project_id', userId: 'user_id', status: 'status', updatedAt: 'updated_at', id: 'id', context: 'context' },
       projectDocuments: { projectId: 'project_id', version: 'version' },
       sectionVersions: { sessionId: 'session_id', sectionId: 'section_id', version: 'version' },
+      agentSessions: { id: 'id', projectId: 'project_id', userId: 'user_id', updatedAt: 'updated_at' },
+      agentSections: { sessionId: 'session_id', documentOrder: 'document_order' },
     }));
 
     vi.doMock('@/lib/logger', () => ({
@@ -165,6 +167,8 @@ describe('resolveProjectWorkspace', () => {
       workflowSessions: { projectId: 'project_id', userId: 'user_id', status: 'status', updatedAt: 'updated_at', id: 'id', context: 'context' },
       projectDocuments: { projectId: 'project_id', version: 'version' },
       sectionVersions: { sessionId: 'session_id', sectionId: 'section_id', version: 'version' },
+      agentSessions: { id: 'id', projectId: 'project_id', userId: 'user_id', updatedAt: 'updated_at' },
+      agentSections: { sessionId: 'session_id', documentOrder: 'document_order' },
     };
 
     vi.doMock('@/lib/db', () => ({
@@ -217,6 +221,10 @@ describe('resolveProjectWorkspace', () => {
     expect(result!.sections[0].state).toBe('draft');
     expect(result!.sections[0].currentVersion).toBe(1);
   });
+
+  // The V3-agent fallback path is covered by tests/unit/workspace-agent-resolve.test.ts
+  // — that file uses top-level vi.mock (no doMock + resetModules), so it doesn't hit
+  // the documented local `@/` alias flake this file suffers from.
 });
 
 // ─── editProjectSection Tests ───────────────────────────────────

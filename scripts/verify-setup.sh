@@ -73,9 +73,9 @@ echo "=== Existing Resources Check ==="
 
 # Check if Cloud SQL instance exists
 echo -n "Cloud SQL instance... "
-if gcloud sql instances describe fondeu-postgres-prod --region=$REGION >/dev/null 2>&1; then
+if gcloud sql instances describe fondeu-db --region=$REGION >/dev/null 2>&1; then
     echo -e "${YELLOW}⚠ Already exists${NC}"
-    echo "  Instance: fondeu-postgres-prod"
+    echo "  Instance: fondeu-db"
 else
     echo -e "${GREEN}✓ Ready to create${NC}"
 fi

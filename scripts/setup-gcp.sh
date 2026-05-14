@@ -145,11 +145,11 @@ for role in "${ROLES[@]}"; do
 done
 
 # Create database connection string
-DB_CONNECTION_STRING="postgresql://fondeu_app:$DB_PASSWORD@/fondeu?host=/cloudsql/$PROJECT_ID:europe-west2:fondeu-postgres-prod"
+DB_CONNECTION_STRING="postgresql://fondeu_app:$DB_PASSWORD@/fondeu?host=/cloudsql/$PROJECT_ID:europe-west2:fondeu-db"
 
 # Create Cloud SQL instance
 print_status "Creating Cloud SQL PostgreSQL instance (this will take several minutes)..."
-gcloud sql instances create fondeu-postgres-prod \
+gcloud sql instances create fondeu-db \
     --database-version=POSTGRES_16 \
     --tier=db-custom-4-16384 \
     --region=europe-west2 \
@@ -166,19 +166,19 @@ gcloud sql instances create fondeu-postgres-prod \
 # Set database password
 print_status "Setting database root password"
 gcloud sql users set-password postgres \
-    --instance=fondeu-postgres-prod \
+    --instance=fondeu-db \
     --password="$DB_PASSWORD"
 
 # Create application database user
 print_status "Creating application database user"
 gcloud sql users create fondeu_app \
-    --instance=fondeu-postgres-prod \
+    --instance=fondeu-db \
     --password="$DB_PASSWORD" || print_warning "User might already exist"
 
 # Create database
 print_status "Creating application database"
 gcloud sql databases create fondeu \
-    --instance=fondeu-postgres-prod || print_warning "Database might already exist"
+    --instance=fondeu-db || print_warning "Database might already exist"
 
 # Create Redis instance
 print_status "Creating Redis instance (this will take a few minutes)..."
@@ -253,7 +253,7 @@ echo ""
 echo "=== Important Information ==="
 echo "Project ID: $PROJECT_ID"
 echo "Region: europe-west2"
-echo "Database: fondeu-postgres-prod"
+echo "Database: fondeu-db"
 echo "Redis: fondeu-redis-prod"
 echo "Service Account: fondeu-app-runner@$PROJECT_ID.iam.gserviceaccount.com"
 echo ""

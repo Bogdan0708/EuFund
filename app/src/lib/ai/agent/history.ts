@@ -18,6 +18,106 @@ export interface MessageForLLM {
 }
 
 /**
+ * Router-shape message accepted by the Anthropic adapter via providers/router.ts.
+ * Mirrors the inline type at runtime.ts:179-184 — exported here so the V3 pairing
+ * invariant can operate on the same shape the LLM call consumes.
+ */
+export interface RouterMessage {
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  content: string
+  tool_call_id?: string
+  tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[]
+}
+
+/**
+ * Strip orphan tool_use / tool_result pairs from a V3 llmMessages array so the
+ * conversation satisfies Anthropic's pairing requirement before reaching the
+ * provider. Mirrors managed/history.ts:ensurePairingInvariant but operates on
+ * router-shape messages (not Anthropic content-block arrays).
+ *
+ * Failure mode this guards: a previous V3 turn persisted an `assistant`
+ * tool_call row but crashed before persisting the matching tool_result row.
+ * On the next turn's replay (runtime.ts:211-248), the assistant message rebuilds
+ * with `tool_calls: [...]` and the tool message is absent, so the LLM call
+ * upstream 400s on "tool_use blocks must be followed by tool_result blocks".
+ *
+ * Trim rules (no synthetic insertion, no input mutation):
+ *  - assistant.tool_calls: keep only those whose id has a matching subsequent
+ *    role:'tool' message with the same tool_call_id. If tool_calls becomes
+ *    empty AND content is empty, drop the assistant message entirely.
+ *  - role:'tool': keep only if its tool_call_id matches a preceding (in OUTPUT,
+ *    so repairs compound) assistant.tool_calls id.
+ *  - Other roles and assistants with no tool_calls pass through untouched.
+ */
+export function ensureV3PairingInvariant(messages: RouterMessage[]): RouterMessage[] {
+  const out: RouterMessage[] = []
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]
+
+    if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+      // Collect every tool_call_id that appears in a subsequent 'tool' message
+      // until the next non-tool message — that's the response window for this
+      // assistant turn. We don't restrict to "immediately next" because the
+      // V3 replay flattens each tool_result as its own message; multiple
+      // tool_result messages may follow a single assistant turn.
+      const matchedIds = new Set<string>()
+      for (let j = i + 1; j < messages.length; j++) {
+        const next = messages[j]
+        if (next.role !== 'tool') break
+        if (next.tool_call_id) matchedIds.add(next.tool_call_id)
+      }
+
+      const keptCalls = msg.tool_calls.filter(tc => matchedIds.has(tc.id))
+      if (keptCalls.length === msg.tool_calls.length) {
+        out.push(msg)
+        continue
+      }
+
+      // Some tool_calls had no matching result — orphans. Trim them.
+      if (keptCalls.length === 0 && (!msg.content || msg.content.length === 0)) {
+        // Empty assistant turn after trim — drop entirely.
+        continue
+      }
+      const rebuilt: RouterMessage = { role: 'assistant', content: msg.content }
+      if (keptCalls.length > 0) rebuilt.tool_calls = keptCalls
+      out.push(rebuilt)
+      continue
+    }
+
+    if (msg.role === 'tool') {
+      // Match against the most recent assistant in OUTPUT (post-repair), so a
+      // dropped/trimmed assistant cascades correctly.
+      const tcid = msg.tool_call_id
+      if (!tcid) {
+        // Defensive: route should never produce a tool message without an id;
+        // if it does, drop it rather than 400 upstream.
+        continue
+      }
+      // Walk backward through `out` looking for the closest assistant with
+      // tool_calls. We stop at the first non-tool message — that's the boundary
+      // of this tool-result window.
+      let matched = false
+      for (let k = out.length - 1; k >= 0; k--) {
+        const prev = out[k]
+        if (prev.role === 'tool') continue
+        if (prev.role === 'assistant' && prev.tool_calls?.some(tc => tc.id === tcid)) {
+          matched = true
+        }
+        break
+      }
+      if (matched) out.push(msg)
+      // else: orphan tool_result, drop
+      continue
+    }
+
+    out.push(msg)
+  }
+
+  return out
+}
+
+/**
  * Load conversation context for the LLM — uncompacted messages + optional summary.
  */
 export async function loadContext(sessionId: string): Promise<{

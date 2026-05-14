@@ -30,7 +30,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       sections: workspace.sections,
       sessionId: workspace.session?.id ?? null,
       source: workspace.mode,
-      readOnly: workspace.mode === 'snapshot',
+      readOnly: workspace.mode !== 'session',
       version: workspace.snapshotDoc?.version ?? 0,
     });
   } catch (error) {

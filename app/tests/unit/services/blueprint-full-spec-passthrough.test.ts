@@ -45,6 +45,19 @@ describe('materializeCachedSections — full vs partial', () => {
     expect(s.confidence).toBe(0.75)
   })
 
+  it('truncates a partial-row slug to 100 chars to match agent_sections.sectionKey column', () => {
+    // Long extracted titles ("Plan detaliat de implementare pe etape — anul 1...")
+    // could slug to >100 chars and fail INSERT on agent_sections. Truncate eagerly
+    // and strip a trailing hyphen left by truncation so the slug stays clean.
+    const longTitle = 'A'.repeat(50) + ' ' + 'B'.repeat(60) + ' ' + 'C'.repeat(50)
+    const partial = [{ title: longTitle, description: 'd' }]
+    const [s] = materializeCachedSections(partial, 0.5)
+    expect(s.id.length).toBeLessThanOrEqual(100)
+    expect(s.id.endsWith('-')).toBe(false)
+    // Still has prefix from the original
+    expect(s.id.startsWith('a')).toBe(true)
+  })
+
   it('handles a mix of full and partial rows in a single cached payload', () => {
     const mixed = [
       {

@@ -27,7 +27,6 @@ import { inputSchema as validateApplicationSchema } from '../mcp/rules/validate-
 import { inputSchema as checkMissingAnnexesSchema } from '../mcp/rules/check-missing-annexes'
 
 // Write tools — canonical Zod schemas exported from Phase 1/3b handlers
-import { inputSchema as saveSectionDraftSchema } from '../mcp/write/save-section-draft'
 import { inputSchema as approveRevisionSchema } from '../mcp/write/approve-revision'
 import { inputSchema as rollbackSectionSchema } from '../mcp/write/rollback-section'
 import { inputSchema as setApplicationStatusSchema } from '../mcp/write/set-application-status'
@@ -115,8 +114,15 @@ export const MANAGED_TOOLS: Tool[] = [
   },
   {
     name: 'save_section_draft',
-    description: 'Upsert a section draft by sectionKey, creating or updating the section and creating a new version record. Scoped to the active session. Requires the outline to be frozen. Enforces concurrency via expectedStateVersion. Always get explicit user confirmation or a structured UI action confirmation before calling — this is a write tool.',
-    input_schema: zodToJsonSchema(saveSectionDraftSchema) as Tool['input_schema'],
+    description: "Save the current focused section's draft content. The target section is selected by the user in the UI; you do not choose it.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: 'The full section draft content.' },
+      },
+      required: ['content'],
+      additionalProperties: false,
+    } as Tool['input_schema'],
   },
   {
     name: 'approve_revision',
@@ -200,6 +206,16 @@ export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
   'save_call_blueprint',
 ])
 
+// Subset of writes that remain available to the model in chat when
+// `chat_tools_trimmed` is on. Navigation writes (save_call_blueprint,
+// freeze_outline, set_selected_call, approve_revision, reject_section,
+// rollback_section, mark_section_stale, set_application_status) are
+// removed from the model's tool surface; only save_section_draft remains,
+// scoped to the request's focusedSectionKey at executor dispatch time.
+export const CHAT_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'save_section_draft',
+])
+
 export const PHASE_4_BLOCKED_TOOL_NAMES: ReadonlySet<string> = new Set([
   'create_export_snapshot',
 ])
@@ -219,8 +235,19 @@ export const MANAGED_TOOL_NAMES: ReadonlySet<string> = new Set([
  * The executor's allowWrites gate remains as defense-in-depth in case a
  * write tool somehow reaches dispatch (shouldn't happen since the tool is
  * absent from the advertised set, but costs nothing to keep).
+ *
+ * `trimmed=true` further removes the navigation write tools, leaving only
+ * the read+rule surface plus a scoped `save_section_draft` whose target
+ * section is injected from the user's UI focus at executor dispatch.
  */
-export function getManagedTools(allowWrites: boolean): Tool[] {
-  if (allowWrites) return MANAGED_TOOLS
-  return MANAGED_TOOLS.filter((t) => !WRITE_TOOL_NAMES.has(t.name))
+export function getManagedTools(allowWrites: boolean, trimmed = false): Tool[] {
+  if (!allowWrites) {
+    return MANAGED_TOOLS.filter((t) => !WRITE_TOOL_NAMES.has(t.name))
+  }
+  if (trimmed) {
+    return MANAGED_TOOLS.filter(
+      (t) => !WRITE_TOOL_NAMES.has(t.name) || CHAT_WRITE_TOOL_NAMES.has(t.name),
+    )
+  }
+  return MANAGED_TOOLS
 }

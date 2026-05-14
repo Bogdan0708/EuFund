@@ -15,7 +15,7 @@ interface WorkspaceProject {
   sectionCount: number;
   stateBreakdown: { draft: number; reviewed: number; approved: number };
   lastEditedAt: string;
-  mode: 'session' | 'snapshot';
+  mode: 'session' | 'snapshot' | 'agent';
   hasUploadedFiles: boolean;
 }
 

@@ -6,32 +6,38 @@
 // content appearing as the first role:'system' message in llmMessages.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const capturedCalls: Array<{
-  system: string | undefined
-  messages: Array<{ role: string; content: string }>
-}> = []
+// vi.mock factories are hoisted to the top of the file, so any state they
+// reference must be hoisted alongside via vi.hoisted(). Plain top-level
+// `const` declarations are not initialized when the hoisted factory runs.
+const { capturedCalls, generateMock, historyState } = vi.hoisted(() => {
+  const capturedCalls: Array<{
+    system: string | undefined
+    messages: Array<{ role: string; content: string }>
+  }> = []
 
-const generateMock = vi.fn(async (req: {
-  system?: string
-  messages: Array<{ role: string; content: string }>
-}) => {
-  // Snapshot both system and messages (messages is a reference that runtime
-  // keeps mutating across the tool loop; deep-copy is required).
-  capturedCalls.push({
-    system: req.system,
-    messages: req.messages.map(m => ({ ...m })),
+  const generateMock = vi.fn(async (req: {
+    system?: string
+    messages: Array<{ role: string; content: string }>
+  }) => {
+    // Snapshot both system and messages (messages is a reference that runtime
+    // keeps mutating across the tool loop; deep-copy is required).
+    capturedCalls.push({
+      system: req.system,
+      messages: req.messages.map(m => ({ ...m })),
+    })
+    return {
+      content: 'done',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      toolCalls: [],
+    }
   })
-  return {
-    content: 'done',
-    tokensUsed: { input: 0, output: 0 },
-    model: 'claude-opus-4-6',
-    provider: 'anthropic',
-    toolCalls: [],
-  }
-})
 
-// History mock is stateful: turn 1 sees no prior context; turn 2 sees a one-message history.
-const historyState = { messages: [] as Array<{ role: string; content: string }>, summary: null as string | null }
+  const historyState = { messages: [] as Array<{ role: string; content: string }>, summary: null as string | null }
+
+  return { capturedCalls, generateMock, historyState }
+})
 vi.mock('@/lib/ai/agent/history', () => ({
   loadContext: vi.fn(async () => ({ ...historyState, totalCount: historyState.messages.length })),
   appendMessage: vi.fn(async (_sid: string, msg: { role: string; content: unknown }) => {
@@ -42,6 +48,7 @@ vi.mock('@/lib/ai/agent/history', () => ({
     return 0
   }),
   compactIfNeeded: vi.fn(async () => ({ compacted: false })),
+  ensureV3PairingInvariant: (m: unknown[]) => m,
 }))
 
 vi.mock('@/lib/ai/providers/router', () => ({ generate: generateMock }))

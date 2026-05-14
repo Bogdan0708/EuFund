@@ -12,7 +12,9 @@ import type { SectionResult } from '@/lib/ai/agent/types';
 interface SectionsResponse {
   sections: SectionResult[];
   sessionId: string | null;
-  source: 'session' | 'snapshot';
+  // 'agent' surfaces V3 agent_sections for projects promoted from a V3 session
+  // — read-only, no associated workflow_sessions row. See lib/workspace.ts.
+  source: 'session' | 'snapshot' | 'agent';
   readOnly: boolean;
 }
 
@@ -98,12 +100,8 @@ export function SectionsTabContent({ projectId }: { projectId: string }) {
               </div>
 
               <a
-                href={data.readOnly ? undefined : `/${locale}/proiecte/${projectId}/sectiuni/${section.id}`}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shrink-0 ${
-                  data.readOnly
-                    ? 'text-on-surface-variant/50 cursor-not-allowed'
-                    : 'text-primary hover:bg-primary/10'
-                }`}
+                href={`/${locale}/proiecte/${projectId}/sectiuni/${section.id}`}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shrink-0 text-primary hover:bg-primary/10"
               >
                 <Icon name={data.readOnly ? 'visibility' : 'edit'} size="sm" />
                 {data.readOnly ? t('viewAction') : t('editAction')}

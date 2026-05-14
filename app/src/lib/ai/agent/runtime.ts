@@ -1,14 +1,14 @@
 // app/src/lib/ai/agent/runtime.ts
 import type {
   AgentSession, AgentSection, AgentEvent, AgentRequest,
-  StateTransition, ToolContext, ToolResult,
+  StateTransition, ToolContext, ToolResult, UIStateSnapshot,
 } from './types'
 import { applyTransition } from './transitions'
 import { buildSystemPrompt, buildSessionStateBlock } from './prompt'
 import { checkPolicyGate } from './policies'
 import { getToolsForPhase } from './tools/registry'
 import './tools/index' // Side-effect: registers all tools
-import { loadContext, appendMessage, compactIfNeeded } from './history'
+import { loadContext, appendMessage, compactIfNeeded, ensureV3PairingInvariant, type RouterMessage } from './history'
 import { markTurnCompleted } from './managed/history'
 import { zodToJsonSchema } from './utils'
 import { db } from '@/lib/db'
@@ -18,8 +18,29 @@ import { onSectionAccepted, onPhaseTransition } from '@/lib/ai/knowledge/write-b
 import { ensureProjectForSession } from '@/lib/projects/promotion'
 import { isFeatureEnabled } from '@/lib/feature-flags'
 import { logger } from '@/lib/logger'
+import { trackIterationCapHit } from '@/lib/monitoring/metrics'
+import { projectSectionsForUI, projectSessionState } from './state-projection'
 
 const log = logger.child({ component: 'agent-runtime' })
+
+// PR 4: when chat_tools_trimmed is on, the V3 tool surface shrinks to
+// reads + rule-decisions-as-read-only. Writes — including section drafts —
+// go through deterministic REST endpoints (`/actions/*` from PR 3, and
+// `/sections/generate` from PR 5). Chat owns clarification + revision
+// only; it does not own workflow or content authorship via tool calls.
+const V3_CHAT_ALLOWED_NON_READS: ReadonlySet<string> = new Set([
+  'run_eligibility',
+  'validate_section',
+  'validate_application',
+])
+
+export function trimToChatSurface(
+  toolList: ReadonlyArray<import('./types').ToolDefinition>,
+): import('./types').ToolDefinition[] {
+  return toolList.filter(
+    (t) => t.category === 'read' || V3_CHAT_ALLOWED_NON_READS.has(t.name),
+  )
+}
 
 interface WriteBackContext {
   action?: NonNullable<AgentRequest['action']>
@@ -34,7 +55,6 @@ interface WriteBackContext {
 }
 
 type EventEmitter = (event: AgentEvent) => void
-type SessionWithKnowledgeSummary = AgentSession & { _knowledgeSummary?: string }
 
 export interface RuntimeOptions {
   session: AgentSession
@@ -47,6 +67,7 @@ export interface RuntimeOptions {
   // markTurnCompleted() immediately before each `done` emit so the
   // reconciliation cron can distinguish completed turns from abandoned ones.
   turnId: string
+  focusedSectionKey?: string
 }
 
 // V3 doesn't track per-turn token usage or cost the way managed does.
@@ -116,14 +137,16 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     if (request.action) {
       const actionResult = handleStructuredAction(request.action, session, sections)
       if (actionResult.transitions.length > 0) {
-        // Track phase transitions from direct actions (e.g. approve_outline → drafting)
+        // Track phase transitions from direct actions (e.g. approve_outline → drafting).
+        // Compare against the post-apply phase so the backwards-rejection guard in
+        // applyTransition doesn't surface a spurious phase change to write-back.
         for (const t of actionResult.transitions) {
           const prevPhase = session.currentPhase
           const result = applyTransition(session, sections, t)
           session = result.session
           sections = result.sections
-          if (t.type === 'SET_PHASE' && t.phase !== prevPhase) {
-            phaseTransitionOccurred = { from: prevPhase, to: t.phase }
+          if (t.type === 'SET_PHASE' && session.currentPhase !== prevPhase) {
+            phaseTransitionOccurred = { from: prevPhase, to: session.currentPhase }
           }
           if (t.type === 'SET_SELECTED_CALL') {
             selectedCallChanged = true
@@ -139,8 +162,14 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
           session = { ...session, stateVersion: session.stateVersion + 1, updatedAt: new Date() }
           await persistSessionState(session, sections, writeBack)
         } else {
-          // Non-terminal — persist action state without version bump;
-          // end-of-turn persist (line ~337) handles the single version increment
+          // Non-terminal — bump too, so a client polling between this persist
+          // and end-of-turn (or after an LLM-loop crash) sees the state has
+          // changed. End-of-turn at ~line 629 bumps again; clients treat
+          // stateVersion as an opaque change token, not a strict +1 counter,
+          // so a per-turn jump of +2 is fine. Without this bump, the action's
+          // mutations land in DB but stateVersion stays the same — a stale
+          // client could then PATCH with the old version, pass CAS, and clobber.
+          session = { ...session, stateVersion: session.stateVersion + 1, updatedAt: new Date() }
           await persistSessionState(session, sections, writeBack)
         }
         // Reset write-back flags so the end-of-turn persist doesn't run
@@ -160,20 +189,33 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     }
 
     // 4. Build prompt and tool definitions
-    // Inject session knowledge summary for prompt
+    // Compute the session knowledge summary as a local — pass through to
+    // buildSessionStateBlock explicitly rather than smuggling it onto
+    // `session._knowledgeSummary`. The previous approach mutated the
+    // caller's session object, which broke test isolation and was a real
+    // data race risk under parallel turns. See round-4 audit 2026-05-12.
+    let knowledgeSummary: string | undefined
     try {
       const { getSessionKnowledge } = await import('@/lib/ai/knowledge/session-knowledge')
       const pages = await getSessionKnowledge(session.id)
       if (pages.length > 0) {
         const kindCounts = new Map<string, number>()
         for (const p of pages) kindCounts.set(p.kind, (kindCounts.get(p.kind) ?? 0) + 1)
-        ;(session as SessionWithKnowledgeSummary)._knowledgeSummary = `${pages.length} pages: ${[...kindCounts.entries()].map(([k, c]) => c > 1 ? `${k}(${c})` : k).join(', ')}`
+        knowledgeSummary = `${pages.length} pages: ${[...kindCounts.entries()].map(([k, c]) => c > 1 ? `${k}(${c})` : k).join(', ')}`
       }
     } catch { /* non-critical */ }
 
     const systemPrompt = buildSystemPrompt(session, sections)
-    const sessionStateBlock = buildSessionStateBlock(session, sections)
+    const sessionStateBlock = buildSessionStateBlock(session, sections, knowledgeSummary)
+
+    const chatToolsTrimmed = await isFeatureEnabled('chat_tools_trimmed', {
+      userId: session.userId,
+      bypassCache: true,
+    })
+    const planningModel = chatToolsTrimmed ? 'claude-sonnet-4-6' : 'claude-opus-4-6'
+
     const phaseTools = getToolsForPhase(session.currentPhase)
+    const finalPhaseTools = chatToolsTrimmed ? trimToChatSurface(phaseTools) : phaseTools
 
     // Build messages array for LLM
     const llmMessages: {
@@ -249,6 +291,32 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       llmMessages.push({ role: 'user', content: request.message })
     }
 
+    // Strip orphan tool_use blocks from the replayed history. A previous turn
+    // that persisted `tool_call` rows but crashed before persisting the matching
+    // `tool_result` row will otherwise hand the next turn an unbalanced
+    // assistant message and the upstream call 400s ("tool_use blocks must be
+    // followed by tool_result blocks"). The synthesis broadening at the bottom
+    // of this turn makes more LLM calls per session, so this latent pre-PR
+    // bug is more likely to surface — port the managed-runtime invariant.
+    //
+    // Pass a shallow copy so we can safely clear-and-refill llmMessages even
+    // if the invariant returns its input reference (which the production code
+    // does not, but a future refactor or a test mock might).
+    {
+      const before = llmMessages.length
+      const repaired = ensureV3PairingInvariant([...llmMessages] as RouterMessage[])
+      if (repaired.length !== before) {
+        log.warn(
+          { sessionId: session.id, before, after: repaired.length },
+          'V3 replay: stripped orphan tool_use/tool_result blocks from history',
+        )
+      }
+      llmMessages.length = 0
+      for (const m of repaired) {
+        llmMessages.push(m as (typeof llmMessages)[number])
+      }
+    }
+
     // 5. Call LLM with tool loop (max iterations to prevent runaway)
     const { generate } = await import('@/lib/ai/providers/router')
 
@@ -260,7 +328,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       userId: session.userId,
     })
 
-    const toolSchemas = phaseTools.map(tool => ({
+    const toolSchemas = finalPhaseTools.map(tool => ({
       type: 'function' as const,
       function: {
         name: tool.name,
@@ -269,7 +337,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       },
     }))
 
-    const MAX_TOOL_ITERATIONS = 5
+    const MAX_TOOL_ITERATIONS = chatToolsTrimmed ? 5 : 5
     let iteration = 0
 
     while (iteration < MAX_TOOL_ITERATIONS) {
@@ -277,7 +345,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
 
       const response = await generate({
         provider: 'anthropic',
-        model: 'claude-opus-4-6',
+        model: planningModel,
         system: systemPrompt,
         messages: llmMessages,
         tools: toolSchemas.length > 0 ? toolSchemas : undefined,
@@ -345,9 +413,20 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
         let hasToolCalls = false
 
         for (const toolCall of response.toolCalls) {
-          const tool = phaseTools.find(t => t.name === toolCall.name)
+          const tool = finalPhaseTools.find(t => t.name === toolCall.name)
           if (!tool) {
             log.warn({ tool: toolCall.name }, 'Unknown tool called by LLM')
+            // Synthetic tool_result keeps the assistant tool_use ↔ tool_result
+            // pairing balanced. Without this, the next LLM call (next loop
+            // iteration OR the no-text forced synthesis at the bottom of the
+            // turn) ships an assistant message with a dangling tool_use, and
+            // Anthropic rejects with 400 "tool_use blocks must be followed by
+            // tool_result blocks" — the user sees only the fallback string.
+            llmMessages.push({
+              role: 'tool',
+              content: JSON.stringify({ success: false, error: `Unknown tool '${toolCall.name}'` }),
+              tool_call_id: toolCall.id,
+            })
             continue
           }
 
@@ -355,6 +434,14 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
           const gate = checkPolicyGate(tool.name, session, sections)
           if (!gate.allowed) {
             emit({ type: 'policy_violation', gate: tool.name, reason: gate.reason || 'Policy gate blocked' })
+            // Same as the unknown-tool branch: balance the tool_use with a
+            // synthetic tool_result carrying the gate reason so synthesis (or
+            // the next iteration) doesn't ship a dangling tool_use upstream.
+            llmMessages.push({
+              role: 'tool',
+              content: JSON.stringify({ success: false, error: gate.reason || 'Policy gate blocked' }),
+              tool_call_id: toolCall.id,
+            })
             continue
           }
 
@@ -377,6 +464,8 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
             requestId: request.requestId,
             locale: session.locale,
             routingCtx: opts.routingCtx,
+            focusedSectionKey: opts.focusedSectionKey,
+            chatToolsTrimmed,
           }
 
           let toolResult: ToolResult
@@ -440,10 +529,13 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
               session = result.session
               sections = result.sections
 
-              // Emit phase change and record for write-back
-              if (transition.type === 'SET_PHASE' && transition.phase !== prevPhase) {
-                emit({ type: 'phase_changed', from: prevPhase, to: transition.phase })
-                phaseTransitionOccurred = { from: prevPhase, to: transition.phase }
+              // Emit phase change and record for write-back. Use the post-apply
+              // session.currentPhase, not the requested transition.phase — the
+              // monotonic guard in applyTransition rejects backwards moves silently,
+              // and we must not emit a phase_changed event for a rejected transition.
+              if (transition.type === 'SET_PHASE' && session.currentPhase !== prevPhase) {
+                emit({ type: 'phase_changed', from: prevPhase, to: session.currentPhase })
+                phaseTransitionOccurred = { from: prevPhase, to: session.currentPhase }
               }
               if (transition.type === 'SET_SELECTED_CALL') {
                 selectedCallChanged = true
@@ -502,29 +594,41 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       }
     }
 
-    // 7.5. Cap path — forced synthesis when the loop exhausted iterations
-    // without ever persisting assistant text. Without this, the SSE stream
-    // returns `done` carrying zero chat content and the UI looks like it
-    // crashed (see the 2026-05-12 09:35 prod incident). Make one more LLM
-    // call WITHOUT tools so the model is forced into text output, using the
-    // accumulated llmMessages so it has all the tool results it just
-    // collected. If that call fails or returns empty, fall back to a
-    // localized cap message so the user always sees SOMETHING.
-    if (iteration >= MAX_TOOL_ITERATIONS && !assistantTextPersistedThisTurn) {
+    // 7.5. No-text path — forced synthesis when the loop exits without ever
+    // persisting assistant text. Two ways to land here:
+    //   (a) cap path: iteration >= MAX_TOOL_ITERATIONS (original 51c5f33b fix)
+    //   (b) early exit: model returned tool_calls + no text, the tools all got
+    //       blocked / unknown (hasToolCalls=false → break at line ~503), OR
+    //       model returned no tool_calls and empty content (break at ~327).
+    // Without this, the SSE stream returns `done` carrying zero chat content
+    // and the UI looks like it crashed (2026-05-12 09:35 prod incident, plus
+    // the 2026-05-12 user report: "doar a facut tool call dar nici un raspuns").
+    // Make one more LLM call WITHOUT tools so the model is forced into text
+    // output, using the accumulated llmMessages so it has all the tool results
+    // it just collected. If that call fails or returns empty, fall back to a
+    // localized message so the user always sees SOMETHING.
+    if (!assistantTextPersistedThisTurn) {
+      const capHit = iteration >= MAX_TOOL_ITERATIONS
       log.info(
-        { sessionId: session.id, iteration, requestId: request.requestId },
-        'V3 cap hit with no assistant text — forcing synthesis call',
+        { sessionId: session.id, iteration, capHit, requestId: request.requestId },
+        'V3 turn exited with no assistant text — forcing synthesis call',
       )
+      if (capHit) {
+        trackIterationCapHit('v3')
+      }
       const synthesisLanguage = session.locale === 'ro' ? 'Romanian' : 'English'
+      const capNote = capHit
+        ? `You used all ${MAX_TOOL_ITERATIONS} tool-call iterations without responding to the user.`
+        : 'You stopped before responding to the user.'
       const synthesisSystem = `${systemPrompt}
 
-## Iteration Cap Reached
-You used all ${MAX_TOOL_ITERATIONS} tool-call iterations without responding to the user. Summarize what you found so far in ${synthesisLanguage}. If the user's request was ambiguous, ask one specific clarifying question instead. Do NOT request more tool calls — they are no longer available.`
+## Response Required
+${capNote} Summarize what you found so far in ${synthesisLanguage}. If the user's request was ambiguous, ask one specific clarifying question instead. Do NOT request more tool calls — they are no longer available.`
 
       try {
         const finalResponse = await generate({
           provider: 'anthropic',
-          model: 'claude-opus-4-6',
+          model: planningModel,
           system: synthesisSystem,
           messages: llmMessages,
           // Omit tools entirely — the router doesn't expose tool_choice
@@ -553,9 +657,13 @@ You used all ${MAX_TOOL_ITERATIONS} tool-call iterations without responding to t
       }
 
       if (!assistantTextPersistedThisTurn) {
-        const fallback = session.locale === 'ro'
-          ? 'Am atins limita pașilor de explorare pentru această tură fără să găsesc un răspuns concludent. Te rog reformulează cererea sau cere-mi să sintetizez ce am găsit.'
-          : 'I reached the tool-call limit for this turn without arriving at a conclusive answer. Please rephrase your request or ask me to summarize what I found.'
+        const fallback = capHit
+          ? (session.locale === 'ro'
+            ? 'Am atins limita pașilor de explorare pentru această tură fără să găsesc un răspuns concludent. Te rog reformulează cererea sau cere-mi să sintetizez ce am găsit.'
+            : 'I reached the tool-call limit for this turn without arriving at a conclusive answer. Please rephrase your request or ask me to summarize what I found.')
+          : (session.locale === 'ro'
+            ? 'Nu am putut formula un răspuns pentru această tură. Te rog reformulează cererea.'
+            : "I couldn't generate a response for this turn. Please rephrase your request.")
         emit({ type: 'text_delta', content: fallback })
         await appendMessage(session.id, {
           role: 'assistant',
@@ -615,9 +723,21 @@ export function handleStructuredAction(
       if (!session.selectedCallId) {
         return { transitions: [], skipLLM: true, policyViolation: 'POLICY_NO_CALL_SELECTED: cannot approve outline before a funding call has been selected' }
       }
-      if (session.eligibility == null || session.eligibility.failCount > 0) {
-        const failCount = session.eligibility?.failCount ?? 'unknown'
-        return { transitions: [], skipLLM: true, policyViolation: `POLICY_ELIGIBILITY_NOT_PASSED: eligibility check must pass with zero failures before outline approval (failCount: ${failCount})` }
+      if (session.eligibility == null) {
+        // Eligibility has never been run for this session — the model skipped
+        // run_eligibility during research/structuring. Surface a clear message
+        // instead of `failCount: unknown` so the user knows what to ask for.
+        const msg = session.locale === 'ro'
+          ? 'POLICY_ELIGIBILITY_NOT_CHECKED: verificarea de eligibilitate nu a fost încă efectuată pentru această sesiune. Cere asistentului să ruleze verificarea de eligibilitate înainte de aprobarea structurii.'
+          : "POLICY_ELIGIBILITY_NOT_CHECKED: eligibility hasn't been verified for this session yet. Ask the assistant to run an eligibility check before approving the outline."
+        return { transitions: [], skipLLM: true, policyViolation: msg }
+      }
+      if (session.eligibility.failCount > 0) {
+        const failCount = session.eligibility.failCount
+        const msg = session.locale === 'ro'
+          ? `POLICY_ELIGIBILITY_NOT_PASSED: verificarea de eligibilitate are ${failCount} eșec(uri) critic(e). Rezolvă-le înainte de aprobarea structurii.`
+          : `POLICY_ELIGIBILITY_NOT_PASSED: eligibility check has ${failCount} hard failure(s). Address them before approving the outline.`
+        return { transitions: [], skipLLM: true, policyViolation: msg }
       }
       if (session.outlineFrozen) {
         return { transitions: [], skipLLM: true, policyViolation: 'POLICY_OUTLINE_ALREADY_FROZEN: outline has already been approved and frozen' }
@@ -836,41 +956,7 @@ async function persistSessionState(session: AgentSession, sections: AgentSection
   }
 }
 
-// SET_OUTLINE writes session.outline but does NOT persist agent_sections rows
-// — those only exist once a section is drafted. Without this fallback, a
-// session that just entered `structuring` has session.outline populated but
-// `sections` is empty, so AgentWorkspace can't render OutlineView (its guard
-// is sections.length > 0). User sees nothing, can't approve, dead-ends.
-//
-// We synthesize a section snapshot from the outline spec when no real rows
-// exist yet. Status = 'pending' (the SECTION_STATUSES value that means
-// "specified but not yet generated"). Once generate_section runs, real rows
-// take over via the regular sections.map path.
-function projectSectionsForUI(
-  session: AgentSession,
-  sections: AgentSection[],
-): { sectionKey: string; title: string; status: import('./types').SectionStatus; documentOrder: number; content: string | null }[] {
-  if (sections.length > 0) {
-    return sections.map(s => ({
-      sectionKey: s.sectionKey,
-      title: s.title,
-      status: s.status,
-      documentOrder: s.documentOrder,
-      content: s.acceptedContent ?? s.content,
-    }))
-  }
-  const outline = session.outline ?? []
-  if (outline.length === 0) return []
-  return outline.map((spec, i) => ({
-    sectionKey: spec.id,
-    title: spec.title,
-    status: 'pending' as const,
-    documentOrder: typeof spec.order === 'number' ? spec.order : i + 1,
-    content: null,
-  }))
-}
-
-function buildStatePatch(session: AgentSession, sections: AgentSection[]): Partial<import('./types').UIStateSnapshot> {
+function buildStatePatch(session: AgentSession, sections: AgentSection[]): Partial<UIStateSnapshot> {
   return {
     phase: session.currentPhase,
     stateVersion: session.stateVersion,
@@ -880,15 +966,6 @@ function buildStatePatch(session: AgentSession, sections: AgentSection[]): Parti
   }
 }
 
-function buildUISnapshot(session: AgentSession, sections: AgentSection[]): import('./types').UIStateSnapshot {
-  return {
-    sessionId: session.id,
-    phase: session.currentPhase,
-    stateVersion: session.stateVersion,
-    outlineFrozen: session.outlineFrozen,
-    warnings: session.warnings,
-    sections: projectSectionsForUI(session, sections),
-    blueprint: session.blueprint,
-    eligibility: session.eligibility,
-  }
+function buildUISnapshot(session: AgentSession, sections: AgentSection[]): UIStateSnapshot {
+  return projectSessionState(session, sections)
 }

@@ -25,7 +25,11 @@ describe('buildSystemPrompt (stable cacheable prefix)', () => {
 
   it('includes current phase guidance', () => {
     const prompt = buildSystemPrompt(makeSession({ currentPhase: 'drafting' }), [])
-    expect(prompt).toContain('Generate sections one at a time')
+    // Drafting guidance must require generate_section — see code-review P1-1.
+    // Inline section content in chat doesn't persist to agent_sections, so the
+    // user loses drafts on refresh. The prompt explicitly forbids that path.
+    expect(prompt).toContain('generate_section')
+    expect(prompt).toMatch(/NEVER write full section drafts/i)
   })
 
   it('includes rules about not inventing facts', () => {
@@ -86,12 +90,14 @@ describe('buildSessionStateBlock (volatile tail, delivered as role:system messag
     expect(block).toContain('draft')
   })
 
-  it('includes session knowledge summary when present', () => {
-    const session = {
-      ...makeSession({ currentPhase: 'drafting' }),
-      _knowledgeSummary: '3 pages: brief, decision_log, section_pattern(methodology)',
-    } as any
-    const block = buildSessionStateBlock(session, [])
+  it('includes session knowledge summary when passed', () => {
+    // knowledgeSummary now arrives as an explicit parameter rather than via
+    // a smuggled `_knowledgeSummary` field on the session — round-4 audit.
+    const block = buildSessionStateBlock(
+      makeSession({ currentPhase: 'drafting' }),
+      [],
+      '3 pages: brief, decision_log, section_pattern(methodology)',
+    )
     expect(block).toContain('Session knowledge')
     expect(block).toContain('3 pages')
   })

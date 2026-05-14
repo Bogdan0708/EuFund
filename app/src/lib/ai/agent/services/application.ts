@@ -7,15 +7,19 @@
 // ./errors, ./types, and @/lib/legal/audit. No V3 or MCP imports.
 
 import { db } from '@/lib/db'
-import { agentSessions, agentSections } from '@/lib/db/schema'
+import { agentSessions, agentSections, projectFiles } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
-import { NotFoundError, ConcurrencyError, ValidationError } from './errors'
+import { NotFoundError, ConcurrencyError, ValidationError, ExternalDependencyError } from './errors'
 import { verifySessionOwnership } from './context-helpers'
 import { logAudit } from '@/lib/legal/audit'
 import { ensureProjectForSession } from '@/lib/projects/promotion'
+import { runEligibility } from './eligibility'
+import type { EligibilityInput } from './eligibility'
 import { assertPolicy } from '../policy/enforce'
 import { POLICY_MATRIX } from '../policy/matrix'
 import { logger } from '@/lib/logger'
+import { trackStorageCleanupError } from '@/lib/monitoring/metrics'
+import { deleteObject, putObject } from '@/lib/storage/gcs'
 import type { AgentSession } from '../types'
 
 const log = logger.child({ component: 'application-service' })
@@ -433,7 +437,7 @@ export async function setApplicationStatus(
   }
 
   // Policy gate
-  assertPolicy(POLICY_MATRIX.setApplicationStatus, session as unknown as AgentSession)
+  assertPolicy(POLICY_MATRIX.setApplicationStatus, session as unknown as AgentSession, {}, 'setApplicationStatus')
 
   // Completed-specific gate: validate_application must pass
   if (input.status === 'completed') {
@@ -491,7 +495,8 @@ export async function setApplicationStatus(
  * Write contract (no stateVersion guard — non-idempotent by design):
  *   1. Verify session ownership
  *   2. Load accepted sections
- *   3. Create snapshot (in-memory JSON for now, persisted via audit log)
+ *   3. Create snapshot JSON; project-linked sessions also get a generated
+ *      project_files row backed by object storage
  *   4. Emit audit log
  *   5. Return ExportSnapshot { snapshotId, format, downloadUrl, expiresAt }
  */
@@ -534,20 +539,88 @@ export async function createExportSnapshot(
     })),
   }
 
+  let downloadUrl = `/api/mcp/write/snapshots/${snapshotId}`
+  let generatedFileId: string | null = null
+  let storagePath: string | null = null
+
+  if (session.projectId) {
+    const buffer = Buffer.from(JSON.stringify(payload, null, 2), 'utf8')
+    const filename = `fondeu-agent-snapshot-${snapshotId}.json`
+    const objectPath = `projects/${session.projectId}/generated/${filename}`
+
+    try {
+      storagePath = await putObject(objectPath, buffer, 'application/json')
+    } catch (err) {
+      throw new ExternalDependencyError(
+        'ObjectStorage',
+        err instanceof Error ? err.message : 'Failed to persist generated export snapshot',
+      )
+    }
+
+    try {
+      const [file] = await db
+        .insert(projectFiles)
+        .values({
+          projectId: session.projectId,
+          userId: ctx.userId,
+          filename,
+          mimeType: 'application/json',
+          sizeBytes: buffer.length,
+          storagePath,
+          category: 'generated',
+          description: 'FondEU generated application snapshot',
+          extractedText: payload.sections
+            .map(s => `${s.title}\n\n${s.content}`)
+            .join('\n\n---\n\n')
+            .slice(0, 200_000),
+        })
+        .returning({ id: projectFiles.id })
+
+      generatedFileId = file?.id ?? null
+      if (generatedFileId) {
+        downloadUrl = `/api/v1/projects/${session.projectId}/files/${generatedFileId}`
+      }
+    } catch (err) {
+      if (storagePath) {
+        try {
+          await deleteObject(storagePath)
+        } catch (cleanupErr) {
+          trackStorageCleanupError('createExportSnapshot')
+          log.warn(
+            {
+              sessionId,
+              storagePath,
+              error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+            },
+            'createExportSnapshot orphan cleanup failed',
+          )
+        }
+      }
+      throw new ExternalDependencyError(
+        'Database',
+        err instanceof Error ? err.message : 'Failed to record generated export snapshot',
+      )
+    }
+  }
+
   // 4. Emit audit log (snapshot metadata stored via audit)
   await logAudit({
     userId: ctx.userId,
     action: 'project.export',
     resourceType: 'agent_session',
     resourceId: sessionId,
-    metadata: { snapshotId, sectionCount: sectionRows.length, requestId: ctx.requestId },
+    metadata: {
+      snapshotId,
+      sectionCount: sectionRows.length,
+      projectId: session.projectId,
+      generatedFileId,
+      storagePath,
+      requestId: ctx.requestId,
+    },
     newValue: payload,
   })
 
   // 5. Return ExportSnapshot
-  // downloadUrl is a placeholder — a real implementation would upload to GCS/S3
-  const downloadUrl = `/api/mcp/write/snapshots/${snapshotId}`
-
   return {
     snapshotId,
     format: 'json',
@@ -591,7 +664,7 @@ export async function setSelectedCall(
   }
 
   // 4. Policy gate — cannot reselect once outline is frozen
-  assertPolicy(POLICY_MATRIX.setSelectedCall, session as unknown as AgentSession)
+  assertPolicy(POLICY_MATRIX.setSelectedCall, session as unknown as AgentSession, {}, 'setSelectedCall')
 
   // 5. Mutate (atomic CAS: WHERE includes stateVersion guard)
   const newStateVersion = session.stateVersion + 1
@@ -656,7 +729,7 @@ export async function freezeOutline(
   }
 
   // 4. Policy gate
-  assertPolicy(POLICY_MATRIX.freezeOutline, session as unknown as AgentSession)
+  assertPolicy(POLICY_MATRIX.freezeOutline, session as unknown as AgentSession, {}, 'freezeOutline')
 
   // 5. Mutate: set outlineFrozen=true and advance phase to drafting
   // Atomic CAS: WHERE includes stateVersion guard to prevent double-freeze races.
@@ -695,4 +768,232 @@ export async function freezeOutline(
   })
 
   return { newStateVersion }
+}
+
+// ── runEligibilityForSession ───────────────────────────────────────────────
+
+export interface RunEligibilityForSessionInput {
+  sessionId: string
+  expectedStateVersion: number
+  /** Free-text project summary retained for drafting context and legacy callers. */
+  projectSummary?: string
+  /** Structured inputs required by deterministic eligibility rules. */
+  eligibilityInputs?: EligibilityInput
+}
+
+export interface RunEligibilityForSessionResult {
+  newStateVersion: number
+  decision: import('./types').EligibilityDecision
+}
+
+/**
+ * Thin wrapper that runs the deterministic eligibility rules engine against
+ * a session's selected call, persists the result, and bumps stateVersion.
+ *
+ * Input derivation: first uses request-level structured org/project fields,
+ * then versioned `session.planningArtifact.eligibility.inputs`. If structured
+ * inputs are unavailable, throws
+ * `ValidationError('eligibility', ..., 'ELIGIBILITY_INPUTS_MISSING')`.
+ *
+ * Write contract:
+ *   1. Verify session ownership
+ *   2. CAS-check expectedStateVersion
+ *   3. Validate session.selectedCallId is non-null
+ *   4. Derive EligibilityInput from planningArtifact (throws if unavailable)
+ *   5. Call pure-rules runEligibility(ctx, input, callId)
+ *   6. CAS-update session.eligibility = decision, stateVersion += 1
+ *   7. Audit as session.eligibility_run
+ *   8. Return { newStateVersion, decision }
+ */
+export async function runEligibilityForSession(
+  ctx: ServiceContext,
+  input: RunEligibilityForSessionInput,
+): Promise<RunEligibilityForSessionResult> {
+  // 1. Verify ownership
+  const session = await verifySessionOwnership(ctx, input.sessionId)
+
+  // 2. CAS check
+  if (session.stateVersion !== input.expectedStateVersion) {
+    throw new ConcurrencyError(input.expectedStateVersion, session.stateVersion)
+  }
+
+  // 3. Validate selectedCallId
+  if (!session.selectedCallId) {
+    throw new ValidationError(
+      'selectedCallId',
+      'No call selected — run preselect before eligibility check',
+      'NO_CALL_SELECTED',
+    )
+  }
+
+  // 4. Derive EligibilityInput from request input or planningArtifact
+  const artifact = session.planningArtifact as Record<string, unknown> | null
+  const derived = deriveEligibilityInput(input.eligibilityInputs, artifact)
+  if (!derived) {
+    throw new ValidationError(
+      'eligibility',
+      'Structured eligibility inputs not available on session. Provide eligibilityInputs.organization.orgType and retry.',
+      'ELIGIBILITY_INPUTS_MISSING',
+    )
+  }
+
+  // 5. Run pure-rules eligibility
+  const decision = await runEligibility(ctx, derived, session.selectedCallId)
+
+  // 6. CAS-update: persist decision + bump stateVersion
+  const newStateVersion = session.stateVersion + 1
+  const nextPlanningArtifact = mergeEligibilityArtifact(artifact, input)
+  const casResult = await db
+    .update(agentSessions)
+    .set({
+      eligibility: decision,
+      planningArtifact: nextPlanningArtifact,
+      stateVersion: newStateVersion,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(agentSessions.id, input.sessionId),
+      eq(agentSessions.stateVersion, input.expectedStateVersion),
+    ))
+    .returning({ id: agentSessions.id })
+
+  if (casResult.length === 0) {
+    const [current] = await db
+      .select({ stateVersion: agentSessions.stateVersion })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, input.sessionId))
+      .limit(1)
+    throw new ConcurrencyError(input.expectedStateVersion, current?.stateVersion ?? -1)
+  }
+
+  // 7. Audit
+  await logAudit({
+    userId: ctx.userId,
+    action: 'session.eligibility_run',
+    resourceType: 'agent_session',
+    resourceId: input.sessionId,
+    metadata: {
+      callId: session.selectedCallId,
+      score: decision.score,
+      passCount: decision.passCount,
+      failCount: decision.failCount,
+      warningCount: decision.warningCount,
+      requestId: ctx.requestId,
+    },
+  })
+
+  // 8. Return
+  return { newStateVersion, decision }
+}
+
+// ── deriveEligibilityInput ─────────────────────────────────────────────────
+
+/**
+ * Best-effort extraction of structured EligibilityInput from request data or
+ * a session's planningArtifact JSONB blob. Returns null when neither source
+ * carries the necessary structured fields.
+ *
+ * Accepted shapes:
+ *   - request.eligibilityInputs
+ *   - planningArtifact.eligibility.version === 1 with inputs
+ *   - legacy planningArtifact.eligibilityInputs rows created before the
+ *     versioned artifact contract
+ *
+ * Rejected shapes (cannot derive):
+ *   - preselect v1 artifact (has rankedAt, description, selectedCallId — no org/project)
+ *   - free-text projectSummary without structured org/project fields
+ *   - null / missing
+ */
+function deriveEligibilityInput(
+  requestInputs: EligibilityInput | undefined,
+  artifact: Record<string, unknown> | null,
+): EligibilityInput | null {
+  const fromRequest = normalizeEligibilityInput(requestInputs)
+  if (fromRequest) return fromRequest
+
+  if (artifact?.eligibility && typeof artifact.eligibility === 'object') {
+    const eligibility = artifact.eligibility as Record<string, unknown>
+    if (eligibility.version === 1) {
+      const fromVersioned = normalizeEligibilityInput(eligibility.inputs)
+      if (fromVersioned) return fromVersioned
+    }
+  }
+
+  return normalizeEligibilityInput(artifact?.eligibilityInputs)
+}
+
+function mergeEligibilityArtifact(
+  artifact: Record<string, unknown> | null,
+  input: RunEligibilityForSessionInput,
+): Record<string, unknown> | null {
+  const normalized = normalizeEligibilityInput(input.eligibilityInputs)
+  const projectSummary = input.projectSummary?.trim()
+
+  if (!normalized && !projectSummary) return artifact
+
+  const existing =
+    artifact?.eligibility && typeof artifact.eligibility === 'object'
+      ? artifact.eligibility as Record<string, unknown>
+      : null
+  const existingInputs = normalizeEligibilityInput(existing?.inputs)
+  const inputs = normalized ?? existingInputs
+  if (!inputs) return artifact
+
+  return {
+    ...(artifact ?? {}),
+    eligibility: {
+      version: 1,
+      inputs,
+      ...(projectSummary || typeof existing?.projectSummary === 'string'
+        ? { projectSummary: projectSummary ?? (existing?.projectSummary as string) }
+        : {}),
+      updatedAt: new Date().toISOString(),
+    },
+  }
+}
+
+function normalizeEligibilityInput(value: unknown): EligibilityInput | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  const organization = normalizeOrganization(record.organization)
+  if (!organization) return null
+
+  return {
+    organization,
+    project: normalizeProject(record.project),
+  }
+}
+
+function normalizeOrganization(value: unknown): EligibilityInput['organization'] | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  const orgType = normalizeString(record.orgType)
+  if (!orgType) return null
+
+  return {
+    orgType,
+    orgSize: normalizeString(record.orgSize),
+    caenPrimary: normalizeString(record.caenPrimary),
+    nutsRegion: normalizeString(record.nutsRegion),
+    employeeCount: normalizeNumber(record.employeeCount),
+    annualRevenue: normalizeNumber(record.annualRevenue),
+  }
+}
+
+function normalizeProject(value: unknown): EligibilityInput['project'] {
+  if (!value || typeof value !== 'object') return {}
+  const record = value as Record<string, unknown>
+  return {
+    totalBudget: normalizeNumber(record.totalBudget),
+    ownContrib: normalizeNumber(record.ownContrib),
+    durationMonths: normalizeNumber(record.durationMonths),
+  }
+}
+
+function normalizeString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
+}
+
+function normalizeNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }

@@ -7,11 +7,16 @@
 // ./errors, ./types, and @/lib/legal/audit. No V3 or MCP imports.
 
 import { db } from '@/lib/db'
-import { agentSessions, agentSections, agentSectionVersions } from '@/lib/db/schema'
-import { eq, and, max } from 'drizzle-orm'
-import { NotFoundError, ConcurrencyError, ValidationError } from './errors'
+import type { Database } from '@/lib/db'
+import { agentSessions, agentSections, agentSectionVersions, projectDocuments } from '@/lib/db/schema'
+import { eq, and, max, desc, inArray } from 'drizzle-orm'
+
+type DbTx = Parameters<Parameters<Database['transaction']>[0]>[0]
+import { createHash } from 'crypto'
+import { NotFoundError, ConcurrencyError, ValidationError, ExternalDependencyError } from './errors'
 import { verifySessionOwnership } from './context-helpers'
 import { logAudit } from '@/lib/legal/audit'
+import { logger } from '@/lib/logger'
 import { assertPolicy } from '../policy/enforce'
 import { POLICY_MATRIX } from '../policy/matrix'
 import type { AgentSession } from '../types'
@@ -25,6 +30,8 @@ import type {
   SectionApproveResult,
   SectionRollbackResult,
 } from './types'
+
+const log = logger.child({ component: 'agent-sections-service' })
 
 // Re-exported for backward compatibility with callers that imported write
 // result types from this module — single source of truth is ./types.
@@ -72,6 +79,112 @@ async function assertSessionOwnership(
 
   if (!rows[0]) {
     throw new NotFoundError('session', sessionId)
+  }
+}
+
+async function syncAgentProjectDocumentSnapshot(
+  tx: DbTx,
+  projectId: string | null,
+  sessionId: string,
+): Promise<void> {
+  if (!projectId) return
+
+  try {
+    const rows = await tx
+      .select()
+      .from(agentSections)
+      .where(eq(agentSections.sessionId, sessionId))
+      .orderBy(agentSections.documentOrder)
+
+    const sectionIds = rows.map(row => row.id)
+    const versionRows = sectionIds.length > 0
+      ? await tx
+        .select()
+        .from(agentSectionVersions)
+        .where(inArray(agentSectionVersions.sectionId, sectionIds))
+      : []
+    const versionStats = new Map<string, { currentVersion: number; versionCount: number }>()
+    for (const version of versionRows) {
+      const current = versionStats.get(version.sectionId) ?? { currentVersion: 0, versionCount: 0 }
+      current.currentVersion = Math.max(current.currentVersion, version.versionNumber)
+      current.versionCount += 1
+      versionStats.set(version.sectionId, current)
+    }
+
+    const sections = rows.map((row) => {
+      const content = row.acceptedContent ?? row.content ?? ''
+      const tokens = (row.tokenUsage ?? {}) as { input?: number; output?: number; in?: number; out?: number }
+      const stats = versionStats.get(row.id) ?? { currentVersion: 1, versionCount: 1 }
+      return {
+        id: row.sectionKey,
+        title: row.title,
+        content,
+        order: row.documentOrder,
+        source: 'generated',
+        state:
+          row.status === 'accepted'
+            ? 'approved'
+            : row.status === 'needs_review'
+              ? 'reviewed'
+              : 'draft',
+        currentVersion: stats.currentVersion,
+        versionCount: stats.versionCount,
+        contentHash: createHash('sha256').update(content).digest('hex'),
+        lastStateChangeAt: row.updatedAt.toISOString(),
+        lastStateChangeBy: null,
+        metadata: {
+          model: row.modelUsed ?? '',
+          provider: '',
+          tokensIn: tokens.input ?? tokens.in ?? 0,
+          tokensOut: tokens.output ?? tokens.out ?? 0,
+          latencyMs: row.latencyMs ?? 0,
+          retryCount: row.retryCount,
+          fallbackUsed: false,
+          generatedAt: row.updatedAt.toISOString(),
+          checksum: createHash('sha256').update(content).digest('hex'),
+        },
+      }
+    })
+
+    const [existing] = await tx
+      .select()
+      .from(projectDocuments)
+      .where(eq(projectDocuments.projectId, projectId))
+      .orderBy(desc(projectDocuments.version))
+      .limit(1)
+
+    // Optimization: Skip sync if sections content/state hasn't changed.
+    // JSON.stringify comparison is sufficient here as 'sections' is a deterministic map of rows.
+    if (existing && JSON.stringify(existing.sections) === JSON.stringify(sections)) {
+      return
+    }
+
+    const syncedAt = new Date()
+    const nextVersion = existing ? existing.version + 1 : 1
+
+    await tx.insert(projectDocuments).values({
+      projectId,
+      version: nextVersion,
+      sections: sections as unknown as Record<string, unknown>[],
+      metadata: {
+        ...((existing?.metadata as Record<string, unknown> | null) ?? {}),
+        source: 'agent_sections',
+        sessionId,
+        syncedAt: syncedAt.toISOString(),
+      },
+      updatedAt: syncedAt,
+    })
+  } catch (err) {
+    if (err instanceof ConcurrencyError) throw err
+    log.warn(
+      { sessionId, projectId, error: err instanceof Error ? err.message : String(err) },
+      'agent project document snapshot sync failed',
+    )
+    throw new ExternalDependencyError(
+      'ProjectDocumentSnapshot',
+      err instanceof Error ? err.message : 'Failed to sync generated project document snapshot',
+      true,
+    )
   }
 }
 
@@ -288,7 +401,9 @@ export async function saveSectionDraft(
   }
 
   // 3. Enforce policy gates (Phase 3a defense-in-depth; managed runtime relies on this in 3b)
-  assertPolicy(POLICY_MATRIX.saveSectionDraft, session as unknown as AgentSession)
+  assertPolicy(POLICY_MATRIX.saveSectionDraft, session as unknown as AgentSession, {
+    sectionKey: input.sectionKey,
+  }, 'saveSectionDraft')
 
   const newStateVersion = session.stateVersion + 1
 
@@ -311,15 +426,26 @@ export async function saveSectionDraft(
         .set({ content: input.content, status: 'draft', updatedAt: new Date() })
         .where(eq(agentSections.id, sectionId))
     } else {
-      // Create new section with minimal required fields
+      // Create new section. Pull title/order from the session outline spec
+      // so the UI does not render the section key as the title or lose
+      // document order. State-projection prefers row metadata over spec
+      // metadata once a row exists, so a one-time correct seed matters.
+      const outline = (session.outline ?? []) as Array<{
+        id: string
+        title?: string
+        order?: number
+        generationOrder?: number
+      }>
+      const spec = outline.find((s) => s.id === input.sectionKey)
       const inserted = await tx
         .insert(agentSections)
         .values({
           sessionId: input.sessionId,
           sectionKey: input.sectionKey,
-          title: input.sectionKey,
-          documentOrder: 0,
-          generationOrder: 0,
+          title: spec?.title ?? input.sectionKey,
+          documentOrder: typeof spec?.order === 'number' ? spec.order : 0,
+          generationOrder:
+            typeof spec?.generationOrder === 'number' ? spec.generationOrder : 0,
           status: 'draft',
           content: input.content,
         })
@@ -359,6 +485,8 @@ export async function saveSectionDraft(
       // Throwing here rolls back the entire transaction automatically.
       throw new ConcurrencyError(input.expectedStateVersion, -1)
     }
+
+    await syncAgentProjectDocumentSnapshot(tx, session.projectId, input.sessionId)
   })
 
   // 4. Emit audit log
@@ -437,7 +565,7 @@ export async function approveSection(
 
   // Policy gates (outline frozen + section state allowlist).
   // Only runs for paths that will actually mutate.
-  assertPolicy(POLICY_MATRIX.approveSection, session as unknown as AgentSession, { sectionState: section.status })
+  assertPolicy(POLICY_MATRIX.approveSection, session as unknown as AgentSession, { sectionState: section.status }, 'approveSection')
 
   const newStateVersion = session.stateVersion + 1
 
@@ -461,6 +589,8 @@ export async function approveSection(
     if (casApprove.length === 0) {
       throw new ConcurrencyError(input.expectedStateVersion, -1)
     }
+
+    await syncAgentProjectDocumentSnapshot(tx, session.projectId, input.sessionId)
   })
 
   // 4. Emit audit log
@@ -507,7 +637,7 @@ export async function rollbackSection(
   }
 
   // 3. Enforce policy gates — outline must be frozen
-  assertPolicy(POLICY_MATRIX.rollbackSection, session as unknown as AgentSession)
+  assertPolicy(POLICY_MATRIX.rollbackSection, session as unknown as AgentSession, {}, 'rollbackSection')
 
   // Load the section
   const sectionRows = await db
@@ -595,6 +725,8 @@ export async function rollbackSection(
     if (casRollback.length === 0) {
       throw new ConcurrencyError(input.expectedStateVersion, -1)
     }
+
+    await syncAgentProjectDocumentSnapshot(tx, session.projectId, input.sessionId)
   })
 
   // 4. Emit audit log
@@ -668,7 +800,7 @@ export async function rejectSection(
   }
 
   // Policy gate — outline frozen + allowed section state
-  assertPolicy(POLICY_MATRIX.rejectSection, session as unknown as AgentSession, { sectionState: section.status })
+  assertPolicy(POLICY_MATRIX.rejectSection, session as unknown as AgentSession, { sectionState: section.status }, 'rejectSection')
 
   const newStateVersion = session.stateVersion + 1
 
@@ -693,6 +825,8 @@ export async function rejectSection(
     if (casReject.length === 0) {
       throw new ConcurrencyError(input.expectedStateVersion, -1)
     }
+
+    await syncAgentProjectDocumentSnapshot(tx, session.projectId, input.sessionId)
   })
 
   await logAudit({
@@ -751,7 +885,7 @@ export async function markSectionStale(
   }
 
   // Policy gate — requires outline frozen + allowed section state
-  assertPolicy(POLICY_MATRIX.markSectionStale, session as unknown as AgentSession, { sectionState: section.status })
+  assertPolicy(POLICY_MATRIX.markSectionStale, session as unknown as AgentSession, { sectionState: section.status }, 'markSectionStale')
 
   const newStateVersion = session.stateVersion + 1
 
@@ -778,6 +912,8 @@ export async function markSectionStale(
     if (casStale.length === 0) {
       throw new ConcurrencyError(input.expectedStateVersion, -1)
     }
+
+    await syncAgentProjectDocumentSnapshot(tx, session.projectId, input.sessionId)
   })
 
   await logAudit({

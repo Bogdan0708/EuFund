@@ -63,7 +63,7 @@ vi.mock('drizzle-orm', () => ({ eq: vi.fn(), and: vi.fn(), asc: vi.fn(), desc: v
 vi.mock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }))
 
 vi.mock('@/lib/ai/agent/services/evidence', () => ({ searchCalls: vi.fn(), retrieveEvidence: vi.fn() }))
-vi.mock('@/lib/ai/agent/services/blueprint', () => ({ lookupBlueprint: vi.fn(), saveCallBlueprint: vi.fn(), buildCallBlueprintFromArgs: vi.fn() }))
+vi.mock('@/lib/ai/agent/services/blueprint', () => ({ lookupBlueprint: vi.fn(), saveCallBlueprint: vi.fn(), buildCallBlueprintFromArgs: vi.fn(), outlineFromBlueprint: vi.fn().mockReturnValue([]) }))
 vi.mock('@/lib/ai/agent/services/application', () => ({
   getApplicationState: vi.fn(), getValidationReport: vi.fn(),
   validateApplication: vi.fn(), checkMissingAnnexes: vi.fn(),

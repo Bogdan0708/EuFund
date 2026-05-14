@@ -8,9 +8,10 @@ import { agentSessions } from '@/lib/db/schema'
 import { logAudit } from '@/lib/legal/audit'
 import { ensureProjectForSession } from '@/lib/projects/promotion'
 import { logger } from '@/lib/logger'
-import { lookupBlueprint } from './blueprint'
+import { lookupBlueprint, outlineFromBlueprint } from './blueprint'
 import { searchCalls } from './evidence'
 import type { CallMatch, ServiceContext, EvidenceChunk } from './types'
+import type { CallBlueprint } from '@/lib/ai/agent/types'
 
 // Rollout-tunable defaults; tune against real traces after 20-50 sessions.
 export const SCORE_FLOOR = 0.35
@@ -170,6 +171,11 @@ export async function initializeSession(
     ...(rawEvidenceForArtifact !== undefined ? { rawEvidence: rawEvidenceForArtifact } : {}),
   }
 
+  const outlinePayload =
+    blueprintKind === 'structured' && blueprintPayload
+      ? outlineFromBlueprint(blueprintPayload as CallBlueprint)
+      : null
+
   const [row] = await withUserRLS(userId, (tx) =>
     tx.insert(agentSessions).values({
       userId,
@@ -177,6 +183,7 @@ export async function initializeSession(
       selectedCallId,
       currentPhase: phase,
       blueprint: blueprintPayload,
+      outline: outlinePayload,
       planningArtifact: { preselect: artifact },
     }).returning({ id: agentSessions.id }),
   )
@@ -197,12 +204,16 @@ export async function initializeSession(
     },
   })
 
-  // Early validation of project promotion (dry-run).
-  // Confirms that the newly created session shell can successfully link to a
-  // projects row. Outcome is recorded in project_promotion_total metrics.
+  // Promote the new session to a `projects` row immediately. Before
+  // (dryRun: true) only validated promotion would succeed without
+  // actually creating it — but the user's mental model is "I just
+  // started a project," and the dashboard at /panou reads from the
+  // `projects` table. Without a real row, nothing shows up after
+  // bootstrap. Promotion is idempotent (checks session.projectId first)
+  // so subsequent preselect overrides don't duplicate.
   const ctx: ServiceContext = { userId, sessionId: row.id, requestId, now: new Date() }
-  await ensureProjectForSession(ctx, row.id, { dryRun: true }).catch((error) => {
-    log.error({ sessionId: row.id, error }, 'dry-run promotion failed in preselect')
+  await ensureProjectForSession(ctx, row.id).catch((error) => {
+    log.error({ sessionId: row.id, error }, 'project promotion failed in preselect')
   })
 
   return { sessionId: row.id, phase, blueprintKind }

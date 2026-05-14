@@ -18,6 +18,7 @@ vi.mock('@/lib/ai/agent/history', () => ({
   loadContext: vi.fn().mockResolvedValue({ messages: [], summary: null, totalCount: 0 }),
   appendMessage: vi.fn().mockResolvedValue(0),
   compactIfNeeded: vi.fn().mockResolvedValue({ compacted: false }),
+  ensureV3PairingInvariant: (m: unknown[]) => m,
 }))
 
 vi.mock('@/lib/ai/providers/router', () => ({
@@ -148,24 +149,40 @@ describe('handleStructuredAction V3 precondition guards', () => {
       expect(result.transitions).toHaveLength(0)
     })
 
-    it('rejects when eligibility is null', () => {
+    it('rejects with POLICY_ELIGIBILITY_NOT_CHECKED and a real sentence when eligibility was never run (en)', () => {
+      // User report 2026-05-12: pressing "approve outline" surfaced
+      // `failCount: unknown` — that token came from `?? 'unknown'`. Replace
+      // with an actionable message and a distinct policy code so the user
+      // (and the model on the next turn) knows what to do.
       const result = handleStructuredAction(
         { type: 'approve_outline' },
-        makeSession({ selectedCallId: 'CALL-1', eligibility: null }),
+        makeSession({ locale: 'en', selectedCallId: 'CALL-1', eligibility: null }),
         [],
       )
-      expect(result.policyViolation).toMatch(/POLICY_ELIGIBILITY_NOT_PASSED/)
+      expect(result.policyViolation).toMatch(/POLICY_ELIGIBILITY_NOT_CHECKED/)
+      expect(result.policyViolation).not.toContain('failCount: unknown')
+      expect(result.policyViolation).toContain('run an eligibility check')
       expect(result.transitions).toHaveLength(0)
     })
 
-    it('rejects when eligibility has failures', () => {
+    it('uses Romanian copy when locale is ro and eligibility is null', () => {
       const result = handleStructuredAction(
         { type: 'approve_outline' },
-        makeSession({ selectedCallId: 'CALL-1', eligibility: { results: [], score: 60, passCount: 3, failCount: 2, warningCount: 0 } }),
+        makeSession({ locale: 'ro', selectedCallId: 'CALL-1', eligibility: null }),
+        [],
+      )
+      expect(result.policyViolation).toMatch(/POLICY_ELIGIBILITY_NOT_CHECKED/)
+      expect(result.policyViolation).toContain('eligibilitate')
+    })
+
+    it('rejects with POLICY_ELIGIBILITY_NOT_PASSED and concrete fail count when eligibility ran and failed', () => {
+      const result = handleStructuredAction(
+        { type: 'approve_outline' },
+        makeSession({ locale: 'en', selectedCallId: 'CALL-1', eligibility: { results: [], score: 60, passCount: 3, failCount: 2, warningCount: 0 } }),
         [],
       )
       expect(result.policyViolation).toMatch(/POLICY_ELIGIBILITY_NOT_PASSED/)
-      expect(result.policyViolation).toContain('failCount: 2')
+      expect(result.policyViolation).toContain('2 hard failure')
     })
 
     it('rejects when outline is already frozen', () => {

@@ -35,6 +35,7 @@ vi.mock('@/lib/ai/agent/history', () => ({
   loadContext: vi.fn().mockResolvedValue({ messages: [], summary: null, totalCount: 0 }),
   appendMessage: vi.fn().mockResolvedValue(0),
   compactIfNeeded: vi.fn().mockResolvedValue({ compacted: false }),
+  ensureV3PairingInvariant: (m: unknown[]) => m,
 }))
 
 vi.mock('@/lib/ai/agent/managed/history', () => ({
@@ -149,7 +150,7 @@ describe('V3 runtime — virtual sections from outline', () => {
     expect(done!.finalState.sections[1].sectionKey).toBe('obiective')
   })
 
-  it('prefers real agent_sections rows over outline when both exist', async () => {
+  it('merges real rows with unmatched outline entries', async () => {
     const sessionWithOutline = makeSession()
     const realSection: AgentSection = {
       id: '33333333-3333-4333-8333-333333333333',
@@ -189,12 +190,19 @@ describe('V3 runtime — virtual sections from outline', () => {
     })
 
     const done = events.find(e => e.type === 'done') as Extract<AgentEvent, { type: 'done' }> | undefined
-    // Real sections take precedence; we do NOT also stuff the outline in.
-    expect(done!.finalState.sections).toHaveLength(1)
+    // Centralized key-based merge: real row for 'context-si-justificare' takes
+    // precedence; 'obiective' (in outline but no row yet) appears as virtual
+    // 'pending'. Total = 2 (1 real + 1 virtual).
+    expect(done!.finalState.sections).toHaveLength(2)
     expect(done!.finalState.sections[0]).toMatchObject({
       sectionKey: 'context-si-justificare',
       status: 'draft',
       content: 'Some drafted content',
+    })
+    expect(done!.finalState.sections[1]).toMatchObject({
+      sectionKey: 'obiective',
+      status: 'pending',
+      content: null,
     })
   })
 })

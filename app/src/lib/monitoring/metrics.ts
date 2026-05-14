@@ -1,113 +1,133 @@
-// ─── Prometheus Metrics Registry ────────────────────────────────
-// In-memory metric collection for Prometheus scraping.
-// Imported from monitoring/prometheus-metrics.ts design.
-
-interface MetricData {
-  name: string;
-  help: string;
-  type: 'counter' | 'gauge' | 'histogram';
-  values: Map<string, number>;
-  buckets?: number[];
-}
-
+/**
+ * Super-minimal Prometheus-compatible metrics registry.
+ * This is the V1 implementation; V2 will move to OTel.
+ */
 class MetricsRegistry {
-  private metrics = new Map<string, MetricData>();
+  private counters = new Map<string, { help: string; values: Map<string, number> }>();
+  private histograms = new Map<string, { help: string; buckets: number[]; values: Map<string, number[]> }>();
 
-  counter(name: string, help: string): void {
-    if (!this.metrics.has(name)) {
-      this.metrics.set(name, { name, help, type: 'counter', values: new Map() });
-    }
+  counter(name: string, help: string) {
+    this.counters.set(name, { help, values: new Map() });
   }
 
-  gauge(name: string, help: string): void {
-    if (!this.metrics.has(name)) {
-      this.metrics.set(name, { name, help, type: 'gauge', values: new Map() });
-    }
+  histogram(name: string, help: string, buckets: number[]) {
+    this.histograms.set(name, { help, buckets, values: new Map() });
   }
 
-  histogram(name: string, help: string, buckets: number[]): void {
-    if (!this.metrics.has(name)) {
-      this.metrics.set(name, { name, help, type: 'histogram', values: new Map(), buckets });
-    }
+  inc(name: string, labels: Record<string, string> = {}, value = 1) {
+    const counter = this.counters.get(name);
+    if (!counter) return;
+
+    const labelKey = this.serializeLabels(labels);
+    const current = counter.values.get(labelKey) ?? 0;
+    counter.values.set(labelKey, current + value);
   }
 
-  inc(name: string, labels: Record<string, string> = {}, value: number = 1): void {
-    const metric = this.metrics.get(name);
-    if (!metric) return;
-    const key = this.labelsToKey(labels);
-    metric.values.set(key, (metric.values.get(key) || 0) + value);
+  observe(name: string, labels: Record<string, string> = {}, value: number) {
+    const histogram = this.histograms.get(name);
+    if (!histogram) return;
+
+    const labelKey = this.serializeLabels(labels);
+    const values = histogram.values.get(labelKey) ?? [];
+    values.push(value);
+    histogram.values.set(labelKey, values);
   }
 
-  set(name: string, labels: Record<string, string>, value: number): void {
-    const metric = this.metrics.get(name);
-    if (!metric) return;
-    metric.values.set(this.labelsToKey(labels), value);
+  private serializeLabels(labels: Record<string, string>): string {
+    return Object.entries(labels)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}="${v}"`)
+      .join(',');
   }
 
-  observe(name: string, labels: Record<string, string>, value: number): void {
-    const metric = this.metrics.get(name);
-    if (!metric || !metric.buckets) return;
-    const keyBase = this.labelsToKey(labels);
-    for (const bucket of metric.buckets) {
-      if (value <= bucket) {
-        const bucketKey = `${keyBase},le="${bucket}"`;
-        metric.values.set(bucketKey, (metric.values.get(bucketKey) || 0) + 1);
+  expose(): string {
+    let output = '';
+    for (const [name, counter] of this.counters) {
+      output += `# HELP ${name} ${counter.help}\n`;
+      output += `# TYPE ${name} counter\n`;
+      for (const [labels, value] of counter.values) {
+        output += `${name}{${labels}} ${value}\n`;
       }
     }
-    const infKey = `${keyBase},le="+Inf"`;
-    metric.values.set(infKey, (metric.values.get(infKey) || 0) + 1);
-    metric.values.set(`${keyBase}_sum`, (metric.values.get(`${keyBase}_sum`) || 0) + value);
-    metric.values.set(`${keyBase}_count`, (metric.values.get(`${keyBase}_count`) || 0) + 1);
+    for (const [name, histogram] of this.histograms) {
+      output += `# HELP ${name} ${histogram.help}\n`;
+      output += `# TYPE ${name} histogram\n`;
+      for (const [labels, values] of histogram.values) {
+        // Very simplified histogram export (sum only)
+        const sum = values.reduce((a, b) => a + b, 0);
+        output += `${name}_sum{${labels}} ${sum}\n`;
+        output += `${name}_count{${labels}} ${values.length}\n`;
+      }
+    }
+    return output;
   }
 
+  // Back-compat alias for callers (e.g. /api/metrics/route.ts) that use the
+  // master-side method name. Delegates to expose().
   toPrometheus(): string {
-    const lines: string[] = [];
-    for (const metric of this.metrics.values()) {
-      lines.push(`# HELP ${metric.name} ${metric.help}`);
-      lines.push(`# TYPE ${metric.name} ${metric.type}`);
-      for (const [labels, value] of metric.values) {
-        if (labels) {
-          lines.push(`${metric.name}{${labels}} ${value}`);
-        } else {
-          lines.push(`${metric.name} ${value}`);
-        }
-      }
-    }
-    return lines.join('\n');
-  }
-
-  private labelsToKey(labels: Record<string, string>): string {
-    return Object.entries(labels).map(([k, v]) => `${k}="${v}"`).join(',');
+    return this.expose();
   }
 }
 
 export const metrics = new MetricsRegistry();
 
-// ─── Define metrics ─────────────────────────────────────────────
-
-metrics.histogram('http_request_duration_seconds', 'HTTP request duration in seconds', [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]);
+// Initialize counters
 metrics.counter('http_requests_total', 'Total HTTP requests');
-metrics.counter('http_request_errors_total', 'Total HTTP request errors');
-
-metrics.histogram('external_api_duration_seconds', 'External API call duration', [0.1, 0.25, 0.5, 1, 2, 5, 10]);
-metrics.counter('external_api_calls_total', 'Total external API calls');
-metrics.counter('external_api_errors_total', 'Total external API errors');
-
-metrics.counter('ai_requests_total', 'Total AI requests');
-metrics.counter('proposals_generated_total', 'Total proposals generated');
-
-metrics.counter('ai_cache_calls_total', 'Router AI cache call outcomes');
+metrics.counter('ai_completion_total', 'Total AI completion requests');
+metrics.counter('ai_completion_tokens_total', 'Total AI completion tokens (input + output)');
+metrics.counter('ai_completion_errors_total', 'Total AI completion errors');
+metrics.counter('ai_cost_usd_total', 'Estimated AI cost in USD');
+metrics.counter('rag_search_total', 'Total RAG searches');
+metrics.counter('rag_search_errors_total', 'Total RAG search errors');
+metrics.counter('auth_login_total', 'Total login attempts');
+metrics.counter('auth_register_total', 'Total registration attempts');
+metrics.counter('stripe_webhook_total', 'Total Stripe webhooks received');
+metrics.counter('stripe_webhook_errors_total', 'Total Stripe webhook errors');
+metrics.counter('audit_log_total', 'Total audit log entries');
+metrics.counter('audit_integrity_failure_total', 'Total audit chain integrity check failures');
+metrics.counter('backup_total', 'Total backups performed');
+metrics.counter('backup_errors_total', 'Total backup errors');
+metrics.counter('rate_limit_hits_total', 'Total rate limit hits');
+metrics.counter('security_csp_violation_total', 'Total CSP violations reported');
+metrics.counter('security_csrf_failure_total', 'Total CSRF check failures');
+metrics.counter('ai_cache_hits_total', 'Router AI cache hits');
+metrics.counter('ai_cache_misses_total', 'Router AI cache misses');
 metrics.counter('ai_cache_reads_tokens_total', 'Router AI cache read tokens');
 metrics.counter('ai_cache_writes_tokens_total', 'Router AI cache write tokens');
 metrics.counter('ai_cache_disabled_total', 'Router AI cache disable reasons');
 metrics.counter('project_promotion_total', 'Session-to-project promotion outcomes');
+metrics.counter('policy_violation_total', 'Policy gate rejections from assertPolicy');
+metrics.counter('change_call_total', 'Number of change-call operations');
+metrics.counter('iteration_cap_hit_total', 'Total agent turns that hit the tool-loop iteration cap');
+metrics.counter('generate_section_total', 'Outcomes of /sections/generate requests');
+metrics.histogram('generate_section_latency_seconds', 'Wall-clock latency of /sections/generate end-to-end', [0.5, 1, 2, 5, 10, 20, 30, 60]);
+metrics.counter('managed_action_bridge_total', 'Managed action bridge outcomes');
+metrics.histogram('managed_action_bridge_duration_ms', 'Managed action bridge duration', [50, 100, 250, 500, 1000]);
+metrics.counter('storage_cleanup_errors_total', 'Total storage cleanup failures');
+
+// Master-side counters/histograms used by middleware, circuit-breaker, router.
+// Kept alongside the branch's newer counterparts (trackHttpRequest et al.) so
+// both surfaces compile until a follow-up unification PR collapses them.
+metrics.histogram('http_request_duration_seconds', 'HTTP request duration in seconds', [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]);
+metrics.counter('http_request_errors_total', 'Total HTTP request errors');
+metrics.histogram('external_api_duration_seconds', 'External API call duration', [0.1, 0.25, 0.5, 1, 2, 5, 10]);
+metrics.counter('external_api_calls_total', 'Total external API calls');
+metrics.counter('external_api_errors_total', 'Total external API errors');
+metrics.counter('ai_cache_calls_total', 'Router AI cache call outcomes');
 
 function normalizePath(path: string): string {
   return path
-    .replace(/\/[0-9a-f-]{36}/g, '/:id')
-    .replace(/\/\d+/g, '/:id');
+    .replace(/\/[0-9a-fA-F-]{36}(\/|$)/g, '/:id$1') // UUIDs
+    .replace(/\/[0-9]+(\/|$)/g, '/:num$1'); // Numeric IDs
 }
 
+export function trackHttpRequest(method: string, path: string, status: number): void {
+  const normalizedPath = normalizePath(path);
+  metrics.inc('http_requests_total', { method, path: normalizedPath, status: String(status) });
+}
+
+// Master-side wrapper that adds duration tracking + error labelling on top of
+// the count-only trackHttpRequest. Consumed by middleware.ts and tests.
 export function trackRequest(method: string, path: string, statusCode: number, durationMs: number): void {
   const labels = { method, path: normalizePath(path), status: String(statusCode) };
   metrics.inc('http_requests_total', labels);
@@ -139,8 +159,25 @@ export function trackAiCacheDisabled(reason: 'global_kill_switch' | 'request_dis
   metrics.inc('ai_cache_disabled_total', { reason });
 }
 
+export function trackAICompletion(model: string, provider: string, tokens: number, costUsd: number): void {
+  metrics.inc('ai_completion_total', { model, provider });
+  metrics.inc('ai_completion_tokens_total', { model, provider }, tokens);
+  metrics.inc('ai_cost_usd_total', { model, provider }, costUsd);
+}
+
+export function trackAIError(model: string, provider: string, type: string): void {
+  metrics.inc('ai_completion_errors_total', { model, provider, type });
+}
+
+export function trackRAGSearch(provider: string, status: 'success' | 'error'): void {
+  metrics.inc(status === 'success' ? 'rag_search_total' : 'rag_search_errors_total', { provider });
+}
+
 export function trackProjectPromotion(
   outcome:
+    | 'success'
+    | 'failure'
+    | 'no_op'
     | 'promoted'
     | 'already_linked'
     | 'synced'
@@ -151,4 +188,38 @@ export function trackProjectPromotion(
     | 'failed',
 ): void {
   metrics.inc('project_promotion_total', { outcome });
+}
+
+export function trackIterationCapHit(runtime: 'v3' | 'managed'): void {
+  metrics.inc('iteration_cap_hit_total', { runtime });
+}
+
+type GenerateSectionOutcome = 'success' | 'failure' | 'precondition'
+
+export function trackGenerateSectionTotal(args: {
+  outcome: GenerateSectionOutcome
+  reason?: string
+}): void {
+  const labels: Record<string, string> = { outcome: args.outcome }
+  if (args.reason) labels.reason = args.reason
+  metrics.inc('generate_section_total', labels)
+}
+
+export function trackGenerateSectionLatency(seconds: number): void {
+  metrics.observe('generate_section_latency_seconds', {}, seconds)
+}
+
+export function trackManagedActionBridge(
+  actionType: string,
+  outcome: string,
+  durationMs: number,
+  code?: string,
+): void {
+  const labels = { action_type: actionType, outcome, code: code || 'none' };
+  metrics.inc('managed_action_bridge_total', labels);
+  metrics.observe('managed_action_bridge_duration_ms', { action_type: actionType }, durationMs);
+}
+
+export function trackStorageCleanupError(service: string): void {
+  metrics.inc('storage_cleanup_errors_total', { service });
 }

@@ -1386,9 +1386,36 @@
       "INTERNAL": "{tool} a întâmpinat o eroare internă.",
       "GENERIC": "{tool} a eșuat."
     },
+    "errors": {
+      "POLICY_OUTLINE_NOT_READY": "Schița apelului încă nu este pregătită. Reîncearcă într-o clipă.",
+      "POLICY_SECTION_NOT_IN_OUTLINE": "Secțiunea selectată nu face parte din schiță.",
+      "OUTLINE_NOT_READY": "Schița nu este pregătită.",
+      "OUTLINE_NOT_FROZEN": "Schița trebuie înghețată înainte.",
+      "OUTLINE_ALREADY_FROZEN": "Schița este deja înghețată.",
+      "SECTION_NOT_IN_OUTLINE": "Secțiunea nu face parte din schiță.",
+      "SESSION_NOT_ACTIVE": "Sesiunea nu este activă.",
+      "NO_CALL_SELECTED": "Niciun apel selectat.",
+      "ELIGIBILITY_NOT_PASSED": "Eligibilitatea nu este îndeplinită.",
+      "SECTION_WRONG_STATE": "Starea secțiunii nu permite operația.",
+      "BLUEPRINT_PHASE_GATE": "Operația nu este permisă în faza curentă.",
+      "CONCURRENCY_CONFLICT": "Datele s-au schimbat între timp. Reîncarcă.",
+      "VALIDATION_NO_OP": "Nicio schimbare.",
+      "INVALID_CALL_ID": "Apel necunoscut.",
+      "ELIGIBILITY_INPUTS_MISSING": "Datele pentru eligibilitate nu sunt disponibile.",
+      "NOT_FOUND": "Resursă inexistentă.",
+      "FORBIDDEN": "Acces interzis.",
+      "INTERNAL": "Eroare internă.",
+      "NO_SECTION_TO_GENERATE": "Toate secțiunile sunt deja generate.",
+      "ELIGIBILITY_INPUT_REQUIRED": "Mai avem nevoie de câteva informații despre proiect.",
+      "ELIGIBILITY_FAILED": "Cererea nu trece de verificarea de eligibilitate.",
+      "GENERATION_INVALID": "Conținutul generat nu este valid. Reîncearcă.",
+      "GENERATION_TIMEOUT": "Timpul de generare a expirat. Reîncearcă.",
+      "PROVIDER_ERROR": "Eroare de furnizor AI. Reîncearcă."
+    },
     "thinking": "Se gândește...",
     "waitingForResponse": "Se așteaptă răspunsul...",
     "inputPlaceholder": "Descrie proiectul tău sau pune o întrebare...",
+    "welcomeAfterPreselect": "Am selectat apelul. Apasă „Generează schiță\" pentru a începe sau scrie-mi întrebări despre cerere.",
     "send": "Trimite",
     "applicationStatus": "Stare aplicație",
     "sectionsLabel": "Secțiuni",
@@ -1421,6 +1448,12 @@
       "invalidated": "Invalidat",
       "needs_review": "Necesită revizuire",
       "failed": "Eșuat"
+    },
+    "actions": {
+      "freezeOutline": "Înghețează schița",
+      "export": "Exportă",
+      "generateNextSection": "Generează următoarea secțiune",
+      "generateNextSectionHint": "Aplicația va verifica eligibilitatea, va îngheța schița dacă e necesar, apoi va genera secțiunea într-un singur pas."
     }
   }
 }

@@ -83,9 +83,13 @@ describe('assertPolicy', () => {
   })
 
   describe('requiresEligibility', () => {
+    // freezeOutline also requires requiresOutlinePresent — supply a minimal outline so
+    // these tests reach the eligibility gate rather than the outline-present gate.
+    const minimalOutline = [{ id: 'sec-1', title: 'Section 1', description: '', order: 1, generationOrder: 1, importance: 'standard' as const, expectedLength: 'medium' as const, dependsOn: [], modelHint: 'light' as const, mandatory: true, confidence: 0.9 }]
+
     it('throws POLICY_ELIGIBILITY_NOT_PASSED for freezeOutline when eligibility is null', () => {
       try {
-        assertPolicy(POLICY_MATRIX.freezeOutline, baseSession({ selectedCallId: 'call-1', eligibility: null }))
+        assertPolicy(POLICY_MATRIX.freezeOutline, baseSession({ selectedCallId: 'call-1', outline: minimalOutline, eligibility: null }))
         expect.fail('should have thrown')
       } catch (err) {
         expect((err as ValidationError).policyCode).toBe('POLICY_ELIGIBILITY_NOT_PASSED')
@@ -96,6 +100,7 @@ describe('assertPolicy', () => {
       try {
         assertPolicy(POLICY_MATRIX.freezeOutline, baseSession({
           selectedCallId: 'call-1',
+          outline: minimalOutline,
           eligibility: { results: [], score: 50, passCount: 2, failCount: 3, warningCount: 0 },
         }))
         expect.fail('should have thrown')
@@ -107,6 +112,7 @@ describe('assertPolicy', () => {
     it('passes when eligibility is run and failCount is 0', () => {
       expect(() => assertPolicy(POLICY_MATRIX.freezeOutline, baseSession({
         selectedCallId: 'call-1',
+        outline: minimalOutline,
         eligibility: { results: [], score: 100, passCount: 5, failCount: 0, warningCount: 2 },
       }))).not.toThrow()
     })

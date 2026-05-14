@@ -29,6 +29,21 @@ export interface ServiceContext {
    * rollout state, which is wrong.
    */
   allowWrites?: boolean
+  /**
+   * Managed-runtime-only: when the chat tool surface is trimmed (PR 4),
+   * `save_section_draft` advertises a content-only schema. The executor
+   * injects `sectionKey` from this field. Populated by the managed runtime
+   * from the agent request's `focusedSectionKey` (route-validated against
+   * the session's outline). V3 services ignore it.
+   */
+  focusedSectionKey?: string
+  /**
+   * Managed-runtime-only: current session stateVersion at the start of the
+   * managed turn. The executor injects this into write-tool service calls
+   * whose tool schemas (after PR 4 trim) no longer carry the field. V3
+   * services ignore it (V3 takes expectedStateVersion from the model).
+   */
+  expectedStateVersion?: number
 }
 
 // ── Context Assertion Helpers ──────────────────────────────────────────────

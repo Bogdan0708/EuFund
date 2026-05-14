@@ -6,6 +6,7 @@ vi.mock('@/lib/ai/agent/history', () => ({
   loadContext: vi.fn().mockResolvedValue({ messages: [], summary: null, totalCount: 0 }),
   appendMessage: vi.fn().mockResolvedValue(0),
   compactIfNeeded: vi.fn().mockResolvedValue({ compacted: false }),
+  ensureV3PairingInvariant: (m: unknown[]) => m,
 }))
 
 vi.mock('@/lib/ai/providers/router', () => ({
@@ -172,7 +173,9 @@ describe('Agent Runtime', () => {
     const session = makeSession({
       currentPhase: 'drafting',
       outlineFrozen: true,
-      blueprint: { program: 'PNRR' } as any,
+      // normalized.requiredSections: [] so outlineFromBlueprint returns [] and
+      // the centralized projection doesn't crash on a partial stub.
+      blueprint: { program: 'PNRR', normalized: { requiredSections: [] } } as any,
     })
     const sections: AgentSection[] = [{
       id: '33333333-3333-4333-8333-333333333333',

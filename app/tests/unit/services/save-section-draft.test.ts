@@ -39,6 +39,10 @@ import { ValidationError } from '@/lib/ai/agent/services/errors'
 const USER_ID = '11111111-1111-4111-8111-111111111111'
 const SESSION_ID = '22222222-2222-4222-8222-222222222222'
 
+const OUTLINE_WITH_OBIECTIVE = [
+  { id: 'obiective', title: 'Obiective', description: '', order: 1, generationOrder: 1, importance: 'standard', expectedLength: 'medium', dependsOn: [], modelHint: 'light' },
+]
+
 function makeSessionRow(overrides: Record<string, unknown> = {}) {
   return {
     id: SESSION_ID,
@@ -47,6 +51,7 @@ function makeSessionRow(overrides: Record<string, unknown> = {}) {
     stateVersion: 0,
     selectedCallId: 'call-1',
     outlineFrozen: true,
+    outline: OUTLINE_WITH_OBIECTIVE,
     eligibility: { results: [], score: 100, passCount: 1, failCount: 0, warningCount: 0 },
     updatedAt: new Date(),
     ...overrides,

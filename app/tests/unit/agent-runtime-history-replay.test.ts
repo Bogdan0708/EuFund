@@ -23,6 +23,7 @@ vi.mock('@/lib/ai/agent/history', () => ({
   loadContext: loadContextMock,
   appendMessage: vi.fn().mockResolvedValue(0),
   compactIfNeeded: vi.fn().mockResolvedValue({ compacted: false }),
+  ensureV3PairingInvariant: (m: unknown[]) => m,
 }))
 
 vi.mock('@/lib/ai/providers/router', () => ({

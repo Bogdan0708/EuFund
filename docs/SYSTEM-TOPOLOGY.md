@@ -1,9 +1,9 @@
 # System Topology
 
-Date: 2026-03-11
-Status: target operating model for FundEU production hardening, aligned to current live GCP footprint
+Date: 2026-05-12
+Status: FundEU-only production topology, aligned to current live GCP footprint
 
-This document describes the intended runtime topology for FundEU based on the current codebase, deployment workflows, and shared dependencies.
+This document describes the runtime topology for FundEU based on the current codebase, deployment workflows, and live GCP inventory.
 
 It replaces stale assumptions that still appear elsewhere in the repo:
 - AWS staging as the primary reference model
@@ -13,13 +13,18 @@ It replaces stale assumptions that still appear elsewhere in the repo:
 
 ## 1. Runtime Overview
 
-Known live footprint in project `eufunding` as of 2026-03-11:
+Known live footprint in project `eufunding` as of 2026-05-12:
 - Cloud Run: `fondeu-platform` in `europe-west2`
-- Cloud Run: `ai-gateway` in `europe-west2`
-- Cloud Run: `primaria` in `europe-central2`
-- Cloud SQL: `fondeu-postgres-prod` in `europe-west2`
+- Cloud SQL: `fondeu-db` in `europe-west2`
 - Compute Engine VM: `fondeu-qdrant` in `europe-west2-b`
-- Persistent disk: `fondeu-qdrant`
+- Redis: `fondeu-redis-prod` in `europe-west2`
+
+Retired/removed components:
+- `primaria` (Retired: Project defunct)
+- `fondeu-postgres-prod` (Legacy name: now `fondeu-db`)
+
+Retained out-of-band service:
+- `ai-gateway` remains deployed in project `mitch-ai-services` for possible non-FundEU consumers, but FundEU production currently uses direct provider routing and does not depend on this service.
 
 Important current risk:
 - `fondeu-qdrant` is currently running as a container-optimized VM on the `default` network with `qdrant/qdrant:v1.12.6`
@@ -35,10 +40,10 @@ FundEU should be operated as four distinct layers:
 - owned by `EU-Funds`
 - deployed on GCP Cloud Run
 
-2. AI control plane
-- shared chat/completion/embedding gateway
-- owned by `ai-gateway`
-- deployed independently on GCP Cloud Run
+2. AI provider integration
+- direct chat/completion/embedding calls from the FundEU runtime
+- owned by `EU-Funds`
+- configured through FundEU Secret Manager entries and app code
 
 3. Knowledge data plane
 - vector database and batch knowledge operations
@@ -86,8 +91,8 @@ Key runtime dependencies:
 - Cloud SQL PostgreSQL
 - Redis / Memorystore
 - GCS buckets
-- `ai-gateway`
 - Qdrant on VM
+- upstream AI provider APIs configured through FundEU secrets
 
 Relevant files:
 - `cloudbuild.production.yaml`
@@ -102,29 +107,28 @@ Deployment note:
 - GitHub Actions is retained for CI only
 - production deployments run through GCP Cloud Build
 
-### Shared AI gateway
+### Retained AI gateway
 
 Repo:
 - `ai-gateway`
 
 Runtime:
-- Cloud Run service for provider routing and embeddings
+- Cloud Run service in project `mitch-ai-services`
 
-Primary responsibilities:
+Current FundEU status:
+- not in the FundEU production request path
+- not required for FundEU deploy, recovery, or readiness
+- retained only while non-FundEU consumers are confirmed or retired
+
+Historical responsibilities:
 - authenticated unified AI endpoint
 - provider routing
 - concurrency limiting
 - tenant policy enforcement
 - readiness diagnostics
-- embeddings endpoint used by FundEU retrieval/indexing flows
-
-FundEU integration points:
-- `app/src/lib/ai/client.ts`
-- `app/src/lib/ai/providers/gateway.ts`
-- `app/src/app/api/ai/wizard/chat/route.ts`
 
 Operational rule:
-- gateway releases must be validated against FundEU chat and embeddings usage before promotion
+- do not delete its Cloud Run service, provider secrets, or retained image repositories unless all non-FundEU consumers have been ruled out
 
 ### Relational data plane
 
@@ -226,13 +230,14 @@ Used for:
 
 ### B. AI completion flow
 
-User -> FundEU Cloud Run -> `ai-gateway` -> upstream AI providers
+User -> FundEU Cloud Run -> upstream AI providers
 
-Fallback path:
-- some code paths in FundEU can fall back to direct provider routing if gateway is unavailable
+Current implementation:
+- FundEU initializes provider clients directly from FundEU runtime secrets
+- provider fallback is handled inside the FundEU app code where enabled
 
 Operational implication:
-- this fallback must be intentional and observable, not silent architectural drift
+- direct provider routing must stay observable through FundEU logs, metrics, and rate limits
 
 ### C. RAG retrieval flow
 
@@ -291,7 +296,6 @@ Rule:
 
 Stateless:
 - Cloud Run app
-- Cloud Run AI gateway
 
 Stateful:
 - Cloud SQL
@@ -317,11 +321,8 @@ Owns:
 ### ai-gateway repo
 
 Owns:
-- provider routing
-- tenant policy
-- upstream provider auth and readiness
-- embeddings/chat API contract
-- production deployment workflow for gateway
+- retained standalone gateway service outside the FundEU production path
+- upstream provider auth and readiness for any non-FundEU consumers
 
 ### VM operations
 
@@ -342,12 +343,15 @@ Minimum health expectations:
 Operational requirement:
 - readiness must not be so rate-limited that infrastructure checks can trip it accidentally
 
-### AI gateway
+### Retained AI gateway
 
 Health model:
 - public `/health` cheap and shallow
 - public `/ready` minimal
 - authenticated `/ready` diagnostic and provider-aware
+
+Operational requirement:
+- monitor only if the service remains intentionally retained for another consumer
 
 ### VM / Qdrant
 
@@ -362,7 +366,7 @@ Required health coverage:
 ## 7. Non-Negotiable Operating Rules
 
 1. Cloud Run app is the customer-facing runtime.
-2. `ai-gateway` is the shared AI control plane and must be treated as a versioned dependency.
+2. FundEU production uses direct provider routing; `ai-gateway` is not a FundEU runtime dependency.
 3. The VM is the stateful knowledge subsystem, not a vague operations convenience.
 4. Qdrant is production infrastructure and must have backup/restore ownership.
 5. NotebookLM and Obsidian workflows are internal-only.

@@ -82,3 +82,22 @@ export class ExternalDependencyError extends ServiceError {
     this.retryable = retryable
   }
 }
+
+// ── 422 Generation Invalid ──────────────────────────────────────────────────
+// Thrown by the section generation service when the streamed model output
+// fails post-stream validation (empty, below minimum length, or matches a
+// refusal heuristic). The /sections/generate route maps this to a terminal
+// SSE `error` event with code `GENERATION_INVALID` so the UI can surface a
+// bilingual retry hint.
+
+export class GenerationInvalidError extends ServiceError {
+  readonly code = 'GENERATION_INVALID' as const
+  readonly httpStatus = 422 as const
+  readonly reason: 'empty' | 'too_short' | 'refusal_detected' | 'other'
+
+  constructor(reason: GenerationInvalidError['reason'], message: string) {
+    super(message)
+    this.name = this.constructor.name
+    this.reason = reason
+  }
+}

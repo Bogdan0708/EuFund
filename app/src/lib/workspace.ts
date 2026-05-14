@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNull, max } from 'drizzle-orm';
 
 import { withUserRLS } from '@/lib/db';
 import type { Database } from '@/lib/db';
-import { projects, workflowSessions, projectDocuments, sectionVersions } from '@/lib/db/schema';
+import { projects, workflowSessions, projectDocuments, sectionVersions, agentSessions, agentSections, agentTurns } from '@/lib/db/schema';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
 
@@ -59,8 +59,52 @@ export interface ProjectWorkspace {
   project: typeof projects.$inferSelect;
   session: typeof workflowSessions.$inferSelect | null;
   snapshotDoc: typeof projectDocuments.$inferSelect | null;
-  mode: 'session' | 'snapshot';
+  // 'agent' mode is read-only; sections come from agent_sections and the legacy
+  // edit/version paths (which assume workflowSessions.context) don't apply.
+  mode: 'session' | 'snapshot' | 'agent';
   sections: SectionResult[];
+}
+
+// Map V3 agent section status to the SectionResult.state tri-state expected by
+// the workspace UI. Accepted → approved, needs_review → reviewed, everything
+// else (draft, pending, generating, stale, invalidated, failed, rejected) → draft.
+function mapAgentStatusToState(status: string): SectionResult['state'] {
+  if (status === 'accepted') return 'approved';
+  if (status === 'needs_review') return 'reviewed';
+  return 'draft';
+}
+
+export function agentSectionToSectionResult(row: typeof agentSections.$inferSelect): SectionResult {
+  const content = row.acceptedContent ?? row.content ?? '';
+  const tokens = (row.tokenUsage ?? {}) as { input?: number; output?: number; in?: number; out?: number };
+  // Surface the slug-shaped sectionKey, not the row UUID, so /proiecte routes
+  // that validate the section identifier with SLUG_RE (sections/[sectionId])
+  // don't 400. The legacy workflow_sessions store uses slug-style ids too
+  // ('sec-1', 'rezumat', etc.) — agent mode mirrors that contract.
+  return {
+    id: row.sectionKey,
+    title: row.title,
+    content,
+    order: row.documentOrder,
+    source: 'generated',
+    state: mapAgentStatusToState(row.status),
+    currentVersion: 1,
+    versionCount: 1,
+    contentHash: hashContent(content),
+    lastStateChangeAt: row.updatedAt.toISOString(),
+    lastStateChangeBy: null,
+    metadata: {
+      model: row.modelUsed ?? '',
+      provider: '',
+      tokensIn: tokens.input ?? tokens.in ?? 0,
+      tokensOut: tokens.output ?? tokens.out ?? 0,
+      latencyMs: row.latencyMs ?? 0,
+      retryCount: row.retryCount,
+      fallbackUsed: false,
+      generatedAt: row.updatedAt.toISOString(),
+      checksum: '',
+    },
+  };
 }
 
 const QUALIFYING_STATUSES = ['active', 'paused', 'completed'] as const;
@@ -108,6 +152,55 @@ export async function resolveProjectWorkspace(
         sections = await reconcileDrift(tx, session.id, sections);
       }
       return { project, session, snapshotDoc: snapshotDoc ?? null, mode: 'session', sections };
+    }
+
+    // V3 fallback. Projects promoted from V3 agent sessions don't have a
+    // workflow_sessions row — ensureProjectForSession only creates the
+    // projects row and sets agentSessions.projectId. Without this branch,
+    // /proiecte/[id] would show "no sections" even when V3 has drafted
+    // and persisted them to agent_sections. See investigate report 2026-05-12.
+    //
+    // CRITICAL: classify the session as V3 vs managed by its most recent
+    // turn. agent_sessions has no runtime_mode column (that lives on
+    // agent_turns and agent_messages), and agent_sections is shared between
+    // both runtimes. Without this gate, a managed-runtime session whose
+    // project lacks a workflow_sessions row would surface here in V3-mode
+    // UI — leaking managed state through a read path the managed runtime
+    // doesn't own. See round-4 audit 2026-05-12.
+    const linkedAgentSessions = await tx
+      .select({ id: agentSessions.id })
+      .from(agentSessions)
+      .where(and(
+        eq(agentSessions.projectId, projectId),
+        eq(agentSessions.userId, userId),
+      ))
+      .orderBy(desc(agentSessions.updatedAt))
+      .limit(1);
+
+    if (linkedAgentSessions.length > 0) {
+      const agentSessionId = linkedAgentSessions[0].id;
+      // Look up the most recent turn's runtime mode. A session with no turns
+      // is effectively brand-new (no sections yet either), so fall through
+      // unguarded — the agent_sections check below short-circuits the empty
+      // case. If the latest turn is managed, refuse the fallback so the
+      // managed runtime's own UI is the only render path.
+      const [latestTurn] = await tx
+        .select({ runtimeMode: agentTurns.runtimeMode })
+        .from(agentTurns)
+        .where(eq(agentTurns.sessionId, agentSessionId))
+        .orderBy(desc(agentTurns.startedAt))
+        .limit(1);
+      if (!latestTurn || latestTurn.runtimeMode === 'v3') {
+        const sectionRows = await tx
+          .select()
+          .from(agentSections)
+          .where(eq(agentSections.sessionId, agentSessionId))
+          .orderBy(agentSections.documentOrder);
+        if (sectionRows.length > 0) {
+          const sections = sectionRows.map(agentSectionToSectionResult);
+          return { project, session: null, snapshotDoc: snapshotDoc ?? null, mode: 'agent', sections };
+        }
+      }
     }
 
     if (snapshotDoc) {

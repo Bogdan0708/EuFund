@@ -2,7 +2,7 @@
 # Cloud SQL Backup Trigger
 set -euo pipefail
 
-INSTANCE="${CLOUD_SQL_INSTANCE:-fondeu-postgres-prod}"
+INSTANCE="${CLOUD_SQL_INSTANCE:-fondeu-db}"
 PROJECT_ID="${GCP_PROJECT_ID:-eufunding}"
 DESCRIPTION="${1:-manual-backup-$(date +%Y%m%d_%H%M%S)}"
 

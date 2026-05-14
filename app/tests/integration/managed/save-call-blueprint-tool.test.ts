@@ -137,6 +137,11 @@ describe('save_call_blueprint executor case', () => {
     // stateVersion is set to a sql-tagged increment expression
     expect((set.stateVersion as { kind: string })?.kind).toBe('sql')
     expect(set.updatedAt).toBeInstanceOf(Date)
+    // outline must be written alongside blueprint so the client sees
+    // sections immediately without a separate reload
+    expect(set.outline).toBeDefined()
+    expect(Array.isArray(set.outline)).toBe(true)
+    expect((set.outline as unknown[]).length).toBeGreaterThan(0)
   })
 
   it('returns isError when allowWrites is false (rollout gate)', async () => {

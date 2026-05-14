@@ -21,6 +21,7 @@ import type {
 } from '../types'
 import type { ServiceContext } from '../services/types'
 import { getAnthropicClient } from '@/lib/ai/anthropic-client'
+import { projectSessionState } from '../state-projection'
 import { getManagedTools, WRITE_TOOL_NAMES } from './tools'
 import { translateAnthropicEvent, createTranslatorContext } from './translator'
 import { buildManagedSystemPrompt } from './prompt'
@@ -79,7 +80,9 @@ import {
 } from './history'
 import { compactIfNeeded } from '../history'
 import { reloadSessionAndSections } from './reload'
+import { isFeatureEnabled } from '@/lib/feature-flags'
 import { logger } from '@/lib/logger'
+import { trackIterationCapHit } from '@/lib/monitoring/metrics'
 import { addUsage, computeAnthropicCostMicros, type UsageLike } from '@/lib/ai/cost/anthropic-pricing'
 
 const log = logger.child({ component: 'managed-runtime' })
@@ -106,6 +109,7 @@ export interface ManagedRuntimeOptions {
   // tagged with it. Owned by the route — the route inserts the claim
   // row before opening the SSE Response and passes the id in here.
   turnId: string
+  focusedSectionKey?: string
 }
 
 export interface ManagedTurnResult {
@@ -229,6 +233,28 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   //    cannot perform. The executor gate in tool dispatch remains as
   //    defense-in-depth.
   const allowWrites = serviceCtx.allowWrites === true
+
+  // PR 4: chat tool-surface trim + iteration-cap drop. Always read with
+  // bypassCache so an emergency disable propagates within one turn.
+  const chatToolsTrimmed = await isFeatureEnabled('chat_tools_trimmed', {
+    userId: serviceCtx.userId,
+    bypassCache: true,
+  })
+  // PR 4 live-test: 3 iterations was too tight in practice — even simple
+  // questions need ~3-4 read calls (get_application_state + list_sections +
+  // get_section). Bumped to 5 to keep cost pressure but unblock real chat.
+  const MAX_ITER = chatToolsTrimmed ? 5 : ITERATION_CAP
+
+  // Extend the route-supplied serviceCtx with managed-runtime-only context
+  // the executor needs for the trimmed save_section_draft tool: which
+  // section is currently focused (from the request) and the session's
+  // current stateVersion (for CAS). Both fields are ignored by V3.
+  const runtimeServiceCtx: ServiceContext = {
+    ...serviceCtx,
+    focusedSectionKey: opts.focusedSectionKey,
+    expectedStateVersion: session.stateVersion,
+  }
+
   const systemPrompt = buildManagedSystemPrompt(
     session,
     sections,
@@ -240,7 +266,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   // Apply prompt caching to the tool list. We clone once (not per-iteration)
   // and stamp `cache_control: ephemeral` on the LAST tool so the whole tool
   // block becomes one cacheable prefix. The SDK preserves extra properties.
-  const baseTools = getManagedTools(allowWrites)
+  const baseTools = getManagedTools(allowWrites, chatToolsTrimmed)
   const tools = baseTools.map((t, i) =>
     i === baseTools.length - 1
       ? ({ ...t, cache_control: CACHE_CONTROL_EPHEMERAL } as typeof t & { cache_control: typeof CACHE_CONTROL_EPHEMERAL })
@@ -264,7 +290,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   // truth, populated by translateAnthropicEvent when it sees message_start.
   let aggregateUsage: UsageLike = {}
 
-  while (iterationCount < ITERATION_CAP) {
+  while (iterationCount < MAX_ITER) {
     iterationCount += 1
 
     const stream = anthropic.messages.stream({
@@ -398,7 +424,7 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
     // PARALLEL_WRITE_BLOCKED tool_result without being dispatched.
     const executionResults = await executeToolBlocksWithWriteCap(
       toolBlocksToExecute,
-      serviceCtx,
+      runtimeServiceCtx,
       executeManagedTool,
     )
     const toolResultBlocks: ToolResultBlockParam[] = []
@@ -447,12 +473,13 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
   }
 
   // Iteration cap hit
-  if (iterationCount >= ITERATION_CAP) {
+  if (iterationCount >= MAX_ITER) {
     log.warn({
       sessionId: session.id,
       requestId: request.requestId,
       iterationCount,
     }, 'managed turn hit iteration cap')
+    trackIterationCapHit('managed')
     const capMessage = session.locale === 'ro'
       ? '\n\n(Limita de iterații atinsă. Vă rog, clarificați întrebarea.)'
       : '\n\n(Reached tool iteration limit. Please clarify your request.)'
@@ -610,20 +637,5 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
 }
 
 function buildUISnapshot(session: AgentSession, sections: AgentSection[]): UIStateSnapshot {
-  return {
-    sessionId: session.id,
-    phase: session.currentPhase,
-    stateVersion: session.stateVersion,
-    outlineFrozen: session.outlineFrozen,
-    warnings: session.warnings,
-    sections: sections.map(s => ({
-      sectionKey: s.sectionKey,
-      title: s.title,
-      status: s.status,
-      documentOrder: s.documentOrder,
-      content: s.acceptedContent ?? s.content,
-    })),
-    blueprint: session.blueprint,
-    eligibility: session.eligibility,
-  }
+  return projectSessionState(session, sections)
 }

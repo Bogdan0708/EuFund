@@ -8,6 +8,11 @@ import { projects, projectFiles } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth } from '@/lib/auth/helpers';
 import { getObjectBuffer, deleteObject, getSignedDownloadUrl } from '@/lib/storage/gcs';
+import { logAudit } from '@/lib/legal/audit';
+import { logger } from '@/lib/logger';
+import { trackStorageCleanupError } from '@/lib/monitoring/metrics';
+
+const log = logger.child({ component: 'api-project-files-delete' });
 
 export async function GET(
   req: NextRequest,
@@ -84,7 +89,11 @@ export async function DELETE(
     }
 
     const [file] = await db
-      .select({ id: projectFiles.id, storagePath: projectFiles.storagePath })
+      .select({
+        id: projectFiles.id,
+        storagePath: projectFiles.storagePath,
+        filename: projectFiles.filename,
+      })
       .from(projectFiles)
       .where(and(
         eq(projectFiles.id, params.fileId),
@@ -96,13 +105,38 @@ export async function DELETE(
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
 
-    // Delete from storage
-    await deleteObject(file.storagePath);
-
-    // Delete from DB
+    // Delete from DB first (source of truth). If DB delete fails, the GCS
+    // blob remains; nothing references it but it's recoverable. If DB delete
+    // succeeds and GCS delete fails, the row is gone and we log + metric.
     await db
       .delete(projectFiles)
       .where(eq(projectFiles.id, params.fileId));
+
+    await logAudit({
+      userId: user.id,
+      action: 'project.file_deleted',
+      resourceType: 'project_file',
+      resourceId: params.fileId,
+      metadata: {
+        projectId: params.id,
+        filename: file.filename,
+        storagePath: file.storagePath,
+      },
+    });
+
+    try {
+      await deleteObject(file.storagePath);
+    } catch (err) {
+      trackStorageCleanupError('files_delete_route');
+      log.warn(
+        {
+          fileId: params.fileId,
+          storagePath: file.storagePath,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        'GCS delete failed after DB row removed — orphan object',
+      );
+    }
 
     return NextResponse.json({ ok: true });
   } catch {

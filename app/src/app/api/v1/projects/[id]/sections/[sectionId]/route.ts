@@ -37,7 +37,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       section,
       sessionId: workspace.session?.id ?? null,
       source: workspace.mode,
-      readOnly: workspace.mode === 'snapshot',
+      readOnly: workspace.mode !== 'session',
     });
   } catch (error) {
     if (error instanceof FondEUError) {

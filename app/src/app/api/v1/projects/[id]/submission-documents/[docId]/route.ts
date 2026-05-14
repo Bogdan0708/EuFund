@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { projects, projectDocuments } from '@/lib/db/schema'
 import { eq, desc, and, isNull } from 'drizzle-orm'
 import { Errors, FondEUError } from '@/lib/errors'
+import { logAudit } from '@/lib/legal/audit'
 import type { SubmissionDocument } from '@/lib/ai/agent/types'
 
 type Params = { params: { id: string; docId: string } }
@@ -64,6 +65,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         updatedAt: new Date(),
       })
       .where(eq(projectDocuments.id, doc.id))
+
+    await logAudit({
+      userId: user.id,
+      action: 'project.submission_doc_updated',
+      resourceType: 'project_document',
+      resourceId: doc.id,
+      metadata: {
+        projectId: params.id,
+        docId: params.docId,
+        userStatus: body.userStatus,
+      },
+    })
 
     return NextResponse.json({ document: submissionDocs[idx] })
   } catch (err) {
