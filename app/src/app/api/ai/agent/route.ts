@@ -18,8 +18,68 @@ import {
   recordTurnSuccess,
 } from '@/lib/ai/agent/managed/session-metadata'
 import { claimTurn, deleteEmptyTurn } from '@/lib/ai/agent/managed/history'
+import { bridgeStructuredAction } from '@/lib/ai/agent/managed/bridge'
 
 const log = logger.child({ component: 'api-agent' })
+
+type RouteErrorEvent = AgentEvent & {
+  error?: {
+    code: string
+    messageRo: string
+    messageEn: string
+  }
+}
+
+function sseEvent(event: RouteErrorEvent): string {
+  return `data: ${JSON.stringify(event)}\n\n`
+}
+
+function bridgeErrorEnvelope(code: string | undefined): {
+  code: string
+  messageRo: string
+  messageEn: string
+} {
+  if (code === 'MANAGED_WRITES_DISABLED') {
+    return {
+      code,
+      messageRo: 'Scrierile gestionate nu sunt activate pentru contul tău.',
+      messageEn: 'Managed writes are not enabled for your account.',
+    }
+  }
+  if (code === 'CONCURRENCY') {
+    return {
+      code,
+      messageRo: 'Starea s-a schimbat între timp. Reîncarcă și reîncearcă.',
+      messageEn: 'State changed while you were working. Reload and retry.',
+    }
+  }
+  if (code === 'NOT_FOUND') {
+    return {
+      code,
+      messageRo: 'Resursa cerută nu mai există sau nu poate fi accesată.',
+      messageEn: 'The requested resource no longer exists or cannot be accessed.',
+    }
+  }
+  if (code === 'REGENERATE_ENDPOINT_REQUIRED') {
+    return {
+      code,
+      messageRo: 'Regenerarea secțiunilor trebuie pornită din fluxul dedicat de generare.',
+      messageEn: 'Section regeneration must use the dedicated generation flow.',
+    }
+  }
+  if (code?.startsWith('POLICY_')) {
+    return {
+      code,
+      messageRo: 'Acțiunea nu poate fi aplicată în starea curentă.',
+      messageEn: 'This action cannot be applied in the current state.',
+    }
+  }
+  return {
+    code: code ?? 'BRIDGE_FAILED',
+    messageRo: 'Acțiunea nu a putut fi aplicată. Reîncearcă.',
+    messageEn: 'The action could not be applied. Retry.',
+  }
+}
 
 async function claimV3OrConflict(
   sessionId: string,
@@ -124,16 +184,9 @@ async function handler(req: NextRequest) {
 
   // Decide which runtime to dispatch to.
   //
-  // Phase 2 compatibility guard: the managed runtime only consumes
-  // `request.message` — it does not yet handle structured `request.action`
-  // payloads that the frontend emits via useAgent.sendAction() (e.g.
-  // select_call, approve_outline, accept_section). Any request with an
-  // action MUST go through V3 to preserve the "zero frontend changes"
-  // contract the plan promised. Without this guard, allowlisted pilot
-  // users clicking action-driven UI would hit the managed path and get
-  // a no-op turn.
-  //
-  // Explicit action support in the managed runtime is a follow-up.
+  // Phase 3: Structured actions carry deterministic intent that we bridge
+  // directly to service mutations. V3 fallback is only for circuit-breaker
+  // scenarios or users without the flag.
   const hasStructuredAction = body.action !== undefined && body.action !== null
 
   // Service-local hard gate. Production deploys can set this through the
@@ -144,17 +197,91 @@ async function handler(req: NextRequest) {
 
   const managedEnabled =
     managedRuntimeEnabled &&
-    !hasStructuredAction &&
     (await isFeatureEnabled('managed_agent_enabled', {
       userId: user.id,
       bypassCache: true,
     }))
 
-  if (hasStructuredAction) {
-    log.info(
-      { sessionId: session.id, userId: user.id, actionType: body.action?.type },
-      'structured action request — routing to V3 (managed runtime does not yet handle actions)',
+  if (hasStructuredAction && managedEnabled) {
+    const allowWrites = await isFeatureEnabled('managed_agent_writes_enabled', {
+      userId: user.id,
+      bypassCache: true,
+    })
+
+    if (!allowWrites) {
+      log.warn({ sessionId: session.id, userId: user.id }, 'action bridge blocked — writes disabled')
+      const error = bridgeErrorEnvelope('MANAGED_WRITES_DISABLED')
+      return new Response(
+        sseEvent({
+          type: 'error',
+          message: error.messageRo,
+          retryable: false,
+          error,
+        }),
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      )
+    }
+
+    const serviceCtx = {
+      userId: user.id,
+      sessionId: session.id,
+      projectId: session.projectId ?? undefined,
+      requestId: body.requestId,
+      now: new Date(),
+      allowWrites: true,
+    }
+
+    const bridgeResult = await bridgeStructuredAction(
+      serviceCtx,
+      body.action!,
+      body.stateVersion ?? session.stateVersion,
     )
+
+    if (bridgeResult.outcome !== 'success' && bridgeResult.outcome !== 'no_op') {
+      const error = bridgeErrorEnvelope(bridgeResult.errorCode)
+      log.error(
+        { sessionId: session.id, outcome: bridgeResult.outcome, error: bridgeResult.errorMessage },
+        'action bridge failed',
+      )
+      return new Response(
+        sseEvent({
+          type: 'error',
+          message: error.messageRo,
+          retryable: bridgeResult.outcome === 'concurrency',
+          error,
+        }),
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      )
+    }
+
+    // Reload session/sections after mutation
+    const [row] = await db
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.id, session.id))
+      .limit(1)
+    if (!row) return NextResponse.json({ error: 'Session lost during bridge' }, { status: 404 })
+    session = mapSessionRow(row)
+
+    const sectionRows = await db
+      .select()
+      .from(agentSections)
+      .where(eq(agentSections.sessionId, session.id))
+    sections = sectionRows.map(mapSectionRow)
+
+    log.info(
+      { sessionId: session.id, actionType: body.action?.type, outcome: bridgeResult.outcome },
+      bridgeResult.continueToManaged
+        ? 'action bridge successful — proceeding to managed turn'
+        : 'action bridge successful — returning updated state',
+    )
+
+    if (!bridgeResult.continueToManaged) {
+      return new Response(
+        sseEvent({ type: 'done', finalState: buildRouteUISnapshot(session, sections) }),
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      )
+    }
   }
 
   // Optimistic concurrency. The V3 path keeps the historical optional
@@ -206,15 +333,11 @@ async function handler(req: NextRequest) {
   // feature remains broken in a visible way (vs. silently expensive).
   const preselectMarker =
     (session.planningArtifact as { preselect?: { version?: number } } | null)?.preselect
-  // Structured actions (approve_outline, accept_section, select_call, etc.)
-  // ALWAYS run through V3 — managed doesn't handle them yet (see
-  // hasStructuredAction above). Actions are post-discovery operations
-  // triggered by explicit UI clicks; some of them (e.g. select_call,
-  // approve_outline) do continue into an LLM turn, but the user has already
-  // authored intent, so the "no silent re-run of discovery" invariant that
-  // the bootstrap-block guards is not at risk. Without this exception,
-  // every preselected session would 503 the moment the user clicks an
-  // action button.
+  // Structured actions are bridged into managed writes when managed is
+  // enabled. If managed is disabled, they still use the V3 fallback below.
+  // They are post-discovery operations triggered by explicit UI clicks, so
+  // the "no silent re-run of discovery" preselect invariant is only enforced
+  // for plain text turns.
   const isPreselected = preselectMarker?.version === 1 && !hasStructuredAction
 
   if (managedEnabled) {
@@ -604,6 +727,28 @@ function classifyManagedError(err: unknown): DegradedReason {
     }
   }
   return 'stream_disconnect'
+}
+
+function buildRouteUISnapshot(
+  session: AgentSession,
+  sections: AgentSection[],
+): import('@/lib/ai/agent/types').UIStateSnapshot {
+  return {
+    sessionId: session.id,
+    phase: session.currentPhase,
+    stateVersion: session.stateVersion,
+    outlineFrozen: session.outlineFrozen,
+    warnings: session.warnings,
+    sections: sections.map(s => ({
+      sectionKey: s.sectionKey,
+      title: s.title,
+      status: s.status,
+      documentOrder: s.documentOrder,
+      content: s.acceptedContent ?? s.content,
+    })),
+    blueprint: session.blueprint,
+    eligibility: session.eligibility,
+  }
 }
 
 function mapSessionRow(row: Record<string, unknown>): AgentSession {

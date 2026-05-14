@@ -9,8 +9,22 @@ vi.mock('@/lib/middleware/rate-limit', () => ({
   withRateLimit: (_opts: unknown, h: unknown) => h,
 }))
 
+// Mock bridgeStructuredAction
+vi.mock('@/lib/ai/agent/managed/bridge', () => ({
+  bridgeStructuredAction: vi.fn(async () => ({
+    outcome: 'success',
+    stateVersionBumped: true,
+    continueToManaged: false,
+  })),
+}))
+
 vi.mock('@/lib/feature-flags', () => ({
-  isFeatureEnabled: vi.fn().mockResolvedValue(true), // agent_v3_enabled
+  isFeatureEnabled: vi.fn().mockImplementation(async (key: string) => {
+    if (key === 'agent_v3_enabled') return true
+    if (key === 'managed_agent_enabled') return true
+    if (key === 'managed_agent_writes_enabled') return true
+    return false
+  }),
 }))
 
 vi.mock('@/lib/db', () => {
@@ -18,7 +32,7 @@ vi.mock('@/lib/db', () => {
     id: '22222222-2222-4222-8222-222222222222',
     userId: '11111111-1111-4111-8111-111111111111',
     projectId: null, status: 'active', locale: 'ro',
-    selectedCallId: null, currentPhase: 'discovery',
+    selectedCallId: 'CALL-1', currentPhase: 'discovery',
     blueprint: null, eligibility: null, outline: null,
     warnings: [], planningArtifact: null,
     outlineFrozen: false, messageSummary: null,
@@ -52,6 +66,7 @@ vi.mock('@/lib/logger', () => ({ logger: { child: () => ({ info: vi.fn(), warn: 
 vi.mock('@/lib/ai/agent/managed/circuit-breaker', () => ({
   managedCircuitBreaker: { isOpen: () => false },
   recordManagedFailure: vi.fn(),
+  recordManagedSuccess: vi.fn(),
 }))
 
 vi.mock('@/lib/ai/anthropic-client', () => ({
@@ -80,7 +95,7 @@ vi.mock('@/lib/ai/agent/runtime', () => ({
   runAgentTurn: runAgentTurnMock,
 }))
 
-describe('POST /api/ai/agent — V3 claim contract', () => {
+describe('POST /api/ai/agent — Managed turn claim contract', () => {
   beforeEach(() => {
     claimTurnMock.mockReset()
     runAgentTurnMock.mockReset()
@@ -99,36 +114,32 @@ describe('POST /api/ai/agent — V3 claim contract', () => {
     })
   }
 
-  it('V3 path (auth-setup-throw): claim succeeds → run proceeds', async () => {
-    process.env.MANAGED_RUNTIME_ENABLED = 'true'
-    claimTurnMock.mockResolvedValueOnce({ kind: 'claimed', turnId: 'tu-1' })
-    runAgentTurnMock.mockResolvedValueOnce({})
-    const { POST } = await import('@/app/api/ai/agent/route')
-    const res = await POST(buildRequest())
-    expect(claimTurnMock).toHaveBeenCalledWith(expect.objectContaining({ runtimeMode: 'v3' }))
-    expect(res.status).toBe(200)
-  })
-
-  it('V3 path: claim conflict → 409 with conflict_request_id envelope', async () => {
-    process.env.MANAGED_RUNTIME_ENABLED = 'true'
-    claimTurnMock.mockResolvedValueOnce({ kind: 'conflict' })
-    const { POST } = await import('@/app/api/ai/agent/route')
-    const res = await POST(buildRequest())
-    expect(res.status).toBe(409)
-    const body = await res.json()
-    expect(body.error.code).toBe('conflict_request_id')
-    expect(body.error.messageRo).toBeTruthy()
-    expect(body.error.messageEn).toBeTruthy()
-    expect(runAgentTurnMock).not.toHaveBeenCalled()
-  })
-
-  it('structured action with managed enabled → routes to V3, claims with runtimeMode=v3, threads turnId', async () => {
+  it('Managed path: claim succeeds → run proceeds', async () => {
     process.env.MANAGED_RUNTIME_ENABLED = 'true'
     const { getAnthropicClient } = await import('@/lib/ai/anthropic-client')
     vi.mocked(getAnthropicClient).mockImplementationOnce(() => ({} as never))
 
-    claimTurnMock.mockResolvedValueOnce({ kind: 'claimed', turnId: 'tu-action' })
-    runAgentTurnMock.mockResolvedValueOnce({})
+    claimTurnMock.mockResolvedValueOnce({ kind: 'claimed', turnId: 'tu-1' })
+    const { POST } = await import('@/app/api/ai/agent/route')
+    const res = await POST(buildRequest())
+    expect(res.status).toBe(200)
+    expect(claimTurnMock).toHaveBeenCalledWith(expect.objectContaining({ runtimeMode: 'managed' }))
+  })
+
+  it('Managed path: setup fails → degrades to V3', async () => {
+    process.env.MANAGED_RUNTIME_ENABLED = 'true'
+    // getAnthropicClient will throw by default mock in this file
+    claimTurnMock.mockResolvedValueOnce({ kind: 'claimed', turnId: 'tu-v3' })
+    const { POST } = await import('@/app/api/ai/agent/route')
+    const res = await POST(buildRequest())
+    expect(res.status).toBe(200)
+    expect(claimTurnMock).toHaveBeenCalledWith(expect.objectContaining({ runtimeMode: 'v3' }))
+  })
+
+  it('structured action with managed enabled → routes to bridge without creating an LLM turn claim', async () => {
+    process.env.MANAGED_RUNTIME_ENABLED = 'true'
+
+    const { bridgeStructuredAction } = await import('@/lib/ai/agent/managed/bridge')
 
     const actionRequest = new NextRequest('http://localhost/api/ai/agent', {
       method: 'POST',
@@ -145,13 +156,7 @@ describe('POST /api/ai/agent — V3 claim contract', () => {
     const res = await POST(actionRequest)
 
     expect(res.status).toBe(200)
-    expect(claimTurnMock).toHaveBeenCalledTimes(1)
-    expect(claimTurnMock).toHaveBeenCalledWith(expect.objectContaining({
-      runtimeMode: 'v3',
-      requestId: 'req-action',
-    }))
-    expect(runAgentTurnMock).toHaveBeenCalledTimes(1)
-    const callArgs = runAgentTurnMock.mock.calls[0][0]
-    expect(callArgs.turnId).toBe('tu-action')
+    expect(bridgeStructuredAction).toHaveBeenCalled()
+    expect(claimTurnMock).not.toHaveBeenCalled()
   })
 })

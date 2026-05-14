@@ -3,13 +3,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 const mockRunV3 = vi.fn().mockResolvedValue(undefined)
 const mockRunManaged = vi.fn().mockResolvedValue(undefined)
 
-// Feature flags: BOTH v3 and managed ENABLED. This test proves that
-// structured actions still bypass the managed runtime regardless of
-// whether the user is allowlisted for managed mode.
+// Mock bridgeStructuredAction
+const mockBridgeResult = { outcome: 'success', stateVersionBumped: true, continueToManaged: false }
+vi.mock('@/lib/ai/agent/managed/bridge', () => ({
+  bridgeStructuredAction: vi.fn(async () => mockBridgeResult),
+}))
+
+// Feature flags: BOTH v3, managed and writes ENABLED.
 vi.mock('@/lib/feature-flags', () => ({
   isFeatureEnabled: vi.fn().mockImplementation(async (key: string) => {
     if (key === 'agent_v3_enabled') return true
     if (key === 'managed_agent_enabled') return true
+    if (key === 'managed_agent_writes_enabled') return true
     return false
   }),
 }))
@@ -115,14 +120,15 @@ vi.mock('@/lib/middleware/rate-limit', () => ({
   withRateLimit: (_cfg: unknown, handler: (req: Request) => Promise<Response>) => handler,
 }))
 
-describe('POST /api/ai/agent — structured action bypass', () => {
+describe('POST /api/ai/agent — structured action bridge', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.MANAGED_RUNTIME_ENABLED = 'true'
   })
   afterEach(() => { delete process.env.MANAGED_RUNTIME_ENABLED })
 
-  it('routes action requests to V3 even when managed flag is ON', async () => {
+  it('routes action requests to the bridge and returns updated state when flag is ON', async () => {
+    const { bridgeStructuredAction } = await import('@/lib/ai/agent/managed/bridge')
     const { POST } = await import('@/app/api/ai/agent/route')
     const req = new Request('http://localhost/api/ai/agent', {
       method: 'POST',
@@ -138,12 +144,13 @@ describe('POST /api/ai/agent — structured action bypass', () => {
     const res = await POST(req as never)
     if (res.body) await res.text()
 
-    expect(mockRunV3).toHaveBeenCalled()
+    expect(bridgeStructuredAction).toHaveBeenCalled()
     expect(mockRunManaged).not.toHaveBeenCalled()
+    expect(mockRunV3).not.toHaveBeenCalled()
   })
 
   it('still routes plain message requests to managed when flag is ON', async () => {
-    // Sanity check — without the action, the same setup SHOULD go managed.
+    const { bridgeStructuredAction } = await import('@/lib/ai/agent/managed/bridge')
     const { POST } = await import('@/app/api/ai/agent/route')
     const req = new Request('http://localhost/api/ai/agent', {
       method: 'POST',
@@ -160,6 +167,7 @@ describe('POST /api/ai/agent — structured action bypass', () => {
     const res = await POST(req as never)
     if (res.body) await res.text()
 
+    expect(bridgeStructuredAction).not.toHaveBeenCalled()
     expect(mockRunManaged).toHaveBeenCalled()
     expect(mockRunV3).not.toHaveBeenCalled()
   })

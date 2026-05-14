@@ -499,6 +499,13 @@ export function classifyRow(row: typeof agentMessages.$inferSelect): RowClassifi
   // Synthetic ID for rows where toolCallId was not persisted (V3 era)
   const synthId = (id: string) => `tu_legacy_${id}`
 
+  // Action bridge rows (Phase 3c). These are replayed as user text for
+  // agent continuity.
+  if (row.provider === 'action_bridge') {
+    if (typeof row.content === 'string') return { kind: 'user_text', text: row.content }
+    return { kind: 'unknown_drop', reason: 'action_bridge content is not a string' }
+  }
+
   // --- Keep variants (produce Anthropic MessageParam output) ---
 
   if (row.role === 'user' && row.messageType === 'text') {

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PROJECT_ID="${GCP_PROJECT_ID:-eufunding}"
-INSTANCE="${CLOUD_SQL_INSTANCE:-fondeu-postgres-prod}"
+INSTANCE="${CLOUD_SQL_INSTANCE:-fondeu-db}"
 
 echo "=== Cloud SQL Restore ==="
 echo "Project:  $PROJECT_ID"

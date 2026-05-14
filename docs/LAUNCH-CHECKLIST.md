@@ -3,8 +3,7 @@
 ## Infrastructure
 - [ ] GCP project `eufunding` verified
 - [ ] Cloud Run service `fondeu-platform` healthy in `europe-west2`
-- [ ] Cloud Run service `ai-gateway` healthy in `europe-west2`
-- [ ] Cloud SQL instance `fondeu-postgres-prod` running (Postgres 16)
+- [ ] Cloud SQL instance `fondeu-db` running (Postgres 16)
 - [ ] Qdrant VM `fondeu-qdrant` running in `europe-west2-b`
 - [ ] Qdrant persistent disk attached and healthy
 - [ ] Qdrant internal routing verified (`10.154.0.3:6333` via VPC path)
@@ -35,7 +34,7 @@
 - [ ] English locale working
 - [ ] File upload working
 - [ ] API rate limiting working
-- [ ] AI gateway dependency verified from FundEU production
+- [ ] Direct AI provider routing verified from FundEU production
 - [ ] RAG retrieval path verified end-to-end
 
 ## Integrations
@@ -54,7 +53,7 @@
 - [ ] Health check monitoring (external)
 - [ ] Cloud Run logs and alerts verified
 - [ ] VM disk / memory / Qdrant health alerts verified
-- [ ] AI gateway `/ready` uptime alert routing configured to email/Slack
+- [ ] AI provider error-rate and latency alerts configured
 
 ## Performance
 - [ ] Database indexes applied

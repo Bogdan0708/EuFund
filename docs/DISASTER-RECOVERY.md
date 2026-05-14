@@ -18,7 +18,7 @@
 
 ### Application and AI Services
 - **Container images:** stored in Artifact Registry / Cloud Build outputs
-- **Runtime:** Cloud Run revisions for `fondeu-platform`, `ai-gateway`, and `primaria`
+- **Runtime:** Cloud Run revisions for `fondeu-platform`
 - **Secrets:** GCP Secret Manager with versioning
 
 ### Qdrant / Knowledge Data Plane
@@ -54,7 +54,7 @@ RTO: depends on backup maturity; currently this is a platform hardening priority
 1. Restore Cloud SQL from backup
 2. Restore Qdrant from backup
 3. Redeploy or rollback Cloud Run services if needed
-4. Revalidate app, gateway, and retrieval flows
+4. Revalidate app and retrieval flows
 RTO: ~4 hours
 
 ## Testing Schedule

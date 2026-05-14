@@ -1,20 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// Regression test for a specific interaction: structured actions
-// (select_call, approve_outline, accept_section, ...) must bypass the
-// managed runtime EVEN when the session was created via the deterministic
-// preselect flow (planning_artifact.preselect.version === 1). The
-// preselected-session guard in /api/ai/agent refuses V3 fallback for
-// message turns, but action turns are post-discovery UI events — managed
-// doesn't handle them yet, so they must reach V3 without 503ing.
-
 const mockRunV3 = vi.fn().mockResolvedValue(undefined)
 const mockRunManaged = vi.fn().mockResolvedValue(undefined)
+
+// Mock bridgeStructuredAction
+vi.mock('@/lib/ai/agent/managed/bridge', () => ({
+  bridgeStructuredAction: vi.fn(async () => ({ outcome: 'success', stateVersionBumped: true, continueToManaged: false })),
+}))
 
 vi.mock('@/lib/feature-flags', () => ({
   isFeatureEnabled: vi.fn().mockImplementation(async (key: string) => {
     if (key === 'agent_v3_enabled') return true
     if (key === 'managed_agent_enabled') return true
+    if (key === 'managed_agent_writes_enabled') return true
     return false
   }),
 }))
@@ -51,10 +49,6 @@ vi.mock('@/lib/ai/model-routing', () => ({
   getAIModelRoutingContext: vi.fn().mockResolvedValue({}),
 }))
 
-// Session row marked as created by deterministic preselect.
-// planningArtifact.preselect.version === 1 triggers the new fail-closed
-// guard in the route — this test proves the guard yields to the action
-// bypass rather than returning 503.
 vi.mock('@/lib/db', () => {
   const row = {
     id: '11111111-1111-4111-8111-111111111111',
@@ -136,20 +130,21 @@ vi.mock('@/lib/middleware/rate-limit', () => ({
   withRateLimit: (_cfg: unknown, handler: (req: Request) => Promise<Response>) => handler,
 }))
 
-describe('POST /api/ai/agent — structured action bypass on preselected sessions', () => {
+describe('POST /api/ai/agent — structured action bridge on preselected sessions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.MANAGED_RUNTIME_ENABLED = 'true'
   })
   afterEach(() => { delete process.env.MANAGED_RUNTIME_ENABLED })
 
-  it('routes action requests to V3 even on preselected sessions (no 503)', async () => {
+  it('routes action requests to bridge (managed) even on preselected sessions', async () => {
+    const { bridgeStructuredAction } = await import('@/lib/ai/agent/managed/bridge')
     const { POST } = await import('@/app/api/ai/agent/route')
     const req = new Request('http://localhost/api/ai/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        requestId: 'req-preselect-action',
+        requestId: 'req-3',
         locale: 'ro',
         sessionId: '11111111-1111-4111-8111-111111111111',
         action: { type: 'approve_outline' },
@@ -159,35 +154,31 @@ describe('POST /api/ai/agent — structured action bypass on preselected session
     const res = await POST(req as never)
     if (res.body) await res.text()
 
-    // Core assertions: V3 ran, managed did not, no 503.
-    expect(mockRunV3).toHaveBeenCalled()
+    // Core assertions: Bridge handled the action; no managed LLM or V3 fallback ran.
+    expect(bridgeStructuredAction).toHaveBeenCalled()
     expect(mockRunManaged).not.toHaveBeenCalled()
-    expect(res.status).not.toBe(503)
+    expect(mockRunV3).not.toHaveBeenCalled()
   })
 
   it('still fail-closes message turns on preselected sessions when managed is unavailable (sanity)', async () => {
-    // Sanity: with the same preselected row, a plain message turn that
-    // would normally route to managed will route through managed if healthy.
-    // We don't need to prove the 503 path here — other tests cover it; we
-    // just confirm this test's mocks don't short-circuit the managed path
-    // for messages (which would invalidate the action-bypass conclusion).
+    // Force managedEnabled=false by making the circuit breaker OPEN.
+    const { managedCircuitBreaker } = await import('@/lib/ai/agent/managed/circuit-breaker')
+    vi.spyOn(managedCircuitBreaker, 'isOpen').mockReturnValue(true)
+
     const { POST } = await import('@/app/api/ai/agent/route')
     const req = new Request('http://localhost/api/ai/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        requestId: 'req-preselect-msg',
+        requestId: 'req-4',
         locale: 'ro',
         sessionId: '11111111-1111-4111-8111-111111111111',
-        stateVersion: 0,
-        message: 'Începem outline-ul.',
+        message: 'hello',
       }),
     })
 
     const res = await POST(req as never)
-    if (res.body) await res.text()
-
-    expect(mockRunManaged).toHaveBeenCalled()
+    expect(res.status).toBe(503) // MANAGED_UNAVAILABLE fail-closed guard
     expect(mockRunV3).not.toHaveBeenCalled()
   })
 })

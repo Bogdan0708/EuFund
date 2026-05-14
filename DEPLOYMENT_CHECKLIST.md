@@ -25,8 +25,8 @@ cd ~/Dev/EU-Funds
 **This script will:**
 - [ ] Enable all required GCP APIs (14 services)
 - [ ] Create service accounts and IAM permissions
-- [ ] Set up Cloud SQL PostgreSQL instance (4 vCPU, 16GB)
-- [ ] Create Redis instance for session management
+- [ ] Set up Cloud SQL PostgreSQL instance (`fondeu-db`)
+- [ ] Create Redis instance for cache and rate limiting
 - [ ] Configure storage buckets for documents
 - [ ] Set up secrets management for credentials
 - [ ] Create billing alerts (€100 and €300 thresholds)
@@ -34,7 +34,7 @@ cd ~/Dev/EU-Funds
 ### ✅ Manual Verification Steps
 ```bash
 # Verify database is ready
-gcloud sql instances describe fondeu-postgres-prod --region=europe-west2
+gcloud sql instances describe fondeu-db --region=europe-west2
 
 # Get Redis IP for configuration
 gcloud redis instances describe fondeu-redis-prod --region=europe-west2 --format='get(host)'
@@ -182,15 +182,15 @@ gcloud monitoring uptime-check-configs create \
 ```bash
 # Rollback to previous version
 gcloud run services update fondeu-platform \
-  --image=europe-west2-docker.pkg.dev/PROJECT_ID/fondeu/platform:PREVIOUS_SHA \
+  --image=europe-west2-docker.pkg.dev/PROJECT_ID/fondeu/app:PREVIOUS_SHA \
   --region=europe-west2
 ```
 
 ### ✅ Database Recovery
 ```bash
 # Restore from automated backup
-gcloud sql backups list --instance=fondeu-postgres-prod
-gcloud sql backups restore BACKUP_ID --restore-instance=fondeu-postgres-prod
+gcloud sql backups list --instance=fondeu-db
+gcloud sql backups restore BACKUP_ID --restore-instance=fondeu-db
 ```
 
 ### ✅ Support Escalation
@@ -228,6 +228,7 @@ gcloud sql backups restore BACKUP_ID --restore-instance=fondeu-postgres-prod
 **Target market:** 50-100 Romanian EU funding consultancies  
 
 Your enterprise-grade platform (25,392 lines, 8.8/10 rating) with unique competitive advantages is ready for professional deployment and business customer acquisition.
+<<<<<<< Updated upstream
 
 ## After PR 1 (Outline Persistence) deploys
 
@@ -244,3 +245,5 @@ cd app && npx tsx scripts/backfill-session-outline.ts --confirm
 psql "$DATABASE_URL" -c "SELECT count(*) FROM agent_sessions WHERE blueprint IS NOT NULL AND outline IS NULL;"
 # Expected: 0
 ```
+=======
+>>>>>>> Stashed changes
