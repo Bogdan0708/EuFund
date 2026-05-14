@@ -23,19 +23,21 @@ export const changeCallBody = z.object({
   expectedStateVersion: z.number().int().nonnegative(),
 });
 
+// sectionKey caps match the agent_sections.section_key column (varchar(100));
+// keeping the validator narrower than the DB prevents 23502/opaque errors.
 export const acceptSectionBody = z.object({
-  sectionKey: z.string().min(1).max(200),
+  sectionKey: z.string().min(1).max(100),
   expectedStateVersion: z.number().int().nonnegative(),
 });
 
 export const rejectSectionBody = z.object({
-  sectionKey: z.string().min(1).max(200),
+  sectionKey: z.string().min(1).max(100),
   reason: z.string().min(1).max(2000),
   expectedStateVersion: z.number().int().nonnegative(),
 });
 
 export const rollbackSectionBody = z.object({
-  sectionKey: z.string().min(1).max(200),
+  sectionKey: z.string().min(1).max(100),
   targetVersion: z.number().int().nonnegative(),
   expectedStateVersion: z.number().int().nonnegative(),
 });

@@ -136,6 +136,8 @@ export async function changeCall(
       .update(agentSessions)
       .set({
         selectedCallId: input.newCallId,
+        // `blueprint` and `outline` are jsonb; the `as never` cast satisfies
+        // Drizzle's typed insert signature (same pattern as managed/history.ts).
         blueprint: blueprint as never,
         outline: newOutline as never,
         eligibility: null,
