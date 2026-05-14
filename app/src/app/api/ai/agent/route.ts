@@ -19,6 +19,7 @@ import {
 } from '@/lib/ai/agent/managed/session-metadata'
 import { claimTurn, deleteEmptyTurn } from '@/lib/ai/agent/managed/history'
 import { bridgeStructuredAction } from '@/lib/ai/agent/managed/bridge'
+import { logAudit } from '@/lib/legal/audit'
 
 const log = logger.child({ component: 'api-agent' })
 
@@ -160,6 +161,18 @@ async function handler(req: NextRequest) {
     session = mapSessionRow(newRow)
     sections = []
     log.info({ sessionId: session.id, userId: user.id }, 'New agent session created')
+
+    await logAudit({
+      userId: user.id,
+      action: 'session.created',
+      resourceType: 'agent_session',
+      resourceId: session.id,
+      metadata: {
+        locale: body.locale,
+        currentPhase: 'discovery',
+        requestId: body.requestId,
+      },
+    })
   }
 
   // If the request specifies focusedSectionKey, verify it belongs to this session's outline.
