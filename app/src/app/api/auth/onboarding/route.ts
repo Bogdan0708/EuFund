@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
 
     if (body.step === 'profile') {
       const data = profileSchema.parse(body);
+      let createdOrgId: string | undefined;
       await db.transaction(async (tx) => {
         await tx.update(users).set({
           fullName: data.fullName,
@@ -45,15 +46,19 @@ export async function POST(request: NextRequest) {
             role: 'admin',
           });
 
-          logAudit({
-            action: 'organization.create',
-            userId: session.id,
-            resourceType: 'organization',
-            resourceId: org.id,
-            metadata: { name: data.organizationName, orgType: data.organizationType },
-          });
+          createdOrgId = org.id;
         }
       });
+
+      if (createdOrgId) {
+        await logAudit({
+          action: 'organization.create',
+          userId: session.id,
+          resourceType: 'organization',
+          resourceId: createdOrgId,
+          metadata: { name: data.organizationName, orgType: data.organizationType },
+        });
+      }
       return NextResponse.json({ success: true });
     }
 
@@ -65,7 +70,7 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
       }).where(eq(users.id, session.id));
 
-      logAudit({
+      await logAudit({
         action: 'user.onboarding_complete',
         userId: session.id,
         resourceType: 'user',
