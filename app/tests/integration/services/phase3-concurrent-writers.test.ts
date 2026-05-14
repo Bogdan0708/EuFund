@@ -78,10 +78,15 @@ async function seedSession(opts: {
   outlineFrozen?: boolean
   status?: string
   stateVersion?: number
+  outline?: Array<{ id: string; title: string }>
 } = {}): Promise<string> {
   const outlineFrozen = opts.outlineFrozen ?? true
   const status = opts.status ?? 'active'
   const stateVersion = opts.stateVersion ?? 0
+  const outline = JSON.stringify(opts.outline ?? [
+    { id: 'obiective', title: 'Obiective' },
+    { id: 'metoda', title: 'Metoda' },
+  ])
   const eligibility = JSON.stringify({
     results: [],
     score: 100,
@@ -93,7 +98,7 @@ async function seedSession(opts: {
   const rows = await sql<{ id: string }[]>`
     INSERT INTO agent_sessions (
       user_id, status, locale, selected_call_id,
-      current_phase, eligibility, outline_frozen, state_version
+      current_phase, eligibility, outline, outline_frozen, state_version
     )
     VALUES (
       ${TEST_USER_ID}::uuid,
@@ -102,6 +107,7 @@ async function seedSession(opts: {
       'CALL-CONCURRENT-TEST-42',
       'drafting'::agent_phase,
       ${eligibility}::jsonb,
+      ${outline}::jsonb,
       ${outlineFrozen},
       ${stateVersion}
     )
