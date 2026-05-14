@@ -5,7 +5,7 @@
 // paths and keeps its narrow scope of just selecting a call).
 
 import { and, eq } from 'drizzle-orm'
-import { db, withUserRLS } from '@/lib/db'
+import { withUserRLS } from '@/lib/db'
 import { agentSessions, agentSections } from '@/lib/db/schema'
 import { logAudit } from '@/lib/legal/audit'
 import { logger } from '@/lib/logger'
@@ -53,8 +53,8 @@ export async function changeCall(
   ctx: ServiceContext,
   input: ChangeCallInput,
 ): Promise<ChangeCallResult> {
-  return withUserRLS(ctx.userId, async () => {
-    const [session] = await db
+  return withUserRLS(ctx.userId, async (tx) => {
+    const [session] = await tx
       .select()
       .from(agentSessions)
       .where(and(eq(agentSessions.id, input.sessionId), eq(agentSessions.userId, ctx.userId)))
@@ -111,16 +111,16 @@ export async function changeCall(
     const newPhase = blueprint ? 'structuring' : 'research'
 
     // Count sections to be discarded for telemetry/audit.
-    const existingSections = await db
+    const existingSections = await tx
       .select()
       .from(agentSections)
       .where(eq(agentSections.sessionId, input.sessionId))
     const sectionsDiscarded = existingSections.length
 
-    await db.delete(agentSections).where(eq(agentSections.sessionId, input.sessionId))
+    await tx.delete(agentSections).where(eq(agentSections.sessionId, input.sessionId))
 
     const newStateVersion = (session.stateVersion as number) + 1
-    const casResult = await db
+    const casResult = await tx
       .update(agentSessions)
       .set({
         selectedCallId: input.newCallId,
@@ -143,7 +143,7 @@ export async function changeCall(
 
     if (casResult.length === 0) {
       // Another writer committed between our pre-read and this UPDATE.
-      const [current] = await db
+      const [current] = await tx
         .select({ stateVersion: agentSessions.stateVersion })
         .from(agentSessions)
         .where(eq(agentSessions.id, input.sessionId))
@@ -151,7 +151,7 @@ export async function changeCall(
       throw new ConcurrencyError(input.expectedStateVersion, current?.stateVersion ?? -1)
     }
 
-    const [updated] = await db
+    const [updated] = await tx
       .select()
       .from(agentSessions)
       .where(eq(agentSessions.id, input.sessionId))

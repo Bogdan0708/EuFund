@@ -12,8 +12,8 @@ const dbState: { session: Record<string, unknown> | null; sectionsDeleted: numbe
   sectionsDeleted: 0,
 }
 
-vi.mock('@/lib/db', () => ({
-  db: {
+vi.mock('@/lib/db', () => {
+  const mockDb = {
     select: () => ({
       from: (table: Record<string, unknown>) => {
         // Distinguish agentSections queries (no limit — count sections) from
@@ -48,9 +48,15 @@ vi.mock('@/lib/db', () => ({
         return undefined
       },
     }),
-  },
-  withUserRLS: async (_uid: string, fn: () => Promise<unknown>) => fn(),
-}))
+  }
+  return {
+    db: mockDb,
+    // Pass mockDb as `tx` — production withUserRLS opens a transaction and
+    // passes a `tx` to the callback. The unit-test mock mirrors that contract
+    // so changeCall's `tx.select/update/delete` calls hit the same stub object.
+    withUserRLS: async (_uid: string, fn: (tx: typeof mockDb) => Promise<unknown>) => fn(mockDb),
+  }
+})
 
 // Stub used to distinguish table references in the select mock above.
 const agentSectionsStub = { sessionId: 'sessionId' }
