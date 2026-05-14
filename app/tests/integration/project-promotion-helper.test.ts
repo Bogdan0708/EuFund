@@ -45,6 +45,11 @@ function buildTx() {
 	            }
 	            return [];
 	          }),
+          // ensureProjectForSession (with autoPickOnAmbiguous:true) issues an
+          // ordered membership lookup after the user-row lock. Wire the same
+          // phase machine so tests don't have to know about the resolver's
+          // internal flow change.
+          orderBy: vi.fn(async () => [{ orgId: 'org-1', joinedAt: new Date('2026-01-01'), id: 'om-1' }]),
           for: vi.fn(() => ({
             limit: vi.fn(async () => {
               const phase = txState.selectPhase ?? 'session';
@@ -55,6 +60,13 @@ function buildTx() {
 	              if (phase === 'project_lock') {
 	                txState.selectPhase = 'call';
 	                return [txState.projectRow];
+	              }
+	              if (phase === 'user') {
+	                // After user-row lock, the next select hits orgMembers via
+	                // .where().orderBy() (the autoPickOnAmbiguous path). Stay
+	                // on 'user' so the call-resolution step still fires after.
+	                txState.selectPhase = 'call';
+	                return [{ id: 'user-1' }];
 	              }
 	              if (phase === 'call') {
 	                return txState.callRows ?? [{ id: 'resolved-call-uuid', titleRo: 'Resolved Call' }];
@@ -98,6 +110,7 @@ vi.mock('@/lib/db/schema', () => ({
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((c: any, v: any) => ({ kind: 'eq', c, v })),
   and: vi.fn((...preds: any[]) => ({ kind: 'and', preds })),
+  asc: vi.fn((c: any) => ({ kind: 'asc', c })),
   sql: vi.fn(),
 }));
 vi.mock('@/lib/legal/audit', () => ({
