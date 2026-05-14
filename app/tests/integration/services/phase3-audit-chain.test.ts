@@ -77,11 +77,15 @@ async function seedSession(): Promise<string> {
     failCount: 0,
     warningCount: 0,
   })
+  const outline = JSON.stringify([
+    { id: 'obiective', title: 'Obiective' },
+    { id: 'metoda', title: 'Metoda' },
+  ])
 
   const rows = await sql<{ id: string }[]>`
     INSERT INTO agent_sessions (
       user_id, status, locale,
-      current_phase, eligibility, outline_frozen, state_version
+      current_phase, eligibility, outline, outline_frozen, state_version
     )
     VALUES (
       ${TEST_USER_ID}::uuid,
@@ -89,6 +93,7 @@ async function seedSession(): Promise<string> {
       'ro',
       'discovery'::agent_phase,
       ${eligibility}::jsonb,
+      ${outline}::jsonb,
       false,
       0
     )
