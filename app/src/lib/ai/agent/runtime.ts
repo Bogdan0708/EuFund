@@ -286,9 +286,22 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
         content: msg.content,
       })
     }
-    // Add current user message
+    // Add current user message. For action-only turns (request.message
+    // empty), append a synthetic user turn carrying the JSON-stringified
+    // action so the conversation ends on a user role. loadContext runs at
+    // line 117 BEFORE the structured_action row is appended at line 130, so
+    // the just-persisted action isn't yet in `history.messages`. Without
+    // this branch, llmMessages ends with the prior turn's assistant text
+    // and Anthropic 400s with "This model does not support assistant
+    // message prefill" the moment any skipLLM:false action (approve_outline,
+    // select_call, regenerate_section, request_refresh) reaches the LLM
+    // loop. The stringified shape mirrors what loadContext emits for
+    // structured_action rows on subsequent turns (history.ts:146), so
+    // replay behavior stays consistent across turns.
     if (request.message) {
       llmMessages.push({ role: 'user', content: request.message })
+    } else if (request.action) {
+      llmMessages.push({ role: 'user', content: JSON.stringify(request.action) })
     }
 
     // Strip orphan tool_use blocks from the replayed history. A previous turn
