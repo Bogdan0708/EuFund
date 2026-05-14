@@ -383,8 +383,11 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
   // that we merge into local state via applyFinalState. `export` is the
   // exception — it returns an ExportSnapshot bundle (snapshotId, format,
   // downloadUrl, expiresAt). For that name we skip applyFinalState and,
-  // if there's a downloadUrl, open it in a new tab so the file lands on
-  // disk. Bumping `stateVersion` is also skipped (export doesn't mutate).
+  // if downloadUrl is a real project-files path (set by createExportSnapshot
+  // for project-linked sessions), open it in a new tab — the GET handler
+  // responds with Content-Disposition: attachment so the browser saves the
+  // file. Placeholder URLs from non-project sessions are skipped.
+  // Bumping `stateVersion` is also skipped (export doesn't mutate).
   const runAction = useCallback(async (
     name: string,
     body: Record<string, unknown> = {},
@@ -405,14 +408,19 @@ export function useAgent(locale: 'ro' | 'en', initialSessionId?: string) {
       })
       if (name === 'export') {
         // Export returns ExportSnapshot { snapshotId, format, downloadUrl,
-        // expiresAt }. The downloadUrl is a placeholder until a real
-        // file backend (GCS/S3) is wired — see comment in
-        // `lib/ai/agent/services/application.ts` around createExportSnapshot.
-        // Auto-opening it lands the user on a 404, which is worse than
-        // doing nothing. Just record the action; an in-app downloader
-        // is a separate follow-up.
+        // expiresAt }. For project-linked sessions, createExportSnapshot
+        // persists the JSON to GCS/local FS and the project_files table,
+        // and returns a real `/api/v1/projects/.../files/...` URL whose
+        // GET handler responds with Content-Disposition: attachment. For
+        // non-project sessions the URL is still a placeholder
+        // (`/api/mcp/write/snapshots/...`) that 404s — skip those.
         // (Intentionally do not applyFinalState — the response shape
         // is not a UIStateSnapshot.)
+        const exportResult = result as { downloadUrl?: string } | null
+        const url = exportResult?.downloadUrl
+        if (typeof url === 'string' && url.startsWith('/api/v1/projects/')) {
+          window.open(url, '_blank', 'noopener,noreferrer')
+        }
       } else {
         applyFinalState(result as UIStateSnapshot)
       }
