@@ -37,12 +37,19 @@ import postgres from 'postgres'
 import { changeCall } from '@/lib/ai/agent/services/change-call'
 import { ConcurrencyError } from '@/lib/ai/agent/services/errors'
 
-const sql = postgres(process.env.DATABASE_URL!, { max: 4 })
 // Per-run TEST_USER_ID + email keeps the test idempotent across re-runs and
 // safe in shared CI databases (no email-uniqueness collisions when the prior
 // run's user row hasn't been cleaned up).
 const TEST_USER_ID = randomUUID()
 const TEST_USER_EMAIL = `changecall-tx-${TEST_USER_ID}@local`
+
+// Lazy postgres init — the build-and-test CI job has no Postgres + no
+// DATABASE_URL, so eager construction would throw at module load before
+// the describe.skip gate below can fire. Only callsites inside the
+// maybeDescribe block ever touch this, and they're guarded by the gate.
+const sql = process.env.DATABASE_URL
+  ? postgres(process.env.DATABASE_URL, { max: 4 })
+  : (null as unknown as ReturnType<typeof postgres>)
 
 async function seedSessionWithSections(): Promise<{ sessionId: string }> {
   await sql`
@@ -82,7 +89,13 @@ async function cleanup(sessionId: string): Promise<void> {
   await sql`DELETE FROM users WHERE id = ${TEST_USER_ID}::uuid`
 }
 
-describe('changeCall: transactional integrity', () => {
+// Same gate phase3-audit-chain.test.ts uses: build-and-test CI job runs
+// without a Postgres service container and without DATABASE_URL, so this
+// test skips there and only runs in the integration job (and locally).
+const DB_AVAILABLE = !!process.env.DATABASE_URL
+const maybeDescribe = DB_AVAILABLE ? describe : describe.skip
+
+maybeDescribe('changeCall: transactional integrity', () => {
   afterAll(async () => {
     await sql.end()
   })
