@@ -78,12 +78,18 @@ describe('searchCalls', () => {
   })
 
   it('respects maxResults limit', async () => {
-    // Return 6 unique results from the store
+    // Return 6 unique results across THREE programs (2 each) so the
+    // per-program cap (default 2) doesn't gate the maxResults limit.
+    const programs = ['PEO', 'PNRR', 'POCIDIF']
     const storeResults = Array.from({ length: 6 }, (_, i) => ({
       id: `chunk-${i}`,
       content: `Content for call ${i}`,
       score: 0.9 - i * 0.05,
-      metadata: { callId: `CALL-00${i}`, callTitle: `Call ${i}`, program: 'PEO' },
+      metadata: {
+        callId: `CALL-00${i}`,
+        callTitle: `Call ${i}`,
+        programCode: programs[i % programs.length],
+      },
     }))
     mockSearch.mockResolvedValue(storeResults)
 
@@ -92,13 +98,16 @@ describe('searchCalls', () => {
     expect(result.matches).toHaveLength(3)
   })
 
-  it('passes program filter to vector store', async () => {
-    mockSearch.mockResolvedValue([makeResult({ program: 'POTJ' })])
+  it('passes program filter to vector store using programCode key', async () => {
+    // Public API stays `program` for callers; payload key is `programCode`
+    // (what bulk-ingest writes). Pre-fix, the filter passed `program` and
+    // matched nothing in the bulk-ingested corpus.
+    mockSearch.mockResolvedValue([makeResult({ programCode: 'POTJ' })])
 
     await searchCalls(baseCtx, 'tourism', { program: 'POTJ' })
 
     const [, , filter] = mockSearch.mock.calls[0]
-    expect(filter).toEqual({ program: 'POTJ' })
+    expect(filter).toEqual({ programCode: 'POTJ' })
   })
 
   it('passes no filter when program is omitted', async () => {
@@ -220,6 +229,156 @@ describe('searchCalls', () => {
     const result = await searchCalls(baseCtx, 'any')
 
     expect(result.matches[0].score).toBe(0.92)
+  })
+
+  // ── Regression: program field rename ────────────────────────────────────
+  // bulk-ingest-rag-knowledge.ts writes programCode, but searchCalls used
+  // to read metadata.program — so every bulk-ingested match surfaced as
+  // program='unknown' in the UI. The read now prefers programCode and
+  // falls back to program for legacy/test fixtures.
+
+  it('reads programCode in preference to program metadata', async () => {
+    mockSearch.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        content: 'POTJ Just Transition guide',
+        score: 0.8,
+        metadata: { callId: 'POTJ-001', programCode: 'POTJ' },
+      },
+    ])
+
+    const result = await searchCalls(baseCtx, 'just transition')
+
+    expect(result.matches[0].program).toBe('POTJ')
+  })
+
+  it('falls back to legacy program field when programCode is absent', async () => {
+    mockSearch.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        content: 'Legacy point',
+        score: 0.8,
+        metadata: { callId: 'C-1', program: 'PNRR' },
+      },
+    ])
+
+    const result = await searchCalls(baseCtx, 'any')
+
+    expect(result.matches[0].program).toBe('PNRR')
+  })
+
+  // ── Regression: drop UNKNOWN program chunks ─────────────────────────────
+  // 24% of the production corpus (~6.7k chunks) carries programCode=UNKNOWN
+  // — classification failures from bulk-ingest. The agent can't reason
+  // about a call with no program (no eligibility, no blueprint), so we
+  // drop them by default. Falls back to including them if no non-UNKNOWN
+  // matches exist (zero-result avoidance).
+
+  it('drops UNKNOWN-program chunks when other matches exist', async () => {
+    mockSearch.mockResolvedValue([
+      {
+        id: 'chunk-unknown',
+        content: 'Some boilerplate annex',
+        score: 0.95,
+        metadata: { callId: 'UNK-001', programCode: 'UNKNOWN' },
+      },
+      {
+        id: 'chunk-real',
+        content: 'PNRR digital transformation call',
+        score: 0.80,
+        metadata: { callId: 'PNRR-001', programCode: 'PNRR' },
+      },
+    ])
+
+    const result = await searchCalls(baseCtx, 'any')
+
+    expect(result.matches).toHaveLength(1)
+    expect(result.matches[0].callId).toBe('PNRR-001')
+    expect(result.matches[0].program).toBe('PNRR')
+  })
+
+  it('falls back to UNKNOWN results when no non-UNKNOWN matches are available', async () => {
+    mockSearch.mockResolvedValue([
+      {
+        id: 'chunk-unk-1',
+        content: 'Boilerplate A',
+        score: 0.95,
+        metadata: { callId: 'UNK-A', programCode: 'UNKNOWN' },
+      },
+      {
+        id: 'chunk-unk-2',
+        content: 'Boilerplate B',
+        score: 0.90,
+        metadata: { callId: 'UNK-B', programCode: 'UNKNOWN' },
+      },
+    ])
+
+    const result = await searchCalls(baseCtx, 'any')
+
+    expect(result.matches).toHaveLength(2)
+    expect(result.matches[0].program).toBe('UNKNOWN')
+  })
+
+  it('keeps UNKNOWN results when includeUnknownProgram: true', async () => {
+    mockSearch.mockResolvedValue([
+      {
+        id: 'c1',
+        content: 'a',
+        score: 0.95,
+        metadata: { callId: 'UNK-1', programCode: 'UNKNOWN' },
+      },
+      {
+        id: 'c2',
+        content: 'b',
+        score: 0.80,
+        metadata: { callId: 'PNRR-1', programCode: 'PNRR' },
+      },
+    ])
+
+    const result = await searchCalls(baseCtx, 'any', { includeUnknownProgram: true })
+
+    expect(result.matches).toHaveLength(2)
+    expect(result.matches.map((m) => m.callId).sort()).toEqual(['PNRR-1', 'UNK-1'])
+  })
+
+  // ── Regression: per-program cap ─────────────────────────────────────────
+  // POTJ has ~4.8k chunks vs PNRR's 303. Without a cap, top-K was filled by
+  // multiple POTJ docs and PNRR / other programs never surfaced. Default
+  // cap=2 keeps the highest two per program and reserves room for others.
+
+  it('caps results per program at the default (2)', async () => {
+    mockSearch.mockResolvedValue([
+      { id: 'p1', content: 'a', score: 0.9, metadata: { callId: 'POTJ-A', programCode: 'POTJ' } },
+      { id: 'p2', content: 'b', score: 0.85, metadata: { callId: 'POTJ-B', programCode: 'POTJ' } },
+      { id: 'p3', content: 'c', score: 0.80, metadata: { callId: 'POTJ-C', programCode: 'POTJ' } },
+      { id: 'p4', content: 'd', score: 0.75, metadata: { callId: 'PNRR-A', programCode: 'PNRR' } },
+      { id: 'p5', content: 'e', score: 0.70, metadata: { callId: 'POCIDIF-A', programCode: 'POCIDIF' } },
+    ])
+
+    const result = await searchCalls(baseCtx, 'any', { maxResults: 5 })
+
+    // POTJ capped at 2; PNRR and POCIDIF surface despite lower scores
+    const programs = result.matches.map((m) => m.program)
+    const potjCount = programs.filter((p) => p === 'POTJ').length
+    expect(potjCount).toBe(2)
+    expect(programs).toContain('PNRR')
+    expect(programs).toContain('POCIDIF')
+  })
+
+  it('respects maxResultsPerProgram override', async () => {
+    mockSearch.mockResolvedValue([
+      { id: '1', content: 'a', score: 0.9, metadata: { callId: 'A', programCode: 'POTJ' } },
+      { id: '2', content: 'b', score: 0.85, metadata: { callId: 'B', programCode: 'POTJ' } },
+      { id: '3', content: 'c', score: 0.80, metadata: { callId: 'C', programCode: 'POTJ' } },
+    ])
+
+    const result = await searchCalls(baseCtx, 'any', {
+      maxResults: 5,
+      maxResultsPerProgram: 1,
+    })
+
+    expect(result.matches).toHaveLength(1)
+    expect(result.matches[0].callId).toBe('A')
   })
 })
 
