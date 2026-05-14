@@ -8,6 +8,7 @@ import { projects, projectFiles } from '@/lib/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { requireAuth } from '@/lib/auth/helpers';
 import { putObject, buildObjectPath } from '@/lib/storage/gcs';
+import { logAudit } from '@/lib/legal/audit';
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
 const ALLOWED_MIME_TYPES = new Set([
@@ -134,6 +135,19 @@ export async function POST(
         category: projectFiles.category,
         createdAt: projectFiles.createdAt,
       });
+
+    await logAudit({
+      userId: user.id,
+      action: 'project.file_uploaded',
+      resourceType: 'project_file',
+      resourceId: record.id,
+      metadata: {
+        projectId,
+        filename: record.filename,
+        mimeType: record.mimeType,
+        sizeBytes: record.sizeBytes,
+      },
+    });
 
     return NextResponse.json({ file: record }, { status: 201 });
   } catch {
