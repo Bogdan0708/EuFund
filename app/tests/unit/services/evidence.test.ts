@@ -380,6 +380,48 @@ describe('searchCalls', () => {
     expect(result.matches).toHaveLength(1)
     expect(result.matches[0].callId).toBe('A')
   })
+
+  // Regression for Codex #107 finding: when the caller has narrowed the
+  // search to one program (or one call via callId/callCode/sourceId), the
+  // per-program cap must not silently truncate the response. The MCP tool
+  // surface exposes `program` + `maxResults` but not `maxResultsPerProgram`,
+  // so the cap is otherwise unchangeable in that flow.
+
+  it('skips per-program cap when opts.program narrows to one program', async () => {
+    mockSearch.mockResolvedValue([
+      { id: '1', content: 'a', score: 0.9, metadata: { callId: 'POTJ-A', programCode: 'POTJ' } },
+      { id: '2', content: 'b', score: 0.85, metadata: { callId: 'POTJ-B', programCode: 'POTJ' } },
+      { id: '3', content: 'c', score: 0.80, metadata: { callId: 'POTJ-C', programCode: 'POTJ' } },
+      { id: '4', content: 'd', score: 0.75, metadata: { callId: 'POTJ-D', programCode: 'POTJ' } },
+      { id: '5', content: 'e', score: 0.70, metadata: { callId: 'POTJ-E', programCode: 'POTJ' } },
+    ])
+
+    const result = await searchCalls(baseCtx, 'any', {
+      program: 'POTJ',
+      maxResults: 5,
+    })
+
+    expect(result.matches).toHaveLength(5)
+    expect(result.matches.every((m) => m.program === 'POTJ')).toBe(true)
+  })
+
+  it('skips per-program cap when opts.callId narrows to one call', async () => {
+    mockSearch.mockResolvedValue([
+      { id: '1', content: 'a', score: 0.9, metadata: { callId: 'X', programCode: 'POTJ' } },
+      { id: '2', content: 'b', score: 0.85, metadata: { callId: 'X', programCode: 'POTJ' } },
+      { id: '3', content: 'c', score: 0.80, metadata: { callId: 'X', programCode: 'POTJ' } },
+    ])
+
+    // callId-narrowed search returns 1 deduped match — but the cap should
+    // not be the reason. (callId dedup separately collapses to 1.)
+    const result = await searchCalls(baseCtx, 'any', {
+      callId: 'X',
+      maxResults: 5,
+    })
+
+    expect(result.matches).toHaveLength(1)
+    expect(result.matches[0].callId).toBe('X')
+  })
 })
 
 // ── retrieveEvidence tests ─────────────────────────────────────────────────

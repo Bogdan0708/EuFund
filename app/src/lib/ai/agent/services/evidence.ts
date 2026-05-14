@@ -93,7 +93,21 @@ export async function searchCalls(
   opts: SearchCallsOptions = {},
 ): Promise<{ matches: CallMatch[] }> {
   const maxResults = opts.maxResults ?? 5
-  const perProgramCap = opts.maxResultsPerProgram ?? DEFAULT_PER_PROGRAM_CAP
+  // The per-program cap is a *diversity* mechanism. When the caller has
+  // already narrowed the search to one program (or to a specific call via
+  // callId/callCode/sourceId), there is no diversity to enforce — every
+  // result will be in the same bucket, and capping at 2 silently truncates
+  // any `maxResults > 2` request. The MCP tool surface exposes `program`
+  // and `maxResults` but not `maxResultsPerProgram`, so without this
+  // exemption an LLM calling search_calls({program:'POTJ', maxResults:5})
+  // would receive at most 2 matches with no way to override. Codex flagged
+  // this on PR #107 (2026-05-15).
+  const narrowingFilterActive = Boolean(
+    opts.program || opts.callId || opts.callCode || opts.sourceId,
+  )
+  const perProgramCap = opts.maxResultsPerProgram ?? (
+    narrowingFilterActive ? Infinity : DEFAULT_PER_PROGRAM_CAP
+  )
   const includeUnknown = opts.includeUnknownProgram ?? false
 
   let store: ReturnType<typeof getVectorStore>
