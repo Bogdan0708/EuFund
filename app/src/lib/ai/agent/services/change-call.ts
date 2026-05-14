@@ -53,7 +53,19 @@ export async function changeCall(
   ctx: ServiceContext,
   input: ChangeCallInput,
 ): Promise<ChangeCallResult> {
-  return withUserRLS(ctx.userId, async (tx) => {
+  // Captured inside the RLS tx, awaited as a single logAudit call AFTER the
+  // tx commits. logAudit opens its own DB transaction for hash-chain writes;
+  // nesting it inside withUserRLS would hold connection-pool slots and could
+  // serialize concurrent changeCall requests against audit-tx availability.
+  let auditMetadata: {
+    previousCallId: string | null
+    newCallId: string
+    sectionsDiscarded: number
+    blueprintSource: 'cached' | 'none'
+    requestId: string | undefined
+  } | undefined
+
+  const result = await withUserRLS(ctx.userId, async (tx) => {
     const [session] = await tx
       .select()
       .from(agentSessions)
@@ -163,19 +175,13 @@ export async function changeCall(
       sections_discarded_bucket: bucketizeSectionsDiscarded(sectionsDiscarded),
     })
 
-    await logAudit({
-      userId: ctx.userId,
-      action: 'session.call_changed',
-      resourceType: 'agent_session',
-      resourceId: input.sessionId,
-      metadata: {
-        previousCallId: session.selectedCallId,
-        newCallId: input.newCallId,
-        sectionsDiscarded,
-        blueprintSource,
-        requestId: ctx.requestId,
-      },
-    })
+    auditMetadata = {
+      previousCallId: session.selectedCallId,
+      newCallId: input.newCallId,
+      sectionsDiscarded,
+      blueprintSource,
+      requestId: ctx.requestId,
+    }
 
     return {
       session: updated as AgentSession,
@@ -183,4 +189,16 @@ export async function changeCall(
       blueprintSource,
     }
   })
+
+  if (auditMetadata) {
+    await logAudit({
+      userId: ctx.userId,
+      action: 'session.call_changed',
+      resourceType: 'agent_session',
+      resourceId: input.sessionId,
+      metadata: auditMetadata,
+    })
+  }
+
+  return result
 }
