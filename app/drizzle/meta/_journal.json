@@ -281,6 +281,13 @@
       "when": 1778803200003,
       "tag": "0039_generate_section_endpoint_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1778803200004,
+      "tag": "0040_add_projects_completion_status",
+      "breakpoints": true
     }
   ]
 }
