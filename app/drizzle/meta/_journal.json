@@ -288,6 +288,13 @@
       "when": 1778803200004,
       "tag": "0040_add_projects_completion_status",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1778803200005,
+      "tag": "0041_v3_chat_model_sonnet_flag",
+      "breakpoints": true
     }
   ]
 }

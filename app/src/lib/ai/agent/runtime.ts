@@ -212,7 +212,15 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
       userId: session.userId,
       bypassCache: true,
     })
-    const planningModel = chatToolsTrimmed ? 'claude-sonnet-4-6' : 'claude-opus-4-6'
+    // Decoupled from `chat_tools_trimmed` so the Opus→Sonnet cost downgrade
+    // can be rolled out independently of the tool-surface trim. Both flags
+    // are V3-specific rollout controls; both bypassCache so an emergency
+    // revert isn't delayed by the 60s LRU.
+    const chatModelSonnet = await isFeatureEnabled('v3_chat_model_sonnet', {
+      userId: session.userId,
+      bypassCache: true,
+    })
+    const planningModel = chatModelSonnet ? 'claude-sonnet-4-6' : 'claude-opus-4-6'
 
     const phaseTools = getToolsForPhase(session.currentPhase)
     const finalPhaseTools = chatToolsTrimmed ? trimToChatSurface(phaseTools) : phaseTools
