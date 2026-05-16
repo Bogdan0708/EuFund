@@ -20,6 +20,7 @@ import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import * as xlsx from 'xlsx';
 import OpenAI from 'openai';
+import { QdrantClient } from './lib/qdrant-client';
 
 // ─── Config ───────────────────────────────────────────────────────────
 
@@ -207,65 +208,6 @@ function validateChunk(content: string): { valid: boolean; sanitized: string; re
   return { valid: true, sanitized };
 }
 
-// ─── Qdrant HTTP Client ──────────────────────────────────────────────
-
-class QdrantClient {
-  private apiKey: string;
-
-  constructor(private baseUrl: string, private collection: string) {
-    this.apiKey = process.env.QDRANT_API_KEY || '';
-  }
-
-  private async request(path: string, opts?: RequestInit): Promise<unknown> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(opts?.headers as Record<string, string>),
-    };
-    if (this.apiKey) {
-      headers['api-key'] = this.apiKey;
-    }
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      ...opts,
-      headers,
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Qdrant ${res.status}: ${body.substring(0, 200)}`);
-    }
-    return res.json();
-  }
-
-  async ensureCollection(): Promise<void> {
-    try {
-      await this.request(`/collections/${this.collection}`);
-      console.log(`  Collection "${this.collection}" exists`);
-    } catch {
-      console.log(`  Creating collection "${this.collection}"...`);
-      await this.request(`/collections/${this.collection}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          vectors: { size: EMBEDDING_DIMENSIONS, distance: 'Cosine' },
-        }),
-      });
-      console.log(`  Collection created`);
-    }
-  }
-
-  async upsertPoints(points: QdrantPoint[]): Promise<void> {
-    await this.request(`/collections/${this.collection}/points`, {
-      method: 'PUT',
-      body: JSON.stringify({ points }),
-    });
-  }
-
-  async getCount(): Promise<number> {
-    const result = await this.request(`/collections/${this.collection}`) as {
-      result: { points_count: number };
-    };
-    return result.result.points_count;
-  }
-}
-
 // ─── Embeddings ──────────────────────────────────────────────────────
 
 async function embedBatch(openai: OpenAI, texts: string[]): Promise<number[][]> {
@@ -399,10 +341,10 @@ async function main(): Promise<void> {
   }
 
   const openai = new OpenAI({ apiKey: openaiKey });
-  const qdrant = new QdrantClient(qdrantUrl, COLLECTION_NAME);
+  const qdrant = new QdrantClient(qdrantUrl, COLLECTION_NAME, process.env.QDRANT_API_KEY);
 
   // Ensure collection exists
-  await qdrant.ensureCollection();
+  await qdrant.ensureCollection(EMBEDDING_DIMENSIONS);
 
   // Load classification results
   const allFiles: ClassifiedFile[] = JSON.parse(fs.readFileSync(RESULTS_PATH, 'utf8'));
@@ -483,7 +425,9 @@ async function main(): Promise<void> {
   console.log(`  Progress: ${PROGRESS_PATH}`);
 }
 
-main().catch(err => {
-  console.error('\nFatal error:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(err => {
+    console.error('\nFatal error:', err);
+    process.exit(1);
+  });
+}
