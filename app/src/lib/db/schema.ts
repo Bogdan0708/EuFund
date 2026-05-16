@@ -860,7 +860,9 @@ export const callKnowledge = pgTable('call_knowledge', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   uniqCallId: uniqueIndex('idx_call_knowledge_call_id').on(table.callId),
-  idxCanonical: index('idx_call_knowledge_canonical').on(table.canonicalCallId),
+  uniqCanonical: uniqueIndex('idx_call_knowledge_canonical_unique')
+    .on(table.canonicalCallId)
+    .where(sql`${table.canonicalCallId} IS NOT NULL`),
   idxProgram: index('idx_call_knowledge_program').on(table.program),
   idxContentExtracted: index('idx_call_knowledge_content_extracted').on(table.contentExtractedAt),
   idxFreshnessChecked: index('idx_call_knowledge_freshness_checked').on(table.freshnessCheckedAt),

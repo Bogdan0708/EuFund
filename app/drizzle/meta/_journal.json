@@ -302,6 +302,13 @@
       "when": 1778803200006,
       "tag": "0042_call_knowledge_canonical_id",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1778803200007,
+      "tag": "0043_call_knowledge_canonical_id_unique",
+      "breakpoints": true
     }
   ]
 }
