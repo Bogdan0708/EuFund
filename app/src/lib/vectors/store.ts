@@ -168,8 +168,7 @@ class QdrantVectorStore implements VectorStore {
       limit: topK,
       with_payload: true,
     };
-    const qdrantFilter = toQdrantFilter(filter);
-    if (qdrantFilter) body.filter = qdrantFilter;
+    body.filter = toQdrantFilter(filter);
 
     const result = (await this.qdrantFetch(`/collections/${this.collection}/points/search`, {
       method: 'POST',
@@ -219,14 +218,20 @@ class QdrantVectorStore implements VectorStore {
 // shape MemoryVectorStore accepts. Translate here so callers pass one
 // shape regardless of provider.
 
+const ORPHAN_EXCLUSION = { key: 'orphan', match: { value: true } } as const;
+
 export function toQdrantFilter(
   filter?: Record<string, unknown>,
-): { must: Array<{ key: string; match: { value: unknown } }> } | undefined {
-  if (!filter) return undefined;
-  const entries = Object.entries(filter);
-  if (entries.length === 0) return undefined;
+): {
+  must?: Array<{ key: string; match: { value: unknown } }>;
+  must_not: Array<typeof ORPHAN_EXCLUSION>;
+} {
+  const entries = Object.entries(filter ?? {});
+  const base = { must_not: [ORPHAN_EXCLUSION] };
+  if (entries.length === 0) return base;
   return {
     must: entries.map(([key, value]) => ({ key, match: { value } })),
+    ...base,
   };
 }
 

@@ -130,13 +130,13 @@ export async function searchCalls(
     filter.programCode = opts.program
   }
   if (opts.callId) {
-    filter.callId = opts.callId
+    filter.call_id = opts.callId
   }
   if (opts.sourceId) {
     filter.sourceId = opts.sourceId
   }
   if (opts.callCode) {
-    filter.callCode = opts.callCode
+    filter.call_code = opts.callCode
   }
 
   // Overfetch: 4× maxResults so the UNKNOWN drop + per-program cap still
@@ -171,7 +171,9 @@ export async function searchCalls(
   const unknownMatches: CallMatch[] = []
   for (const r of results) {
     const callId =
+      (r.metadata.call_id as string) ||
       (r.metadata.callId as string) ||
+      (r.metadata.call_code as string) ||
       (r.metadata.callCode as string) ||
       (r.metadata.sourceId as string) ||
       r.id

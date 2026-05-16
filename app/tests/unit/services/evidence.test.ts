@@ -119,6 +119,37 @@ describe('searchCalls', () => {
     expect(filter).toBeUndefined()
   })
 
+  it('prefers canonical call_id over legacy callId/callCode/sourceId when emitting match IDs', async () => {
+    mockSearch.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        content: 'Canonical payload point',
+        score: 0.9,
+        metadata: {
+          call_id: '11111111-1111-4111-8111-111111111111',
+          callId: 'legacy-call-id',
+          call_code: 'PNRR/001',
+          callCode: 'legacy-code',
+          programCode: 'PNRR',
+        },
+      },
+    ])
+
+    const result = await searchCalls(baseCtx, 'canonical')
+
+    expect(result.matches[0].callId).toBe('11111111-1111-4111-8111-111111111111')
+  })
+
+  it('passes callId and callCode filters using canonical Qdrant payload keys', async () => {
+    mockSearch.mockResolvedValue([])
+
+    await searchCalls(baseCtx, 'probe-id', { callId: 'uuid-1' })
+    expect(mockSearch.mock.calls.at(-1)?.[2]).toEqual({ call_id: 'uuid-1' })
+
+    await searchCalls(baseCtx, 'probe-code', { callCode: 'PNRR/001' })
+    expect(mockSearch.mock.calls.at(-1)?.[2]).toEqual({ call_code: 'PNRR/001' })
+  })
+
   it('truncates snippet to 200 chars', async () => {
     const longContent = 'A'.repeat(300)
     mockSearch.mockResolvedValue([{ ...makeResult(), content: longContent }])
