@@ -21,6 +21,9 @@ import mammoth from 'mammoth';
 import * as xlsx from 'xlsx';
 import OpenAI from 'openai';
 import { QdrantClient } from './lib/qdrant-client';
+import postgres from 'postgres';
+import { type ResolverDb } from './lib/call-id-resolver';
+import { filterStrictPoints, canonicalizeBatch } from './lib/ingest-helpers';
 
 // ─── Config ───────────────────────────────────────────────────────────
 
@@ -36,6 +39,8 @@ const EMBEDDING_DIMENSIONS = 1536;
 
 const RESULTS_PATH = path.resolve(__dirname, 'classification-output/classification-results.json');
 const PROGRESS_PATH = path.resolve(__dirname, 'classification-output/rag-ingestion-progress.json');
+
+const STRICT_MODE = !process.argv.includes('--legacy');  // default ON post-M1
 
 const PROGRAM_CODE_MAP: Record<string, string> = {
   'PNRR': 'PNRR', 'PEO': 'PEO', 'POTJ': 'POTJ', 'PDD': 'PDD', 'PS': 'PS',
@@ -246,6 +251,7 @@ async function processFile(
   file: ClassifiedFile,
   openai: OpenAI,
   qdrant: QdrantClient,
+  resolverDb: ResolverDb | null,
 ): Promise<{ chunksCreated: number }> {
   // 1. Parse text
   const rawText = await extractText(file.filePath, file.extension);
@@ -319,7 +325,21 @@ async function processFile(
   // 5. Upsert to Qdrant in batches
   for (let batchStart = 0; batchStart < allPoints.length; batchStart += QDRANT_UPSERT_BATCH_SIZE) {
     const batch = allPoints.slice(batchStart, batchStart + QDRANT_UPSERT_BATCH_SIZE);
-    await qdrant.upsertPoints(batch);
+    if (STRICT_MODE) {
+      if (!resolverDb) throw new Error('resolverDb missing in strict mode');
+      const { kept, rejected } = await filterStrictPoints(resolverDb, batch);
+      if (rejected.length > 0) {
+        throw new Error(
+          `STRICT: refusing to ingest ${rejected.length} chunks with unresolvable payloads.\n` +
+          `Sample rejected IDs: ${rejected.slice(0, 5).map((p) => p.id).join(', ')}\n` +
+          `Run audit-qdrant-call-identity.ts to diagnose, or re-run with --legacy to bypass.`,
+        );
+      }
+      const canonical = await canonicalizeBatch(resolverDb, kept);
+      await qdrant.upsertPoints(canonical);
+    } else {
+      await qdrant.upsertPoints(batch);
+    }
   }
 
   return { chunksCreated: allPoints.length };
@@ -343,6 +363,33 @@ async function main(): Promise<void> {
   const openai = new OpenAI({ apiKey: openaiKey });
   const qdrant = new QdrantClient(qdrantUrl, COLLECTION_NAME, process.env.QDRANT_API_KEY);
 
+  let pg: postgres.Sql | null = null;
+  let resolverDb: ResolverDb | null = null;
+
+  if (STRICT_MODE) {
+    if (!process.env.DATABASE_URL) {
+      console.error('DATABASE_URL not set; required for strict canonical call-id validation. Use --legacy to bypass.');
+      process.exit(1);
+    }
+    pg = postgres(process.env.DATABASE_URL, { max: 4 });
+    resolverDb = {
+      findCallById: async (id) => {
+        const r = await pg!`SELECT id, call_code FROM calls_for_proposals WHERE id = ${id}::uuid LIMIT 1`;
+        return r[0] ? { id: r[0].id, callCode: r[0].call_code } : null;
+      },
+      findCallByCode: async (code) => {
+        const r = await pg!`SELECT id, call_code FROM calls_for_proposals WHERE call_code = ${code} LIMIT 1`;
+        return r[0] ? { id: r[0].id, callCode: r[0].call_code } : null;
+      },
+      findCallByExternalId: async (ext) => {
+        const r = await pg!`SELECT id, call_code FROM calls_for_proposals WHERE external_id = ${ext} LIMIT 2`;
+        if (r.length !== 1) return null;
+        return { id: r[0].id, callCode: r[0].call_code };
+      },
+    };
+  }
+
+  try {
   // Ensure collection exists
   await qdrant.ensureCollection(EMBEDDING_DIMENSIONS);
 
@@ -384,7 +431,7 @@ async function main(): Promise<void> {
     await sem.acquire();
     const timestamp = new Date().toISOString();
     try {
-      const result = await processFile(file, openai, qdrant);
+      const result = await processFile(file, openai, qdrant, resolverDb);
       totalChunks += result.chunksCreated;
       allResults.push({
         contentHash: file.contentHash, fileName: file.fileName,
@@ -393,6 +440,9 @@ async function main(): Promise<void> {
       successCount++;
       console.log(`  [${++completed}/${toIngest.length}] OK  ${file.fileName} (${result.chunksCreated} chunks)`);
     } catch (err) {
+      if (STRICT_MODE && err instanceof Error && err.message.startsWith('STRICT: refusing')) {
+        throw err;
+      }
       const errMsg = err instanceof Error ? err.message : String(err);
       allResults.push({
         contentHash: file.contentHash, fileName: file.fileName,
@@ -423,6 +473,9 @@ async function main(): Promise<void> {
   console.log(`  Qdrant total points: ${qdrantCount}`);
   console.log(`  Time: ${elapsed}s`);
   console.log(`  Progress: ${PROGRESS_PATH}`);
+  } finally {
+    if (pg) await pg.end({ timeout: 2 });
+  }
 }
 
 if (require.main === module) {
