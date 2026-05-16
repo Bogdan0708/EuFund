@@ -124,11 +124,17 @@ The initial POST does not require a pre-existing `projects` row. The handler cre
 
 ```
 BEGIN
-  -- idempotency check first
+  -- idempotency check first.
+  -- Step 1: select by (user_id, key) REGARDLESS of expiry. The unique index includes
+  -- expired-but-not-yet-reaped rows, so a select that filters on expiry would miss
+  -- them and then collide on the subsequent INSERT. Two-step branching avoids the trap:
   SELECT * FROM project_artifacts
    WHERE user_id = $user AND idempotency_key = $key
-     AND idempotency_expires_at > now()
-  ; -- if hit: return existing artifact's current status, COMMIT, return.
+  ;
+  -- If a row was found:
+  --   * idempotency_expires_at > now()  → replay (return existing artifact's snapshot, COMMIT, return)
+  --   * idempotency_expires_at <= now() → ABORT with HTTP 409 IDEMPOTENCY_KEY_EXPIRED; client must supply a fresh key
+  -- If no row was found, fall through to project + artifact creation.
 
   -- resolve target org via existing helper (auto-creates Personal Workspace if zero memberships,
   -- see lib/projects/org-resolver.ts:71)
@@ -161,7 +167,7 @@ COMMIT
 ### 4.5 DB-backed worker lease pattern (durability)
 
 ```
-generation_runs columns: locked_by, locked_until, heartbeat_at, idempotency_expires_at
+generation_runs columns: locked_by, locked_until, heartbeat_at, next_event_sequence, recovery_count
 
 Worker loop (in-process for v1, may move to a separate Cloud Run service later):
   1. Claim queued run: UPDATE ... SET locked_by=$worker_id, locked_until=now()+'5 min', heartbeat_at=now()
@@ -420,6 +426,11 @@ X-CSRF-Token: ...
 { "error": { "code": "ACTIVE_RUN_EXISTS", "activeRunId": "uuid", "message": "..." } }
 ```
 
+**Expired idempotency key (409):**
+```json
+{ "error": { "code": "IDEMPOTENCY_KEY_EXPIRED", "expiredAt": "ISO-8601", "message": "Idempotency key reached its 24-hour expiry. Supply a fresh idempotency key to start a new request." } }
+```
+
 ### 6.2 GET /api/v1/projects/generate/runs/{runId}/events
 
 ```
@@ -653,7 +664,14 @@ Validation enforced at the service-layer write to `artifact_sections` + `artifac
 
 2. **`patch-qdrant-payloads.ts`** — consumes the audit, patches resolvable points to add canonical `call_id` UUID + `call_code` payload fields. Tags orphans with `orphan: true`. Idempotent. `--dry-run` / `--confirm` gate.
 
-3. **`backfill-call-knowledge-ids.ts`** — populates a new `canonical_call_id uuid REFERENCES calls_for_proposals(id)` column on `call_knowledge`, resolving from the existing `call_id text` via the same audit-output mapping used by the Qdrant patcher. Backs up rows before migration. `--dry-run` / `--confirm` gate. Schema migration paired with the script: `ALTER TABLE call_knowledge ADD COLUMN canonical_call_id uuid REFERENCES calls_for_proposals(id); CREATE INDEX idx_call_knowledge_canonical ON call_knowledge(canonical_call_id);`. The text `call_id` column stays for one observation window after M2 then is dropped in a follow-up migration once code reads canonical_call_id exclusively.
+3. **`backfill-call-knowledge-ids.ts`** — populates a new `canonical_call_id uuid REFERENCES calls_for_proposals(id)` column on `call_knowledge`, resolving from the existing `call_id text` via the same audit-output mapping used by the Qdrant patcher. **Dedupes rows that resolve to the same UUID** before the unique index is added: groups rows by resolved UUID, keeps the row with the highest `structure_confidence` (ties broken by latest `content_extracted_at`), GCS-backs-up the rejected duplicates, then deletes them. Backs up all rows before migration. `--dry-run` / `--confirm` gate. Schema migration paired with the script, applied in this exact order:
+   ```sql
+   ALTER TABLE call_knowledge ADD COLUMN canonical_call_id uuid REFERENCES calls_for_proposals(id);
+   -- script runs: resolve → dedupe → populate canonical_call_id
+   CREATE UNIQUE INDEX idx_call_knowledge_canonical
+     ON call_knowledge(canonical_call_id) WHERE canonical_call_id IS NOT NULL;
+   ```
+   The unique partial index enforces a 1:1 canonical mapping going forward. The text `call_id` column stays for one observation window after M2, then is dropped in a follow-up migration once code reads `canonical_call_id` exclusively. Blueprint lookup is unambiguous: `SELECT … FROM call_knowledge WHERE canonical_call_id = $1 LIMIT 1` returns at most one row.
 
 **Modified script:**
 - `bulk-ingest-rag-knowledge.ts` — adds `--strict` mode (default ON post-M1). Every new chunk must reference an existing `calls_for_proposals` row by `id` or `call_code`. Fails loudly on miss.
@@ -661,7 +679,7 @@ Validation enforced at the service-layer write to `artifact_sections` + `artifac
 **Gate criterion:**
 - ≥99 % of legacy Qdrant points resolvable; remaining 1 % tagged `orphan=true` AND excluded from the `match()` search path
 - **100 % of points reachable via the new matcher carry canonical `call_id` UUID**
-- `call_knowledge.call_id` is UUID for ≥99 % of rows
+- `call_knowledge.canonical_call_id` is populated AND resolvable to a real `calls_for_proposals(id)` for ≥99 % of rows
 - New `--strict` ingest fails closed on orphan test fixture
 
 ### M2 — Backend pipeline (no UI)
@@ -774,7 +792,7 @@ End-to-end through real Postgres + stubbed provider. Each is one user-visible sc
 - `worker-recovery.test.ts` (lease expiry → resume)
 - `worker-race.test.ts` **(NEW)** — two workers attempt to claim the same run/section concurrently; only one wins
 - `sse-replay.test.ts`
-- `idempotency.test.ts` (same key within 24 h returns same run; after `idempotency_expires_at`, fresh key required)
+- `idempotency.test.ts` (same key within 24 h returns the same artifact/run snapshot; same key after `idempotency_expires_at` returns 409 `IDEMPOTENCY_KEY_EXPIRED` and never collides on the unique index; reaper-nulled key becomes reusable)
 - `concurrency-limits.test.ts` (second POST while running → 409)
 - `multi-user-concurrency.test.ts` **(NEW)** — two users each have one active run concurrently; no cross-user event leakage in SSE replay
 - `placeholder-fill-and-regen.test.ts`
@@ -797,7 +815,7 @@ End-to-end through real Postgres + stubbed provider. Each is one user-visible sc
 
 | Milestone | Gate criterion |
 |---|---|
-| **M1** | Audit reports ≥99 % legacy resolvability; orphans tagged AND excluded from match path; 100 % canonical UUID for points reachable via the new matcher; `call_knowledge.call_id` UUID for ≥99 % of rows; `--strict` ingest rejects orphan fixture |
+| **M1** | Audit reports ≥99 % legacy resolvability; orphans tagged AND excluded from match path; 100 % canonical UUID for Qdrant points reachable via the new matcher; `call_knowledge.canonical_call_id` populated AND resolvable for ≥99 % of rows; dedupe done so no resolved UUID has two `call_knowledge` rows; `--strict` ingest rejects orphan fixture |
 | **M2** | Vitest integration suite green; manual curl run produces valid DOCX for `godjabogdan@gmail.com`; worker-recovery + worker-race tests pass |
 | **M3** | Playwright E2E suite green; manual smoke on real account; allowlist-based grep — no UI nav link points to retired routes (redirect-implementation pages excluded) |
 | **M4** | Cloud Run logs (excluding probes / monitoring / operator scripts) show zero non-internal requests to retired API routes for 48 consecutive hours |
