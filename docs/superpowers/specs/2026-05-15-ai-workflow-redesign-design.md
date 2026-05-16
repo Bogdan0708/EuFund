@@ -118,6 +118,46 @@ generation_runs.status:
   Status advances monotonically. Failed/ready are terminal.
 ```
 
+### 4.4.1 Initial POST creates `projects` + `project_artifacts` atomically
+
+The initial POST does not require a pre-existing `projects` row. The handler creates both in a single transaction:
+
+```
+BEGIN
+  -- idempotency check first
+  SELECT * FROM project_artifacts
+   WHERE user_id = $user AND idempotency_key = $key
+     AND idempotency_expires_at > now()
+  ; -- if hit: return existing artifact's current status, COMMIT, return.
+
+  -- resolve target org via existing helper (auto-creates Personal Workspace if zero memberships,
+  -- see lib/projects/org-resolver.ts:71)
+  $orgId := resolveProjectOrgIdInTx(tx, $user, { autoPickOnAmbiguous: true })
+
+  -- create the parent project row
+  INSERT INTO projects (org_id, user_id, created_by, title, status)
+       VALUES ($orgId, $user, $user, $derivedTitle, 'ciorna')
+    RETURNING id INTO $projectId
+
+  -- flip any prior active artifacts for this project (none yet, but consistent service contract)
+  UPDATE project_artifacts SET is_active=false WHERE project_id=$projectId AND is_active=true
+
+  -- create the artifact in pending_input state with idempotency metadata
+  INSERT INTO project_artifacts (
+    project_id, user_id, org_id,
+    intent, title, status, is_active,
+    idempotency_key, idempotency_expires_at
+  ) VALUES (
+    $projectId, $user, $orgId,
+    jsonb_build_object('projectDescription', $idea),
+    $derivedTitle, 'pending_input', true,
+    $key, now() + interval '24 hours'
+  ) RETURNING id INTO $artifactId
+COMMIT
+```
+
+`$derivedTitle` uses `deriveProjectTitle({ projectDescription: $idea }, $locale)` (reused from `lib/projects/promotion.ts:79`). Resume-input and resume-call POSTs operate on `artifactId` directly — they do not carry an idempotency key, because the artifact id itself is the idempotent reference.
+
 ### 4.5 DB-backed worker lease pattern (durability)
 
 ```
@@ -154,27 +194,40 @@ The drafting model is configured, not hard-coded into the spec. Default: `claude
 ```sql
 -- One per AI-generated proposal attempt. N:1 with projects.
 CREATE TABLE project_artifacts (
-  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id      uuid NOT NULL REFERENCES projects(id),
-  user_id         uuid NOT NULL REFERENCES users(id),
-  org_id          uuid NOT NULL REFERENCES organizations(id),
-  call_id         uuid REFERENCES calls_for_proposals(id),  -- nullable until match resolves
-  intent          jsonb NOT NULL,                            -- IntentSchema snapshot
-  candidates      jsonb,                                     -- nullable; ranked top-3 stored when status='pending_call_selection'
-                                                             -- shape: [{ id: uuid, code, title, score, why }]; cleared once selectedCallId resolves
-  title           varchar(1000) NOT NULL,                    -- derived from intent.projectDescription
-  status          artifact_status_enum NOT NULL,
-  is_active       boolean NOT NULL DEFAULT true,
-  created_at      timestamptz NOT NULL DEFAULT now(),
-  updated_at      timestamptz NOT NULL DEFAULT now(),
-  deleted_at      timestamptz
+  id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id              uuid NOT NULL REFERENCES projects(id),
+  user_id                 uuid NOT NULL REFERENCES users(id),
+  org_id                  uuid NOT NULL REFERENCES organizations(id),
+  call_id                 uuid REFERENCES calls_for_proposals(id),  -- nullable until match resolves
+  intent                  jsonb NOT NULL,                            -- IntentSchema snapshot
+  candidates              jsonb,                                     -- nullable; ranked top-3 stored when status='pending_call_selection'
+                                                                     -- shape: [{ id: uuid, code, title, score, why }]; cleared once selectedCallId resolves
+  title                   varchar(1000) NOT NULL,                    -- derived from intent.projectDescription
+  status                  artifact_status_enum NOT NULL,
+  is_active               boolean NOT NULL DEFAULT true,
+  idempotency_key         varchar(100),                              -- supplied on initial POST; null on artifacts created indirectly
+  idempotency_expires_at  timestamptz,                               -- service-layer enforces window
+  created_at              timestamptz NOT NULL DEFAULT now(),
+  updated_at              timestamptz NOT NULL DEFAULT now(),
+  deleted_at              timestamptz
 );
 CREATE UNIQUE INDEX idx_project_artifacts_one_active
   ON project_artifacts(project_id) WHERE is_active = true AND deleted_at IS NULL;
 CREATE INDEX idx_project_artifacts_user ON project_artifacts(user_id);
 CREATE INDEX idx_project_artifacts_call ON project_artifacts(call_id);
+-- Idempotency: plain UNIQUE on (user_id, idempotency_key) where key is non-null.
+-- The 24h window is enforced in service logic by comparing idempotency_expires_at to now()
+-- at request time (the partial-index-with-now() approach is rejected by Postgres because
+-- now() is not immutable). Expired keys may still occupy the row; an offline reaper job
+-- nulls idempotency_key when idempotency_expires_at < now() - interval '1 hour' so the
+-- slot becomes reusable.
+CREATE UNIQUE INDEX idx_project_artifacts_idempotency
+  ON project_artifacts(user_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 
 -- One per generation invocation. Multiple per artifact possible (e.g., regenerate-all).
+-- Idempotency lives on project_artifacts, not here: the initial POST is what gets de-duped,
+-- and a run only exists once an artifact has progressed past needs_input / needs_call_selection.
 CREATE TABLE generation_runs (
   id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   artifact_id              uuid NOT NULL REFERENCES project_artifacts(id),
@@ -186,8 +239,7 @@ CREATE TABLE generation_runs (
   sections_done            integer NOT NULL DEFAULT 0,
   model_config             jsonb NOT NULL,                 -- {model, maxTokens, temperature, ...}
   prompt_version           varchar(50) NOT NULL,
-  idempotency_key          varchar(100) NOT NULL,
-  idempotency_expires_at   timestamptz NOT NULL,
+  next_event_sequence      bigint NOT NULL DEFAULT 1,      -- atomic allocator for generation_run_events.sequence
   locked_by                varchar(100),                   -- worker id
   locked_until             timestamptz,
   heartbeat_at             timestamptz,
@@ -197,15 +249,19 @@ CREATE TABLE generation_runs (
   error_code               varchar(50),
   error_message            text
 );
-CREATE UNIQUE INDEX idx_generation_runs_idempotency
-  ON generation_runs(user_id, idempotency_key) WHERE idempotency_expires_at > now();
 CREATE INDEX idx_generation_runs_status ON generation_runs(status, heartbeat_at);
+CREATE INDEX idx_generation_runs_artifact ON generation_runs(artifact_id);
 
 -- Durable SSE event store. Single source of truth for run timeline.
+-- Sequence numbers are allocated atomically via generation_runs.next_event_sequence
+-- (row-locked UPDATE ... SET next_event_sequence = next_event_sequence + 1 ... RETURNING).
+-- This makes parallel section workers safe: each worker calls allocateSequence(runId)
+-- before INSERTing into this table, so two concurrent emissions cannot collide on the
+-- UNIQUE(run_id, sequence) constraint.
 CREATE TABLE generation_run_events (
   id          bigserial PRIMARY KEY,
   run_id      uuid NOT NULL REFERENCES generation_runs(id),
-  sequence    bigint NOT NULL,            -- monotonic per run
+  sequence    bigint NOT NULL,            -- monotonic per run; allocated via row-locked UPDATE
   event_type  varchar(50) NOT NULL,
   payload     jsonb NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now()
@@ -214,9 +270,11 @@ CREATE UNIQUE INDEX idx_generation_run_events_seq ON generation_run_events(run_i
 CREATE INDEX idx_generation_run_events_run_time ON generation_run_events(run_id, created_at);
 
 -- Section content. Replaces agent_sections.
+-- The composite UNIQUE CONSTRAINT (artifact_id, section_key) is the FK target for
+-- artifact_section_versions and artifact_placeholders below.
 CREATE TABLE artifact_sections (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  artifact_id         uuid NOT NULL REFERENCES project_artifacts(id),
+  artifact_id         uuid NOT NULL REFERENCES project_artifacts(id) ON DELETE CASCADE,
   section_key         varchar(100) NOT NULL,
   title               varchar(500) NOT NULL,
   display_order       integer NOT NULL,
@@ -225,30 +283,34 @@ CREATE TABLE artifact_sections (
   generation_meta     jsonb,                                -- {model, latencyMs, tokenUsage, sourcesUsed[]}
   generation_run_id   uuid REFERENCES generation_runs(id),
   created_at          timestamptz NOT NULL DEFAULT now(),
-  updated_at          timestamptz NOT NULL DEFAULT now()
+  updated_at          timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT uq_artifact_sections_natural UNIQUE (artifact_id, section_key)
 );
-CREATE UNIQUE INDEX idx_artifact_sections_unique ON artifact_sections(artifact_id, section_key);
 CREATE INDEX idx_artifact_sections_run ON artifact_sections(generation_run_id);
 
 -- Immutable version history. Written on every change.
+-- Composite FK to artifact_sections(artifact_id, section_key) prevents orphan versions.
 CREATE TABLE artifact_section_versions (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  artifact_id         uuid NOT NULL REFERENCES project_artifacts(id),
+  artifact_id         uuid NOT NULL,
   section_key         varchar(100) NOT NULL,
   version_number      integer NOT NULL,
   status_at_snapshot  artifact_section_status_enum NOT NULL,
   markdown            text NOT NULL,                        -- only ready/edited outcomes snapshotted
   generation_meta     jsonb,
   created_by          uuid REFERENCES users(id),            -- null for system
-  created_at          timestamptz NOT NULL DEFAULT now()
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  FOREIGN KEY (artifact_id, section_key)
+    REFERENCES artifact_sections(artifact_id, section_key) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX idx_artifact_section_versions_unique
   ON artifact_section_versions(artifact_id, section_key, version_number);
 
 -- Placeholders. Value folded in (no separate _values table for v1).
+-- Composite FK to artifact_sections(artifact_id, section_key) prevents orphan placeholders.
 CREATE TABLE artifact_placeholders (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  artifact_id     uuid NOT NULL REFERENCES project_artifacts(id),
+  artifact_id     uuid NOT NULL,
   section_key     varchar(100) NOT NULL,
   placeholder_id  varchar(100) NOT NULL,                    -- the {{id}} token
   label           varchar(500) NOT NULL,
@@ -260,7 +322,9 @@ CREATE TABLE artifact_placeholders (
   filled_by       uuid REFERENCES users(id),
   filled_at       timestamptz,
   created_at      timestamptz NOT NULL DEFAULT now(),
-  updated_at      timestamptz NOT NULL DEFAULT now()
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  FOREIGN KEY (artifact_id, section_key)
+    REFERENCES artifact_sections(artifact_id, section_key) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX idx_artifact_placeholders_unique
   ON artifact_placeholders(artifact_id, section_key, placeholder_id);
@@ -432,6 +496,12 @@ GET  /api/v1/projects/{projectId}/export?format=docx|md
   - substitutes filled tokens; renders unfilled tokens as visibly highlighted markers
   - DOCX: pipes through lib/export/docx.ts
   - MD: concatenates sections with H1 titles + anchor IDs
+  - partial_failed artifact behavior: ready and edited sections are rendered normally;
+    failed sections are NOT omitted from the document — they appear in their display_order
+    position as a short generated warning block (Romanian/English per artifact locale):
+      "⚠ Această secțiune nu a putut fi generată. Folosiți butonul «Regenerează»
+       din vizualizatorul proiectului pentru a încerca din nou."
+    Export does not block on partial_failed; the warning surfaces the gap in the output itself.
 ```
 
 ## 7. Intent schema
@@ -440,7 +510,10 @@ GET  /api/v1/projects/{projectId}/export?format=docx|md
 
 ```ts
 {
-  orgType: "srl" | "pfa" | "sa" | "ong" | "pmf" | "persoana_fizica" | null;
+  // Must match the DB orgTypeEnum exactly (app/src/lib/db/schema.ts:9).
+  // Extractor normalizes free-text inputs ("microîntreprindere", "firma mea SRL", etc.)
+  // to one of these values. Unknown inputs surface as null → triggers needs_input.
+  orgType: "srl" | "sa" | "pfa" | "ong" | "uat" | "institutie_publica" | "altul" | null;
   region:  string | null;                  // normalized NUTS-2 code
   projectDescription: string | null;
 }
@@ -473,7 +546,9 @@ If any essential field is null after extraction, the API returns `needs_input` w
 ```
 Stage A — Deterministic DB filter:
   SELECT * FROM calls_for_proposals
-  WHERE status = 'open'
+  WHERE status = 'deschis'           -- callStatusEnum: ['previzionat','deschis','in_evaluare','inchis','anulat']
+                                     -- 'deschis' = currently accepting submissions; the only matchable status for v1.
+                                     -- Configurable via env MATCH_INCLUDE_STATUSES if planning/upcoming calls matter later.
     AND submission_end > now()
     AND (eligible_types IS NULL OR intent.orgType = ANY(eligible_types))
     AND (eligible_regions IS NULL OR intent.region = ANY(eligible_regions))
@@ -508,11 +583,13 @@ Decision:
 ### 9.1 Section spec resolution
 
 ```
-sectionList = section_specs.DEFAULTS                           // 11 specs from section-specs.ts
-overrides   = callKnowledge.metadata.sectionOverrides ?? {}    // per-call optional
+sectionList = section_specs.DEFAULTS                                 // 11 specs from section-specs.ts
+overrides   = callKnowledge.normalized.sectionOverrides ?? {}        // per-call optional; nested under existing normalized jsonb
 sectionList = applyOverrides(sectionList, overrides)
   // overrides may: drop a section, add a custom section, change dependsOn / displayOrder
 ```
+
+The `callKnowledge` row is loaded by canonical UUID match: `WHERE canonical_call_id = $1`. The schema's existing `normalized jsonb` (default `{}`) is the home for `sectionOverrides`; no new column required.
 
 ### 9.2 Per-section generation contract
 
@@ -576,7 +653,7 @@ Validation enforced at the service-layer write to `artifact_sections` + `artifac
 
 2. **`patch-qdrant-payloads.ts`** — consumes the audit, patches resolvable points to add canonical `call_id` UUID + `call_code` payload fields. Tags orphans with `orphan: true`. Idempotent. `--dry-run` / `--confirm` gate.
 
-3. **`backfill-call-knowledge-ids.ts`** — re-keys `call_knowledge` rows from their current hash/code key to canonical UUID. Backs up rows before migration. `--dry-run` / `--confirm` gate.
+3. **`backfill-call-knowledge-ids.ts`** — populates a new `canonical_call_id uuid REFERENCES calls_for_proposals(id)` column on `call_knowledge`, resolving from the existing `call_id text` via the same audit-output mapping used by the Qdrant patcher. Backs up rows before migration. `--dry-run` / `--confirm` gate. Schema migration paired with the script: `ALTER TABLE call_knowledge ADD COLUMN canonical_call_id uuid REFERENCES calls_for_proposals(id); CREATE INDEX idx_call_knowledge_canonical ON call_knowledge(canonical_call_id);`. The text `call_id` column stays for one observation window after M2 then is dropped in a follow-up migration once code reads canonical_call_id exclusively.
 
 **Modified script:**
 - `bulk-ingest-rag-knowledge.ts` — adds `--strict` mode (default ON post-M1). Every new chunk must reference an existing `calls_for_proposals` row by `id` or `call_code`. Fails loudly on miss.
@@ -590,7 +667,7 @@ Validation enforced at the service-layer write to `artifact_sections` + `artifac
 ### M2 — Backend pipeline (no UI)
 
 Build order:
-1. Drizzle migration `0042_artifact_pipeline.sql` (seven tables + four enums + indexes)
+1. Drizzle migration `0042_artifact_pipeline.sql` (six tables + four enums + indexes; plus the `call_knowledge.canonical_call_id` column added in M1's `backfill-call-knowledge-ids.ts` paired migration)
 2. **Canonical identity helpers + assertions** — small library used by every consumer to enforce the M1 contract at the application layer
 3. `lib/ai/intent/extract.ts`
 4. `lib/calls/match.ts`
@@ -765,9 +842,8 @@ End-to-end through real Postgres + stubbed provider. Each is one user-visible sc
 Resolved during brainstorm; flagged here only so they don't get lost during writing-plans:
 
 - The exact NUTS-2 normalization library / lookup data — verify whether a Romanian-specific gazetteer is bundled or external API. (M2-step-3 spike, ~2 hours.)
-- The `orgTypeEnum` actually defined in `schema.ts` vs the intent schema's union — confirm `pmf` membership before locking the intent extractor's enum mapping. (M2-step-3 spike, ~30 min.)
 - DOCX placeholder highlight style — exact OOXML attributes (yellow shading? square brackets? both?) to be designed during M2-step-10. UX-cheap, infra-trivial.
-- Per-call section overrides format inside `callKnowledge.metadata.sectionOverrides` — finalize the JSON schema during M2-step-2 (canonical identity helpers); not a v1 blocker since defaults work alone.
+- Per-call section overrides JSON schema inside `callKnowledge.normalized.sectionOverrides` — finalize during M2-step-2 (canonical identity helpers); not a v1 blocker since the 11 defaults work alone when no override is present.
 
 ## 15. References
 
