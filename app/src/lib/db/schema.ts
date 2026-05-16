@@ -844,6 +844,7 @@ export const callKnowledgeStatusEnum = pgEnum('call_knowledge_status', [
 export const callKnowledge = pgTable('call_knowledge', {
   id: uuid('id').primaryKey().defaultRandom(),
   callId: text('call_id').notNull(),
+  canonicalCallId: uuid('canonical_call_id').references(() => callsForProposals.id),
   program: text('program').notNull(),
   callTitle: text('call_title').notNull(),
   normalized: jsonb('normalized').notNull().default({}),
@@ -859,6 +860,7 @@ export const callKnowledge = pgTable('call_knowledge', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   uniqCallId: uniqueIndex('idx_call_knowledge_call_id').on(table.callId),
+  idxCanonical: index('idx_call_knowledge_canonical').on(table.canonicalCallId),
   idxProgram: index('idx_call_knowledge_program').on(table.program),
   idxContentExtracted: index('idx_call_knowledge_content_extracted').on(table.contentExtractedAt),
   idxFreshnessChecked: index('idx_call_knowledge_freshness_checked').on(table.freshnessCheckedAt),

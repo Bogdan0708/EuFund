@@ -295,6 +295,13 @@
       "when": 1778803200005,
       "tag": "0041_v3_chat_model_sonnet_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1778803200006,
+      "tag": "0042_call_knowledge_canonical_id",
+      "breakpoints": true
     }
   ]
 }
