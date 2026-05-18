@@ -19,6 +19,7 @@ import {
 } from '@/lib/ai/agent/managed/session-metadata'
 import { claimTurn, deleteEmptyTurn } from '@/lib/ai/agent/managed/history'
 import { bridgeStructuredAction } from '@/lib/ai/agent/managed/bridge'
+import { createSafeSSEController } from '@/lib/ai/agent/sse-controller'
 import { logAudit } from '@/lib/legal/audit'
 
 const log = logger.child({ component: 'api-agent' })
@@ -495,27 +496,31 @@ function runV3WithSSE(
   turnId: string,
 ): Response {
   // Stream response via SSE
-  const encoder = new TextEncoder()
-  const stream = new ReadableStream({
+  let sseRef: ReturnType<typeof createSafeSSEController<AgentEvent>> | null = null
+  const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const emit = (event: AgentEvent) => {
-        const data = `data: ${JSON.stringify(event)}\n\n`
-        controller.enqueue(encoder.encode(data))
-      }
+      const sse = createSafeSSEController<AgentEvent>(controller, { sessionId: session.id })
+      sseRef = sse
+      const emit = (event: AgentEvent) => sse.emit(event)
 
       try {
         const routingCtx = await getAIModelRoutingContext(user.id)
         await runAgentTurn({ session, sections, request: body, emit, routingCtx, turnId, focusedSectionKey: body.focusedSectionKey })
       } catch (error) {
-        const errorEvent: AgentEvent = {
+        sse.emit({
           type: 'error',
           message: error instanceof Error ? error.message : 'Internal error',
           retryable: true,
-        }
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`))
+        })
       } finally {
-        controller.close()
+        sse.close()
       }
+    },
+    cancel() {
+      // Consumer disconnected (Cloud Run 300s timeout, client navigation, browser
+      // close). Flip the closed flag so any in-flight emit from the still-running
+      // runtime is a silent no-op instead of a noisy InvalidStateError.
+      sseRef?.markClosed()
     },
   })
 
@@ -535,14 +540,16 @@ function runManagedWithSSE(
   user: { id: string },
   turnId: string,
 ): Response {
-  const encoder = new TextEncoder()
   let firstByteFlushed = false
+  let sseRef: ReturnType<typeof createSafeSSEController<AgentEvent>> | null = null
 
-  const stream = new ReadableStream({
+  const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const sse = createSafeSSEController<AgentEvent>(controller, { sessionId: session.id })
+      sseRef = sse
       const emit = (event: AgentEvent) => {
         firstByteFlushed = true
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+        sse.emit(event)
       }
 
       // Lazy-create the app_agent_sessions row on first managed attempt.
@@ -704,18 +711,17 @@ function runManagedWithSSE(
         const msg = firstByteFlushed
           ? 'Agent encountered a problem mid-response. Please retry.'
           : 'Agent temporarily unavailable, please retry.'
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({
-              type: 'error',
-              message: msg,
-              retryable: true,
-            })}\n\n`,
-          ),
-        )
+        sse.emit({
+          type: 'error',
+          message: msg,
+          retryable: true,
+        })
       } finally {
-        controller.close()
+        sse.close()
       }
+    },
+    cancel() {
+      sseRef?.markClosed()
     },
   })
 
