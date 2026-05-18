@@ -16,6 +16,14 @@ export const logger = pino({
     ],
     remove: true,
   },
+  // Default pino emits {} for Error instances because own-enumerable props are
+  // empty. Wire stdSerializers.err for both common keys so log.error({ error })
+  // produces { name, message, stack, code, ... } instead of dropping context
+  // (May 18 2026 prod incident: Redis rate-limit fail logged `error: {}`).
+  serializers: {
+    err: pino.stdSerializers.err,
+    error: pino.stdSerializers.err,
+  },
   timestamp: () => `,"time":"${new Date().toISOString()}"`,
   ...(isDevelopment ? {} : {
     formatters: {

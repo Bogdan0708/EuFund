@@ -20,6 +20,11 @@ export const GET = withRateLimit(
     maxRequests: 12,
     windowMs: 60 * 1000,
     messageRo: 'Prea multe verificări de stare. Vă rugăm să încercați din nou mai târziu.',
+    // Readiness must answer even if Redis is down. On Cloud Run cold-start the
+    // Redis client connects lazily; the first request can race the connect and
+    // throw, which used to return 429 and broke load-balancer health checks.
+    // The probe still serves its DDoS-mitigation purpose when Redis is healthy.
+    failOpenOnError: true,
   },
   readyHandler
 );
