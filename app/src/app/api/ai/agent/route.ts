@@ -413,7 +413,7 @@ async function handler(req: NextRequest) {
         }
         const v3Claim1 = await claimV3OrConflict(session.id, user.id, body.requestId)
         if (v3Claim1.kind === 'conflict') return v3Claim1.response
-        return runV3WithSSE(session, sections, body, user, v3Claim1.turnId)
+        return runV3WithSSE(session, sections, body, user, v3Claim1.turnId, req.signal)
       }
 
       // Pre-stream turn-claim. The INSERT either succeeds atomically
@@ -441,7 +441,7 @@ async function handler(req: NextRequest) {
           { status: 409 },
         )
       }
-      return runManagedWithSSE(session, sections, body, user, claim.turnId)
+      return runManagedWithSSE(session, sections, body, user, claim.turnId, req.signal)
     }
     // Breaker is open — degrade to V3 (unless this is a preselected session,
     // in which case V3 would ignore the bootstrap context and re-run discovery).
@@ -485,8 +485,14 @@ async function handler(req: NextRequest) {
 
   const v3Claim2 = await claimV3OrConflict(session.id, user.id, body.requestId)
   if (v3Claim2.kind === 'conflict') return v3Claim2.response
-  return runV3WithSSE(session, sections, body, user, v3Claim2.turnId)
+  return runV3WithSSE(session, sections, body, user, v3Claim2.turnId, req.signal)
 }
+
+// Soft deadline for one agent turn. Cloud Run terminates the request at 300s;
+// we bail ~30s earlier so the runtime has time to emit a graceful "ask me to
+// continue" message and persist a final assistant text row. The deadline is
+// checked at the top of every tool-loop iteration in both V3 and managed.
+const TURN_DEADLINE_MS = 270_000
 
 function runV3WithSSE(
   session: AgentSession,
@@ -494,18 +500,29 @@ function runV3WithSSE(
   body: AgentRequest,
   user: { id: string },
   turnId: string,
+  reqSignal: AbortSignal,
 ): Response {
   // Stream response via SSE
+  const deadlineAt = Date.now() + TURN_DEADLINE_MS
   let sseRef: ReturnType<typeof createSafeSSEController<AgentEvent>> | null = null
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const sse = createSafeSSEController<AgentEvent>(controller, { sessionId: session.id })
       sseRef = sse
+      // The req.signal also flips the closed flag — Cloud Run usually fires
+      // signal abort before the stream cancel hook on hard timeouts. Wiring
+      // both means the runtime's next emit no-ops as early as possible.
+      reqSignal.addEventListener('abort', () => sse.markClosed(), { once: true })
       const emit = (event: AgentEvent) => sse.emit(event)
 
       try {
         const routingCtx = await getAIModelRoutingContext(user.id)
-        await runAgentTurn({ session, sections, request: body, emit, routingCtx, turnId, focusedSectionKey: body.focusedSectionKey })
+        await runAgentTurn({
+          session, sections, request: body, emit, routingCtx, turnId,
+          focusedSectionKey: body.focusedSectionKey,
+          signal: reqSignal,
+          deadlineAt,
+        })
       } catch (error) {
         sse.emit({
           type: 'error',
@@ -539,7 +556,9 @@ function runManagedWithSSE(
   body: AgentRequest,
   user: { id: string },
   turnId: string,
+  reqSignal: AbortSignal,
 ): Response {
+  const deadlineAt = Date.now() + TURN_DEADLINE_MS
   let firstByteFlushed = false
   let sseRef: ReturnType<typeof createSafeSSEController<AgentEvent>> | null = null
 
@@ -547,6 +566,7 @@ function runManagedWithSSE(
     async start(controller) {
       const sse = createSafeSSEController<AgentEvent>(controller, { sessionId: session.id })
       sseRef = sse
+      reqSignal.addEventListener('abort', () => sse.markClosed(), { once: true })
       const emit = (event: AgentEvent) => {
         firstByteFlushed = true
         sse.emit(event)
@@ -598,6 +618,8 @@ function runManagedWithSSE(
           serviceCtx,
           turnId,
           focusedSectionKey: body.focusedSectionKey,
+          signal: reqSignal,
+          deadlineAt,
         })
         firstOutputPersisted = result.firstOutputPersisted
 

@@ -546,6 +546,86 @@ describe('V3 runtime — cap path forces synthesis when no text was persisted', 
     expect(writes[0][1].content).toBe('Am generat secțiunea A. Vrei să continui cu secțiunea B?')
   })
 
+  it('breaks the loop with a graceful continuation message when deadlineAt is in the past', async () => {
+    // Cloud Run hard-terminates at 300s. The runtime checks deadlineAt at the
+    // top of every tool-loop iteration so a long turn bails ~30s earlier with
+    // a localized "ask me to continue" message instead of being silently cut.
+    generateMock.mockReset()
+    // No model call should fire: deadline check trips on iteration 1.
+
+    const events: AgentEvent[] = []
+    await runAgentTurn({
+      session: makeSession({ locale: 'ro' }),
+      sections: [],
+      request: makeRequest('?'),
+      emit: (e) => events.push(e),
+      turnId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      deadlineAt: Date.now() - 1, // already past
+    })
+
+    expect(generateMock).toHaveBeenCalledTimes(0)
+    const writes = appendMessageMock.mock.calls.filter(
+      (args) => args[1]?.role === 'assistant' && args[1]?.messageType === 'text',
+    )
+    expect(writes).toHaveLength(1)
+    expect(writes[0][1].content).toMatch(/continuă/i)
+
+    // text_delta carries the same continuation message
+    const textDeltas = events.filter((e) => e.type === 'text_delta') as Extract<
+      AgentEvent,
+      { type: 'text_delta' }
+    >[]
+    expect(textDeltas[0].content).toMatch(/continuă/i)
+  })
+
+  it('emits the English continuation message when locale=en and deadline expires', async () => {
+    generateMock.mockReset()
+
+    const events: AgentEvent[] = []
+    await runAgentTurn({
+      session: makeSession({ locale: 'en' }),
+      sections: [],
+      request: makeRequest('?'),
+      emit: (e) => events.push(e),
+      turnId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      deadlineAt: Date.now() - 1,
+    })
+
+    const writes = appendMessageMock.mock.calls.filter(
+      (args) => args[1]?.role === 'assistant' && args[1]?.messageType === 'text',
+    )
+    expect(writes).toHaveLength(1)
+    expect(writes[0][1].content).toMatch(/continue/i)
+  })
+
+  it('breaks silently when the AbortSignal is already aborted (no audience, no forced synthesis)', async () => {
+    // Client disconnected (Cloud Run aborted, browser closed). The SSE wrapper
+    // has already started suppressing writes; the runtime should not bother
+    // making another LLM call to "synthesize" a response no one will see.
+    generateMock.mockReset()
+
+    const controller = new AbortController()
+    controller.abort()
+
+    const events: AgentEvent[] = []
+    await runAgentTurn({
+      session: makeSession(),
+      sections: [],
+      request: makeRequest('?'),
+      emit: (e) => events.push(e),
+      turnId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+      signal: controller.signal,
+    })
+
+    // No LLM calls. No forced synthesis.
+    expect(generateMock).toHaveBeenCalledTimes(0)
+    // No assistant text persisted (silent break).
+    const writes = appendMessageMock.mock.calls.filter(
+      (args) => args[1]?.role === 'assistant' && args[1]?.messageType === 'text',
+    )
+    expect(writes).toHaveLength(0)
+  })
+
   it('does NOT force a synthesis call when the model returned text before hitting the cap', async () => {
     // Reset: first iteration emits text only — break before max iter.
     generateMock.mockReset()

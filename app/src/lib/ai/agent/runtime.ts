@@ -68,6 +68,16 @@ export interface RuntimeOptions {
   // reconciliation cron can distinguish completed turns from abandoned ones.
   turnId: string
   focusedSectionKey?: string
+  // Fires when the route handler observes consumer cancellation (client
+  // navigated away, Cloud Run aborted the request, AbortSignal.timeout
+  // tripped, etc). The tool loop checks this before each iteration and each
+  // tool dispatch and breaks silently — the SSE wrapper has already started
+  // suppressing writes so there's no user to inform.
+  signal?: AbortSignal
+  // Soft deadline in epoch ms. Distinct from `signal` because the runtime
+  // wants to *tell* the user it's stopping (graceful continuation message)
+  // rather than just exit. Set to ~30s before the hard Cloud Run timeout.
+  deadlineAt?: number
 }
 
 // V3 doesn't track per-turn token usage or cost the way managed does.
@@ -368,9 +378,51 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     // between them. See May 18 2026 prod incident in agent-runtime logs.
     let generateSectionCount = 0
     const GENERATE_SECTION_PER_TURN_CAP = 1
+    let deadlineBailoutEmitted = false
+
+    // Returns 'deadline' when we should emit a graceful continuation message,
+    // 'aborted' for silent break (client gone, no audience), or null to proceed.
+    const checkBail = (): 'deadline' | 'aborted' | null => {
+      if (opts.deadlineAt != null && Date.now() >= opts.deadlineAt) return 'deadline'
+      if (opts.signal?.aborted) return 'aborted'
+      return null
+    }
+
+    const handleDeadline = async () => {
+      if (deadlineBailoutEmitted) return
+      deadlineBailoutEmitted = true
+      const msg = session.locale === 'ro'
+        ? 'Am atins limita de timp pentru această tură. Scrie "continuă" și voi prelua de unde am rămas.'
+        : 'I\'ve reached the time budget for this turn. Send "continue" and I\'ll pick up where I left off.'
+      try {
+        emit({ type: 'text_delta', content: msg })
+        await appendMessage(session.id, {
+          role: 'assistant',
+          messageType: 'text',
+          content: msg,
+          turnId: opts.turnId,
+        })
+        assistantTextPersistedThisTurn = true
+      } catch (err) {
+        log.warn(
+          { sessionId: session.id, error: err instanceof Error ? err.message : String(err) },
+          'deadline bail-out emit failed',
+        )
+      }
+    }
 
     while (iteration < MAX_TOOL_ITERATIONS) {
       iteration++
+
+      const bailReason = checkBail()
+      if (bailReason === 'deadline') {
+        await handleDeadline()
+        break
+      }
+      if (bailReason === 'aborted') {
+        log.info({ sessionId: session.id, iteration }, 'V3 turn aborted by signal — exiting tool loop')
+        break
+      }
 
       const response = await generate({
         provider: 'anthropic',
@@ -657,7 +709,14 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
     // output, using the accumulated llmMessages so it has all the tool results
     // it just collected. If that call fails or returns empty, fall back to a
     // localized message so the user always sees SOMETHING.
-    if (!assistantTextPersistedThisTurn) {
+    // Skip the forced synthesis call when the turn was aborted by signal —
+    // the consumer is gone, the SSE controller is closed, and another LLM
+    // round-trip is pure waste. Deadline path already wrote a message and
+    // set assistantTextPersistedThisTurn, so this branch is only reached
+    // for aborted-but-no-deadline cases.
+    if (!assistantTextPersistedThisTurn && opts.signal?.aborted) {
+      log.info({ sessionId: session.id }, 'V3 turn aborted; skipping forced synthesis')
+    } else if (!assistantTextPersistedThisTurn) {
       const capHit = iteration >= MAX_TOOL_ITERATIONS
       log.info(
         { sessionId: session.id, iteration, capHit, requestId: request.requestId },

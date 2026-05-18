@@ -110,6 +110,13 @@ export interface ManagedRuntimeOptions {
   // row before opening the SSE Response and passes the id in here.
   turnId: string
   focusedSectionKey?: string
+  // Fires on consumer cancellation (client disconnect, Cloud Run 300s
+  // timeout, AbortSignal.timeout). Checked at the top of each iteration.
+  signal?: AbortSignal
+  // Soft deadline epoch ms — set to ~30s before the hard timeout. Distinct
+  // from `signal` so the runtime emits a graceful continuation message
+  // rather than exiting silently.
+  deadlineAt?: number
 }
 
 export interface ManagedTurnResult {
@@ -292,6 +299,21 @@ export async function runManagedTurn(opts: ManagedRuntimeOptions): Promise<Manag
 
   while (iterationCount < MAX_ITER) {
     iterationCount += 1
+
+    // Bail if the consumer is gone or we are past the soft deadline. Emit a
+    // graceful continuation message on deadline; silent break on plain abort.
+    // Checked at the top of each iteration — a single stream can take 60s+,
+    // pushing a long turn past the budget mid-loop.
+    if (opts.deadlineAt != null && Date.now() >= opts.deadlineAt) {
+      const msg = session.locale === 'ro'
+        ? 'Am atins limita de timp pentru această tură. Scrie "continuă" și voi prelua de unde am rămas.'
+        : 'I\'ve reached the time budget for this turn. Send "continue" and I\'ll pick up where I left off.'
+      emit({ type: 'text_delta', content: msg })
+      break
+    }
+    if (opts.signal?.aborted) {
+      break
+    }
 
     const stream = anthropic.messages.stream({
       model: MODEL,
