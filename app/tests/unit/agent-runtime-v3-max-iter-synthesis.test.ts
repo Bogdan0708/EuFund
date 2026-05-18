@@ -452,6 +452,100 @@ describe('V3 runtime — cap path forces synthesis when no text was persisted', 
     expect(toolResults[0].content).toMatch(/outline/i)
   })
 
+  it('caps generate_section to 1 per turn, blocks the second call with a synthetic tool_result', async () => {
+    // Prod incident 2026-05-18: V3 drafting turn chained 4 Opus generate_section
+    // calls (66s + 55s + 61s + 67s) and exceeded Cloud Run's 300s timeout.
+    // Cap enforces at most one generate_section per turn; the model must ask
+    // the user before generating the next section.
+    generateMock.mockReset()
+
+    const generateSectionShim = {
+      name: 'generate_section',
+      category: 'generation' as const,
+      description: 'fake generate_section for cap test',
+      inputSchema: z.object({ sectionKey: z.string() }),
+      execute: vi.fn().mockResolvedValue({
+        success: true,
+        data: { content: '# Section A\nContent.', model: 'claude-opus-4-6' },
+        telemetry: { latencyMs: 50 },
+      }),
+      timeout: 5_000,
+    }
+    getToolsForPhaseMock.mockReturnValue([generateSectionShim])
+
+    // Iteration 1: model asks for section A AND section B in parallel.
+    // The first call must execute; the second must be blocked by the cap.
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      toolCalls: [
+        { id: 'tc-a', name: 'generate_section', arguments: '{"sectionKey":"a"}' },
+        { id: 'tc-b', name: 'generate_section', arguments: '{"sectionKey":"b"}' },
+      ],
+    })
+    // Iteration 2: model sees the cap result and responds with text inviting
+    // the user to continue on the next turn.
+    generateMock.mockResolvedValueOnce({
+      content: 'Am generat secțiunea A. Vrei să continui cu secțiunea B?',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+
+    const events: AgentEvent[] = []
+    await runAgentTurn({
+      // Drafting-ready session: outline approved, frozen, eligibility clean.
+      session: makeSession({
+        currentPhase: 'drafting',
+        outline: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] as unknown as AgentSession['outline'],
+        outlineFrozen: true,
+        eligibility: { failCount: 0 } as unknown as AgentSession['eligibility'],
+      }),
+      sections: [],
+      request: makeRequest('draft sections A and B'),
+      emit: (e) => events.push(e),
+      turnId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    })
+
+    // The tool ran exactly once — the second call was rejected before dispatch
+    expect(generateSectionShim.execute).toHaveBeenCalledTimes(1)
+    const executedArg = generateSectionShim.execute.mock.calls[0][0]
+    expect(executedArg.sectionKey).toBe('a')
+
+    // policy_violation event fired for the capped second call
+    const violations = events.filter((e) => e.type === 'policy_violation') as Extract<
+      AgentEvent,
+      { type: 'policy_violation' }
+    >[]
+    expect(violations).toHaveLength(1)
+    expect(violations[0].gate).toBe('generate_section')
+    expect(violations[0].reason).toMatch(/GENERATE_SECTION_PER_TURN_CAP/)
+
+    // The follow-up generate() call sees a balanced messages list: the assistant
+    // tool_use for both A and B must each have a matching tool_result.
+    expect(generateMock).toHaveBeenCalledTimes(2)
+    const followupCall = generateMock.mock.calls[1][0]
+    const toolResultsForA = followupCall.messages.filter(
+      (m: { role: string; tool_call_id?: string }) => m.role === 'tool' && m.tool_call_id === 'tc-a',
+    )
+    const toolResultsForB = followupCall.messages.filter(
+      (m: { role: string; tool_call_id?: string }) => m.role === 'tool' && m.tool_call_id === 'tc-b',
+    )
+    expect(toolResultsForA).toHaveLength(1)
+    expect(toolResultsForB).toHaveLength(1)
+    expect(toolResultsForA[0].content).toMatch(/"success":true/)
+    expect(toolResultsForB[0].content).toMatch(/GENERATE_SECTION_PER_TURN_CAP/)
+
+    // User-facing text is the invitation, not the cap error.
+    const writes = appendMessageMock.mock.calls.filter(
+      (args) => args[1]?.role === 'assistant' && args[1]?.messageType === 'text',
+    )
+    expect(writes).toHaveLength(1)
+    expect(writes[0][1].content).toBe('Am generat secțiunea A. Vrei să continui cu secțiunea B?')
+  })
+
   it('does NOT force a synthesis call when the model returned text before hitting the cap', async () => {
     // Reset: first iteration emits text only — break before max iter.
     generateMock.mockReset()

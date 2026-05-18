@@ -360,6 +360,14 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
 
     const MAX_TOOL_ITERATIONS = chatToolsTrimmed ? 5 : 5
     let iteration = 0
+    // Per-turn cap on generate_section. Each call is a 60-70s Opus stream;
+    // chaining 4+ in one turn blows past Cloud Run's 300s timeout, the user
+    // sees nothing, and the runtime trips on the closed SSE controller. The
+    // model is told (via synthetic tool_result) to ask the user to continue,
+    // which turns one mega-turn into N normal turns with full state persisted
+    // between them. See May 18 2026 prod incident in agent-runtime logs.
+    let generateSectionCount = 0
+    const GENERATE_SECTION_PER_TURN_CAP = 1
 
     while (iteration < MAX_TOOL_ITERATIONS) {
       iteration++
@@ -466,6 +474,24 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
             continue
           }
 
+          // Per-turn cap: at most one generate_section per turn. A second call
+          // would run another 60-70s Opus stream and risk Cloud Run's 300s
+          // request timeout. Synthesize a tool_result telling the model to ask
+          // the user before generating the next section, and skip dispatch.
+          if (tool.name === 'generate_section' && generateSectionCount >= GENERATE_SECTION_PER_TURN_CAP) {
+            const capError =
+              'GENERATE_SECTION_PER_TURN_CAP: One section already generated in this turn. ' +
+              'Do not call generate_section again. Respond with text inviting the user, in their locale, ' +
+              'to confirm before generating the next section.'
+            emit({ type: 'policy_violation', gate: tool.name, reason: capError })
+            llmMessages.push({
+              role: 'tool',
+              content: JSON.stringify({ success: false, error: capError }),
+              tool_call_id: toolCall.id,
+            })
+            continue
+          }
+
           // Execute tool
           emit({ type: 'tool_start', tool: tool.name, input: {} })
 
@@ -507,6 +533,9 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
           }
 
           hasToolCalls = true
+          if (tool.name === 'generate_section' && toolResult.success) {
+            generateSectionCount++
+          }
 
           emit({
             type: 'tool_result',
