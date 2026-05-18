@@ -23,6 +23,17 @@ vi.mock('@/lib/vectors/store', () => ({
   getVectorStore: vi.fn(),
 }))
 
+// vi.mock factories are hoisted above any `const`, so we use vi.hoisted to
+// lift the mock fn initialization above the factory. The existing db/vector
+// mocks don't need this because they return functions that close over the
+// variable; we'd be assigning the variable directly.
+const { mockLookupCallProgramCode } = vi.hoisted(() => ({
+  mockLookupCallProgramCode: vi.fn(),
+}))
+vi.mock('@/lib/ai/agent/services/call-program', () => ({
+  lookupCallProgramCode: mockLookupCallProgramCode,
+}))
+
 vi.mock('@/lib/logger', () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
@@ -131,9 +142,12 @@ function makeEvidenceResult(overrides: Record<string, unknown> = {}) {
 describe('lookupBlueprint', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Default: empty DB rows, empty vector store
+    // Default: empty DB rows, empty vector store, unresolved programCode.
+    // Mirrors the historical unfiltered-fallback behavior so prior assertions
+    // remain meaningful without re-stating filter expectations.
     setupDbSelect([])
     setupVectorStore([])
+    mockLookupCallProgramCode.mockResolvedValue(null)
   })
 
   it('returns cached blueprint when confidence >= 0.4', async () => {
@@ -208,6 +222,10 @@ describe('lookupBlueprint', () => {
 
   it('falls back to broader Qdrant search when filtered search returns empty', async () => {
     setupDbSelect([])
+    // Resolve a programCode so the cache-miss branch actually attaches a
+    // filter. With no programCode the function would skip the fallback re-
+    // query (single unfiltered search, no point in re-doing the same call).
+    mockLookupCallProgramCode.mockResolvedValue('PNRR')
     const mockSearch = vi.fn()
       .mockResolvedValueOnce([])              // filtered search → empty
       .mockResolvedValueOnce([makeEvidenceResult()]) // broader search → results
@@ -250,6 +268,33 @@ describe('lookupBlueprint', () => {
 
     expect(result.cached).toBe(false)
     expect(result.rawEvidence!.length).toBeGreaterThan(0)
+  })
+
+  // ── Path-D filter behavior ───────────────────────────────────────────────
+  // The historical `{ callId }` filter was a no-op against bulk-ingested
+  // points (no payload key matched). lookupBlueprint now resolves the call
+  // → programCode and filters on the working axis.
+
+  it('filters cache-miss Qdrant search by resolved programCode', async () => {
+    setupDbSelect([])
+    mockLookupCallProgramCode.mockResolvedValue('POTJ')
+    const { mockSearch } = setupVectorStore([makeEvidenceResult()])
+
+    await lookupBlueprint(baseCtx, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+
+    expect(mockLookupCallProgramCode).toHaveBeenCalledWith('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+    expect(mockSearch.mock.calls[0][2]).toEqual({ programCode: 'POTJ' })
+  })
+
+  it('passes no filter and does not double-search when programCode is unresolvable', async () => {
+    setupDbSelect([])
+    mockLookupCallProgramCode.mockResolvedValue(null)
+    const { mockSearch } = setupVectorStore([])
+
+    await lookupBlueprint(baseCtx, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+
+    expect(mockSearch).toHaveBeenCalledTimes(1)
+    expect(mockSearch.mock.calls[0][2]).toBeUndefined()
   })
 })
 

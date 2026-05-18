@@ -16,6 +16,7 @@ import { eq } from 'drizzle-orm'
 import { getVectorStore } from '@/lib/vectors/store'
 import { logger } from '@/lib/logger'
 import { ExternalDependencyError } from './errors'
+import { lookupCallProgramCode } from './call-program'
 import type { ServiceContext } from './types'
 import type { CallBlueprint, SectionSpec } from '@/lib/ai/agent/types'
 import type { BlueprintLookupResult, BlueprintSaveResult, EvidenceChunk } from './types'
@@ -87,10 +88,17 @@ export async function lookupBlueprint(
     )
   }
 
+  // Filter on the call's parent programCode (same rationale as
+  // retrieveEvidence in evidence.ts): the historical `{ callId }` filter
+  // matched zero Qdrant points in production and degraded to unfiltered
+  // search via the fallback. Filtering by programCode actually narrows.
+  const programCode = await lookupCallProgramCode(callId)
+
   let results: Awaited<ReturnType<typeof store.search>>
   try {
-    results = await store.search(callId, 20, { callId })
-    if (results.length === 0) {
+    const filter = programCode ? { programCode } : undefined
+    results = await store.search(callId, 20, filter)
+    if (results.length === 0 && filter) {
       results = await store.search(callId, 20)
     }
   } catch (err) {

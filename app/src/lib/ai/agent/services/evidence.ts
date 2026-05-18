@@ -5,6 +5,7 @@
 import { getVectorStore } from '@/lib/vectors/store'
 import { logger } from '@/lib/logger'
 import { ExternalDependencyError } from './errors'
+import { lookupCallProgramCode } from './call-program'
 import type { ServiceContext } from './types'
 import type { CallMatch, EvidenceBundle, EvidenceChunk } from './types'
 
@@ -265,12 +266,23 @@ export async function retrieveEvidence(
 
   const searchQuery = opts.query ? `${callId} ${opts.query}` : callId
 
+  // Filter on the call's parent programCode — that's what bulk-ingest writes
+  // into Qdrant payloads. The historical `{ callId }` filter never matched a
+  // single point in production (no point carries `callId` in payload), so the
+  // function depended entirely on the unfiltered fallback. Filtering by
+  // programCode restores intentional narrowing for the ~76% of points that
+  // do carry an ingested programCode.
+  const programCode = await lookupCallProgramCode(callId)
+
   let results
   try {
-    results = await store.search(searchQuery, maxChunks * 2, { callId })
+    const filter = programCode ? { programCode } : undefined
+    results = await store.search(searchQuery, maxChunks * 2, filter)
 
-    // If filtered search returns nothing, try broader search
-    if (results.length === 0) {
+    // If filtered search returns nothing, try broader search. Keeps callers
+    // resilient when programCode lookup failed (returned null), the call's
+    // program has no indexed points, or filter+query intersection is empty.
+    if (results.length === 0 && filter) {
       results = await store.search(searchQuery, maxChunks * 2)
     }
   } catch (err) {

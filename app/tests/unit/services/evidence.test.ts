@@ -3,9 +3,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
 const mockSearch = vi.fn()
+// vi.mock factories are hoisted to the top of the file — referencing a
+// `const` declared below would fail with a temporal-dead-zone error. The
+// existing `mockSearch` pattern works because the factory returns a function
+// that closes over it (deferred read). For lookupCallProgramCode we'd be
+// assigning the variable directly into the exported shape, so use vi.hoisted
+// to lift the initialization above the mock factory.
+const { mockLookupCallProgramCode } = vi.hoisted(() => ({
+  mockLookupCallProgramCode: vi.fn(),
+}))
 
 vi.mock('@/lib/vectors/store', () => ({
   getVectorStore: vi.fn(() => ({ search: mockSearch })),
+}))
+
+vi.mock('@/lib/ai/agent/services/call-program', () => ({
+  lookupCallProgramCode: mockLookupCallProgramCode,
 }))
 
 vi.mock('@/lib/logger', () => ({
@@ -460,6 +473,9 @@ describe('searchCalls', () => {
 describe('retrieveEvidence', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Default: no programCode resolved → mirrors prior "unfiltered" behavior
+    // so existing assertions don't have to know about the helper.
+    mockLookupCallProgramCode.mockResolvedValue(null)
   })
 
   it('returns an EvidenceBundle with the correct callId', async () => {
@@ -506,5 +522,78 @@ describe('retrieveEvidence', () => {
     mockSearch.mockRejectedValue(new Error('Qdrant unavailable'))
 
     await expect(retrieveEvidence(baseCtx, 'CALL-001')).rejects.toBeInstanceOf(ExternalDependencyError)
+  })
+
+  // ── Path-D filter behavior ───────────────────────────────────────────────
+  // The `{ callId }` filter never matched a single Qdrant point in prod
+  // (28,078 points, 0 carry `callId` in payload). retrieveEvidence now
+  // resolves the call's parent programCode and filters on that — the axis
+  // that ~76% of points actually carry.
+
+  it('filters Qdrant search by programCode resolved from the call', async () => {
+    mockLookupCallProgramCode.mockResolvedValue('PNRR')
+    mockSearch.mockResolvedValue([
+      {
+        id: 'ev-1',
+        content: 'PNRR programme guide',
+        score: 0.9,
+        metadata: { documentType: 'ghid', programCode: 'PNRR' },
+      },
+    ])
+
+    await retrieveEvidence(baseCtx, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { maxChunks: 5 })
+
+    expect(mockLookupCallProgramCode).toHaveBeenCalledWith('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+    // First call uses the programCode filter
+    expect(mockSearch.mock.calls[0][2]).toEqual({ programCode: 'PNRR' })
+  })
+
+  it('falls back to unfiltered search when filtered programCode search returns empty', async () => {
+    mockLookupCallProgramCode.mockResolvedValue('PEO')
+    mockSearch
+      .mockResolvedValueOnce([]) // filtered → empty
+      .mockResolvedValueOnce([
+        {
+          id: 'ev-fallback',
+          content: 'Fallback content',
+          score: 0.6,
+          metadata: { documentType: 'unknown' },
+        },
+      ])
+
+    const bundle = await retrieveEvidence(baseCtx, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+
+    expect(mockSearch).toHaveBeenCalledTimes(2)
+    expect(mockSearch.mock.calls[0][2]).toEqual({ programCode: 'PEO' })
+    expect(mockSearch.mock.calls[1][2]).toBeUndefined()
+    expect(bundle.totalChunks).toBe(1)
+  })
+
+  it('passes no filter and does not double-search when programCode is unresolvable', async () => {
+    mockLookupCallProgramCode.mockResolvedValue(null)
+    mockSearch.mockResolvedValue([])
+
+    await retrieveEvidence(baseCtx, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')
+
+    // Single search, no filter — fallback re-query would be redundant.
+    expect(mockSearch).toHaveBeenCalledTimes(1)
+    expect(mockSearch.mock.calls[0][2]).toBeUndefined()
+  })
+
+  it('still resolves a programCode filter when callId is a non-UUID call_code like PDD/216', async () => {
+    // Documents the post-Codex-review fix: lookupCallProgramCode accepts the
+    // searchCalls fallback-chain identifiers (call_code, sourceId) — not just
+    // UUIDs. Without the multi-key resolver in call-program.ts, this case
+    // would silently degrade to unfiltered search even for the points we
+    // most want narrowed.
+    mockLookupCallProgramCode.mockResolvedValue('PDD')
+    mockSearch.mockResolvedValue([
+      { id: 'pdd-1', content: 'PDD content', score: 0.9, metadata: { documentType: 'ghid', programCode: 'PDD' } },
+    ])
+
+    await retrieveEvidence(baseCtx, 'PDD/216')
+
+    expect(mockLookupCallProgramCode).toHaveBeenCalledWith('PDD/216')
+    expect(mockSearch.mock.calls[0][2]).toEqual({ programCode: 'PDD' })
   })
 })
