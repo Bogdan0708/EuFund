@@ -224,6 +224,17 @@ export interface ToolContext {
    * mode) — persistence stays exclusive to PR 3 REST action endpoints.
    */
   chatToolsTrimmed?: boolean
+  /**
+   * Per-tool abort signal. Fires when (a) the parent runtime signal
+   * aborts (client disconnect, Cloud Run timeout, soft deadline expiry),
+   * or (b) the tool's own timeout elapses. Long-running tools — anything
+   * that streams an LLM or writes to the DB — MUST forward this to the
+   * provider SDK and check `signal.aborted` before every DB mutation so
+   * background work stops when the user is gone. Without it, the runtime's
+   * Promise.race timeout resolves the wait but leaves the underlying work
+   * running, burning Opus tokens for nobody and racing the DB on retry.
+   */
+  signal?: AbortSignal
 }
 
 export interface ToolDefinition<TInput = unknown, TOutput = unknown> {

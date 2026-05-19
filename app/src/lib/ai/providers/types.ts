@@ -7,6 +7,14 @@ export interface GenerateRequest {
   temperature?: number
   tools?: ToolSchema[]
   cache?: CacheOptions
+  /**
+   * External abort signal. When it aborts, the in-flight provider call is
+   * cancelled and no fallback is attempted (external cancellation means the
+   * caller no longer wants any response). Independent of the internal
+   * config.timeout — both can fire; the internal timer triggers fallback,
+   * the external signal does not.
+   */
+  signal?: AbortSignal
 }
 
 export interface GenerateResult {

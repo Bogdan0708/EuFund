@@ -66,9 +66,17 @@ export async function withRetry(
   config: ModelConfig,
   providers: Record<ProviderName, ProviderClient>,
   originalRequest?: GenerateRequest,
+  externalSignal?: AbortSignal,
 ): Promise<GenerateResult> {
+  // Fast path: caller is already cancelled, don't even start.
+  if (externalSignal?.aborted) {
+    throw Object.assign(new Error('aborted'), { name: 'AbortError' })
+  }
+
   const primaryController = new AbortController()
   let internalTimeoutFired = false
+  const onExternalAbort = () => primaryController.abort()
+  externalSignal?.addEventListener('abort', onExternalAbort, { once: true })
   const primaryTimer = setTimeout(() => {
     internalTimeoutFired = true
     primaryController.abort()
@@ -79,11 +87,17 @@ export async function withRetry(
   } catch (primaryErr) {
     clearTimeout(primaryTimer)
 
+    // External cancellation wins over retry: the caller no longer wants
+    // the response. Distinguishing this from an internal-timer abort is
+    // why we track them separately.
+    if (externalSignal?.aborted) throw primaryErr
     if (!isRetryable(primaryErr, internalTimeoutFired)) throw primaryErr
     if (!config.fallback || !originalRequest) throw primaryErr
 
     // Fallback: brand-new controller and timer. Old signal is NOT reused.
     const fallbackController = new AbortController()
+    const onExternalAbortFallback = () => fallbackController.abort()
+    externalSignal?.addEventListener('abort', onExternalAbortFallback, { once: true })
     const fallbackTimer = setTimeout(() => fallbackController.abort(), config.timeout)
     try {
       const fallbackProvider = providers[config.fallback.provider]
@@ -96,8 +110,10 @@ export async function withRetry(
       )
     } finally {
       clearTimeout(fallbackTimer)
+      externalSignal?.removeEventListener('abort', onExternalAbortFallback)
     }
   } finally {
     clearTimeout(primaryTimer)
+    externalSignal?.removeEventListener('abort', onExternalAbort)
   }
 }

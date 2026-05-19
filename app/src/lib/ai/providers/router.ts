@@ -80,11 +80,17 @@ export async function generate(req: GenerateRequest): Promise<GenerateResult> {
   const effectiveReq: GenerateRequest = { ...req, cache: resolvedCache }
 
   const provider = PROVIDERS[config.provider]
+  // Strip the external signal from the payload we pass downstream — provider
+  // adapters get their own internal-timer signal from withRetry. The external
+  // signal is threaded as withRetry's last arg so it can short-circuit retry
+  // (caller cancellation must not trigger fallback).
+  const { signal: externalSignal, ...payloadReq } = effectiveReq
   const result = await withRetry(
-    (signal) => provider.generate({ ...effectiveReq, provider: config.provider }, signal),
+    (signal) => provider.generate({ ...payloadReq, provider: config.provider }, signal),
     config,
     PROVIDERS,
-    effectiveReq,
+    payloadReq,
+    externalSignal,
   )
 
   // Router owns disabled cases by contract (§5.2). When resolveCacheState

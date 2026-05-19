@@ -8,7 +8,7 @@ import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { compactPreviousSections } from '../section-specs'
 import { db } from '@/lib/db'
 import { agentSectionVersions, agentSections } from '@/lib/db/schema'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, max } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 import { normalizeMarkdown } from '@/lib/markdown/proposal-markdown'
 import { findPatterns } from '@/lib/ai/knowledge/proposal-patterns'
@@ -173,7 +173,28 @@ OUTPUT: Write the section content directly. No JSON wrapping needed.`
       messages: [{ role: 'user', content: `Generate the "${spec.title}" section now.` }],
       temperature: 0.6,
       maxTokens: spec.expectedLength === 'long' ? 32_000 : spec.expectedLength === 'medium' ? 20_000 : 8_000,
+      // Forward the per-tool signal so the Anthropic SDK actually stops
+      // streaming when the runtime aborts (client disconnected, deadline
+      // hit, tool timeout). Without this, the Promise.race in runtime.ts
+      // resolves the wait while the underlying stream keeps producing
+      // tokens for nobody — the May 19 2026 prod incident where three
+      // sections completed at 259/275/286s after Cloud Run closed.
+      signal: ctx.signal,
     })
+
+    // The runtime may have aborted between when we kicked off the LLM call
+    // and when the response landed. If so, refuse to persist anything —
+    // the user can't see the result, and a later retry will produce a
+    // fresh version. Background DB writes after consumer-cancel are
+    // exactly what put unique-constraint pressure on agent_section_versions.
+    if (ctx.signal?.aborted) {
+      return {
+        success: false,
+        error: 'Aborted',
+        retryable: true,
+        telemetry: { latencyMs: Date.now() - start, model, provider: response.provider },
+      }
+    }
 
     const content = normalizeMarkdown(response.content.trim())
     if (!content || content.length < 50) {
@@ -186,30 +207,58 @@ OUTPUT: Write the section content directly. No JSON wrapping needed.`
     }
 
     // Save version to DB — create section row if needed, then insert version
+    // with race-safe allocation. Two concurrent generate_section calls used
+    // to compute the same versionNumber from `(retryCount || 0) + 1` and
+    // crash on uniq_agent_section_version_number. Wrap in a transaction with
+    // SELECT FOR UPDATE on the parent section row so concurrent writers
+    // serialize, then take max(versionNumber) + 1 like the rollback path.
     try {
-      let [existingSection] = await db.select()
-        .from(agentSections)
-        .where(and(eq(agentSections.sessionId, ctx.sessionId), eq(agentSections.sectionKey, input.sectionKey)))
-        .limit(1)
-
-      if (!existingSection) {
-        // Create section row so we have an ID for the version
-        const [created] = await db.insert(agentSections).values({
-          sessionId: ctx.sessionId,
-          sectionKey: input.sectionKey,
-          title: spec.title,
-          documentOrder: spec.order,
-          generationOrder: spec.generationOrder,
-          status: 'draft',
-          content,
-          modelUsed: model,
-        }).returning()
-        existingSection = created
+      if (ctx.signal?.aborted) {
+        return {
+          success: false,
+          error: 'Aborted',
+          retryable: true,
+          telemetry: { latencyMs: Date.now() - start, model, provider: response.provider },
+        }
       }
+      await db.transaction(async (tx) => {
+        let [existingSection] = await tx.select()
+          .from(agentSections)
+          .where(and(eq(agentSections.sessionId, ctx.sessionId), eq(agentSections.sectionKey, input.sectionKey)))
+          .for('update')
+          .limit(1)
 
-      if (existingSection) {
-        const versionNumber = (existingSection.retryCount || 0) + 1
-        await db.insert(agentSectionVersions).values({
+        if (!existingSection) {
+          const [created] = await tx.insert(agentSections).values({
+            sessionId: ctx.sessionId,
+            sectionKey: input.sectionKey,
+            title: spec.title,
+            documentOrder: spec.order,
+            generationOrder: spec.generationOrder,
+            status: 'draft',
+            content,
+            modelUsed: model,
+          }).returning()
+          existingSection = created
+        } else {
+          // Existing row already locked above; update the live content too
+          // so consumers reading agent_sections see the latest draft. The
+          // version row below is the immutable history.
+          await tx
+            .update(agentSections)
+            .set({ content, modelUsed: model, updatedAt: new Date() })
+            .where(eq(agentSections.id, existingSection.id))
+        }
+
+        if (!existingSection) return
+
+        const [maxRow] = await tx
+          .select({ maxVersion: max(agentSectionVersions.versionNumber) })
+          .from(agentSectionVersions)
+          .where(eq(agentSectionVersions.sectionId, existingSection.id))
+        const versionNumber = (maxRow?.maxVersion ?? 0) + 1
+
+        await tx.insert(agentSectionVersions).values({
           sectionId: existingSection.id,
           versionNumber,
           kind: 'draft',
@@ -217,7 +266,7 @@ OUTPUT: Write the section content directly. No JSON wrapping needed.`
           modelUsed: model,
           sourcesUsed: usedPatternIds as unknown as Record<string, unknown>,
         })
-      }
+      })
     } catch (dbErr) {
       log.warn({ error: dbErr instanceof Error ? dbErr.message : String(dbErr) }, 'Failed to save section version')
     }

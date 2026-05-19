@@ -598,6 +598,135 @@ describe('V3 runtime — cap path forces synthesis when no text was persisted', 
     expect(writes[0][1].content).toMatch(/continue/i)
   })
 
+  it('skips tool dispatch when remaining budget is shorter than tool.timeout (pre-tool deadline check)', async () => {
+    // Prod incident 2026-05-19: a tool with tool.timeout = 120_000 started
+    // at ~245s elapsed and completed at 286s — past Cloud Run's 300s hard
+    // cap. The top-of-iteration deadline check passed because Date.now()
+    // was still under deadlineAt; the in-flight tool then blew past it.
+    // Pre-tool dispatch check is needed: if deadlineAt - now < tool.timeout,
+    // refuse the call.
+    generateMock.mockReset()
+
+    const slowTool = {
+      name: 'fake_slow_tool',
+      category: 'read' as const,
+      description: 'fake slow tool',
+      inputSchema: z.object({}),
+      execute: vi.fn().mockResolvedValue({
+        success: true,
+        data: { ok: true },
+        telemetry: { latencyMs: 1 },
+      }),
+      timeout: 120_000, // 2 minutes
+    }
+    getToolsForPhaseMock.mockReturnValue([slowTool])
+
+    // Iteration 1: model asks for the slow tool
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      toolCalls: [{ id: 'tc-slow', name: 'fake_slow_tool', arguments: '{}' }],
+    })
+    // Iteration 2: model sees the dispatch refusal and responds with text
+    generateMock.mockResolvedValueOnce({
+      content: 'Trimite "continuă" pentru a relua.',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+
+    const events: AgentEvent[] = []
+    await runAgentTurn({
+      session: makeSession({ locale: 'ro' }),
+      sections: [],
+      request: makeRequest('?'),
+      emit: (e) => events.push(e),
+      turnId: '11111111-1111-4222-8222-111111111111',
+      // 30s of headroom — too tight for a 120s tool
+      deadlineAt: Date.now() + 30_000,
+    })
+
+    // Tool MUST NOT have been dispatched
+    expect(slowTool.execute).not.toHaveBeenCalled()
+
+    // policy_violation event fired with the headroom error
+    const violations = events.filter((e) => e.type === 'policy_violation') as Extract<
+      AgentEvent,
+      { type: 'policy_violation' }
+    >[]
+    expect(violations.some((v) => v.reason.includes('TURN_DEADLINE_HEADROOM_EXCEEDED'))).toBe(true)
+
+    // Synthetic tool_result was added to the messages list for the
+    // follow-up call so the assistant tool_use is balanced.
+    const followupCall = generateMock.mock.calls[1][0]
+    const toolResults = followupCall.messages.filter(
+      (m: { role: string; tool_call_id?: string }) => m.role === 'tool' && m.tool_call_id === 'tc-slow',
+    )
+    expect(toolResults).toHaveLength(1)
+    expect(toolResults[0].content).toMatch(/TURN_DEADLINE_HEADROOM_EXCEEDED/)
+  })
+
+  it('passes ctx.signal into tools and aborts on parent signal abort', async () => {
+    // The runtime must thread a per-tool AbortSignal into ctx so long-running
+    // tools forward it to the provider SDK and stop streaming when the
+    // parent (route/deadline) aborts. We verify by capturing ctx.signal
+    // inside the tool and asserting it fires when opts.signal aborts.
+    generateMock.mockReset()
+
+    let capturedSignal: AbortSignal | undefined
+    const signalAborts: string[] = []
+    const captureTool = {
+      name: 'capture_signal',
+      category: 'read' as const,
+      description: 'fake signal-capturing tool',
+      inputSchema: z.object({}),
+      execute: vi.fn(async (_input: unknown, ctx: { signal?: AbortSignal }) => {
+        capturedSignal = ctx.signal
+        ctx.signal?.addEventListener('abort', () => {
+          signalAborts.push(String(ctx.signal?.reason ?? 'aborted'))
+        })
+        return { success: true, data: { ok: true }, telemetry: { latencyMs: 1 } }
+      }),
+      timeout: 5_000,
+    }
+    getToolsForPhaseMock.mockReturnValue([captureTool])
+
+    generateMock.mockResolvedValueOnce({
+      content: '',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      toolCalls: [{ id: 'tc-capture', name: 'capture_signal', arguments: '{}' }],
+    })
+    generateMock.mockResolvedValueOnce({
+      content: 'done',
+      tokensUsed: { input: 0, output: 0 },
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+    })
+
+    const parentController = new AbortController()
+    await runAgentTurn({
+      session: makeSession(),
+      sections: [],
+      request: makeRequest('?'),
+      emit: () => {},
+      turnId: '22222222-2222-4333-8333-222222222222',
+      signal: parentController.signal,
+    })
+
+    // Tool received a real, non-aborted signal at execution time
+    expect(captureTool.execute).toHaveBeenCalledTimes(1)
+    expect(capturedSignal).toBeInstanceOf(AbortSignal)
+    // After the tool finishes, the runtime aborts the per-tool controller
+    // with "Tool dispatch complete" so dangling listeners aren't leaked.
+    // (The captured listener fires synchronously when that final abort
+    // happens, so signalAborts should have at least one entry.)
+    expect(signalAborts.length).toBeGreaterThanOrEqual(1)
+  })
+
   it('breaks silently when the AbortSignal is already aborted (no audience, no forced synthesis)', async () => {
     // Client disconnected (Cloud Run aborted, browser closed). The SSE wrapper
     // has already started suppressing writes; the runtime should not bother

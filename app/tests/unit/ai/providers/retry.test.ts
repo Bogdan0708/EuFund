@@ -145,6 +145,74 @@ describe('withRetry — single attempt + fresh-controller fallback', () => {
     ).rejects.toMatchObject({ name: 'AbortError' })
   })
 
+  it('aborts the in-flight primary when externalSignal fires and does NOT trigger fallback', async () => {
+    // External cancellation (client disconnect, route deadline) must not
+    // be confused with a transient upstream failure — the caller no longer
+    // wants the response. Prod incident 2026-05-19: tool dispatch had no
+    // way to cancel the underlying generate() call, so 286s Opus streams
+    // kept producing tokens after Cloud Run had already closed the user's
+    // response.
+    const { withRetry } = await import('@/lib/ai/providers/retry')
+    const externalCtrl = new AbortController()
+
+    const primaryFn = vi.fn(
+      (sig: AbortSignal) =>
+        new Promise<never>((_, reject) => {
+          sig.addEventListener('abort', () => {
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        }),
+    )
+
+    // Fire the external abort after the primary has started
+    setTimeout(() => externalCtrl.abort(new Error('client disconnected')), 5)
+
+    await expect(
+      withRetry(primaryFn, config, providers, originalRequest, externalCtrl.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' })
+
+    // The primary was invoked once, fallback was NOT called.
+    expect(primaryFn).toHaveBeenCalledTimes(1)
+    expect(openaiMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses to start when externalSignal is already aborted (fast-path reject)', async () => {
+    const { withRetry } = await import('@/lib/ai/providers/retry')
+    const externalCtrl = new AbortController()
+    externalCtrl.abort()
+
+    const primaryFn = vi.fn()
+    await expect(
+      withRetry(primaryFn, config, providers, originalRequest, externalCtrl.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' })
+
+    // Primary was never even invoked
+    expect(primaryFn).not.toHaveBeenCalled()
+  })
+
+  it('still routes to fallback on internal-timer abort when externalSignal is present but not fired', async () => {
+    // Regression: the external-signal wiring must not break the internal
+    // retry path. A normal upstream timeout should still produce a fallback
+    // call even when an external signal is supplied.
+    const { withRetry } = await import('@/lib/ai/providers/retry')
+    const externalCtrl = new AbortController()
+
+    const fastConfig = { ...config, timeout: 10 }
+    openaiMock.mockResolvedValue({ content: 'fb', tokensUsed: { input: 0, output: 0 }, model: 'gpt-5.4', provider: 'openai' })
+
+    const result = await withRetry(
+      (sig) => new Promise((_, reject) => {
+        sig.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })))
+      }),
+      fastConfig, providers, originalRequest, externalCtrl.signal,
+    )
+
+    expect(result.content).toBe('fb')
+    expect(openaiMock).toHaveBeenCalledTimes(1)
+    // External signal stayed un-aborted
+    expect(externalCtrl.signal.aborted).toBe(false)
+  })
+
   it('originalRequest.cache is preserved when calling fallback', async () => {
     const { withRetry } = await import('@/lib/ai/providers/retry')
     openaiMock.mockResolvedValue({ content: 'fb', tokensUsed: { input: 0, output: 0 }, model: 'gpt-5.4', provider: 'openai' })

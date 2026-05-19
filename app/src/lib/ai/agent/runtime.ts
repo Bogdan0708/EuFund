@@ -435,6 +435,7 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
         ...(v3CacheEnabled
           ? { cache: { enabled: true as const, breakpoints: ['system', 'tools'] as Array<'system' | 'tools'> } }
           : {}),
+        signal: opts.signal,
       })
 
       // Single assistant-message push per iteration, including tool_calls when present.
@@ -544,6 +545,27 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
             continue
           }
 
+          // Pre-tool deadline check: a tool with tool.timeout = 120s starting
+          // at deadlineAt - 30s would finish 90s past the soft deadline AND
+          // 90s past Cloud Run's hard timeout, with no way to cancel because
+          // the work is already in flight. Refuse the dispatch instead and
+          // hand the model a synthetic tool_result asking the user to
+          // continue. Prod incident 2026-05-19: three generate_section runs
+          // completed at 259/275/286s after Cloud Run had already closed
+          // the stream because the in-flight tool kept running.
+          if (opts.deadlineAt != null && Date.now() + tool.timeout > opts.deadlineAt) {
+            const skipReason =
+              'TURN_DEADLINE_HEADROOM_EXCEEDED: Tool would run past the turn budget. ' +
+              'Respond with text in the user\'s locale asking them to send "continue" so we can pick up next turn.'
+            emit({ type: 'policy_violation', gate: tool.name, reason: skipReason })
+            llmMessages.push({
+              role: 'tool',
+              content: JSON.stringify({ success: false, error: skipReason }),
+              tool_call_id: toolCall.id,
+            })
+            continue
+          }
+
           // Execute tool
           emit({ type: 'tool_start', tool: tool.name, input: {} })
 
@@ -553,6 +575,26 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
           } catch {
             toolInput = {}
           }
+
+          // Per-tool AbortController. Fires on (a) parent signal abort —
+          // client disconnected or deadline expired — or (b) the tool's own
+          // timeout. The tool MUST forward ctx.signal to its provider SDK
+          // call so the underlying stream actually stops; without that,
+          // Promise.race below just resolves the wait while the tool keeps
+          // burning Opus in the background.
+          const toolCtrl = new AbortController()
+          const onParentAbort = () => toolCtrl.abort(opts.signal?.reason ?? new Error('Parent aborted'))
+          if (opts.signal) {
+            if (opts.signal.aborted) {
+              toolCtrl.abort(opts.signal.reason ?? new Error('Parent aborted'))
+            } else {
+              opts.signal.addEventListener('abort', onParentAbort, { once: true })
+            }
+          }
+          const timeoutHandle = setTimeout(
+            () => toolCtrl.abort(new Error(`Tool timeout (${tool.timeout}ms)`)),
+            tool.timeout,
+          )
 
           const ctx: ToolContext = {
             sessionId: session.id,
@@ -565,15 +607,19 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
             routingCtx: opts.routingCtx,
             focusedSectionKey: opts.focusedSectionKey,
             chatToolsTrimmed,
+            signal: toolCtrl.signal,
           }
 
           let toolResult: ToolResult
           try {
             toolResult = await Promise.race([
               tool.execute(toolInput, ctx),
-              new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('Tool timeout')), tool.timeout),
-              ),
+              new Promise<never>((_, reject) => {
+                toolCtrl.signal.addEventListener('abort', () => {
+                  const reason = toolCtrl.signal.reason
+                  reject(reason instanceof Error ? reason : new Error(String(reason ?? 'Tool aborted')))
+                }, { once: true })
+              }),
             ])
           } catch (error) {
             toolResult = {
@@ -582,6 +628,13 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
               retryable: true,
               telemetry: { latencyMs: 0 },
             }
+          } finally {
+            clearTimeout(timeoutHandle)
+            opts.signal?.removeEventListener('abort', onParentAbort)
+            // Don't leave the AbortController hanging after the iteration
+            // even if the tool ignored the signal — final abort + drop refs
+            // are GC-friendly.
+            if (!toolCtrl.signal.aborted) toolCtrl.abort(new Error('Tool dispatch complete'))
           }
 
           hasToolCalls = true
@@ -746,6 +799,7 @@ ${capNote} Summarize what you found so far in ${synthesisLanguage}. If the user'
           ...(v3CacheEnabled
             ? { cache: { enabled: true as const, breakpoints: ['system'] as Array<'system' | 'tools'> } }
             : {}),
+          signal: opts.signal,
         })
         const finalText = finalResponse.content?.trim()
         if (finalText) {
