@@ -257,5 +257,8 @@ registerTool<Input, { content: string; model: string }>({
   description: 'Regenerate a section with user feedback — escalates model after repeated failures',
   inputSchema,
   execute,
-  timeout: 120_000,
+  // Matches generate_section: 240s budget so AbortSignal-honoring streams
+  // don't get killed at the 120s mark just as they finish (May 19 2026
+  // prod incident). See generate-section.ts for the full rationale.
+  timeout: 240_000,
 })

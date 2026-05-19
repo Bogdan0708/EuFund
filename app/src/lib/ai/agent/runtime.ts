@@ -370,12 +370,16 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
 
     const MAX_TOOL_ITERATIONS = chatToolsTrimmed ? 5 : 5
     let iteration = 0
-    // Per-turn cap on generate_section. Each call is a 60-70s Opus stream;
-    // chaining 4+ in one turn blows past Cloud Run's 300s timeout, the user
-    // sees nothing, and the runtime trips on the closed SSE controller. The
-    // model is told (via synthetic tool_result) to ask the user to continue,
-    // which turns one mega-turn into N normal turns with full state persisted
-    // between them. See May 18 2026 prod incident in agent-runtime logs.
+    // Per-turn cap on generate_section. Each call now budgets up to 240s
+    // (tools/generate-section.ts) — long sections target ~12k output tokens
+    // and Sonnet streams at ~80 tok/s, so a real generation can take
+    // 130-180s with realistic variance. Chaining more than one per turn
+    // would not fit under the 270s soft deadline; the runtime tells the
+    // model (via synthetic tool_result) to ask the user to continue,
+    // turning one mega-turn into N normal turns with full state persisted
+    // between them. Original May 18 2026 prod incident chained multiple
+    // generate_section calls past Cloud Run's 300s; May 19 2026 incident
+    // saw aborts when the prior 120s tool budget killed in-flight streams.
     let generateSectionCount = 0
     const GENERATE_SECTION_PER_TURN_CAP = 1
     let deadlineBailoutEmitted = false
@@ -527,10 +531,13 @@ export async function runAgentTurn(opts: RuntimeOptions): Promise<{
             continue
           }
 
-          // Per-turn cap: at most one generate_section per turn. A second call
-          // would run another 60-70s Opus stream and risk Cloud Run's 300s
-          // request timeout. Synthesize a tool_result telling the model to ask
-          // the user before generating the next section, and skip dispatch.
+          // Per-turn cap: at most one generate_section per turn. The tool's
+          // own timeout is 240s and the soft turn deadline is 270s, so a
+          // second dispatch within the same turn cannot fit — and the
+          // pre-tool deadline check below would refuse it anyway. The cap
+          // exists as a redundancy and to give the model a clean,
+          // actionable signal ("ask the user to continue") instead of a
+          // deadline-related error.
           if (tool.name === 'generate_section' && generateSectionCount >= GENERATE_SECTION_PER_TURN_CAP) {
             const capError =
               'GENERATE_SECTION_PER_TURN_CAP: One section already generated in this turn. ' +

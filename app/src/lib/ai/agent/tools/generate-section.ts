@@ -343,5 +343,18 @@ registerTool<Input, { content: string; model: string }>({
   description: 'Generate a section of the funding application based on the outline and project context',
   inputSchema,
   execute,
-  timeout: 120_000,
+  // 240s tool timeout. Long sections target ~12k output tokens; at Sonnet's
+  // ~80 tok/s output rate that's ~150s of streaming with realistic variance.
+  // The prior 120s timeout was sized when Promise.race only resolved the
+  // wait but didn't actually abort the Anthropic stream (the work kept
+  // running in the background and eventually delivered content). Once
+  // commit 38d2bb6c made the AbortSignal real, the 120s timer started
+  // killing in-flight streams just as they were about to finish — prod
+  // incident 2026-05-19 saw four consecutive aborts on activities_and_workplan
+  // before this bump.
+  //
+  // 240s leaves 30s headroom before the 270s soft turn deadline; the
+  // pre-tool deadline check in runtime.ts will refuse a second dispatch
+  // within the same turn, which matches the per-turn cap of 1.
+  timeout: 240_000,
 })
