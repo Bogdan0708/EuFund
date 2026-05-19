@@ -14,6 +14,7 @@ import { normalizeMarkdown } from '@/lib/markdown/proposal-markdown'
 import { findPatterns } from '@/lib/ai/knowledge/proposal-patterns'
 import { getSessionKnowledgeByKind } from '@/lib/ai/knowledge/session-knowledge'
 import type { CallBlueprint } from '@/lib/ai/agent/types'
+import { isFeatureEnabled } from '@/lib/feature-flags'
 
 const log = logger.child({ component: 'tool-generate-section' })
 
@@ -37,6 +38,27 @@ const LENGTH_GUIDE: Record<string, string> = {
   short: '500-1000 words (1-2 pages)',
   medium: '1000-2000 words (2-4 pages)',
   long: '2000-4000 words (4-8 pages)',
+  extra_long: '4000-7000 words (8-14 pages)',
+}
+
+// Output-token caps per length tier. Sized for SSE-bounded interactive turns:
+// each tier sits comfortably under the 270s deadline at Sonnet output rates.
+// extra_long is explicit-only — without section_extra_long_enabled it falls
+// back to long so a runaway spec tier can't blow the budget.
+const TOKEN_CAPS = {
+  short: 6_000,
+  medium: 10_000,
+  long: 12_000,
+  extra_long: 20_000,
+} as const
+
+function maxTokensFor(expectedLength: string, extraLongEnabled: boolean): number {
+  if (expectedLength === 'extra_long') {
+    return extraLongEnabled ? TOKEN_CAPS.extra_long : TOKEN_CAPS.long
+  }
+  if (expectedLength === 'long') return TOKEN_CAPS.long
+  if (expectedLength === 'medium') return TOKEN_CAPS.medium
+  return TOKEN_CAPS.short
 }
 
 async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<{ content: string; model: string }>> {
@@ -55,11 +77,25 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<{ con
       }
     }
 
-    // Route model by importance via centralized resolver
+    // Route model by importance via centralized resolver. Gated on the
+    // interactive_section_sonnet_default flag — when ON, pass
+    // interactionMode='interactive' so the resolver returns Sonnet regardless
+    // of importance. Without the flag, legacy importance-based routing
+    // (critical→Opus) stays intact. bypassCache: true so an emergency
+    // rollback is not delayed by the 60s LRU.
+    const interactiveSonnetEnabled = await isFeatureEnabled(
+      'interactive_section_sonnet_default',
+      { userId: ctx.userId, bypassCache: true },
+    )
+    const extraLongEnabled = await isFeatureEnabled(
+      'section_extra_long_enabled',
+      { userId: ctx.userId },
+    )
     const resolved = resolveAgentModel({
       task: 'section_generation',
       importance: spec.importance as 'critical' | 'standard' | 'supplementary',
       ctx: ctx.routingCtx,
+      ...(interactiveSonnetEnabled ? { interactionMode: 'interactive' as const } : {}),
     })
     const { provider: resolvedProvider, model } = resolved
 
@@ -172,7 +208,7 @@ OUTPUT: Write the section content directly. No JSON wrapping needed.`
       system: systemPrompt,
       messages: [{ role: 'user', content: `Generate the "${spec.title}" section now.` }],
       temperature: 0.6,
-      maxTokens: spec.expectedLength === 'long' ? 32_000 : spec.expectedLength === 'medium' ? 20_000 : 8_000,
+      maxTokens: maxTokensFor(spec.expectedLength, extraLongEnabled),
       // Forward the per-tool signal so the Anthropic SDK actually stops
       // streaming when the runtime aborts (client disconnected, deadline
       // hit, tool timeout). Without this, the Promise.race in runtime.ts

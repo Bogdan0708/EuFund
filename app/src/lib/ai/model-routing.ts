@@ -35,6 +35,21 @@ export interface ModelRoutingInput {
   importance?: 'critical' | 'standard' | 'supplementary'
   ctx?: ModelRoutingContext
   isEscalation?: boolean
+  /**
+   * Distinguishes SSE-bounded turns from background/batch work. Interactive
+   * generate_section is forced to Sonnet (tier=standard) regardless of
+   * importance — the cost/latency penalty of Opus is not worth it for a
+   * 300s-bounded user-facing turn. Background paths still honor importance.
+   * Default: 'background' (preserves legacy behavior).
+   */
+  interactionMode?: 'interactive' | 'background'
+  /**
+   * User-initiated opt-in for the deeper, slower model. ONLY set when the
+   * end-user explicitly chose "Regenerate with deep model". Must never be
+   * set by the LLM or by an automatic retry loop — see CLAUDE.md guidance
+   * on cost predictability.
+   */
+  qualityMode?: 'standard' | 'deep'
 }
 
 export type RoutingSource = 'default' | 'user_override' | 'escalation'
@@ -87,9 +102,23 @@ const OVERRIDABLE_TIERS: ReadonlySet<RoutingTier> = new Set([
   'qa',
 ])
 
-function mapTaskToTier(task: TaskType, importance?: string): RoutingTier {
+function mapTaskToTier(
+  task: TaskType,
+  importance?: string,
+  interactionMode?: 'interactive' | 'background',
+  qualityMode?: 'standard' | 'deep',
+): RoutingTier {
   switch (task) {
     case 'section_generation':
+      // Interactive turns are SSE-bounded by Cloud Run's 300s cap. Force
+      // Sonnet regardless of importance unless the end-user explicitly opted
+      // into deep mode (in which case we accept the latency hit because they
+      // chose to wait). Background generation still honors importance.
+      if (interactionMode === 'interactive') {
+        if (qualityMode === 'deep') return 'critical'
+        if (importance === 'supplementary') return 'budget'
+        return 'standard'
+      }
       if (importance === 'critical') return 'critical'
       if (importance === 'supplementary') return 'budget'
       return 'standard'
@@ -142,10 +171,10 @@ function resolvePreference(preference: string): { provider: ProviderName; model:
 // ─── Core Resolver ──────────────────────────────────────────────
 
 export function resolveAgentModel(input: ModelRoutingInput): ResolvedModel {
-  const { task, importance, ctx, isEscalation } = input
+  const { task, importance, ctx, isEscalation, interactionMode, qualityMode } = input
 
   // 1. Map task to tier
-  const tier = mapTaskToTier(task, importance)
+  const tier = mapTaskToTier(task, importance, interactionMode, qualityMode)
 
   // 2. Task-specific escalation
   if (isEscalation && ESCALATION_ALLOWED_TASKS.has(task)) {

@@ -7,17 +7,41 @@ import { generate } from '@/lib/ai/providers/router'
 import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { db } from '@/lib/db'
 import { agentSectionVersions, agentSections } from '@/lib/db/schema'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, max } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 import { normalizeMarkdown } from '@/lib/markdown/proposal-markdown'
+import { isFeatureEnabled } from '@/lib/feature-flags'
 
 const log = logger.child({ component: 'tool-regenerate-section' })
 
 const MODEL_ESCALATION_AFTER_RETRIES = 2
 
+// Output-token caps mirror generate-section.ts. extra_long is gated on
+// section_extra_long_enabled; without that flag it falls back to long.
+const TOKEN_CAPS = {
+  short: 6_000,
+  medium: 10_000,
+  long: 12_000,
+  extra_long: 20_000,
+} as const
+
+function maxTokensFor(expectedLength: string | undefined, extraLongEnabled: boolean): number {
+  if (expectedLength === 'extra_long') {
+    return extraLongEnabled ? TOKEN_CAPS.extra_long : TOKEN_CAPS.long
+  }
+  if (expectedLength === 'long') return TOKEN_CAPS.long
+  if (expectedLength === 'medium') return TOKEN_CAPS.medium
+  return TOKEN_CAPS.short
+}
+
 const inputSchema = z.object({
   sectionKey: z.string().min(1),
   feedback: z.string().min(1).describe('User feedback on what to change'),
+  // User-initiated only. The runtime MUST refuse to set this from automatic
+  // retry loops or LLM-side decisions (see qualityMode contract in
+  // model-routing.ts). Gated on deep_regeneration_enabled at execute time.
+  qualityMode: z.enum(['standard', 'deep']).optional()
+    .describe('Set to "deep" only when the end-user explicitly clicks "Regenerate with deep model".'),
 })
 
 type Input = z.infer<typeof inputSchema>
@@ -39,14 +63,49 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<{ con
     const outline = (ctx.session.outline || []) as SectionSpec[]
     const spec = outline.find(s => s.id === input.sectionKey)
 
-    // Route model via centralized resolver (with escalation support)
+    // Route model via centralized resolver. Two policy paths:
+    //   - deep_regeneration_enabled ON: explicit user opt-in only. Pass
+    //     interactionMode='interactive' + qualityMode='deep' when the
+    //     caller set qualityMode='deep' (UI "Regenerate with deep model"
+    //     button), else interactive+standard for Sonnet. NO auto-escalation
+    //     to Opus on retry count.
+    //   - flag OFF: legacy behavior — escalate to Opus after 2 retries.
+    //
+    // bypassCache: true so an emergency rollback isn't delayed by the LRU.
     const retryCount = section.retryCount || 0
-    const resolved = resolveAgentModel({
-      task: 'section_generation',
-      importance: (spec?.importance || 'standard') as 'critical' | 'standard' | 'supplementary',
-      ctx: ctx.routingCtx,
-      isEscalation: retryCount >= MODEL_ESCALATION_AFTER_RETRIES,
+    const deepEnabled = await isFeatureEnabled('deep_regeneration_enabled', {
+      userId: ctx.userId,
+      bypassCache: true,
     })
+    const interactiveSonnetEnabled = await isFeatureEnabled(
+      'interactive_section_sonnet_default',
+      { userId: ctx.userId, bypassCache: true },
+    )
+    const extraLongEnabled = await isFeatureEnabled(
+      'section_extra_long_enabled',
+      { userId: ctx.userId },
+    )
+
+    const resolved = deepEnabled
+      ? resolveAgentModel({
+          task: 'section_generation',
+          importance: (spec?.importance || 'standard') as 'critical' | 'standard' | 'supplementary',
+          ctx: ctx.routingCtx,
+          interactionMode: 'interactive',
+          qualityMode: input.qualityMode === 'deep' ? 'deep' : 'standard',
+        })
+      : resolveAgentModel({
+          task: 'section_generation',
+          importance: (spec?.importance || 'standard') as 'critical' | 'standard' | 'supplementary',
+          ctx: ctx.routingCtx,
+          // When interactive_section_sonnet_default is on (but deep flag is
+          // off), still cap interactive turns to Sonnet. The auto-escalation
+          // path collapses here too because the resolver ignores
+          // isEscalation in the interactive+standard branch.
+          ...(interactiveSonnetEnabled
+            ? { interactionMode: 'interactive' as const }
+            : { isEscalation: retryCount >= MODEL_ESCALATION_AFTER_RETRIES }),
+        })
     const { provider: resolvedProvider, model } = resolved
 
     const previousContent = section.content || ''
@@ -85,8 +144,20 @@ FORMAT:
       system: systemPrompt,
       messages: [{ role: 'user', content: `Rewrite the "${spec?.title || input.sectionKey}" section based on the feedback above.` }],
       temperature: 0.6,
-      maxTokens: spec?.expectedLength === 'long' ? 32_000 : spec?.expectedLength === 'medium' ? 20_000 : 8_000,
+      maxTokens: maxTokensFor(spec?.expectedLength, extraLongEnabled),
+      signal: ctx.signal,
     })
+
+    // Don't persist if the runtime aborted between LLM start and response —
+    // same contract as generate-section.ts.
+    if (ctx.signal?.aborted) {
+      return {
+        success: false,
+        error: 'Aborted',
+        retryable: true,
+        telemetry: { latencyMs: Date.now() - start, model, provider: response.provider },
+      }
+    }
 
     const content = normalizeMarkdown(response.content.trim())
     if (!content || content.length < 50) {
@@ -98,23 +169,43 @@ FORMAT:
       }
     }
 
-    // Save version
+    // Save version with race-safe allocation. Same pattern as generate-section.ts:
+    // lock the parent section row, then max(version_number)+1. The old
+    // `retryCount + 2` shortcut collided with concurrent writers on
+    // uniq_agent_section_version_number.
     try {
-      const [existingSection] = await db.select()
-        .from(agentSections)
-        .where(and(eq(agentSections.sessionId, ctx.sessionId), eq(agentSections.sectionKey, input.sectionKey)))
-        .limit(1)
+      if (ctx.signal?.aborted) {
+        return {
+          success: false,
+          error: 'Aborted',
+          retryable: true,
+          telemetry: { latencyMs: Date.now() - start, model, provider: response.provider },
+        }
+      }
+      await db.transaction(async (tx) => {
+        const [existingSection] = await tx.select()
+          .from(agentSections)
+          .where(and(eq(agentSections.sessionId, ctx.sessionId), eq(agentSections.sectionKey, input.sectionKey)))
+          .for('update')
+          .limit(1)
 
-      if (existingSection) {
-        await db.insert(agentSectionVersions).values({
+        if (!existingSection) return
+
+        const [maxRow] = await tx
+          .select({ maxVersion: max(agentSectionVersions.versionNumber) })
+          .from(agentSectionVersions)
+          .where(eq(agentSectionVersions.sectionId, existingSection.id))
+        const versionNumber = (maxRow?.maxVersion ?? 0) + 1
+
+        await tx.insert(agentSectionVersions).values({
           sectionId: existingSection.id,
-          versionNumber: retryCount + 2,
+          versionNumber,
           kind: 'regenerated',
           content,
           modelUsed: model,
           sourcesUsed: (section.sourcesUsed ?? []) as unknown as Record<string, unknown>,
         })
-      }
+      })
     } catch (dbErr) {
       log.warn({ error: dbErr instanceof Error ? dbErr.message : String(dbErr) }, 'Failed to save regenerated version')
     }

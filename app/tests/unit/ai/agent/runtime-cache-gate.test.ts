@@ -149,11 +149,14 @@ describe('V3 runtime — cache opt-in flag gating (PR 2b)', () => {
       'v3_prompt_cache_enabled',
       { userId: SESSION_USER_ID },
     )
-    // PR 4: V3 runtime now reads two flags per turn — v3_prompt_cache_enabled
-    // and chat_tools_trimmed. Both are read once per turn (not per iteration).
-    expect(isFeatureEnabledMock).toHaveBeenCalledTimes(2)
+    // V3 runtime reads three flags per turn — v3_prompt_cache_enabled,
+    // chat_tools_trimmed, and v3_chat_model_sonnet (added when chat-loop
+    // model selection was decoupled from chat_tools_trimmed). Each is read
+    // once per turn, not per iteration.
+    expect(isFeatureEnabledMock).toHaveBeenCalledTimes(3)
     const flagKeys = isFeatureEnabledMock.mock.calls.map((c: unknown[]) => c[0] as string)
     expect(flagKeys).toContain('v3_prompt_cache_enabled')
     expect(flagKeys).toContain('chat_tools_trimmed')
+    expect(flagKeys).toContain('v3_chat_model_sonnet')
   })
 })

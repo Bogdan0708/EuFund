@@ -1,6 +1,11 @@
 // app/tests/unit/agent-tool-generate-section.test.ts
 import { describe, it, expect, vi } from 'vitest'
 
+const isFeatureEnabledMock = vi.hoisted(() => vi.fn().mockResolvedValue(false))
+vi.mock('@/lib/feature-flags', () => ({
+  isFeatureEnabled: isFeatureEnabledMock,
+}))
+
 vi.mock('@/lib/ai/providers/router', () => ({
   generate: vi.fn().mockResolvedValue({
     content: 'Proiectul nostru vizează tranziția verde prin implementarea unui sistem de panouri solare în comuna X, cu un buget estimat de 500.000 EUR și o durată de 24 de luni.',
@@ -97,6 +102,70 @@ describe('generate_section tool', () => {
 
     expect(result.telemetry.model).toBeDefined()
     expect(result.telemetry.provider).toBe('anthropic')
+  })
+
+  it('routes critical-importance sections to Sonnet when interactive_section_sonnet_default is on', async () => {
+    // Regression: prod was burning Opus on every critical section even
+    // though the SSE turn is 270s-bounded. With the flag on, the resolver
+    // must downgrade to Sonnet regardless of importance.
+    isFeatureEnabledMock.mockImplementation(async (key: string) =>
+      key === 'interactive_section_sonnet_default',
+    )
+    const { generate } = await import('@/lib/ai/providers/router')
+    ;(generate as any).mockClear()
+
+    const tool = getToolRegistry().find(t => t.name === 'generate_section')!
+    await tool.execute({ sectionKey: 'context' }, mockCtx)
+
+    const call = (generate as any).mock.calls.at(-1)[0]
+    expect(call.model).toBe('claude-sonnet-4-6')
+    expect(call.provider).toBe('anthropic')
+    // maxTokens for a 'long' section under new caps
+    expect(call.maxTokens).toBe(12_000)
+
+    isFeatureEnabledMock.mockResolvedValue(false)
+  })
+
+  it('keeps Opus for critical-importance when interactive flag is OFF (legacy back-compat)', async () => {
+    isFeatureEnabledMock.mockResolvedValue(false)
+    const { generate } = await import('@/lib/ai/providers/router')
+    ;(generate as any).mockClear()
+
+    const tool = getToolRegistry().find(t => t.name === 'generate_section')!
+    await tool.execute({ sectionKey: 'context' }, mockCtx)
+
+    const call = (generate as any).mock.calls.at(-1)[0]
+    expect(call.model).toBe('claude-opus-4-6')
+  })
+
+  it('uses extra_long token cap only when section_extra_long_enabled is on', async () => {
+    const ctxWithExtraLong = {
+      ...mockCtx,
+      session: {
+        ...mockCtx.session,
+        outline: [
+          { id: 'ctx', title: 'Context', description: 'x', order: 1, generationOrder: 1, importance: 'critical', expectedLength: 'extra_long', dependsOn: [], modelHint: 'heavy', mandatory: true, confidence: 1 },
+        ],
+        outlineFrozen: true,
+      } as any,
+    }
+    const { generate } = await import('@/lib/ai/providers/router')
+
+    // Flag OFF: extra_long falls back to long (12k)
+    isFeatureEnabledMock.mockResolvedValue(false)
+    ;(generate as any).mockClear()
+    await getToolRegistry().find(t => t.name === 'generate_section')!.execute({ sectionKey: 'ctx' }, ctxWithExtraLong)
+    expect((generate as any).mock.calls.at(-1)[0].maxTokens).toBe(12_000)
+
+    // Flag ON for the extra_long flag specifically: 20k
+    isFeatureEnabledMock.mockImplementation(async (key: string) =>
+      key === 'section_extra_long_enabled',
+    )
+    ;(generate as any).mockClear()
+    await getToolRegistry().find(t => t.name === 'generate_section')!.execute({ sectionKey: 'ctx' }, ctxWithExtraLong)
+    expect((generate as any).mock.calls.at(-1)[0].maxTokens).toBe(20_000)
+
+    isFeatureEnabledMock.mockResolvedValue(false)
   })
 
   it('injects pattern and brief with total knowledge context under 2500 chars', async () => {

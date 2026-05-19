@@ -63,7 +63,7 @@ export interface SectionSpec {
   order: number
   generationOrder: number
   importance: 'critical' | 'standard' | 'supplementary'
-  expectedLength: 'short' | 'medium' | 'long'
+  expectedLength: 'short' | 'medium' | 'long' | 'extra_long'
   dependsOn: string[]
   modelHint: 'heavy' | 'light'
   evaluationWeight?: number

@@ -207,6 +207,72 @@ describe('escalation', () => {
   })
 })
 
+// ─── Interactive routing (Sonnet-default for SSE-bounded turns) ────
+
+describe('interactive section_generation routing', () => {
+  it('downgrades importance=critical to Sonnet when interactionMode=interactive', () => {
+    // The whole point of the May 19 2026 routing change: critical importance
+    // alone shouldn't trigger Opus on a 270s-deadline interactive turn. The
+    // caller must explicitly opt into deep mode for Opus to apply.
+    const r = resolve({
+      task: 'section_generation',
+      importance: 'critical',
+      interactionMode: 'interactive',
+    })
+    expect(r.tier).toBe('standard')
+    expect(r.model).toBe('claude-sonnet-4-6')
+  })
+
+  it('keeps importance=critical → Opus when interactionMode=background (legacy path)', () => {
+    const r = resolve({
+      task: 'section_generation',
+      importance: 'critical',
+      interactionMode: 'background',
+    })
+    expect(r.tier).toBe('critical')
+    expect(r.model).toBe('claude-opus-4-6')
+  })
+
+  it('explicit deep mode on interactive turn upgrades back to Opus', () => {
+    const r = resolve({
+      task: 'section_generation',
+      importance: 'standard',
+      interactionMode: 'interactive',
+      qualityMode: 'deep',
+    })
+    expect(r.tier).toBe('critical')
+    expect(r.model).toBe('claude-opus-4-6')
+  })
+
+  it('interactive + supplementary still routes to budget tier', () => {
+    const r = resolve({
+      task: 'section_generation',
+      importance: 'supplementary',
+      interactionMode: 'interactive',
+    })
+    expect(r.tier).toBe('budget')
+  })
+
+  it('interactive routing has no effect on non-section tasks', () => {
+    // Defensive: interactionMode is a section_generation lever. Other tasks
+    // (planning, editing, etc) must keep their existing tier mapping.
+    const r = resolve({
+      task: 'planning',
+      interactionMode: 'interactive',
+    })
+    expect(r.tier).toBe('critical')
+  })
+
+  it('defaults to background behavior when interactionMode is unset (back-compat)', () => {
+    // Callers that haven't been updated must keep getting the old answer.
+    const r = resolve({
+      task: 'section_generation',
+      importance: 'critical',
+    })
+    expect(r.tier).toBe('critical')
+  })
+})
+
 // ─── Capability Validation ─────────────────────────────────────
 
 describe('capability validation', () => {
