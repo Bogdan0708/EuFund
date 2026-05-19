@@ -9,7 +9,6 @@ import { getAnthropicClient } from '@/lib/ai/anthropic-client'
 import { retrieveEvidence } from './evidence'
 import { GenerationInvalidError } from './errors'
 import { logger } from '@/lib/logger'
-import { resolveAgentModel } from '@/lib/ai/model-routing'
 import { isFeatureEnabled } from '@/lib/feature-flags'
 
 const log = logger.child({ component: 'section-generation' })
@@ -36,8 +35,17 @@ export type GenerationDelta =
 const MIN_LEN = 80
 const EVIDENCE_CHUNKS = 8
 
+// Legacy hard cap — preserved while Opus is still the default for
+// modelHint='heavy' sections. At Opus output rate (~30-40 tok/s) a 12k
+// cap would push interactive turns past 5 minutes. The conservative
+// 4096 cap stays in place until interactive_section_sonnet_default is
+// flipped, then the tiered caps below unlock.
+const LEGACY_MAX_TOKENS = 4_096
+
 // Output-token caps mirror the chat-tool path (generate-section.ts).
-// MUST stay in sync — they represent the same SSE-budget policy.
+// Only used once interactive_section_sonnet_default is ON — they assume
+// Sonnet's faster output rate; using these with Opus would regress the
+// 300s timeout problem we just fixed.
 const TOKEN_CAPS = {
   short: 6_000,
   medium: 10_000,
@@ -76,11 +84,16 @@ export async function* streamSectionGeneration(
     maxChunks: EVIDENCE_CHUNKS,
   })
 
-  // Route via the same resolver as the chat-tool path. Gated on
-  // interactive_section_sonnet_default — when ON, force Sonnet for this
-  // SSE-bounded turn regardless of importance / modelHint. Cost/latency
-  // discipline matches generate-section.ts. bypassCache:true so an
-  // emergency rollback isn't delayed by the 60s LRU.
+  // This service is Anthropic-only by design (single
+  // anthropic.messages.stream call below). Don't fan out through the
+  // multi-provider resolver — the budget tier for supplementary sections
+  // resolves to OpenAI's gpt-5.4 and the Anthropic SDK would reject it
+  // with an unknown-model error. Flag-gated Anthropic-only mapping:
+  //   - interactive_section_sonnet_default ON: force Sonnet regardless
+  //     of importance/modelHint (the rollout policy).
+  //   - flag OFF: preserve the pre-existing modelHint='heavy' → Opus
+  //     mapping so quality stays consistent on the un-migrated path.
+  // bypassCache:true so an emergency rollback isn't delayed by the LRU.
   const interactiveSonnetEnabled = await isFeatureEnabled(
     'interactive_section_sonnet_default',
     { userId: ctx.userId, bypassCache: true },
@@ -89,18 +102,18 @@ export async function* streamSectionGeneration(
     'section_extra_long_enabled',
     { userId: ctx.userId, bypassCache: true },
   )
-  const resolved = resolveAgentModel({
-    task: 'section_generation',
-    importance: spec.importance,
-    ...(interactiveSonnetEnabled ? { interactionMode: 'interactive' as const } : {}),
-  })
-  // Pre-resolver behavior used spec.modelHint='heavy' → Opus. Preserve
-  // that signal when the new flag is OFF so we don't regress quality on
-  // the legacy path: if the resolver returned Sonnet (default branch) AND
-  // the flag is OFF AND modelHint='heavy', stay on Opus.
-  const model = !interactiveSonnetEnabled && spec.modelHint === 'heavy'
-    ? 'claude-opus-4-6'
-    : resolved.model
+  const model = interactiveSonnetEnabled
+    ? 'claude-sonnet-4-6'
+    : spec.modelHint === 'heavy'
+      ? 'claude-opus-4-6'
+      : 'claude-sonnet-4-6'
+  // Token cap is also flag-gated: the tiered caps assume Sonnet's output
+  // rate. Keeping them under the legacy 4096 ceiling while Opus is still
+  // the default for heavy sections avoids reintroducing the 300s timeout
+  // we just fixed.
+  const max_tokens = interactiveSonnetEnabled
+    ? maxTokensFor(spec.expectedLength, extraLongEnabled)
+    : LEGACY_MAX_TOKENS
   const messages = buildMessages(input, evidence.chunks)
 
   // Fast-path: bail if the caller is already cancelled before we even
@@ -112,7 +125,7 @@ export async function* streamSectionGeneration(
   const anthropic = getAnthropicClient()
   const stream = anthropic.messages.stream({
     model,
-    max_tokens: maxTokensFor(spec.expectedLength, extraLongEnabled),
+    max_tokens,
     messages,
   }, signal ? { signal } : undefined)
 
