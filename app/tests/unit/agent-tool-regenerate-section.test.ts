@@ -70,4 +70,28 @@ describe('regenerate_section tool', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it('does NOT expose qualityMode in the LLM tool input schema', async () => {
+    // Security regression: the prior commit had qualityMode: z.enum([...])
+    // inside inputSchema, which means the LLM could pass qualityMode='deep'
+    // and self-escalate to Opus. The user-initiated deep mode must be plumbed
+    // through a trusted server/UI channel only — never the tool surface.
+    const tool = getToolRegistry().find(t => t.name === 'regenerate_section')!
+
+    // Zod schema introspection: the keys of the shape are the LLM-callable
+    // inputs. qualityMode must NOT be one of them.
+    const shape = (tool.inputSchema as unknown as { shape: Record<string, unknown> }).shape
+    const keys = Object.keys(shape)
+    expect(keys).toEqual(expect.arrayContaining(['sectionKey', 'feedback']))
+    expect(keys).not.toContain('qualityMode')
+
+    // Defense in depth: parsing a payload that includes qualityMode either
+    // strips it or fails — never accepts it as a usable input field.
+    const parsed = (tool.inputSchema as { parse: (x: unknown) => Record<string, unknown> }).parse({
+      sectionKey: 'context',
+      feedback: 'rewrite please',
+      qualityMode: 'deep',
+    })
+    expect(parsed.qualityMode).toBeUndefined()
+  })
 })

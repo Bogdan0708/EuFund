@@ -9,6 +9,8 @@ import { getAnthropicClient } from '@/lib/ai/anthropic-client'
 import { retrieveEvidence } from './evidence'
 import { GenerationInvalidError } from './errors'
 import { logger } from '@/lib/logger'
+import { resolveAgentModel } from '@/lib/ai/model-routing'
+import { isFeatureEnabled } from '@/lib/feature-flags'
 
 const log = logger.child({ component: 'section-generation' })
 
@@ -16,6 +18,13 @@ export interface GenerateSectionInput {
   session: AgentSession
   spec: SectionSpec
   priorSections: AgentSection[]
+  /**
+   * External abort signal. When it aborts, the Anthropic stream stops
+   * mid-flight and the generator throws so the route's catch branch can
+   * close the SSE cleanly. Without this, Cloud Run cancelling the request
+   * leaves the Anthropic stream producing tokens in the background.
+   */
+  signal?: AbortSignal
 }
 
 export type GenerationDelta =
@@ -25,8 +34,25 @@ export type GenerationDelta =
 // Minimum acceptable draft length, in chars. Guards against empty or
 // truncated streams; ~80 chars is one short paragraph.
 const MIN_LEN = 80
-const MAX_TOKENS = 4096
 const EVIDENCE_CHUNKS = 8
+
+// Output-token caps mirror the chat-tool path (generate-section.ts).
+// MUST stay in sync — they represent the same SSE-budget policy.
+const TOKEN_CAPS = {
+  short: 6_000,
+  medium: 10_000,
+  long: 12_000,
+  extra_long: 20_000,
+} as const
+
+function maxTokensFor(expectedLength: string | undefined, extraLongEnabled: boolean): number {
+  if (expectedLength === 'extra_long') {
+    return extraLongEnabled ? TOKEN_CAPS.extra_long : TOKEN_CAPS.long
+  }
+  if (expectedLength === 'long') return TOKEN_CAPS.long
+  if (expectedLength === 'medium') return TOKEN_CAPS.medium
+  return TOKEN_CAPS.short
+}
 
 /**
  * Stream a single section draft from Anthropic. Yields one `delta` per
@@ -38,7 +64,7 @@ export async function* streamSectionGeneration(
   ctx: ServiceContext,
   input: GenerateSectionInput,
 ): AsyncGenerator<GenerationDelta, void, unknown> {
-  const { session, spec } = input
+  const { session, spec, signal } = input
   const callId = session.selectedCallId
   if (!callId) {
     throw new GenerationInvalidError('other', 'Session has no selectedCallId — cannot generate section')
@@ -50,15 +76,45 @@ export async function* streamSectionGeneration(
     maxChunks: EVIDENCE_CHUNKS,
   })
 
-  const model = spec.modelHint === 'heavy' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
+  // Route via the same resolver as the chat-tool path. Gated on
+  // interactive_section_sonnet_default — when ON, force Sonnet for this
+  // SSE-bounded turn regardless of importance / modelHint. Cost/latency
+  // discipline matches generate-section.ts. bypassCache:true so an
+  // emergency rollback isn't delayed by the 60s LRU.
+  const interactiveSonnetEnabled = await isFeatureEnabled(
+    'interactive_section_sonnet_default',
+    { userId: ctx.userId, bypassCache: true },
+  )
+  const extraLongEnabled = await isFeatureEnabled(
+    'section_extra_long_enabled',
+    { userId: ctx.userId, bypassCache: true },
+  )
+  const resolved = resolveAgentModel({
+    task: 'section_generation',
+    importance: spec.importance,
+    ...(interactiveSonnetEnabled ? { interactionMode: 'interactive' as const } : {}),
+  })
+  // Pre-resolver behavior used spec.modelHint='heavy' → Opus. Preserve
+  // that signal when the new flag is OFF so we don't regress quality on
+  // the legacy path: if the resolver returned Sonnet (default branch) AND
+  // the flag is OFF AND modelHint='heavy', stay on Opus.
+  const model = !interactiveSonnetEnabled && spec.modelHint === 'heavy'
+    ? 'claude-opus-4-6'
+    : resolved.model
   const messages = buildMessages(input, evidence.chunks)
+
+  // Fast-path: bail if the caller is already cancelled before we even
+  // start streaming. Saves one round-trip.
+  if (signal?.aborted) {
+    throw Object.assign(new Error('aborted'), { name: 'AbortError' })
+  }
 
   const anthropic = getAnthropicClient()
   const stream = anthropic.messages.stream({
     model,
-    max_tokens: MAX_TOKENS,
+    max_tokens: maxTokensFor(spec.expectedLength, extraLongEnabled),
     messages,
-  })
+  }, signal ? { signal } : undefined)
 
   let full = ''
   for await (const event of stream as unknown as AsyncIterable<RawMessageStreamEvent>) {

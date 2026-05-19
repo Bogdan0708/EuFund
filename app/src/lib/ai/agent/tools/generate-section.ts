@@ -89,7 +89,7 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<{ con
     )
     const extraLongEnabled = await isFeatureEnabled(
       'section_extra_long_enabled',
-      { userId: ctx.userId },
+      { userId: ctx.userId, bypassCache: true },
     )
     const resolved = resolveAgentModel({
       task: 'section_generation',

@@ -296,6 +296,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           session: postSession,
           spec: readyOk.sectionSpec,
           priorSections: postRows,
+          signal: req.signal,
         })) {
           if (d.type === 'delta') {
             full += d.content

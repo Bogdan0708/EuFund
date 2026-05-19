@@ -34,14 +34,16 @@ function maxTokensFor(expectedLength: string | undefined, extraLongEnabled: bool
   return TOKEN_CAPS.short
 }
 
+// The LLM-callable surface for regenerate_section deliberately omits
+// qualityMode. The "Regenerate with deep model" path is a trusted
+// server/UI action — not an LLM choice — and must be plumbed through a
+// non-tool channel (separate route handler that calls the service layer
+// directly) so the LLM cannot self-escalate to Opus. Until that
+// trusted-path wiring lands, every LLM-initiated regenerate runs in
+// standard mode regardless of the deep_regeneration_enabled flag.
 const inputSchema = z.object({
   sectionKey: z.string().min(1),
   feedback: z.string().min(1).describe('User feedback on what to change'),
-  // User-initiated only. The runtime MUST refuse to set this from automatic
-  // retry loops or LLM-side decisions (see qualityMode contract in
-  // model-routing.ts). Gated on deep_regeneration_enabled at execute time.
-  qualityMode: z.enum(['standard', 'deep']).optional()
-    .describe('Set to "deep" only when the end-user explicitly clicks "Regenerate with deep model".'),
 })
 
 type Input = z.infer<typeof inputSchema>
@@ -83,16 +85,23 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolResult<{ con
     )
     const extraLongEnabled = await isFeatureEnabled(
       'section_extra_long_enabled',
-      { userId: ctx.userId },
+      { userId: ctx.userId, bypassCache: true },
     )
 
+    // LLM-callable regenerate ALWAYS runs in standard quality mode. The
+    // qualityMode='deep' path is intentionally unreachable from this tool
+    // until the trusted UI/server channel ships (see inputSchema comment).
+    // deep_regeneration_enabled still serves a purpose here: when ON, it
+    // disables the legacy auto-escalation to Opus on retry, keeping cost
+    // predictable. When OFF, legacy retry escalation remains for
+    // back-compat.
     const resolved = deepEnabled
       ? resolveAgentModel({
           task: 'section_generation',
           importance: (spec?.importance || 'standard') as 'critical' | 'standard' | 'supplementary',
           ctx: ctx.routingCtx,
           interactionMode: 'interactive',
-          qualityMode: input.qualityMode === 'deep' ? 'deep' : 'standard',
+          qualityMode: 'standard',
         })
       : resolveAgentModel({
           task: 'section_generation',
