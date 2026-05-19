@@ -9,6 +9,17 @@ vi.mock('@/lib/db/schema', () => ({
     externalId: 'calls.external_id',
     titleRo: 'calls.title_ro',
   },
+  discoveredCalls: {
+    callId: 'discovered.call_id',
+    contentHash: 'discovered.content_hash',
+    title: 'discovered.title',
+  },
+  callKnowledge: {
+    callId: 'knowledge.call_id',
+    callTitle: 'knowledge.call_title',
+    normalized: 'knowledge.normalized',
+    canonicalCallId: 'knowledge.canonical_call_id',
+  },
 }));
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((c: any, v: any) => ({ kind: 'eq', c, v })),
@@ -93,5 +104,136 @@ describe('resolveCallForId', () => {
     const { tx } = makeTx({});
     const out = await resolveCallForId(tx, 'UNKNOWN');
     expect(out).toEqual({ id: null, title: null, resolution: 'unresolved' });
+  });
+
+  it('resolves a SHA-256 content hash through discovered_calls.call_id', async () => {
+    const hash = 'a'.repeat(64);
+    const { tx } = makeTx({
+      [JSON.stringify({ kind: 'eq', c: 'discovered.content_hash', v: hash })]: [
+        { callId: UUID, title: 'Discovery title' },
+      ] as any,
+      [JSON.stringify({ kind: 'eq', c: 'calls.id', v: UUID })]: [
+        { id: UUID, titleRo: 'Canonical title' },
+      ],
+    });
+
+    const out = await resolveCallForId(tx, hash);
+
+    expect(out).toEqual({ id: UUID, title: 'Canonical title', resolution: 'discoveredContentHash' });
+  });
+
+  it('continues to call_knowledge.canonical_call_id when discovered_calls has a title but no callId', async () => {
+    // Regression: discovered_calls rows can carry a non-null title while their
+    // callId is still null (pre-import / pending state). The old code
+    // short-circuited with the discovered title and never consulted
+    // call_knowledge — which means a backfilled canonical FK on the matching
+    // call_knowledge row was silently ignored, leaving the project unhealed.
+    const hash = 'f'.repeat(64);
+    const { tx } = makeTx({
+      [JSON.stringify({ kind: 'eq', c: 'discovered.content_hash', v: hash })]: [
+        { callId: null, title: 'Pending discovered title' },
+      ] as any,
+      [JSON.stringify({ kind: 'eq', c: 'knowledge.call_id', v: hash })]: [
+        { canonicalCallId: UUID, callTitle: 'Knowledge title', normalized: {} },
+      ] as any,
+      [JSON.stringify({ kind: 'eq', c: 'calls.id', v: UUID })]: [
+        { id: UUID, titleRo: 'Canonical title' },
+      ],
+    });
+
+    const out = await resolveCallForId(tx, hash);
+
+    expect(out).toEqual({ id: UUID, title: 'Canonical title', resolution: 'callKnowledge' });
+  });
+
+  it('falls back to discovered_calls.title only after every id-bearing path misses', async () => {
+    // Symmetric guard: when nothing resolves to a real id, the discovered title
+    // is still preferable to a null-titled unresolved result so the UI has
+    // something to render.
+    const hash = '1'.repeat(64);
+    const { tx } = makeTx({
+      [JSON.stringify({ kind: 'eq', c: 'discovered.content_hash', v: hash })]: [
+        { callId: null, title: 'Last-resort discovered title' },
+      ] as any,
+      // No call_knowledge row exists for this hash.
+    });
+
+    const out = await resolveCallForId(tx, hash);
+
+    expect(out).toEqual({ id: null, title: 'Last-resort discovered title', resolution: 'unresolved' });
+  });
+
+  it('prefers call_knowledge.canonical_call_id (the M1 FK) over normalized alias keys', async () => {
+    // Regression: the M1 backfill writes the canonical UUID to
+    // call_knowledge.canonical_call_id. Promotion previously only inspected
+    // `normalized` aliases (callCode/externalId/...), so backfilled rows
+    // whose normalized payload doesn't happen to carry an alias key — the
+    // steady state post-backfill — silently stayed unresolved.
+    const hash = 'd'.repeat(64);
+    const { tx, calls } = makeTx({
+      [JSON.stringify({ kind: 'eq', c: 'knowledge.call_id', v: hash })]: [
+        { canonicalCallId: UUID, callTitle: 'Knowledge title', normalized: { requiredSections: ['x'] } },
+      ] as any,
+      [JSON.stringify({ kind: 'eq', c: 'calls.id', v: UUID })]: [
+        { id: UUID, titleRo: 'Canonical title' },
+      ],
+    });
+
+    const out = await resolveCallForId(tx, hash);
+
+    expect(out).toEqual({ id: UUID, title: 'Canonical title', resolution: 'callKnowledge' });
+
+    // Sanity check: exactly one probe against calls.id, against the canonical
+    // UUID pulled from the knowledge row (the input is a SHA256, so the initial
+    // direct-probe path skips the UUID prong entirely — any calls.id probe in
+    // this call tree had to come from the canonical_call_id branch).
+    const idProbes = calls.filter((c) => c.predicateKey.includes('"c":"calls.id"'));
+    expect(idProbes).toHaveLength(1);
+    expect(idProbes[0].predicateKey).toContain(`"v":"${UUID}"`);
+  });
+
+  it('falls back to normalized aliases when canonical_call_id is null (legacy un-backfilled row)', async () => {
+    const hash = 'e'.repeat(64);
+    const { tx } = makeTx({
+      [JSON.stringify({ kind: 'eq', c: 'knowledge.call_id', v: hash })]: [
+        { canonicalCallId: null, callTitle: 'Legacy title', normalized: { callCode: 'LEGACY-CODE' } },
+      ] as any,
+      [JSON.stringify({ kind: 'eq', c: 'calls.call_code', v: 'LEGACY-CODE' })]: [
+        { id: 'legacy-uuid', titleRo: 'Legacy resolved title' },
+      ],
+    });
+
+    const out = await resolveCallForId(tx, hash);
+
+    expect(out).toEqual({ id: 'legacy-uuid', title: 'Legacy resolved title', resolution: 'callKnowledge' });
+  });
+
+  it('resolves a call_knowledge row through a stashed canonical call code', async () => {
+    const hash = 'b'.repeat(64);
+    const { tx } = makeTx({
+      [JSON.stringify({ kind: 'eq', c: 'knowledge.call_id', v: hash })]: [
+        { callTitle: 'Knowledge title', normalized: { callCode: 'CODE-123' } },
+      ] as any,
+      [JSON.stringify({ kind: 'eq', c: 'calls.call_code', v: 'CODE-123' })]: [
+        { id: 'resolved-from-code', titleRo: 'Resolved title' },
+      ],
+    });
+
+    const out = await resolveCallForId(tx, hash);
+
+    expect(out).toEqual({ id: 'resolved-from-code', title: 'Resolved title', resolution: 'callKnowledge' });
+  });
+
+  it('keeps unresolved call_knowledge rows title-bearing when no canonical alias exists', async () => {
+    const hash = 'c'.repeat(64);
+    const { tx } = makeTx({
+      [JSON.stringify({ kind: 'eq', c: 'knowledge.call_id', v: hash })]: [
+        { callTitle: 'Human readable call title', normalized: {} },
+      ] as any,
+    });
+
+    const out = await resolveCallForId(tx, hash);
+
+    expect(out).toEqual({ id: null, title: 'Human readable call title', resolution: 'unresolved' });
   });
 });

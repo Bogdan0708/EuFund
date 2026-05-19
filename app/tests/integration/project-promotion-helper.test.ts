@@ -6,14 +6,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // every column to camelCase). The mock row must match those keys, NOT the
 // snake_case column names — otherwise session.projectId reads undefined and
 // the helper routes into the wrong branch.
+const defaultPlanningArtifact = { preselect: { description: 'A '.repeat(60) + 'long enough description' } };
+
 const sessionRow = {
   id: 'sess-1',
   userId: 'user-1',
   projectId: null as string | null,
   selectedCallId: 'CODE-123',
   locale: 'ro',
-  messageSummary: null,
-  planningArtifact: { preselect: { description: 'A '.repeat(60) + 'long enough description' } },
+  messageSummary: null as string | null,
+  planningArtifact: defaultPlanningArtifact as typeof defaultPlanningArtifact | null,
 };
 
 const txState: any = {};
@@ -101,9 +103,11 @@ vi.mock('@/lib/db', () => {
 });
 vi.mock('@/lib/db/schema', () => ({
   agentSessions: { id: 'sess.id', userId: 'sess.user_id', projectId: 'sess.project_id', selectedCallId: 'sess.selected_call_id', locale: 'sess.locale', messageSummary: 'sess.message_summary', planningArtifact: 'sess.planning_artifact', updatedAt: 'sess.updated_at' },
-  projects: { id: 'projects.id', metadata: 'projects.metadata', callId: 'projects.call_id', updatedAt: 'projects.updated_at' },
+  projects: { id: 'projects.id', metadata: 'projects.metadata', callId: 'projects.call_id', title: 'projects.title', updatedAt: 'projects.updated_at' },
   users: { id: 'users.id' },
   callsForProposals: { id: 'calls.id', callCode: 'calls.call_code', externalId: 'calls.external_id', titleRo: 'calls.title_ro' },
+  discoveredCalls: { callId: 'discovered.call_id', contentHash: 'discovered.content_hash', title: 'discovered.title' },
+  callKnowledge: { callId: 'knowledge.call_id', callTitle: 'knowledge.call_title', normalized: 'knowledge.normalized', canonicalCallId: 'knowledge.canonical_call_id' },
   organizations: { id: 'org.id' },
   orgMembers: { userId: 'om.user_id', orgId: 'om.org_id' },
 }));
@@ -133,10 +137,14 @@ const ctx = {
 } as any;
 
 describe('ensureProjectForSession — fresh promotion', () => {
-	  beforeEach(() => {
-	    txState.selectPhase = 'session';
-	    txState.callRows = undefined;
-	    sessionRow.projectId = null;
+		  beforeEach(() => {
+		    txState.selectPhase = 'session';
+		    txState.callRows = undefined;
+		    txState.projectRow = undefined;
+		    sessionRow.projectId = null;
+		    sessionRow.selectedCallId = 'CODE-123';
+		    sessionRow.messageSummary = null;
+		    sessionRow.planningArtifact = defaultPlanningArtifact;
     projectInsertRows.length = 0;
     sessionUpdates.length = 0;
     vi.clearAllMocks();
@@ -173,12 +181,17 @@ describe('ensureProjectForSession — fresh promotion', () => {
 });
 
 describe('ensureProjectForSession — already linked', () => {
-	  beforeEach(() => {
-	    txState.selectPhase = 'session';
-	    txState.callRows = undefined;
-	    projectInsertRows.length = 0;
-	    sessionUpdates.length = 0;
-	    vi.clearAllMocks();
+		  beforeEach(() => {
+		    txState.selectPhase = 'session';
+		    txState.callRows = undefined;
+		    txState.projectRow = undefined;
+		    sessionRow.projectId = null;
+		    sessionRow.selectedCallId = 'CODE-123';
+		    sessionRow.messageSummary = null;
+		    sessionRow.planningArtifact = defaultPlanningArtifact;
+		    projectInsertRows.length = 0;
+		    sessionUpdates.length = 0;
+		    vi.clearAllMocks();
 	  });
 
   it('returns synced=false when callId matches project metadata.rawSelectedCallId', async () => {
@@ -246,7 +259,85 @@ describe('ensureProjectForSession — already linked', () => {
 	        previousResolvedCallId: 'old-call-uuid',
 	      }),
 	    }));
-	    expect(trackProjectPromotion).toHaveBeenCalledWith('resync_unresolved');
-	    sessionRow.projectId = null;
-	  });
-	});
+		    expect(trackProjectPromotion).toHaveBeenCalledWith('resync_unresolved');
+		    sessionRow.projectId = null;
+		  });
+
+      it('self-heals a compacted-title project when current messageSummary is clean', async () => {
+        // Regression: the old guard refused to overwrite when titleResult.source
+        // was 'messageSummary'. But deriveProjectTitle already filters compacted
+        // summaries — a 'messageSummary' result reaching the repair branch IS
+        // a clean replacement and should win. As written, a project pinned with
+        // a compacted title and existing metadata.titleSource = 'messageSummary'
+        // would stay broken forever.
+        sessionRow.projectId = 'existing-proj';
+        sessionRow.selectedCallId = 'CODE-123';
+        sessionRow.messageSummary = 'A clean human-readable summary of the project plan.';
+        sessionRow.planningArtifact = null;
+        const oldCompactedTitle = 'Conversation history summary (32 messages compacted): [Tool: get_call_blueprint] {"data":{"raw":{}}}';
+        txState.projectRow = {
+          id: 'existing-proj',
+          metadata: {
+            rawSelectedCallId: 'CODE-123',
+            resolvedCallTitle: 'Resolved Call',
+            selectedCallResolution: 'callCode',
+            titleSource: 'messageSummary',
+          },
+          callId: 'resolved-call-uuid',
+          title: oldCompactedTitle,
+        };
+
+        const out = await ensureProjectForSession(ctx, 'sess-1');
+
+        expect(out).toMatchObject({ promoted: true, created: false, synced: true, projectId: 'existing-proj' });
+        const update = sessionUpdates[0];
+        expect(update.title).toBe('A clean human-readable summary of the project plan.');
+        // callId stays put — we only healed the title.
+        expect(update.callId).toBeUndefined();
+        expect(update.metadata).toMatchObject({
+          titleSource: 'messageSummary',
+          selectedCallResolution: 'callCode',
+        });
+        sessionRow.projectId = null;
+      });
+
+      it('self-heals an already-linked unresolved project when raw selected call still matches', async () => {
+        sessionRow.projectId = 'existing-proj';
+        sessionRow.selectedCallId = 'CODE-123';
+        sessionRow.messageSummary = 'Conversation history summary (32 messages compacted): [Tool: get_call_blueprint] {"data":{"raw":{}}}';
+        sessionRow.planningArtifact = null;
+        txState.projectRow = {
+          id: 'existing-proj',
+          metadata: {
+            rawSelectedCallId: 'CODE-123',
+            selectedCallResolution: 'unresolved',
+            titleSource: 'messageSummary',
+          },
+          callId: null,
+          title: sessionRow.messageSummary,
+        };
+
+        const out = await ensureProjectForSession(ctx, 'sess-1');
+
+        expect(out).toMatchObject({ promoted: true, created: false, synced: true, projectId: 'existing-proj' });
+        expect(sessionUpdates[0]).toMatchObject({
+          callId: 'resolved-call-uuid',
+          title: 'Resolved Call',
+          metadata: expect.objectContaining({
+            rawSelectedCallId: 'CODE-123',
+            resolvedCallTitle: 'Resolved Call',
+            selectedCallResolution: 'callCode',
+            titleSource: 'callTitle',
+          }),
+        });
+        expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({
+          metadata: expect.objectContaining({
+            kind: 'call_resynced',
+            resolvedCallId: 'resolved-call-uuid',
+            titleSource: 'callTitle',
+          }),
+        }));
+        expect(trackProjectPromotion).toHaveBeenCalledWith('synced');
+        sessionRow.projectId = null;
+      });
+		});

@@ -9,7 +9,7 @@
 
 import { and, eq } from 'drizzle-orm';
 import { withUserRLS } from '@/lib/db';
-import { agentSessions, projects, users, callsForProposals } from '@/lib/db/schema';
+import { agentSessions, projects, users, callsForProposals, callKnowledge, discoveredCalls } from '@/lib/db/schema';
 import { logAudit } from '@/lib/legal/audit';
 import { logger } from '@/lib/logger';
 import { trackProjectPromotion } from '@/lib/monitoring/metrics';
@@ -22,8 +22,8 @@ type DbTransaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 const log = logger.child({ component: 'project-promotion' });
 
-export type CallResolution = 'id' | 'callCode' | 'externalId' | 'unresolved';
-export type TitleSource = 'description' | 'messageSummary' | 'fallback';
+export type CallResolution = 'id' | 'callCode' | 'externalId' | 'discoveredContentHash' | 'callKnowledge' | 'unresolved';
+export type TitleSource = 'description' | 'messageSummary' | 'callTitle' | 'fallback';
 
 export type PromotionResult =
   | {
@@ -60,12 +60,18 @@ export class DryRunRollback<T> extends Error {
 // substantive enough to be a project title.
 const MIN_DESCRIPTION_LEN_FOR_TITLE = 40;
 const TITLE_MAX_LEN = 120;
+const SHA256_HEX_RE = /^[a-f0-9]{64}$/i;
 
 /** Minimal shape used by the title derivation; kept narrow on purpose. */
 export interface SessionForTitle {
   selectedCallId: string;
   messageSummary: string | null;
-  planningArtifact: { preselect?: { description?: string } } | null;
+  planningArtifact: {
+    preselect?: {
+      description?: string;
+      candidates?: Array<{ callId?: unknown; title?: unknown }>;
+    };
+  } | null;
 }
 
 function normalizeWhitespace(s: string): string {
@@ -76,9 +82,46 @@ function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max).trimEnd();
 }
 
+function isCompactedToolSummary(s: string): boolean {
+  const normalized = normalizeWhitespace(s).toLowerCase();
+  return normalized.startsWith('conversation history summary') || normalized.includes('[tool:');
+}
+
+function cleanCallTitleCandidate(value: unknown, selectedCallId: string): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = normalizeWhitespace(value);
+  if (normalized.length === 0) return null;
+  if (normalized === selectedCallId) return null;
+  if (SHA256_HEX_RE.test(normalized)) return null;
+  return truncate(normalized, TITLE_MAX_LEN);
+}
+
+function selectedCandidateTitle(session: SessionForTitle): string | null {
+  const candidates = session.planningArtifact?.preselect?.candidates;
+  if (!Array.isArray(candidates)) return null;
+
+  const match = candidates.find((candidate) => candidate.callId === session.selectedCallId);
+  return cleanCallTitleCandidate(match?.title, session.selectedCallId);
+}
+
+function deriveTitleInput(
+  session: {
+    selectedCallId: string;
+    messageSummary: string | null;
+    planningArtifact: unknown;
+  },
+): SessionForTitle {
+  return {
+    selectedCallId: session.selectedCallId,
+    messageSummary: session.messageSummary,
+    planningArtifact: session.planningArtifact as SessionForTitle['planningArtifact'],
+  };
+}
+
 export function deriveProjectTitle(
   session: SessionForTitle,
   locale: 'ro' | 'en',
+  callTitleHint?: string | null,
 ): { title: string; source: TitleSource } {
   const desc = session.planningArtifact?.preselect?.description;
   if (typeof desc === 'string') {
@@ -90,7 +133,16 @@ export function deriveProjectTitle(
 
   const summary = session.messageSummary;
   if (typeof summary === 'string' && summary.trim().length > 0) {
-    return { title: truncate(normalizeWhitespace(summary), TITLE_MAX_LEN), source: 'messageSummary' };
+    const normalized = normalizeWhitespace(summary);
+    if (!isCompactedToolSummary(normalized)) {
+      return { title: truncate(normalized, TITLE_MAX_LEN), source: 'messageSummary' };
+    }
+  }
+
+  const callTitle = cleanCallTitleCandidate(callTitleHint, session.selectedCallId)
+    ?? selectedCandidateTitle(session);
+  if (callTitle) {
+    return { title: callTitle, source: 'callTitle' };
   }
 
   const idFragment = session.selectedCallId.slice(0, 12);
@@ -106,15 +158,7 @@ export interface ResolveCallResult {
   resolution: CallResolution;
 }
 
-/**
- * Three-prong probe against calls_for_proposals.
- *   1. id (only if input matches UUID_RE)
- *   2. call_code (globally unique per schema.ts:300)
- *   3. external_id (NOT globally unique — uniqueness is per source_connector_id;
- *      LIMIT 2 + exact-one check; multi-match → unresolved to avoid linking the
- *      wrong FK)
- */
-export async function resolveCallForId(
+async function resolveDirectCallForId(
   tx: DbTransaction,
   rawSelectedCallId: string,
 ): Promise<ResolveCallResult> {
@@ -145,6 +189,123 @@ export async function resolveCallForId(
     .limit(2);
   if (extRows.length === 1) {
     return { id: extRows[0].id, title: extRows[0].titleRo, resolution: 'externalId' };
+  }
+
+  return { id: null, title: null, resolution: 'unresolved' };
+}
+
+const KNOWLEDGE_ALIAS_KEYS = [
+  'callsForProposalsId',
+  'calls_for_proposals_id',
+  'canonicalCallId',
+  'canonical_call_id',
+  'callUuid',
+  'call_uuid',
+  'callCode',
+  'call_code',
+  'externalId',
+  'external_id',
+] as const;
+
+function callKnowledgeAliases(normalized: unknown, rawSelectedCallId: string): string[] {
+  if (!normalized || typeof normalized !== 'object') return [];
+
+  const aliases: string[] = [];
+  const record = normalized as Record<string, unknown>;
+  for (const key of KNOWLEDGE_ALIAS_KEYS) {
+    const value = record[key];
+    if (typeof value !== 'string') continue;
+    const normalizedValue = normalizeWhitespace(value);
+    if (normalizedValue.length === 0 || normalizedValue === rawSelectedCallId) continue;
+    aliases.push(normalizedValue);
+  }
+
+  return [...new Set(aliases)];
+}
+
+/**
+ * Direct probe against calls_for_proposals, then DB-owned alias fallbacks.
+ *
+ * Direct probes:
+ *   1. id (only if input matches UUID_RE)
+ *   2. call_code (globally unique per schema.ts:300)
+ *   3. external_id (NOT globally unique — uniqueness is per source_connector_id;
+ *      LIMIT 2 + exact-one check; multi-match → unresolved to avoid linking the
+ *      wrong FK)
+ *
+ * Alias probes cover selectedCallId values that originated from the RAG layer:
+ *   - discovered_calls.content_hash when it has already been reviewed/imported
+ *   - call_knowledge.call_id when it carries canonical call metadata
+ */
+export async function resolveCallForId(
+  tx: DbTransaction,
+  rawSelectedCallId: string,
+): Promise<ResolveCallResult> {
+  const direct = await resolveDirectCallForId(tx, rawSelectedCallId);
+  if (direct.id !== null) return direct;
+
+  // Pending / stale discovered_calls rows can carry a non-null title while
+  // their callId is still null (pre-import state). Stash that title as a
+  // last-resort fallback hint but DO NOT short-circuit — the call_knowledge
+  // branch below may still hold the canonical FK that lets us finish
+  // self-healing.
+  let discoveredTitleHint: string | null = null;
+
+  if (SHA256_HEX_RE.test(rawSelectedCallId)) {
+    const discoveredRows = await tx
+      .select({ callId: discoveredCalls.callId, title: discoveredCalls.title })
+      .from(discoveredCalls)
+      .where(eq(discoveredCalls.contentHash, rawSelectedCallId))
+      .limit(1);
+    if (discoveredRows[0]?.callId) {
+      const resolved = await resolveDirectCallForId(tx, discoveredRows[0].callId);
+      if (resolved.id !== null) {
+        return { ...resolved, resolution: 'discoveredContentHash' };
+      }
+    }
+    if (discoveredRows[0]?.title) {
+      discoveredTitleHint = discoveredRows[0].title;
+    }
+  }
+
+  const knowledgeRows = await tx
+    .select({
+      canonicalCallId: callKnowledge.canonicalCallId,
+      callTitle: callKnowledge.callTitle,
+      normalized: callKnowledge.normalized,
+    })
+    .from(callKnowledge)
+    .where(eq(callKnowledge.callId, rawSelectedCallId))
+    .limit(1);
+  const knowledge = knowledgeRows[0];
+  if (knowledge) {
+    // canonical_call_id is the authoritative FK to calls_for_proposals.id
+    // written by the M1 backfill. Try it before alias-key archaeology in
+    // `normalized` — that path is the fallback for un-backfilled legacy rows
+    // whose `normalized` payload happens to carry a callCode / externalId.
+    if (knowledge.canonicalCallId) {
+      const resolved = await resolveDirectCallForId(tx, knowledge.canonicalCallId);
+      if (resolved.id !== null) {
+        return { ...resolved, resolution: 'callKnowledge' };
+      }
+    }
+    for (const alias of callKnowledgeAliases(knowledge.normalized, rawSelectedCallId)) {
+      const resolved = await resolveDirectCallForId(tx, alias);
+      if (resolved.id !== null) {
+        return { ...resolved, resolution: 'callKnowledge' };
+      }
+    }
+    const title = cleanCallTitleCandidate(knowledge.callTitle, rawSelectedCallId);
+    if (title) {
+      return { id: null, title, resolution: 'unresolved' };
+    }
+  }
+
+  // Every id-bearing path missed. Surface the discovered title (if any) so
+  // the caller can still display a human-readable label while metadata
+  // continues to flag the call as unresolved.
+  if (discoveredTitleHint) {
+    return { id: null, title: discoveredTitleHint, resolution: 'unresolved' };
   }
 
   return { id: null, title: null, resolution: 'unresolved' };
@@ -201,6 +362,7 @@ export async function ensureProjectForSession(
             id: projects.id,
             metadata: projects.metadata,
             callId: projects.callId,
+            title: projects.title,
           })
           .from(projects)
           .where(eq(projects.id, session.projectId))
@@ -216,6 +378,88 @@ export async function ensureProjectForSession(
         const previousResolvedCallId = project.callId;
 
         if (recordedCallId === session.selectedCallId) {
+          const titleRepairNeeded = (
+            typeof project.title === 'string'
+            && isCompactedToolSummary(project.title)
+          );
+          const callRepairNeeded = project.callId === null || existingMetadata.selectedCallResolution === 'unresolved';
+          if (callRepairNeeded || titleRepairNeeded) {
+            const callResult = await resolveCallForId(tx, session.selectedCallId!);
+            const existingResolvedCallTitle = typeof existingMetadata.resolvedCallTitle === 'string'
+              ? existingMetadata.resolvedCallTitle
+              : null;
+            const resolvedCallTitle = callResult.title ?? existingResolvedCallTitle;
+            const titleResult = titleRepairNeeded
+              ? deriveProjectTitle(
+                  deriveTitleInput({
+                    selectedCallId: session.selectedCallId!,
+                    messageSummary: session.messageSummary,
+                    planningArtifact: session.planningArtifact,
+                  }),
+                  session.locale as 'ro' | 'en',
+                  resolvedCallTitle,
+                )
+              : null;
+            // deriveProjectTitle already drops compacted messageSummary
+            // values via isCompactedToolSummary, so any titleResult that
+            // reaches this branch is by construction a clean replacement —
+            // including a 'messageSummary' source. Refusing it here was
+            // the bug that left a compacted title pinned forever when the
+            // current summary was already clean.
+            const titleChanged = Boolean(
+              titleResult
+              && titleResult.title !== project.title,
+            );
+            const callChanged = callResult.id !== null && callResult.id !== project.callId;
+            const titleMetadataChanged = Boolean(titleResult && titleResult.source !== existingMetadata.titleSource);
+            const callMetadataChanged = (
+              resolvedCallTitle !== (existingMetadata.resolvedCallTitle ?? null)
+              || callResult.resolution !== existingMetadata.selectedCallResolution
+            );
+
+            if (callChanged || titleChanged || titleMetadataChanged || callMetadataChanged) {
+              await tx
+                .update(projects)
+                .set({
+                  ...(callChanged ? { callId: callResult.id } : {}),
+                  ...(titleChanged && titleResult ? { title: titleResult.title } : {}),
+                  metadata: {
+                    ...existingMetadata,
+                    agentSessionId: sessionId,
+                    rawSelectedCallId: session.selectedCallId,
+                    resolvedCallTitle,
+                    selectedCallResolution: callResult.resolution,
+                    ...(titleResult ? { titleSource: titleResult.source } : {}),
+                  },
+                  updatedAt: new Date(),
+                })
+                .where(eq(projects.id, project.id));
+
+              const audit: PendingAudit = {
+                kind: callResult.id === null ? 'call_resync_unresolved' : 'call_resynced',
+                projectId: project.id,
+                rawSelectedCallId: session.selectedCallId!,
+                resolvedCallId: callResult.id,
+                selectedCallResolution: callResult.resolution,
+                previousRawSelectedCallId,
+                previousResolvedCallId,
+                titleSource: titleResult?.source,
+              };
+
+              return {
+                result: callResult.id === null
+                  ? {
+                      promoted: true,
+                      projectId: project.id,
+                      created: false,
+                      synced: false,
+                      resyncUnresolved: true,
+                    }
+                  : { promoted: true, projectId: project.id, created: false, synced: true },
+                auditData: audit,
+              };
+            }
+          }
           return { result: { promoted: true, projectId: project.id, created: false, synced: false }, auditData: null };
         }
 
@@ -290,12 +534,13 @@ export async function ensureProjectForSession(
 
       const callResult = await resolveCallForId(tx, session.selectedCallId!);
       const titleResult = deriveProjectTitle(
-        {
+        deriveTitleInput({
           selectedCallId: session.selectedCallId!,
           messageSummary: session.messageSummary,
-          planningArtifact: session.planningArtifact as { preselect?: { description?: string } } | null,
-        },
+          planningArtifact: session.planningArtifact,
+        }),
         session.locale as 'ro' | 'en',
+        callResult.title,
       );
 
       const [created] = await tx

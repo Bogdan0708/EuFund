@@ -45,6 +45,34 @@ describe('deriveProjectTitle', () => {
     expect(out.source).toBe('messageSummary');
   });
 
+  it('skips compacted tool summaries and uses the resolved call title', () => {
+    const session = {
+      ...baseSession,
+      messageSummary: 'Conversation history summary (32 messages compacted): [Tool: refresh_call_freshness] {"data":{"isOpen":false}}',
+    };
+    const out = deriveProjectTitle(session, 'ro', 'Digitalizarea IMM-urilor');
+    expect(out.source).toBe('callTitle');
+    expect(out.title).toBe('Digitalizarea IMM-urilor');
+  });
+
+  it('uses the selected preselect candidate title when summary is a tool dump', () => {
+    const session = {
+      ...baseSession,
+      messageSummary: 'Conversation history summary (30 messages compacted): [Tool: get_call_blueprint] {"data":{"raw":{}}}',
+      planningArtifact: {
+        preselect: {
+          candidates: [
+            { callId: 'other', title: 'Other call' },
+            { callId: 'CALL-ABC123XYZ', title: 'Tranzitie verde pentru IMM' },
+          ],
+        },
+      },
+    };
+    const out = deriveProjectTitle(session, 'ro');
+    expect(out.source).toBe('callTitle');
+    expect(out.title).toBe('Tranzitie verde pentru IMM');
+  });
+
   it('uses Romanian fallback when both are missing (ro locale)', () => {
     const out = deriveProjectTitle(baseSession, 'ro');
     expect(out.source).toBe('fallback');
